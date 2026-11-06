@@ -9,13 +9,14 @@ rtmpAddress: 127.0.0.1:1935
 hls: no
 webrtc: no
 srt: no
+moq: no
 # écoute uniquement en local : rien n'est exposé
 rtspTransports: [tcp]
 paths:
   # ce que « Facebook » reçoit est enregistré côté serveur (preuve indépendante de l'enregistrement local)
   live/facebook:
     record: yes
-    recordPath: ./data/server-recordings/%path/%Y-%m-%d_%H-%M-%S
+    recordPath: ./data/server-recordings/%path/%Y-%m-%d_%H-%M-%S-%z
     recordFormat: fmp4
     recordDeleteAfter: 0s
   all_others:

@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 ZMQ_ADDR = "tcp://127.0.0.1:5556"
-ZMQ_ESC = "tcp\\://127.0.0.1\\:5556"  # « : » échappés pour la syntaxe des filtres
+ZMQ_ESC = "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + ":5556"  # « : » échappés deux fois (graphe puis options du filtre)
 
 
 class Encoder:
@@ -51,7 +51,7 @@ class Encoder:
             "-filter_complex", fg, "-map", "[v]", "-map", "[a]",
             "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-b:v", c.video_bitrate,
             "-maxrate", c.video_bitrate, "-bufsize", "5000k", "-g", str(c.fps * 2), "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+            "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-flags", "+global_header",
             "-f", "tee", f"[f=flv:onfail=ignore]{c.rtmp_url}|[f=matroska]{rec}",
         ]
 
@@ -129,16 +129,19 @@ class Encoder:
             self.log("ENCODEUR : pyzmq manquant, audio non commutable")
             return
         ctx = zmq.Context.instance()
-        s = ctx.socket(zmq.REQ)
-        s.setsockopt(zmq.LINGER, 0)
-        s.setsockopt(zmq.RCVTIMEO, 2000)
-        s.setsockopt(zmq.SNDTIMEO, 2000)
-        s.connect(ZMQ_ADDR)
-        try:
-            s.send_string(msg)
-            rep = s.recv_string()
-            self.log(f"ZMQ « {msg} » -> {rep.strip()}")
-        except Exception as e:  # noqa
-            self.log(f"ZMQ erreur ({msg}) : {e}")
-        finally:
-            s.close()
+        for attempt in range(4):
+            s = ctx.socket(zmq.REQ)
+            s.setsockopt(zmq.LINGER, 0)
+            s.setsockopt(zmq.RCVTIMEO, 3000)
+            s.setsockopt(zmq.SNDTIMEO, 3000)
+            s.connect(ZMQ_ADDR)
+            try:
+                s.send_string(msg)
+                rep = s.recv_string()
+                self.log(f"ZMQ « {msg} » -> {rep.strip()}")
+                return
+            except Exception as e:  # noqa
+                self.log(f"ZMQ essai {attempt + 1} échoué ({msg}) : {e}")
+            finally:
+                s.close()
+            time.sleep(1.0)

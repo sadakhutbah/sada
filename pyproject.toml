@@ -10,6 +10,7 @@ dependencies = [
   "pillow",
   "rapidfuzz",
   "faster-whisper",
+  "pyzmq",
   "pytest",
 ]
 [tool.setuptools]
