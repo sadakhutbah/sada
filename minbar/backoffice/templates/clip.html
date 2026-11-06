@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Clip {{ c.idx }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/clips">← File de validation</a> · <a href="/khutbas/{{ k.id }}">{{ k.date|date_fr }} · {{ k.label }}</a></p>
+<div class="spread">
+  <h1>Clip {{ c.idx }} · {{ c.kind }}</h1>
+  <span class="pill {{ c.status }}">{{ STATUS[c.status] }}</span>
+</div>
+<p class="muted small">Extrait {{ c.start|mmss }}–{{ c.end|mmss }} de la khutba ({{ (c.end - c.start)|round|int }} s) · version {{ c.version }}{% if c.why %} · {{ c.why }}{% endif %}</p>
+
+{% if c.regen_state == "en_cours" %}<div class="flash ok" data-regen="{{ c.id }}">Régénération en cours… la page se rechargera automatiquement.</div>{% endif %}
+{% if c.regen_state == "erreur" %}<div class="flash err">Régénération en échec : {{ c.regen_error }}</div>{% endif %}
+{% if c.needs_regen and c.regen_state != "en_cours" %}<div class="flash err">Des corrections ne sont pas encore dans la vidéo : régénérez le clip avant de le valider.</div>{% endif %}
+
+<div class="grid g2">
+  <section>
+    <div class="card">
+      {% if exists %}<video class="clipvid" controls preload="metadata" playsinline src="/media/clip/{{ c.id }}.mp4?v={{ c.version }}"></video>
+      {% else %}<p class="muted">Fichier du clip introuvable.</p>{% endif %}
+    </div>
+    {% if ctx.can("validate") %}
+    <div class="card">
+      <h2>Décision</h2>
+      {% if c.status == "publie" %}
+      <p>Publié (version {{ c.version }}){% if decider %}, validé par <b>{{ decider.display_name }}</b>{% endif %}.
+        {% if c.needs_regen %}<br>Des corrections ont été faites depuis : régénérez pour produire une version {{ c.version + 1 }}, qui repassera par la validation.{% endif %}</p>
+      {% elif c.status == "a_valider" %}
+      <div class="row">
+        <form method="post" action="/clips/{{ c.id }}/decision"><input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="decision" value="valide">
+          <button class="btn" {{ "disabled" if c.needs_regen or c.regen_state == "en_cours" or not exists }}>Valider ce clip</button></form>
+      </div>
+      <form method="post" action="/clips/{{ c.id }}/decision"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="decision" value="rejete">
+        <label for="reason">Motif du rejet (facultatif)</label>
+        <input type="text" id="reason" name="reason" placeholder="ex. passage coupé, verset mal identifié">
+        <p><button class="btn danger sm">Rejeter</button></p>
+      </form>
+      {% else %}
+      <p>{{ STATUS[c.status] }}{% if decider %} par <b>{{ decider.display_name }}</b>{% endif %} le {{ c.decided_at|local(mosque) }}.
+        {% if c.reject_reason %}<br>Motif : {{ c.reject_reason }}{% endif %}</p>
+      <form method="post" action="/clips/{{ c.id }}/decision"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="decision" value="rouvrir"><button class="btn ghost sm">Remettre en file de validation</button></form>
+      {% endif %}
+      {% if c.needs_regen or c.regen_state == "erreur" %}
+      <h3>Régénération</h3>
+      {% if regen_ok %}
+      <form method="post" action="/clips/{{ c.id }}/regenerer"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn leaf sm" {{ "disabled" if c.regen_state == "en_cours" }}>Régénérer le clip avec les corrections</button></form>
+      {% else %}<p class="muted small">Régénération impossible ici : {{ regen_why }}.</p>{% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if ctx.can("publish") %}
+    <div class="card">
+      <h2>Publication</h2>
+      {% if c.status in ("valide", "publie") %}
+      <form method="post" action="/clips/{{ c.id }}/publier"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <label for="connector">Destination</label>
+        <select id="connector" name="connector">
+          {% for x in connectors %}<option value="{{ x.key }}" {{ "disabled" if not x.available }}>{{ x.label }}{% if not x.available %} — {{ x.why }}{% endif %}</option>{% endfor %}
+        </select>
+        <label for="caption">Légende</label>
+        <textarea id="caption" name="caption" rows="5">{{ caption }}</textarea>
+        <p><button class="btn">Publier</button></p>
+      </form>
+      {% else %}<p class="muted">Ce clip doit d'abord être validé.</p>{% endif %}
+      {% if pubs %}<h3>Publications</h3><ul class="timeline">{% for p in pubs %}
+        <li><span class="pill {{ 'publie' if p.status == 'publie' else 'rejete' }}">{{ p.status }}</span> {{ p.connector }} · v{{ p.clip_version }} ·
+          {{ p.created_at|local(mosque) }} · {{ p.who }}<br><span class="small muted">{{ p.location or p.message }}</span></li>
+      {% endfor %}</ul>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Sous-titres du clip</h2>
+      <p class="help">Corrigez le texte français affiché (ou la traduction d'un passage arabe). Les versets gardent la traduction Hamidullah.</p>
+      {% set next = "/clips/" ~ c.id %}
+      {% for r in rows %}{% with editable=ctx.can("validate"), seek=False %}{% include "_segment.html" %}{% endwith %}{% endfor %}
+    </div>
+    <div class="card">
+      <h2>Historique</h2>
+      <ul class="timeline">{% for a in hist %}
+        <li><b>{{ AUDIT.get(a.action, a.action) }}</b> · {{ a.who or "système" }} · <span class="muted">{{ a.created_at|local(mosque) }}</span>
+          {% if a.details != "{}" %}<br><span class="small muted">{{ a.details|details }}</span>{% endif %}</li>
+      {% else %}<li class="muted">Rien pour l'instant.</li>{% endfor %}</ul>
+    </div>
+  </section>
+</div>
+{% endblock %}

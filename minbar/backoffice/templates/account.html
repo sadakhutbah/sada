@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Mon compte{% endblock %}
+{% block main %}
+<h1>Mon compte</h1>
+<div class="grid g2">
+<div class="card">
+  <p><b>{{ user.display_name }}</b> ({{ user.username }}) · {{ ROLES[user.role] }}<br>
+  <span class="muted small">Dernière connexion : {{ user.last_login_at|local(mosque) }}</span></p>
+  <h2>Changer de mot de passe</h2>
+  <form method="post" action="/compte"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="current">Mot de passe actuel</label><input type="password" id="current" name="current" autocomplete="current-password" required>
+    <label for="new">Nouveau mot de passe</label><input type="password" id="new" name="new" autocomplete="new-password" minlength="10" required>
+    <div class="help">10 caractères minimum. Vous serez déconnecté de tous vos appareils.</div>
+    <label for="confirm">Confirmer</label><input type="password" id="confirm" name="confirm" autocomplete="new-password" minlength="10" required>
+    <p><button class="btn">Changer le mot de passe</button></p>
+  </form>
+</div>
+</div>
+{% endblock %}

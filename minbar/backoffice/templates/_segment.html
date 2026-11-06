@@ -1,0 +1,27 @@
+{# une ligne de transcription ; variables : r (ligne), k (khutba), editable (bool), seek (bool), next (url de retour) #}
+<div class="seg {{ 'quran' if r.verse or r.coran }}">
+  <div class="ts">{% if seek %}<a href="#" data-seek="{{ r.start }}">{{ r.start|mmss }}</a>{% else %}{{ r.rel|mmss }}{% endif %}</div>
+  <div>
+    {% if r.arabic %}<div class="ar">{{ r.text }}</div>{% endif %}
+    {% if r.verse %}
+      <span class="vref {{ 'amb' if r.verse.ambiguous }}">{{ r.verse.ref }}{% if r.verse.surah %} · {{ r.verse.surah }}{% endif %}{% if r.verse.ambiguous %} · à vérifier{% endif %}</span>
+      <div class="fr">{{ r.verse.fr }}</div>
+    {% elif r.coran %}
+      <div class="muted small">Récitation non identifiée : pas de sous-titre (aucune traduction libre du Coran).</div>
+    {% elif r.fr %}
+      <div class="fr">{{ r.fr }}{% if r.corrected %}<span class="edited">corrigé</span>{% endif %}</div>
+    {% elif r.arabic %}
+      <div class="muted small">Pas de traduction.</div>
+    {% endif %}
+    {% if editable and r.field %}
+    <details class="fix"><summary>{{ "Corriger le sous-titre" if r.field == "text" else "Corriger la traduction" }}</summary>
+      <form method="post" action="/khutbas/{{ k.id }}/correction">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="seg" value="{{ r.i }}">
+        <input type="hidden" name="field" value="{{ r.field }}"><input type="hidden" name="next" value="{{ next }}">
+        <textarea name="value" aria-label="Texte corrigé">{{ r.fr if r.field == "fr" else r.text }}</textarea>
+        <button class="btn sm">Enregistrer la correction</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>

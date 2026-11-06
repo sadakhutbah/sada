@@ -12,8 +12,17 @@ dependencies = [
   "faster-whisper",
   "pyzmq",
   "pytest",
+  # back-office
+  "fastapi",
+  "uvicorn",
+  "jinja2",
+  "python-multipart",
+  "argon2-cffi",
+  "httpx",
 ]
 [tool.setuptools]
-packages = ["minbar", "minbar.pipeline"]
+packages = ["minbar", "minbar.pipeline", "minbar.backoffice"]
+[tool.setuptools.package-data]
+"minbar.backoffice" = ["templates/*.html", "static/*", "static/fonts/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]

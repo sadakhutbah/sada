@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0F2A19">
+<title>{% block title %}Minbar Live{% endblock %} · {{ mosque.name if mosque else "Minbar Live" }}</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="/static/logo.jpg">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+{% if user %}
+<header class="top"><div class="in">
+  <a class="brand" href="/"><img src="/static/logo.jpg" alt=""><span>Minbar Live<small>{{ mosque.name }}</small></span></a>
+  <input type="checkbox" id="menu-toggle" aria-label="Menu">
+  <label for="menu-toggle" class="burger" aria-hidden="true">☰</label>
+  <nav class="nav">
+    <a href="/" class="{{ 'on' if path == '/' }}">Tableau de bord</a>
+    <a href="/khutbas" class="{{ 'on' if path.startswith('/khutbas') }}">{{ "Mes khutbas" if user.role == "imam" else "Khutbas" }}</a>
+    <a href="/clips" class="{{ 'on' if path.startswith('/clips') }}">Clips{% if nav_pending %}<span class="badge">{{ nav_pending }}</span>{% endif %}</a>
+    {% if ctx.can("publish") %}<a href="/publication" class="{{ 'on' if path.startswith('/publication') }}">Publication</a>{% endif %}
+    {% if ctx.can("journal") %}<a href="/journal" class="{{ 'on' if path.startswith('/journal') }}">Journal</a>{% endif %}
+    {% if ctx.can("admin") %}<a href="/admin/mosquee" class="{{ 'on' if path.startswith('/admin') }}">Réglages</a>{% endif %}
+    <span class="who"><a href="/compte" title="Mon compte">{{ user.display_name }}</a> · {{ ROLES[user.role] }}
+      <form method="post" action="/deconnexion"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Déconnexion</button></form></span>
+  </nav>
+</div></header>
+{% endif %}
+<main>
+{% if flash %}<div class="flash {{ flash[0] }}" role="status">{{ flash[1] }}</div>{% endif %}
+{% block main %}{% endblock %}
+</main>
+{% if user %}<div class="footer">Minbar Live · back-office · {{ mosque.name }}</div>{% endif %}
+</body>
+</html>

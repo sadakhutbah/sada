@@ -1,4 +1,4 @@
-.PHONY: setup test demo demo-short pipeline clean
+.PHONY: setup test demo demo-short pipeline clean backoffice
 PY=.venv/bin/python
 
 setup:
@@ -15,6 +15,10 @@ demo:
 # Démo courte : extrait de 5 min de khutba (~15 min)
 demo-short:
 	CUT=300 ./demo.sh
+
+# Back-office web (http://<machine>:8090) ; créer d'abord un admin : $(PY) -m minbar.backoffice create-admin --username admin
+backoffice:
+	$(PY) -m minbar.backoffice serve
 
 pipeline:
 	$(PY) -m minbar.pipeline.run $$(ls -td data/state/*/ | head -1)sessions.json

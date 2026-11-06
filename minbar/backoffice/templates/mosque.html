@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Réglages{% endblock %}
+{% block main %}
+<p class="small"><b>Mosquée</b> · <a href="/admin/utilisateurs">Comptes</a></p>
+<h1>Réglages de la mosquée</h1>
+<div class="grid g2">
+<section class="card">
+  <form method="post" action="/admin/mosquee"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="name">Nom</label><input type="text" id="name" name="name" value="{{ mosque.name }}" required>
+    <label for="timezone">Fuseau horaire</label><input type="text" id="timezone" name="timezone" value="{{ mosque.timezone }}">
+    <label for="mawaqit_url">Page Mawaqit</label><input type="url" id="mawaqit_url" name="mawaqit_url" value="{{ mosque.mawaqit_url }}" placeholder="https://mawaqit.net/fr/...">
+    <label for="clip_title">Titre affiché sur les clips</label><input type="text" id="clip_title" name="clip_title" value="{{ mosque.clip_title }}">
+    <label for="default_imam_id">Imam par défaut des nouvelles khutbas</label>
+    <select id="default_imam_id" name="default_imam_id"><option value="">— aucun —</option>
+      {% for i in imams %}<option value="{{ i.id }}" {{ "selected" if i.id == mosque.default_imam_id }}>{{ i.display_name }}</option>{% endfor %}</select>
+    <h3>Orchestrateur du live</h3>
+    <label for="orchestrator_url">Adresse de l'API</label><input type="url" id="orchestrator_url" name="orchestrator_url" value="{{ mosque.orchestrator_url }}">
+    <label for="orchestrator_token">Jeton (si l'API en exige un)</label>
+    <input type="password" id="orchestrator_token" name="orchestrator_token" value="{{ '••••••' if mosque.orchestrator_token }}" autocomplete="off">
+    <h3>Dossiers du pipeline</h3>
+    <label for="state_dir">États des runs</label><input type="text" id="state_dir" name="state_dir" value="{{ mosque.state_dir }}" placeholder="{{ dirs.state }}">
+    <label for="output_dir">Sorties (transcriptions, clips)</label><input type="text" id="output_dir" name="output_dir" value="{{ mosque.output_dir }}" placeholder="{{ dirs.output }}">
+    <label for="publish_dir">Dossier de publication locale</label><input type="text" id="publish_dir" name="publish_dir" value="{{ mosque.publish_dir }}" placeholder="{{ dirs.publish }}">
+    <div class="help">Laisser vide pour les dossiers par défaut du dépôt (indiqués en gris).</div>
+    <label class="check"><input type="checkbox" name="auto_import" value="1" {{ "checked" if mosque.auto_import }}> Importer automatiquement les nouveaux runs</label>
+    <p><button class="btn">Enregistrer</button></p>
+  </form>
+</section>
+<section class="card" id="connecteurs">
+  <h2>Connecteurs de publication</h2>
+  <p class="help">Les identifiants restent sur cette machine. En V1, Facebook, YouTube et Instagram restent désactivés : aucune publication réelle, aucun appel externe.</p>
+  {% for x in connectors %}
+  <div class="connector {{ '' if x.available else 'off' }}">
+    <div class="spread"><b>{{ x.label }}</b><span class="pill {{ 'valide' if x.available else 'grey' }}">{{ "actif" if x.available else "désactivé" }}</span></div>
+    <div class="small">{{ x.description }}</div>
+    {% if not x.available %}<div class="small muted">{{ x.why }}</div>{% endif %}
+    <form method="post" action="/admin/connecteurs/{{ x.key }}"><input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if x.key == "local" %}<label>Dossier</label><input type="text" name="path" value="{{ x.path }}" placeholder="{{ dirs.publish }}">{% endif %}
+      {% for f in x.required %}<label>{{ f }}</label><input type="{{ 'password' if '•' in x.settings[f] else 'text' }}" name="{{ f }}" value="{{ x.settings[f] }}" autocomplete="off">{% endfor %}
+      <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if x.enabled }}> Activé</label>
+      <button class="btn sm ghost">Enregistrer</button>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+</div>
+{% endblock %}
