@@ -1,11 +1,15 @@
 """Encodeur continu : UN seul ffmpeg produit le flux RTMP + l'enregistrement MKV + l'enregistrement PROPRE.
 
-Graphe : [caméra] -> scale/fps -> overlay( PNG de scène relu en boucle ) -> x264 -> tee (RTMP | live_*.mkv) ;
+Graphe : [caméra] -> scale/fps -> zmq (commandes vidéo)
+                  -> overlay@fond (écrans pleins : fond commun, opacité pilotée)
+                  -> overlay@ca / overlay@cb (contenu de scène, double tampon : opacité + position pilotées)
+                  -> x264 -> tee (RTMP | live_*.mkv) ;
          [audio caméra] -> volume@mic (piloté en direct via ZeroMQ) -> asplit -> aac (live) / aac (propre).
 Sortie propre (live_*_clean.mkv) : la vidéo caméra SANS habillage (copie du flux 0:v si clean_copy, sinon x264 crf 18
 depuis la caméra mise à l'échelle) + le même audio. Même processus, même démarrage : les positions temporelles
 de live_*.mkv et live_*_clean.mkv sont alignées (les clips sont taillés dans le propre aux positions du live).
-Changer de scène = réécrire le PNG + envoyer « volume@mic volume 0|1 » : le flux ne s'interrompt pas.
+Changer de scène = écrire le contenu dans le calque inactif puis l'animer (transitions.py) : fondu enchaîné,
+glissement d'entrée, fondu sonore du micro. Le processus ffmpeg n'est jamais relancé : le flux ne s'interrompt pas.
 """
 from __future__ import annotations
 import datetime as dt
@@ -13,14 +17,41 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
-ZMQ_ADDR = "tcp://127.0.0.1:5556"
-ZMQ_ESC = "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + ":5556"  # « : » échappés deux fois (graphe puis options du filtre)
+from . import transitions as tr
+
+
+def _zmq_esc(port: int) -> str:
+    return "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + f":{port}"  # « : » échappés deux fois (graphe puis options du filtre)
+
+
+ZMQ_ADDR = "tcp://127.0.0.1:5556"        # audio (azmq)
+ZMQ_ESC = _zmq_esc(5556)
+# vidéo : un filtre zmq (donc un port) par paramètre animé d'une transition, cf. Encoder._animate
+ZMQ_VPORTS = (5557, 5558, 5559, 5560)
+ZMQ_VADDRS = [f"tcp://127.0.0.1:{p}" for p in ZMQ_VPORTS]
 
 
 class Encoder:
     def __init__(self, cfg, scene_png: str, log=print):
         self.cfg, self.scene_png, self.log = cfg, scene_png, log
+        base = scene_png[:-4] if scene_png.endswith(".png") else scene_png
+        # calques : fond commun des écrans pleins + deux calques de contenu (double tampon)
+        self.layer_png = {"fond": f"{base}_fond.png", "a": f"{base}_a.png", "b": f"{base}_b.png"}
+        # valeurs courantes des calques (aussi valeurs initiales du graphe si ffmpeg est relancé)
+        self.levels: dict[str, float] = {"fond": 1.0, "a_a": 1.0, "x_a": 0.0, "y_a": 0.0,
+                                         "a_b": 0.0, "x_b": 0.0, "y_b": 0.0}
+        self.active = "a"                    # calque du contenu affiché
+        self.shown: Optional[tuple] = None   # (clé de scène, calque) : contenu affiché ou en cours d'entrée
+        self.full = True                     # la scène affichée est un écran plein
+        self.vol = 0.0                       # niveau du micro (0..1), cible du dernier fondu
+        self.transitions = 0
+        self._mx = threading.Lock()          # protège pending / shown
+        self._anim = threading.Lock()        # une seule transition à la fois
+        self._pending = None
+        self._ev = threading.Event()
+        self._worker: Optional[threading.Thread] = None
         self.proc: subprocess.Popen | None = None
         self.out_time = 0.0       # position (s) dans l'enregistrement, d'après -progress
         self.recording: str | None = None
@@ -44,16 +75,26 @@ class Encoder:
         if clean:
             self.recordings_clean.append(clean)
         copy = bool(clean and c.clean_copy)
+        L = {k: f"{v:g}" for k, v in self.levels.items()}
         fg = (
             f"[0:v]scale={c.width}:{c.height}:force_original_aspect_ratio=decrease,"
             f"pad={c.width}:{c.height}:(ow-iw)/2:(oh-ih)/2,fps={c.fps},setsar=1,format=yuv420p"
             + ("[cam];" if not clean or copy else ",split=2[cam][camclean];")
-            + f"[1:v]format=rgba,fps={c.fps}[ov];"
-            f"[cam][ov]overlay=format=auto:shortest=0:repeatlast=1,format=yuv420p[v];"
+            + "[cam]" + ",".join(f"zmq@z{i}=bind_address={_zmq_esc(p)}" for i, p in enumerate(ZMQ_VPORTS)) + "[camz];"
+            # fond : une seule image, répétée en mémoire (pas de relecture)
+            f"[1:v]format=rgba,loop=loop=-1:size=1,colorchannelmixer@fond=aa={L['fond']}[fond];"
+            f"[2:v]format=rgba,fps={c.fps},colorchannelmixer@ca=aa={L['a_a']}[ca];"
+            f"[3:v]format=rgba,fps={c.fps},colorchannelmixer@cb=aa={L['a_b']}[cb];"
+            f"[camz][fond]overlay@fond=format=auto:shortest=0:repeatlast=1[v0];"
+            f"[v0][ca]overlay@ca=x={L['x_a']}:y={L['y_a']}:format=auto:shortest=0:repeatlast=1[v1];"
+            f"[v1][cb]overlay@cb=x={L['x_b']}:y={L['y_b']}:format=auto:shortest=0:repeatlast=1,format=yuv420p[v];"
             f"[0:a]aresample=48000,aformat=channel_layouts=stereo,"
-            f"volume@mic=volume={1 if self.mic_on else 0}:eval=frame,azmq=bind_address={ZMQ_ESC}"
+            f"volume@mic=volume={self.vol:g}:eval=frame,azmq=bind_address={ZMQ_ESC}"
             + ("[a]" if not clean else ",asplit=2[a][aclean]")
         )
+        # calques de contenu relus à {fps} i/s : la file d'attente d'ffmpeg (~15 images) borne le délai
+        # entre l'écriture d'un PNG et son apparition à ~0,6 s (à 4 i/s : ~4 s), cf. tr.DELAI_CHARGEMENT
+        slot = ["-re", "-f", "image2", "-loop", "1", "-framerate", str(c.fps), "-i"]
         out_clean: list[str] = []
         if clean:
             vmap = ["-map", "0:v:0", "-c:v:0", "copy"] if copy else [
@@ -62,7 +103,8 @@ class Encoder:
         return [
             "ffmpeg", "-hide_banner", "-loglevel", "warning", "-nostats", "-progress", "pipe:1",
             "-rtsp_transport", "tcp", "-i", c.camera_url,
-            "-re", "-f", "image2", "-loop", "1", "-framerate", "4", "-i", self.scene_png,
+            "-framerate", str(c.fps), "-i", self.layer_png["fond"],
+            *slot, self.layer_png["a"], *slot, self.layer_png["b"],
             "-filter_complex", fg, "-map", "[v]", "-map", "[a]",
             "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-b:v", c.video_bitrate,
             "-maxrate", c.video_bitrate, "-bufsize", "5000k", "-g", str(c.fps * 2), "-pix_fmt", "yuv420p",
@@ -131,12 +173,154 @@ class Encoder:
         """Position courante dans l'enregistrement (s)."""
         return self.out_time
 
+    # ------------------------------------------------------------------ habillage
+    def prepare(self, background) -> None:
+        """Écrit le fond commun des écrans pleins et des calques de contenu vides (avant le démarrage)."""
+        from PIL import Image
+        from .scenes import write_png_atomic
+        write_png_atomic(background, self.layer_png["fond"])
+        empty = Image.new("RGBA", background.size, (0, 0, 0, 0))
+        for k in ("a", "b"):
+            write_png_atomic(empty, self.layer_png[k])
+
+    def show(self, scene: str, full: bool, content) -> None:
+        """Affiche une scène : contenu (calque transparent) + fond si écran plein (scenes.layers).
+
+        Même scène qu'à l'écran (ex. compte à rebours de l'entracte) : mise à jour du calque en place.
+        Autre scène : transition animée par le fil « encoder-transitions » (le flux n'est jamais coupé).
+        Encodeur pas encore lancé : état posé directement, sans animation."""
+        from .scenes import write_png_atomic
+        with self._mx:
+            if self._pending and self._pending[0] == scene:
+                self._pending = (scene, full, content)
+                return
+            if self.shown and self.shown[0] == scene:
+                self._pending = None                     # retour à la scène affichée : rien à animer
+                write_png_atomic(content, self.layer_png[self.shown[1]])
+                return
+            if not self.wanted:                          # hors direct : pas d'animation
+                write_png_atomic(content, self.layer_png[self.active])
+                self.shown, self.full = (scene, self.active), full
+                self.levels.update({"fond": 1.0 if full else 0.0, f"a_{self.active}": 1.0})
+                return
+            self._pending = (scene, full, content)
+            self._ensure_worker()
+            self._ev.set()
+
+    def _ensure_worker(self):
+        if self._worker is None or not self._worker.is_alive():
+            self._worker = threading.Thread(target=self._transitions, daemon=True, name="encoder-transitions")
+            self._worker.start()
+
+    def _transitions(self):
+        from .scenes import write_png_atomic
+        while True:
+            self._ev.wait()
+            self._ev.clear()
+            src = dst = self.active
+            with self._mx:
+                job, self._pending = self._pending, None
+                if job:
+                    src = self.active
+                    dst = "b" if src == "a" else "a"
+                    # le calque inactif est transparent (fin de la transition précédente) : on y prépare la scène
+                    write_png_atomic(job[2], self.layer_png[dst])
+                    self.shown = (job[0], dst)
+            while job:
+                time.sleep(tr.DELAI_CHARGEMENT)          # ffmpeg relit le PNG avant qu'on le dévoile
+                with self._mx:                           # scène changée entre-temps (ex. prière -> janaza) :
+                    if not self._pending:                # on prépare directement la plus récente
+                        break
+                    job, self._pending = self._pending, None
+                    write_png_atomic(job[2], self.layer_png[dst])
+                    self.shown = (job[0], dst)
+            target = 1.0 if self.mic_on else 0.0
+            if target != self.vol:                       # fondu sonore, même départ que l'image
+                expr = tr.volume_ramp(self.vol, target)
+                self.vol = target
+                if self.alive():
+                    threading.Thread(target=self._zmq_send, args=(f"volume@mic volume {expr}",), daemon=True).start()
+            if not job:
+                continue
+            with self._anim:
+                p = tr.plan(src, self.full, job[1], scale=self.cfg.height / 720)
+                frames = self._animate(p)
+                self.active, self.full = dst, job[1]
+                self.transitions += 1
+                self.log(f"TRANSITION -> {job[0]} (calque {dst}, {frames} images)")
+
+    # canal ZeroMQ (port) par paramètre animé : un filtre zmq par canal sur la chaîne caméra
+    _TARGET = {"fond": "colorchannelmixer@fond aa", "a_a": "colorchannelmixer@ca aa", "a_b": "colorchannelmixer@cb aa",
+               "x_a": "overlay@ca x", "y_a": "overlay@ca y", "x_b": "overlay@cb x", "y_b": "overlay@cb y"}
+
+    def _animate(self, p: "tr.Plan") -> int:
+        """Joue la transition image par image, calée sur le flux (et non sur l'horloge murale).
+
+        Un socket REQ par canal (fond, contenu sortant, contenu entrant, position) : le filtre zmq (REP) traite
+        au plus une requête par image et ne répond qu'en la traitant ; on n'envoie la valeur de l'image n+1
+        qu'après la réponse de l'image n. L'animation avance donc d'un pas par image produite : pas de saccade
+        même si ffmpeg traite les images par rafales (elle s'allonge au pire de quelques images).
+        Retourne le nombre d'images jouées (0 si ffmpeg ne répond pas : l'état final est posé à la relance)."""
+        final = p.values(tr.TOTAL)
+        move = f"y_{p.dst}" if p.full else f"x_{p.dst}"
+        keys = ([] if p.fond_from == p.fond_to else ["fond"]) + [f"a_{p.src}", f"a_{p.dst}", move]
+        n_last = int(round(tr.TOTAL * self.cfg.fps))
+        played = 0
+        try:
+            import zmq  # type: ignore
+        except ImportError:
+            zmq = None
+        if zmq is not None and self.alive():
+            ctx = zmq.Context.instance()
+            poller, socks, idx = zmq.Poller(), {}, {}
+
+            def send(s, k, i):
+                v = p.values(min(i / self.cfg.fps, tr.TOTAL))[k]
+                s.send_string(f"{self._TARGET[k]} {round(v, 3):g}")
+
+            for ch, k in enumerate(keys):
+                s = ctx.socket(zmq.REQ)
+                s.setsockopt(zmq.LINGER, 0)
+                s.connect(ZMQ_VADDRS[ch])
+                socks[s], idx[s] = k, 0
+                poller.register(s, zmq.POLLIN)
+                send(s, k, 0)
+            quiet_since = time.monotonic()
+            try:
+                while socks:
+                    ready = dict(poller.poll(100))
+                    for s in list(socks):
+                        if s not in ready:
+                            continue
+                        s.recv_string()
+                        idx[s] += 1
+                        played = max(played, idx[s])
+                        quiet_since = time.monotonic()
+                        if idx[s] > n_last:
+                            poller.unregister(s)
+                            del socks[s]
+                            s.close()
+                        else:
+                            send(s, socks[s], idx[s])
+                    if socks and time.monotonic() - quiet_since > 2.0:
+                        self.log("TRANSITION : ffmpeg ne répond plus, état final posé pour la relance")
+                        break
+            finally:
+                for s in socks:
+                    s.close()
+        self.levels.update({k: round(v, 3) for k, v in final.items()})
+        return played
+
     # ------------------------------------------------------------------- audio live
     def mic(self, on: bool):
-        self.mic_on = on
-        if not self.alive():
-            return
-        self._zmq_send(f"volume@mic volume {1 if on else 0}")
+        """Micro du direct (khutba, janaza) : fondu de tr.AUDIO_DUR, synchronisé sur la transition en attente."""
+        with self._mx:
+            self.mic_on = on
+            if not self.wanted:
+                self.vol = 1.0 if on else 0.0            # valeur initiale du graphe au démarrage
+                return
+            self._ensure_worker()
+            self._ev.set()
 
     def _zmq_send(self, msg: str):
         try:

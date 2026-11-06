@@ -321,13 +321,37 @@ class SceneRenderer:
             up, down = max(up, -b[1]), max(down, b[3])
         return up, down
 
+    # médaillon des écrans pleins : position fixe (pas de saut d'une scène à l'autre)
+    def _med_geom(self) -> tuple[int, int]:
+        return self.px(80), self.px(158)   # (haut, diamètre)
+
+    def background(self) -> Image.Image:
+        """Fond commun des écrans pleins : dégradé + motif, médaillon, pied de page.
+
+        Identique pour toutes les scènes pleines : c'est le calque « fond » de l'encodeur, fixe pendant
+        les transitions (seul le bloc de textes change, voir full_content)."""
+        img = self._bg()
+        med_top, med = self._med_geom()
+        m = self.medallion(med)
+        img.alpha_composite(m, (int(self.W / 2 - m.width / 2), int(med_top + med / 2 - m.height / 2)))
+        self._footer(img)
+        return img
+
     def _full(self, title: str, sub: str = "", big: str = "", foot: str = "", *,
               eyebrow: str = "", arabic: str = "") -> Image.Image:
-        """Écran plein : médaillon, surtitre, titre, arabe, ornement, (compte à rebours), texte, pied.
+        """Écran plein complet = fond (background) + bloc de textes (_full_content)."""
+        img = self.background()
+        img.alpha_composite(self._full_content(title, sub, big, foot, eyebrow=eyebrow, arabic=arabic))
+        return img
+
+    def _full_content(self, title: str, sub: str = "", big: str = "", foot: str = "", *,
+                      eyebrow: str = "", arabic: str = "") -> Image.Image:
+        """Bloc de textes d'un écran plein (calque transparent) : surtitre, titre, arabe, ornement,
+        (compte à rebours), texte. Le médaillon et le pied de page sont dans background().
 
         Les blocs sont empilés d'après l'encre réelle des glyphes (espaces optiquement réguliers),
         puis centrés verticalement dans la zone utile au-dessus du pied de page."""
-        img = self._bg()
+        img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
         px = self.px
         tnum = {"features": ["tnum"]} if RAQM else {}
@@ -348,7 +372,7 @@ class SceneRenderer:
         if foot:
             items.append(("text", foot, self._fit(d, foot, _font(SANS, px(24)), SANS, px(24)), IVORY_DIM,
                           px(18) if sub else px(30), {}))
-        med = px(158)
+        med_top, med = self._med_geom()
         sized = []
         for kind, text, font, fill, gap, kw in items:
             if kind == "medallion":
@@ -358,11 +382,7 @@ class SceneRenderer:
             else:
                 up, down = self._ink(d, text, font, **kw)
             sized.append((kind, text, font, fill, gap, kw, up, down))
-        # médaillon à position fixe (pas de saut d'une scène à l'autre), textes centrés dessous
-        med_top = px(80)
-        m = self.medallion(med)
-        img.alpha_composite(m, (int(self.W / 2 - m.width / 2), int(med_top + med / 2 - m.height / 2)))
-        d = ImageDraw.Draw(img)
+        # textes centrés sous le médaillon (dessiné à position fixe dans background())
         rest = sized[1:]
         total = sum(it[4] + it[6] + it[7] for it in rest) - rest[0][4]
         region_top, bottom_zone = med_top + med + px(30), self.H - px(84)  # pied de page sous bottom_zone
@@ -377,7 +397,6 @@ class SceneRenderer:
             else:
                 self._text(d, (cx, base), text, font, fill, **kw)
             y = base + down
-        self._footer(img)
         return img
 
     def _fit(self, d, text: str, font, path: str, size: int, max_w: Optional[int] = None):
@@ -389,28 +408,45 @@ class SceneRenderer:
         return font
 
     # --- scènes -------------------------------------------------------------
-    def avant(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
+    # Écrans pleins : (args positionnels, options) de _full / _full_content
+    def _avant_args(self, now, planned):
         sub = f"Début à {_hm(planned)}" if planned else ""
-        return self._full(self.cfg.title, sub, "", "Merci de patienter, la diffusion commence très bientôt.",
-                          eyebrow="Début imminent", arabic=AR_KHUTBA)
+        return (self.cfg.title, sub, "", "Merci de patienter, la diffusion commence très bientôt."), \
+            dict(eyebrow="Début imminent", arabic=AR_KHUTBA)
 
-    def priere(self, now: Optional[dt.datetime] = None) -> Image.Image:
-        return self._full("Prière en cours", "La prière n'est pas diffusée.", "",
-                          "La diffusion reprendra pour la prochaine khutba, in sha Allah.",
-                          eyebrow=_french_date(now) if now else "", arabic=AR_JUMUA)
+    def _priere_args(self, now=None, planned=None):
+        return ("Prière en cours", "La prière n'est pas diffusée.", "",
+                "La diffusion reprendra pour la prochaine khutba, in sha Allah."), \
+            dict(eyebrow=_french_date(now) if now else "", arabic=AR_JUMUA)
 
-    def entracte(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
+    def _entracte_args(self, now, planned):
         if planned:
             remaining = max(0, int((planned - now).total_seconds()))
             m, s = divmod(remaining, 60)
-            return self._full(f"Prochaine khutba à {_hm(planned)}", "", f"{m:02d}:{s:02d}",
-                              "Le live continue : restez connectés.", eyebrow="Entracte")
-        return self._full("Entracte", "", "", "Le live continue : restez connectés.", arabic=AR_KHUTBA)
+            return (f"Prochaine khutba à {_hm(planned)}", "", f"{m:02d}:{s:02d}",
+                    "Le live continue : restez connectés."), dict(eyebrow="Entracte")
+        return ("Entracte", "", "", "Le live continue : restez connectés."), dict(arabic=AR_KHUTBA)
+
+    def _termine_args(self, now=None, planned=None, next_friday: str = ""):
+        return ("Khutba terminée", "Jazakoum Allahou khayran — qu'Allah vous récompense.", "",
+                next_friday or "Rendez-vous vendredi prochain, in sha Allah."), \
+            dict(eyebrow="Fin de la diffusion", arabic=AR_JAZAKUM)
+
+    def avant(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
+        a, k = self._avant_args(now, planned)
+        return self._full(*a, **k)
+
+    def priere(self, now: Optional[dt.datetime] = None) -> Image.Image:
+        a, k = self._priere_args(now)
+        return self._full(*a, **k)
+
+    def entracte(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
+        a, k = self._entracte_args(now, planned)
+        return self._full(*a, **k)
 
     def termine(self, next_friday: str = "") -> Image.Image:
-        return self._full("Khutba terminée", "Jazakoum Allahou khayran — qu'Allah vous récompense.", "",
-                          next_friday or "Rendez-vous vendredi prochain, in sha Allah.",
-                          eyebrow="Fin de la diffusion", arabic=AR_JAZAKUM)
+        a, k = self._termine_args(next_friday=next_friday)
+        return self._full(*a, **k)
 
     def _panel_shadow(self, img: Image.Image, box, radius: int):
         sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -495,6 +531,18 @@ class SceneRenderer:
         if scene == "janaza":
             return self.janaza()
         return self.khutba()
+
+    def layers(self, scene: Optional[str], now: dt.datetime, planned: Optional[dt.datetime]) -> tuple[bool, Image.Image]:
+        """Calques pour l'encodeur : (écran plein ?, contenu transparent).
+
+        Écran plein : le fond commun (background) masque la caméra et seul le bloc de textes est rendu ici ;
+        khutba / janaza : pas de fond, le contenu est le bandeau. fond + contenu == render()."""
+        args = {"avant": self._avant_args, "priere": self._priere_args,
+                "entracte": self._entracte_args, "termine": self._termine_args}.get(scene or "khutba")
+        if args:
+            a, k = args(now, planned)
+            return True, self._full_content(*a, **k)
+        return False, self.render(scene, now, planned)
 
 
 def write_png_atomic(img: Image.Image, path: str) -> None:

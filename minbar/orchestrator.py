@@ -19,7 +19,7 @@ from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
 from .encoder import Encoder
-from .scenes import SceneRenderer, write_png_atomic
+from .scenes import SceneRenderer
 from .state import Machine, MachineParams, Signals, State
 from .vad import VadMonitor
 
@@ -49,6 +49,7 @@ class Orchestrator:
         self.renderer = SceneRenderer(cfg)
         self.scene_png = str(self.run_dir / "scene.png")
         self.encoder = Encoder(cfg, self.scene_png, log=log.info)
+        self.encoder.prepare(self.renderer.background())   # calque fond commun + calques de contenu vides
         self.vad = VadMonitor(cfg.camera_url, cfg.vad_aggressiveness, cfg.vad_ratio, log=log.info)
         self.lock = threading.RLock()
         self._last_scene_key = None
@@ -109,7 +110,9 @@ class Orchestrator:
         if not force and key == self._last_scene_key:
             return
         self._last_scene_key = key
-        write_png_atomic(self.renderer.render(sc or "avant", now, planned), self.scene_png)
+        # calques séparés : l'encodeur enchaîne les scènes par un fondu (transitions.py), sans couper le flux
+        full, content = self.renderer.layers(sc or "avant", now, planned)
+        self.encoder.show(sc or "avant", full, content)
 
     def _save_sessions(self):
         data = {
