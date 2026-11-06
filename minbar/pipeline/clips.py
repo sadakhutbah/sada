@@ -5,6 +5,8 @@ import re
 import subprocess
 from pathlib import Path
 
+FONTS = str(Path(__file__).resolve().parents[2] / "assets" / "fonts")
+
 from .arabic import arabic_ratio
 from .notes import fmt_t
 
@@ -84,9 +86,10 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
     hdr = (
         "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n"
         "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        "Style: FR,DejaVu Sans,60,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,5,2,2,60,60,330,1\n"
-        "Style: AR,DejaVu Sans,74,&H003FC68D,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,5,2,8,50,50,560,1\n"
-        "Style: TR,DejaVu Sans,46,&H00E6F0E1,&H000000FF,&H00000000,&H96000000,0,1,0,0,100,100,0,0,1,4,2,2,70,70,170,1\n\n"
+        # tout en bas (visage libre) ; Amiri pour l'arabe (signes de pause coraniques ۚ ۖ), Source Sans 3 pour le français
+        "Style: FR,Source Sans 3 Semibold,64,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,0,0,0,0,100,100,0,0,1,4,1,2,70,70,380,1\n"
+        "Style: AR,Amiri,150,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,4,1,2,60,60,380,1\n"
+        "Style: TR,Source Sans 3,46,&H00D8E8DC,&H000000FF,&H00101010,&H80000000,0,1,0,0,100,100,0,0,1,3,1,2,80,80,380,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     ev, n = [], 0
@@ -100,12 +103,14 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
             hit = next((m for m in matches if m["start"] - 0.5 <= s["start"] <= m["end"] + 0.5), None)
             if hit:
                 ar = hit["verse_text"]
-                ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},AR,,0,0,0,,{{\\q2}}" + "\\N".join(_wrap(ar, 28)))
+                # un seul événement : verset arabe puis traduction dessous, empilés en bas
+                txt = "{\\q2}" + "\\N".join(_wrap(ar, 26))
                 if verse_fr and hit["verse_fr"]:
-                    ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},TR,,0,0,0,,« " + "\\N".join(_wrap(hit["verse_fr"], 38)) + f" » ({hit['ref']})")
+                    txt += "\\N{\\rTR}« " + "\\N".join(_wrap(hit["verse_fr"], 44)) + f" » ({hit['ref']})"
+                ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},AR,,0,0,0,,{txt}")
                 n += 1
             else:
-                ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},AR,,0,0,0,,{{\\q2}}" + "\\N".join(_wrap(text, 28)))
+                ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},AR,,0,0,0,,{{\\q2}}" + "\\N".join(_wrap(text, 26)))
                 n += 1
             continue
         # texte français : découpé en tranches d'environ 2 lignes, durée au prorata des mots
@@ -130,7 +135,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
 def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=print) -> None:
     """Recadrage centre 9:16 (1080x1920), sous-titres brûlés, sans musique (audio d'origine)."""
     a, dur = rec_offset + w["start"], w["end"] - w["start"]
-    vf = f"crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:flags=lanczos,setsar=1,subtitles={ass}:fontsdir=/usr/share/fonts/truetype/dejavu"
+    vf = f"crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:flags=lanczos,setsar=1,subtitles={ass}:fontsdir={FONTS}"
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.2f}", "-t", f"{dur:.2f}", "-i", str(Path(src).resolve()),
            "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "128k", "-af", "afade=t=in:d=0.3,afade=t=out:st=%.2f:d=0.5" % max(0, dur - 0.5), "-movflags", "+faststart", str(Path(out).resolve())]
