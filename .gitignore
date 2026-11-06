@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 tools/bin/
 .pytest_cache/
+promo/node_modules/
