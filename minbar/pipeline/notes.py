@@ -114,7 +114,7 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
          f"> Résumé : méthode **{summ.get('method')}**{' (repli : claude indisponible)' if fallback and use_llm else ''}. "
          f"Les citations ci-dessous sont des extraits littéraux du transcript ({len(quotes)} vérifiées, {rejected} rejetées car non littérales).", ""]
     L += ["## Informations", f"- Durée transcrite : {fmt_t(meta.get('duration', 0))}", f"- Transcription : {meta.get('model')} ({meta.get('device')}, {meta.get('compute_type')}), langue détectée : {meta.get('language')}",
-          f"- Versets repérés : {len(matches)}", ""]
+          f"- Versets repérés : {sum(1 for m in matches if m.get('confidence', 'sûr') in ('sûr', 'court'))} (+ {sum(1 for m in matches if m.get('confidence', 'sûr') not in ('sûr', 'court'))} formules/fragments ambigus)", ""]
     if summ.get("theme"):
         L += ["## Thème (résumé généré)", summ["theme"], ""]
     L += ["## Points clés (résumé généré)"] + [f"- {p}" for p in summ.get("points", [])] + [""]
@@ -122,12 +122,19 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
         L += ["## Rappels pratiques (résumé généré)"] + [f"- {p}" for p in summ["rappels"]] + [""]
     L += ["## Citations exactes de l'imam (transcription automatique, horodatées)"]
     L += [f"- **[{fmt_t(t)}]** « {q} »" for t, q in quotes] or ["- (aucune citation vérifiable)"]
+    firm = [m for m in matches if m.get("confidence", "sûr") in ("sûr", "court")]
+    weak = [m for m in matches if m not in firm]
     L += ["", "## Versets détectés (correspondance floue — à vérifier)", "",
-          "| Horodatage | Réf. | Sourate | Score | Couverture |", "|---|---|---|---|---|"]
-    for m in matches:
-        L.append(f"| {fmt_t(m['start'])}–{fmt_t(m['end'])} | **{m['ref']}** | {m['surah_name']} | {m['score']:.0f} | {int(m['coverage'] * 100)} % |")
+          "| Horodatage | Réf. | Sourate | Score | Couverture | Confiance |", "|---|---|---|---|---|---|"]
+    for m in firm:
+        L.append(f"| {fmt_t(m['start'])}–{fmt_t(m['end'])} | **{m['ref']}** | {m['surah_name']} | {m['score']:.0f} | {int(m['coverage'] * 100)} % | {m.get('confidence')} |")
+    if weak:
+        L += ["", "### Formules / fragments ambigus (ne PAS considérer comme des versets identifiés)", "",
+              "| Horodatage | Entendu | Versets possibles | Type |", "|---|---|---|---|"]
+        for m in weak:
+            L.append(f"| {fmt_t(m['start'])} | {m['heard'][:60]} | {', '.join(m.get('candidates') or [m['ref']])} | {m.get('confidence')} |")
     L.append("")
-    for m in matches:
+    for m in firm:
         L += [f"### {m['ref']} — {m['surah_name']} ({fmt_t(m['start'])})", f"- Entendu (Whisper) : {m['heard']}", f"- Texte du Coran (Tanzil/alquran.cloud, simple-clean) : {m['verse_text']}",
               f"- Traduction (Hamidullah) : {m['verse_fr']}", ""]
     return "\n".join(L), {"summary": summ, "quotes": quotes, "rejected_quotes": rejected}

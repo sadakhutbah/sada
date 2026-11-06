@@ -36,7 +36,8 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
         if b - a >= MIN_S - 1 and all(abs(a - c["start"]) > 20 for c in cands):
             cands.append({"kind": kind, "start": round(a, 2), "end": round(b, 2), "why": why})
 
-    good = [m for m in matches if m["coverage"] >= 0.6] or matches
+    matches = [m for m in matches if m.get("confidence", "sûr") in ("sûr", "court")]
+    good = [m for m in matches if m["coverage"] >= 0.45] or matches
     if good:
         m = max(good, key=lambda x: (x["score"] * min(1.0, x["coverage"] + 0.2), x["end"] - x["start"]))
         add("verset", m["start"] - 12, m["start"] + 55, f"verset {m['ref']} ({m['surah_name']}) récité, avec le contexte qui précède")
@@ -89,7 +90,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     ev, n = [], 0
-    vm = {id(m): m for m in matches}
+    matches = [m for m in matches if m.get("confidence", "sûr") in ("sûr", "court")]
     for s in segments:
         if s["end"] <= t0 or s["start"] >= t1:
             continue
@@ -130,8 +131,8 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
     """Recadrage centre 9:16 (1080x1920), sous-titres brûlés, sans musique (audio d'origine)."""
     a, dur = rec_offset + w["start"], w["end"] - w["start"]
     vf = f"crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:flags=lanczos,setsar=1,subtitles={ass}:fontsdir=/usr/share/fonts/truetype/dejavu"
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.2f}", "-t", f"{dur:.2f}", "-i", src,
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.2f}", "-t", f"{dur:.2f}", "-i", str(Path(src).resolve()),
            "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "128k", "-af", "afade=t=in:d=0.3,afade=t=out:st=%.2f:d=0.5" % max(0, dur - 0.5), "-movflags", "+faststart", out]
-    subprocess.run(cmd, check=True, cwd=str(Path(ass).parent))
+           "-c:a", "aac", "-b:a", "128k", "-af", "afade=t=in:d=0.3,afade=t=out:st=%.2f:d=0.5" % max(0, dur - 0.5), "-movflags", "+faststart", str(Path(out).resolve())]
+    subprocess.run(cmd, check=True, cwd=str(Path(out).resolve().parent))
     log(f"clip -> {out} ({dur:.0f}s)")

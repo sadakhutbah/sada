@@ -66,8 +66,12 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print, la
         log(f"Échec chargement {name}/{device} : {e} -> repli CPU int8")
         name, device, ctype = ("large-v3-turbo" if name.startswith("large") else name), "cpu", "int8"
         model = WhisperModel(name, device=device, compute_type=ctype, cpu_threads=8)
+    import wave
+    import numpy as np
+    with wave.open(wav, "rb") as w:  # on décode nous-mêmes le WAV 16 kHz (évite PyAV, incompatible ici)
+        audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
     segs_iter, info = model.transcribe(
-        wav, language=language, multilingual=language is None, vad_filter=True,
+        audio, language=language, multilingual=language is None, vad_filter=True,
         beam_size=5, condition_on_previous_text=False, temperature=0.0,
     )
     segs = []

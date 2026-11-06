@@ -15,9 +15,9 @@ from rapidfuzz import fuzz, process
 
 from .arabic import arabic_ratio, normalize
 
-WIN = 4          # mots par fenêtre
+WIN = 5          # mots par fenêtre
 MIN_VERSE_WORDS = 3
-THRESH = 82.0
+THRESH = 86.0
 
 
 @dataclass
@@ -33,6 +33,8 @@ class Match:
     verse_fr: str
     coverage: float = 0.0   # part des mots du verset retrouvés (approx.)
     ref: str = ""
+    confidence: str = "sûr"      # sûr | court | ambigu (formule dans plusieurs versets) | faible (fragment)
+    candidates: list = field(default_factory=list)
 
     def __post_init__(self):
         self.ref = f"{self.surah}:{self.ayah}"
@@ -43,6 +45,7 @@ class VerseIndex:
         self.verses, self.win = verses, win
         self.keys: list[str] = []
         self.owner: list[int] = []
+        self.key_owners: dict[str, set] = {}
         for vi, v in enumerate(verses):
             w = v["norm"].split()
             if len(w) < MIN_VERSE_WORDS:
@@ -52,6 +55,8 @@ class VerseIndex:
             else:
                 for i in range(len(w) - win + 1):
                     self.keys.append(" ".join(w[i:i + win])); self.owner.append(vi)
+        for k, o in zip(self.keys, self.owner):
+            self.key_owners.setdefault(k, set()).add(o)
 
     def search(self, windows: list[str], thresh: float = THRESH):
         """Pour chaque fenêtre : (meilleur_score, index_verset) ou None."""
@@ -62,7 +67,7 @@ class VerseIndex:
         for row in res:
             j = int(row.argmax())
             sc = float(row[j])
-            out.append((sc, self.owner[j]) if sc >= thresh else None)
+            out.append((sc, self.owner[j], self.keys[j]) if sc >= thresh else None)
         return out
 
 
@@ -81,32 +86,47 @@ def detect(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_
         for i in range(len(words) - index.win + 1):
             wins.append(" ".join(words[i:i + index.win])); meta.append((seg, " ".join(words[i:i + index.win])))
     hits = index.search(wins, thresh)
-    groups: dict[int, list] = {}
+    groups: dict = {}
     for (seg, w), h in zip(meta, hits):
-        if h:
-            groups.setdefault(h[1], []).append((seg, w, h[0]))
+        if not h:
+            continue
+        sc, vi, key = h
+        owners = index.key_owners.get(key, {vi})
+        gk = ("amb", key) if len(owners) > 1 else ("v", vi)
+        groups.setdefault(gk, []).append((seg, w, sc, owners, vi))
     matches: list[Match] = []
-    for vi, items in groups.items():
+    for gk, items in groups.items():
         items.sort(key=lambda x: x[0]["start"])
-        cur = [items[0]]
-        clusters = []
+        clusters, cur = [], [items[0]]
         for it in items[1:]:
             if it[0]["start"] - cur[-1][0]["end"] <= gap_s:
                 cur.append(it)
             else:
                 clusters.append(cur); cur = [it]
         clusters.append(cur)
-        v = index.verses[vi]
-        vwords = set(v["norm"].split())
         for cl in clusters:
-            segs = {id(s): s for s, _, _ in cl}.values()
-            heard_words = set(" ".join(w for _, w, _ in cl).split())
+            owners = cl[0][3]
+            vi = min(owners) if gk[0] == "amb" else gk[1]
+            v = index.verses[vi]
+            vwords = set(v["norm"].split())
+            segs = {id(s): s for s, *_ in cl}.values()
+            heard_words = set(" ".join(w for _, w, *_ in cl).split())
             cov = len(vwords & heard_words) / max(1, len(vwords))
-            m = Match(v["surah"], v["ayah"], v["surah_name"], max(sc for _, _, sc in cl),
+            if gk[0] == "amb":
+                conf = "ambigu"
+            elif len(v["norm"].split()) < index.win:
+                conf = "court"
+            elif cov < 0.4:
+                conf = "faible"   # fragment trop court par rapport au verset : probablement une formule voisine
+            else:
+                conf = "sûr"
+            m = Match(v["surah"], v["ayah"], v["surah_name"], max(sc for _, _, sc, *_ in cl),
                       min(s["start"] for s in segs), max(s["end"] for s in segs),
                       " ".join(s["text"].strip() for s in segs), v["text"], v["fr"], round(cov, 2))
+            m.confidence = conf
+            if conf == "ambigu":
+                m.candidates = sorted(f"{index.verses[o]['surah']}:{index.verses[o]['ayah']}" for o in owners)[:8]
             matches.append(m)
-    # un même segment ne doit pas porter 3 versets voisins par hasard : on garde le meilleur par segment dominant
     matches.sort(key=lambda m: (m.start, -m.score))
     return matches
 

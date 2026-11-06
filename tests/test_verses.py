@@ -45,3 +45,16 @@ def test_short_verse():
     idx = VerseIndex(VERSES)
     ms = detect([seg(0, 3, "قل هو الله احد")], idx)
     assert [m.ref for m in ms] == ["112:1"]
+
+
+def test_formula_in_several_verses_is_ambiguous_not_firm():
+    vs = [dict(v) for v in VERSES] + [
+        {"surah": 5, "ayah": 120, "surah_name": "Al-Ma'ida", "text": "لله ملك السماوات والأرض وما فيهن وهو على كل شيء قدير", "fr": ""},
+        {"surah": 11, "ayah": 4, "surah_name": "Hud", "text": "الى الله مرجعكم وهو على كل شيء قدير", "fr": ""},
+    ]
+    for v in vs:
+        v["norm"] = normalize(v["text"])
+    idx = VerseIndex(vs)
+    ms = detect([seg(0, 3, "وهو على كل شيء قدير")], idx)
+    assert ms and all(m.confidence in ("ambigu", "court") for m in ms)
+    assert not any(m.confidence == "sûr" for m in ms)

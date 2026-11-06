@@ -24,8 +24,9 @@ class VadMonitor(threading.Thread):
         self.vad = webrtcvad.Vad(aggressiveness)
         self.stop_flag = threading.Event()
         self._lock = threading.Lock()
-        self._is_voice = False
-        self._since = time.monotonic()
+        self._last_voice = time.monotonic()
+        self._dense_since = None
+        self.dense_min = 0.4
         self.connected = False
         self.last_audio = 0.0
         self.proc: subprocess.Popen | None = None
@@ -45,6 +46,7 @@ class VadMonitor(threading.Thread):
 
     def _read(self, proc):
         win = collections.deque(maxlen=int(1000 / FRAME_MS))
+        dens = collections.deque(maxlen=int(10000 / FRAME_MS))
         assert proc.stdout is not None
         while not self.stop_flag.is_set():
             buf = proc.stdout.read(FRAME_BYTES)
@@ -57,16 +59,26 @@ class VadMonitor(threading.Thread):
             except Exception:
                 win.append(False)
             voice = len(win) == win.maxlen and sum(win) / len(win) >= self.ratio
+            dens.append(voice)
+            now = time.monotonic()
             with self._lock:
-                if voice != self._is_voice:
-                    self._is_voice = voice
-                    self._since = time.monotonic()
+                # silence_run : secondes écoulées depuis la dernière trame « voix » (une seule suffit à le remettre à 0)
+                if voice:
+                    self._last_voice = now
+                # voice_run : durée pendant laquelle la densité de voix sur 10 s reste >= 40 %
+                # (un orateur fait des pauses : exiger une voix continue 20 s ne marcherait jamais)
+                dense = len(dens) == dens.maxlen and sum(dens) / len(dens) >= self.dense_min
+                if dense and self._dense_since is None:
+                    self._dense_since = now
+                elif not dense:
+                    self._dense_since = None
 
     def runs(self) -> tuple[float, float]:
         """(voice_run, silence_run) en secondes réelles."""
         with self._lock:
-            d = time.monotonic() - self._since
-            return (d, 0.0) if self._is_voice else (0.0, d)
+            now = time.monotonic()
+            v = (now - self._dense_since) if self._dense_since is not None else 0.0
+            return v, now - self._last_voice
 
     def stop(self):
         self.stop_flag.set()
