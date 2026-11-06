@@ -5,3 +5,8 @@ __pycache__/
 tools/bin/
 .pytest_cache/
 promo/node_modules/
+
+# certificat local HTTPS
+auto.key
+auto.crt
+*.key
