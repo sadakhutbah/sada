@@ -385,7 +385,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                     t = clean_fr(w["w"])
                     if not t or not (t0 <= w["s"] < t1):
                         continue
-                    if words and (t[0] in "’-" or words[-1]["w"].endswith(("’", "-"))) and w["s"] - words[-1]["e"] < 0.3:
+                    if words and (t[0] in "’-" or words[-1]["w"].endswith(("’", "-"))) and (w["s"] - t0) - words[-1]["e"] < 0.3:
                         words[-1]["w"] += t; words[-1]["e"] = w["e"] - t0   # « d » + « ’Allah » -> « d’Allah »
                     else:
                         words.append({"w": t, "s": w["s"] - t0, "e": w["e"] - t0})

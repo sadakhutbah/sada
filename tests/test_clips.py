@@ -46,6 +46,18 @@ def test_french_only_and_verse_card(tmp_path):
         assert not (10.5 < (a + b) / 2 < 14.0)
 
 
+def test_elision_merged_when_clip_starts_late(tmp_path):
+    # mots Whisper « d » + « 'Allah » : recollés même si le clip ne commence pas à 0
+    seg = {"start": 100.0, "end": 102.0, "text": "La miséricorde d'Allah",
+           "words": [{"w": "La", "s": 100.0, "e": 100.3}, {"w": "miséricorde", "s": 100.3, "e": 101.0},
+                     {"w": "d", "s": 101.0, "e": 101.1}, {"w": "'Allah", "s": 101.1, "e": 101.6}]}
+    p = tmp_path / "e.ass"
+    C.build_ass([seg], [], 99.0, 103.0, str(p))
+    subs = [e for e in _events(p) if ",Sub," in e]
+    assert subs and any("d’Allah" in re.sub(r"\{[^}]*\}", "", e) for e in subs)
+    assert not any("d ’Allah" in re.sub(r"\{[^}]*\}", "", e) for e in subs)
+
+
 def test_pages_short_and_not_ending_on_weak_word():
     words = C.interpolate_words("Arrêtons-nous aujourd'hui sur ce verset immense de la sourate At-Talaq, où Allah dit", 0, 6)
     chunks = C.chunk_words(words)
