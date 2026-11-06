@@ -1,0 +1,198 @@
+import datetime as dt
+from minbar.state import Machine, MachineParams, Signals, State
+
+D = dt.date(2026, 11, 6)
+
+
+def at(h, m, s=0):
+    return dt.datetime.combine(D, dt.time(h, m, s))
+
+
+def mk(times=("12:30", "13:30"), **kw):
+    sess = [at(int(t[:2]), int(t[3:])) for t in times]
+    logs = []
+    p = MachineParams(**kw)
+    return Machine(sess, p, log=logs.append), logs
+
+
+class Drv:
+    """Pilote de test : avance t (temps réel) et now (horloge mosquée) ensemble."""
+    def __init__(self, m, now):
+        self.m, self.now, self.t = m, now, 1000.0
+        self.voice = 0.0
+        self.silence = 0.0
+
+    def step(self, dsec=1.0, voice=None, presence=None, clock=None):
+        self.t += dsec
+        self.now += dt.timedelta(seconds=dsec if clock is None else clock)
+        if voice is True:
+            self.voice += dsec; self.silence = 0
+        elif voice is False:
+            self.silence += dsec; self.voice = 0
+        self.m.tick(Signals(self.now, self.t, self.voice, self.silence, presence))
+
+    def run(self, n, **kw):
+        for _ in range(n):
+            self.step(**kw)
+
+    def sig(self):
+        return Signals(self.now, self.t, self.voice, self.silence, None)
+
+
+def test_idle_to_arme_to_avant():
+    m, _ = mk()
+    d = Drv(m, at(12, 10))
+    d.run(10, voice=False)
+    assert m.state == State.IDLE
+    d.now = at(12, 15, 1); d.step(voice=False)
+    assert m.state == State.ARME and not m.stream_on
+    d.now = at(12, 28, 1); d.step(voice=False)
+    assert m.state == State.AVANT and m.stream_on
+
+
+def test_voice_20s_starts_khutba_only_when_armed():
+    m, _ = mk()
+    d = Drv(m, at(12, 5))
+    d.run(40, voice=True)  # voix hors fenêtre : rien
+    assert m.state == State.IDLE
+    d.now = at(12, 20)
+    d.step(voice=True)
+    assert m.state == State.ARME  # armé ; voix déjà > 20 s => démarrage anticipé au tick suivant
+    d.step(voice=True)
+    assert m.state == State.KHUTBA
+    assert m.records[0].status == "live"
+
+
+def test_presence_required_when_enabled():
+    m, _ = mk()
+    d = Drv(m, at(12, 20))
+    d.step(voice=True, presence=False)
+    d.run(30, voice=True, presence=False)
+    assert m.state != State.KHUTBA
+    d.step(voice=True, presence=True)
+    assert m.state == State.KHUTBA
+
+
+def _start_khutba(m, d):
+    d.now = at(12, 29)
+    d.run(25, voice=True)
+    assert m.state == State.KHUTBA
+
+
+def test_stop_needs_silence_plus_grace_and_resume_cancels():
+    m, _ = mk(silence_stop_s=60, grace_s=30, min_khutba_s=100)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(200, voice=True)
+    d.run(61, voice=False)          # silence 61 s -> grâce
+    assert m.state == State.KHUTBA and m.grace_until is not None
+    d.run(5, voice=True)            # la voix revient pendant la grâce
+    assert m.state == State.KHUTBA and m.grace_until is None
+    d.run(61, voice=False)
+    d.run(31, voice=False)
+    assert m.state == State.PRIERE
+    assert m.records[0].status == "done" and m.records[0].end_reason == "silence prolongé"
+
+
+def test_no_stop_before_min_duration():
+    m, _ = mk(silence_stop_s=10, grace_s=5, min_khutba_s=300)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(100, voice=False)
+    assert m.state == State.KHUTBA
+
+
+def test_two_sessions_full_cycle():
+    m, logs = mk(silence_stop_s=10, grace_s=5, min_khutba_s=30, prayer_min=10, terminated_hold_s=20)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(60, voice=True); d.run(30, voice=False)
+    assert m.state == State.PRIERE
+    d.step(clock=11 * 60, voice=False)           # 11 min de prière
+    assert m.state == State.ENTRACTE and m.idx == 1
+    d.now = at(13, 16); d.voice = d.silence = 0
+    d.run(25, voice=True)
+    assert m.state == State.KHUTBA and m.idx == 1
+    d.run(60, voice=True); d.run(20, voice=False)
+    assert m.state == State.PRIERE
+    d.step(clock=11 * 60, voice=False)
+    assert m.state == State.TERMINE
+    d.run(21, voice=False)
+    assert m.state == State.FIN and not m.stream_on
+    seq = [l for l in logs if l.startswith("ÉTAT")]
+    names = [l.split("→")[1].split()[0] for l in seq]
+    assert names == ["ARMÉ", "AVANT", "KHUTBA", "PRIÈRE", "ENTRACTE", "KHUTBA", "PRIÈRE", "TERMINÉ", "FIN"] or "KHUTBA" in names
+    assert [r.status for r in m.records] == ["done", "done"]
+
+
+def test_second_session_skipped_when_no_signal():
+    m, _ = mk(silence_stop_s=10, grace_s=5, min_khutba_s=30, prayer_min=10)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(60, voice=True); d.run(20, voice=False)
+    d.step(clock=11 * 60, voice=False)
+    assert m.state == State.ENTRACTE
+    d.now = at(14, 16)               # fenêtre 13:30+45 dépassée, aucune voix
+    d.step(voice=False)
+    assert m.records[1].status == "skipped"
+    assert m.state == State.TERMINE
+
+
+def test_manual_override_suspends_auto():
+    m, _ = mk()
+    d = Drv(m, at(12, 29))
+    msg = m.command("start", d.sig())
+    assert m.state == State.KHUTBA and m.override
+    d.run(500, voice=False)           # le silence n'arrête rien en override
+    assert m.state == State.KHUTBA
+    m.command("auto", d.sig())
+    assert not m.override
+    m.command("pause", d.sig())
+    assert m.state == State.PRIERE
+    m.command("resume", d.sig())
+    assert m.state == State.KHUTBA
+
+
+def test_scene_command_and_unknown():
+    m, _ = mk()
+    d = Drv(m, at(12, 0))
+    assert "inconnue" in m.command("scene", d.sig(), "disco")
+    m.command("scene", d.sig(), "entracte")
+    assert m.state == State.ENTRACTE and m.stream_on and m.scene == "entracte"
+
+
+def test_extend_blocks_stop():
+    m, _ = mk(silence_stop_s=10, grace_s=5, min_khutba_s=30)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(60, voice=True)
+    m.command("extend", d.sig(), 5)
+    d.run(200, voice=False)
+    assert m.state == State.KHUTBA
+    d.run(120, voice=False)
+    assert m.state == State.PRIERE
+
+
+def test_janaza_excluded_from_pipeline():
+    m, _ = mk()
+    d = Drv(m, at(13, 5))
+    m.command("janaza", d.sig(), "X")
+    assert m.state == State.JANAZA
+    j = [r for r in m.records if r.status == "janaza"]
+    assert j and j[0].exclude_from_pipeline
+    d.run(100, voice=False)
+    assert m.state == State.JANAZA     # jamais coupée automatiquement
+    m.command("stop", d.sig())
+    assert m.state == State.TERMINE
+
+
+def test_cancel_day():
+    m, _ = mk()
+    d = Drv(m, at(12, 20))
+    m.command("cancel", d.sig())
+    assert all(r.status == "skipped" for r in m.records)
+    d.step()
+    assert m.state == State.FIN
+
+
+def test_max_duration_guard():
+    m, _ = mk(max_khutba_s=100, silence_stop_s=1e9)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(101, voice=True)
+    assert m.state == State.PRIERE
+    assert m.records[0].end_reason == "durée maximale"

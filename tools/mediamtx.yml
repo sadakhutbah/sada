@@ -1,0 +1,21 @@
+# mediamtx : joue à la fois la « caméra de la mosquée » (RTSP) et le « serveur Facebook » (RTMP local)
+logLevel: info
+api: no
+metrics: no
+rtsp: yes
+rtspAddress: 127.0.0.1:8554
+rtmp: yes
+rtmpAddress: 127.0.0.1:1935
+hls: no
+webrtc: no
+srt: no
+# écoute uniquement en local : rien n'est exposé
+rtspTransports: [tcp]
+paths:
+  # ce que « Facebook » reçoit est enregistré côté serveur (preuve indépendante de l'enregistrement local)
+  live/facebook:
+    record: yes
+    recordPath: ./data/server-recordings/%path/%Y-%m-%d_%H-%M-%S
+    recordFormat: fmp4
+    recordDeleteAfter: 0s
+  all_others:

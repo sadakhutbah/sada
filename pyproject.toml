@@ -1,0 +1,18 @@
+[project]
+name = "minbar-live"
+version = "0.1.0"
+description = "Minbar Live : diffusion automatique de la khutba + pipeline IA post-live"
+requires-python = ">=3.10"
+dependencies = [
+  "requests",
+  "webrtcvad-wheels",
+  "numpy",
+  "pillow",
+  "rapidfuzz",
+  "faster-whisper",
+  "pytest",
+]
+[tool.setuptools]
+packages = ["minbar", "minbar.pipeline"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
