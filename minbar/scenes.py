@@ -2,19 +2,54 @@
 
 Le flux est composé ainsi : caméra  +  overlay(PNG de la scène courante).
  - scènes « plein écran » (avant, priere, entracte, termine) : PNG opaque qui masque la caméra ;
- - scène khutba : PNG transparent avec un bandeau en bas ; janaza : PNG quasi vide, sans bandeau.
+ - scène khutba : PNG transparent avec un bandeau en bas à gauche ; janaza : PNG quasi vide, mention discrète.
 L'encodeur relit ce PNG en continu (image2 -loop 1) : changer de scène = réécrire le fichier.
+
+Charte : vert profond (dérivé de cfg.dark_green), or mat en accent, texte ivoire ; titres en
+EB Garamond, textes courants en Source Sans 3, arabe en Amiri (polices OFL dans assets/fonts).
+L'arabe passe par libraqm (mise en forme des lettres liées + sens RTL) ; à défaut, arabic_reshaper
++ python-bidi s'ils sont installés. Tout le contenu utile reste dans une zone de sécurité centrale
+(les surcouches de l'appli Facebook mobile occupent les coins et le bas de l'image).
 """
 from __future__ import annotations
 import datetime as dt
+import functools
+import math
 import os
 from pathlib import Path
 from typing import Optional
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
-FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+SERIF = str(FONTS / "EBGaramond-SemiBold.ttf")
+SANS = str(FONTS / "SourceSans3-Regular.ttf")
+SANS_SB = str(FONTS / "SourceSans3-Semibold.ttf")
+ARABIC = str(FONTS / "Amiri-Regular.ttf")
+ARABIC_B = str(FONTS / "Amiri-Bold.ttf")
+_FALLBACK = {True: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+             False: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"}
+# rétro-compatibilité (anciens noms)
+FONT_B, FONT_R = SANS_SB, SANS
+
+RAQM = features.check("raqm")
+
+# --- palette ------------------------------------------------------------------
+IVORY = (244, 240, 230, 255)
+IVORY_DIM = (214, 210, 198, 255)
+GOLD = (200, 169, 106, 255)          # or mat, jamais saturé
+GOLD_SOFT = (200, 169, 106, 150)
+
+# --- textes fixes (arabe vérifié) --------------------------------------------
+AR_KHUTBA = "خطبة الجمعة"
+AR_JUMUA = "صلاة الجمعة"
+AR_JAZAKUM = "جزاكم الله خيرا"
+AR_JANAZA = "صلاة الجنازة"
+AR_MOSQUE = "مسجد بونطواز"
+
+JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+        "septembre", "octobre", "novembre", "décembre"]
 
 
 def _hex(c: str, a: int = 255):
@@ -22,8 +57,105 @@ def _hex(c: str, a: int = 255):
     return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16), a)
 
 
+def _mix(c1, c2, t: float, a: int = 255):
+    return tuple(int(round(c1[i] + (c2[i] - c1[i]) * t)) for i in range(3)) + (a,)
+
+
+def _alpha(c, a: int):
+    return c[:3] + (a,)
+
+
+@functools.lru_cache(maxsize=64)
 def _font(path: str, size: int):
-    return ImageFont.truetype(path, size)
+    if not os.path.exists(path):
+        path = _FALLBACK["Semibold" in path or "Bold" in path]
+    layout = ImageFont.Layout.RAQM if RAQM else ImageFont.Layout.BASIC
+    return ImageFont.truetype(path, size, layout_engine=layout)
+
+
+def _is_ar_char(ch: str) -> bool:
+    return ("\u0600" <= ch <= "\u06ff" or "\u0750" <= ch <= "\u077f" or "\u08a0" <= ch <= "\u08ff"
+            or "\ufb50" <= ch <= "\ufdff" or "\ufe70" <= ch <= "\ufeff")
+
+
+def is_arabic(s: str) -> bool:
+    return any(_is_ar_char(ch) for ch in s)
+
+
+def _strong(ch: str) -> Optional[bool]:
+    """True = arabe, False = latin (fort), None = neutre (espace, ponctuation, chiffres)."""
+    if _is_ar_char(ch) and ch.isalpha():
+        return True
+    if ch.isalpha():
+        return False
+    return None
+
+
+def _runs(text: str) -> list[tuple[str, bool]]:
+    """Découpe en segments mono-écriture, dans l'ordre VISUEL (gauche -> droite).
+
+    Les neutres situés entre deux lettres arabes restent dans le segment arabe ; ceux en bordure
+    vont au contexte de base. Paragraphe RTL si la première lettre forte est arabe."""
+    kinds = [_strong(ch) for ch in text]
+    base_rtl = next((k for k in kinds if k is not None), False)
+    runs: list[list] = []
+    i, n = 0, len(text)
+    while i < n:
+        if kinds[i] is True:
+            j = i
+            last_ar = i
+            while j < n and kinds[j] is not False:
+                if kinds[j] is True:
+                    last_ar = j
+                j += 1
+            runs.append([text[i:last_ar + 1], True])
+            i = last_ar + 1
+        else:
+            j = i
+            while j < n and kinds[j] is not True:
+                j += 1
+            seg = text[i:j]
+            if base_rtl and runs and runs[-1][1] and not seg.strip(" \u00a0-—·:,.;()«»") :
+                runs[-1][0] += seg  # neutres entre deux segments arabes
+            else:
+                runs.append([seg, False])
+            i = j
+    runs = [(t, ar) for t, ar in runs if t]
+    if base_rtl:
+        runs.reverse()
+    return runs
+
+
+def _shape(text: str) -> tuple[str, dict]:
+    """Texte mono-écriture + options de d.text() (arabe : lettres liées et sens RTL)."""
+    if not is_arabic(text):
+        return text, {}
+    if RAQM:
+        return text, {"direction": "rtl", "language": "ar"}
+    try:  # repli sans libraqm
+        import arabic_reshaper  # type: ignore
+        from bidi.algorithm import get_display  # type: ignore
+        return get_display(arabic_reshaper.reshape(text)), {}
+    except ImportError:
+        return text, {}
+
+
+def _run_font(font, arabic: bool):
+    """Police adaptée au segment : Amiri pour l'arabe, Source Sans pour le latin."""
+    path = getattr(font, "path", "")
+    if arabic and path not in (ARABIC, ARABIC_B):
+        return _font(ARABIC_B if path in (SANS_SB, SERIF) else ARABIC, round(font.size * 1.1))
+    if not arabic and path in (ARABIC, ARABIC_B):
+        return _font(SANS, font.size)
+    return font
+
+
+def _french_date(d: dt.date) -> str:
+    return f"{JOURS[d.weekday()]} {d.day}{'er' if d.day == 1 else ''} {MOIS[d.month - 1]} {d.year}"
+
+
+def _hm(t: dt.datetime) -> str:
+    return f"{t:%H} h {t:%M}"
 
 
 class SceneRenderer:
@@ -32,101 +164,330 @@ class SceneRenderer:
         self.W, self.H = cfg.width, cfg.height
         self.green = _hex(cfg.green)
         self.dark = _hex(cfg.dark_green)
-        logo = Image.open(cfg.logo).convert("RGBA")
+        # vert profond et digne, dérivé du vert de la mosquée
+        self.deep = _mix(self.dark, (6, 18, 12), 0.62)
+        self.deep_top = _mix(self.dark, (4, 12, 8), 0.74)
+        self.panel = _mix(self.dark, (6, 18, 12), 0.55)
+        self._logo = Image.open(cfg.logo).convert("RGBA")
         self._logo_cache: dict[int, Image.Image] = {}
-        self._logo = logo
+        self._bg_cache: Optional[Image.Image] = None
+        self._medal_cache: dict[tuple, Image.Image] = {}
+        self.s = self.H / 720  # facteur d'échelle (maquette en 1280x720)
 
-    def logo(self, size: int) -> Image.Image:
-        if size not in self._logo_cache:
-            self._logo_cache[size] = self._logo.resize((size, size), Image.LANCZOS)
-        return self._logo_cache[size]
+    def px(self, v: float) -> int:
+        return int(round(v * self.s))
 
     # --- briques ------------------------------------------------------------
+    def logo(self, size: int) -> Image.Image:
+        """Logo carré (fond blanc) recadré en disque."""
+        if size not in self._logo_cache:
+            k = 4
+            lg = self._logo.resize((size * k, size * k), Image.Resampling.LANCZOS)
+            mask = Image.new("L", lg.size, 0)
+            ImageDraw.Draw(mask).ellipse([0, 0, size * k - 1, size * k - 1], fill=255)
+            lg.putalpha(mask)
+            self._logo_cache[size] = lg.resize((size, size), Image.Resampling.LANCZOS)
+        return self._logo_cache[size]
+
+    def medallion(self, d: int, ring: int = 2, pad: Optional[int] = None) -> Image.Image:
+        """Disque blanc + logo + filet or, avec une ombre douce (taille d + marge d'ombre)."""
+        pad = max(2, d // 30) if pad is None else pad
+        key = (d, ring, pad)
+        if key in self._medal_cache:
+            return self._medal_cache[key]
+        m = max(6, d // 12)  # marge pour l'ombre
+        size = d + 2 * m
+        k = 4
+        big = Image.new("RGBA", (size * k, size * k), (0, 0, 0, 0))
+        g = ImageDraw.Draw(big)
+        o = m * k
+        g.ellipse([o, o, o + d * k - 1, o + d * k - 1], fill=GOLD)
+        r = ring * k
+        g.ellipse([o + r, o + r, o + d * k - 1 - r, o + d * k - 1 - r], fill=(255, 255, 255, 255))
+        img = big.resize((size, size), Image.Resampling.LANCZOS)
+        inner = d - 2 * ring - 2 * pad
+        img.alpha_composite(self.logo(inner), (m + ring + pad, m + ring + pad))
+        shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow).ellipse([m, m + max(1, d // 40), m + d, m + d + max(1, d // 40)], fill=(0, 0, 0, 120))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(m / 2))
+        shadow.alpha_composite(img)
+        self._medal_cache[key] = shadow
+        return shadow
+
     def _bg(self) -> Image.Image:
-        """Fond dégradé vert foncé -> vert mosquée."""
+        """Fond vert profond : dégradé vertical, lumière douce au centre, motif d'étoiles à 8 branches très discret."""
+        if self._bg_cache is not None:
+            return self._bg_cache.copy()
         W, H = self.W, self.H
-        img = Image.new("RGBA", (W, H))
-        px = ImageDraw.Draw(img)
-        top, bot = _hex("#0f3d20"), self.dark
+        col = Image.new("RGBA", (1, H))
         for y in range(H):
-            t = y / (H - 1)
-            px.line([(0, y), (W, y)], fill=tuple(int(top[i] + (bot[i] - top[i]) * t) for i in range(3)) + (255,))
-        px.rectangle([0, H - 14, W, H], fill=self.green)
-        return img
+            col.putpixel((0, y), _mix(self.deep_top, self.deep, y / (H - 1)))
+        img = col.resize((W, H))
+        # halo central (éclaire la zone de lecture), vignettage des bords
+        rad = Image.radial_gradient("L").resize((W, H), Image.Resampling.BICUBIC)  # 0 au centre -> 255 aux bords
+        light = Image.new("RGBA", (W, H), _mix(self.dark, (255, 255, 255), 0.05, 0))
+        light.putalpha(rad.point([max(0, 70 - v // 2) for v in range(256)]))
+        img.alpha_composite(light)
+        dark = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        dark.putalpha(rad.point([max(0, min(110, v - 120)) for v in range(256)]))
+        img.alpha_composite(dark)
+        # motif géométrique (khatam) : presque invisible au centre, à peine perceptible sur les bords
+        pat = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        p = ImageDraw.Draw(pat)
+        step = self.px(88)
+        r = step * 0.36
+        for gy in range(-1, H // step + 2):
+            for gx in range(-1, W // step + 2):
+                cx, cy = gx * step + (step // 2 if gy % 2 else 0), gy * step
+                for rot in (0, 45):
+                    pts = [(cx + r * math.cos(math.radians(rot + 45 + 90 * i)),
+                            cy + r * math.sin(math.radians(rot + 45 + 90 * i))) for i in range(4)]
+                    p.polygon(pts, outline=_alpha(GOLD, 255), width=1)
+        pmask = rad.point([int(max(0, v - 90) * 0.11) for v in range(256)])
+        pat.putalpha(Image.composite(pmask, Image.new("L", (W, H), 0), pat.getchannel("A")))
+        img.alpha_composite(pat)
+        self._bg_cache = img
+        return img.copy()
 
-    def _center(self, d: ImageDraw.ImageDraw, text: str, y: int, font, fill, W: Optional[int] = None):
-        W = W or self.W
-        w = d.textlength(text, font=font)
-        d.text(((W - w) / 2, y), text, font=font, fill=fill)
+    def _layout(self, d: ImageDraw.ImageDraw, text: str, font, **kw):
+        """[(texte, police, options, largeur)] dans l'ordre visuel."""
+        out = []
+        for seg, ar in _runs(text):
+            f = _run_font(font, ar)
+            t, opts = _shape(seg)
+            opts.update({k: v for k, v in kw.items() if v is not None})
+            out.append((t, f, opts, d.textlength(t, font=f, **opts)))
+        return out
 
-    def _full(self, title: str, sub: str = "", big: str = "", foot: str = "") -> Image.Image:
+    def _text(self, d: ImageDraw.ImageDraw, xy, text: str, font, fill, anchor: str = "ms", **kw):
+        """Texte (éventuellement mixte latin/arabe) ; ancres Pillow : l/m/r + s/m."""
+        runs = self._layout(d, text, font, **kw)
+        if len(runs) == 1:
+            t, f, opts, _ = runs[0]
+            d.text(xy, t, font=f, fill=fill, anchor=anchor, **opts)
+            return
+        x, y = xy
+        total = sum(r[3] for r in runs)
+        x -= {"l": 0, "m": total / 2, "r": total}[anchor[0]]
+        if anchor[1] == "m":
+            asc, desc = font.getmetrics()
+            y += (asc - desc) / 2
+        for t, f, opts, w in runs:
+            d.text((x, y), t, font=f, fill=fill, anchor="ls", **opts)
+            x += w
+
+    def _width(self, d: ImageDraw.ImageDraw, text: str, font, **kw) -> float:
+        return sum(r[3] for r in self._layout(d, text, font, **kw))
+
+    def _tracked(self, d: ImageDraw.ImageDraw, cx: float, y: float, text: str, font, fill, track: float):
+        """Petites capitales espacées, centrées sur cx (ligne de base y)."""
+        ws = [d.textlength(ch, font=font) for ch in text]
+        total = sum(ws) + track * (len(text) - 1)
+        x = cx - total / 2
+        for ch, w in zip(text, ws):
+            d.text((x, y), ch, font=font, fill=fill, anchor="ls")
+            x += w + track
+
+    def _ornament(self, d: ImageDraw.ImageDraw, cx: float, y: float, half: int):
+        """Filet or — losange — filet or."""
+        g = self.px(14)
+        d.line([(cx - half, y), (cx - g, y)], fill=GOLD_SOFT, width=max(1, self.px(1.5)))
+        d.line([(cx + g, y), (cx + half, y)], fill=GOLD_SOFT, width=max(1, self.px(1.5)))
+        r = self.px(5)
+        d.polygon([(cx, y - r), (cx + r, y), (cx, y + r), (cx - r, y)], fill=GOLD)
+
+    def _footer(self, img: Image.Image):
+        d = ImageDraw.Draw(img)
+        cx, y = self.W / 2, self.H - self.px(38)
+        f_lat, f_ar = _font(SANS_SB, self.px(19)), _font(ARABIC, self.px(22))
+        name = self.cfg.mosque_name.upper()
+        track = self.px(2.2)
+        w_lat = sum(d.textlength(ch, font=f_lat) for ch in name) + track * (len(name) - 1)
+        w_ar = self._width(d, AR_MOSQUE, f_ar)
+        gap = self.px(18)
+        total = w_lat + 2 * gap + w_ar
+        x0 = cx - total / 2
+        self._tracked(d, x0 + w_lat / 2, y, name, f_lat, IVORY_DIM, track)
+        dot = x0 + w_lat + gap
+        rr = self.px(2.5)
+        d.ellipse([dot - rr, y - self.px(7) - rr, dot + rr, y - self.px(7) + rr], fill=GOLD)
+        self._text(d, (x0 + w_lat + 2 * gap + w_ar / 2, y + self.px(1)), AR_MOSQUE, f_ar, IVORY_DIM)
+
+    def _ink(self, d: ImageDraw.ImageDraw, text: str, font, **kw) -> tuple[int, int]:
+        """(hauteur au-dessus, sous la ligne de base) de l'encre réelle du texte."""
+        up = down = 0
+        for t, f, opts, _ in self._layout(d, text, font, **kw):
+            b = d.textbbox((0, 0), t, font=f, anchor="ls", **opts)
+            up, down = max(up, -b[1]), max(down, b[3])
+        return up, down
+
+    def _full(self, title: str, sub: str = "", big: str = "", foot: str = "", *,
+              eyebrow: str = "", arabic: str = "") -> Image.Image:
+        """Écran plein : médaillon, surtitre, titre, arabe, ornement, (compte à rebours), texte, pied.
+
+        Les blocs sont empilés d'après l'encre réelle des glyphes (espaces optiquement réguliers),
+        puis centrés verticalement dans la zone utile au-dessus du pied de page."""
         img = self._bg()
         d = ImageDraw.Draw(img)
-        # pastille blanche derrière le logo (le logo est sur fond blanc)
-        s = 230
-        cx, cy = self.W // 2, 150
-        d.ellipse([cx - s // 2 - 8, cy - s // 2 - 8, cx + s // 2 + 8, cy + s // 2 + 8], fill=(255, 255, 255, 255))
-        img.alpha_composite(self.logo(s), (cx - s // 2, cy - s // 2))
-        self._center(d, title, 300, _font(FONT_B, 46), (255, 255, 255, 255))
-        if sub:
-            self._center(d, sub, 368, _font(FONT_R, 30), self.green)
+        px = self.px
+        tnum = {"features": ["tnum"]} if RAQM else {}
+        # (genre, texte, police, couleur, espace avant, options)
+        items: list[tuple] = [("medallion", None, None, None, 0, {})]
+        if eyebrow:
+            items.append(("eyebrow", eyebrow.upper(), _font(SANS_SB, px(20)), GOLD, px(34), {}))
+        items.append(("text", title, self._fit(d, title, _font(SERIF, px(62)), SERIF, px(62)), IVORY,
+                      px(24) if eyebrow else px(40), {}))
+        if arabic:
+            items.append(("text", arabic, _font(ARABIC, px(40)), GOLD, px(20), {}))
+        items.append(("orn", None, None, None, px(28), {}))
         if big:
-            self._center(d, big, 430, _font(FONT_B, 110), (255, 255, 255, 255))
+            items.append(("text", big, _font(SANS_SB, px(116)), IVORY, px(36), tnum))
+        if sub:
+            items.append(("text", sub, self._fit(d, sub, _font(SANS_SB, px(30)), SANS_SB, px(30)), IVORY,
+                          px(28) if big else px(32), {}))
         if foot:
-            self._center(d, foot, 600, _font(FONT_R, 26), (230, 240, 225, 255))
-        self._center(d, self.cfg.mosque_name, self.H - 62, _font(FONT_B, 24), (255, 255, 255, 255))
+            items.append(("text", foot, self._fit(d, foot, _font(SANS, px(24)), SANS, px(24)), IVORY_DIM,
+                          px(18) if sub else px(30), {}))
+        med = px(158)
+        sized = []
+        for kind, text, font, fill, gap, kw in items:
+            if kind == "medallion":
+                up, down = med, 0
+            elif kind == "orn":
+                up, down = px(5), px(5)
+            else:
+                up, down = self._ink(d, text, font, **kw)
+            sized.append((kind, text, font, fill, gap, kw, up, down))
+        # médaillon à position fixe (pas de saut d'une scène à l'autre), textes centrés dessous
+        med_top = px(80)
+        m = self.medallion(med)
+        img.alpha_composite(m, (int(self.W / 2 - m.width / 2), int(med_top + med / 2 - m.height / 2)))
+        d = ImageDraw.Draw(img)
+        rest = sized[1:]
+        total = sum(it[4] + it[6] + it[7] for it in rest) - rest[0][4]
+        region_top, bottom_zone = med_top + med + px(30), self.H - px(84)  # pied de page sous bottom_zone
+        y = region_top + max(0, (bottom_zone - region_top - total) * 0.42) - rest[0][4]
+        cx = self.W / 2
+        for kind, text, font, fill, gap, kw, up, down in rest:
+            base = y + gap + up
+            if kind == "orn":
+                self._ornament(d, cx, base - up, px(110))
+            elif kind == "eyebrow":
+                self._tracked(d, cx, base, text, font, fill, px(3.2))
+            else:
+                self._text(d, (cx, base), text, font, fill, **kw)
+            y = base + down
+        self._footer(img)
         return img
+
+    def _fit(self, d, text: str, font, path: str, size: int, max_w: Optional[int] = None):
+        """Réduit la taille si le texte dépasse la zone utile (marges de 10 %)."""
+        max_w = max_w or int(self.W * 0.8)
+        while size > 12 and self._width(d, text, font) > max_w:
+            size -= 2
+            font = _font(path, size)
+        return font
 
     # --- scènes -------------------------------------------------------------
     def avant(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
-        at = f"à {planned:%H:%M}" if planned else ""
-        return self._full(f"{self.cfg.title} — début imminent", at, "", "Merci de patienter, la diffusion commence très bientôt.")
+        sub = f"Début à {_hm(planned)}" if planned else ""
+        return self._full(self.cfg.title, sub, "", "Merci de patienter, la diffusion commence très bientôt.",
+                          eyebrow="Début imminent", arabic=AR_KHUTBA)
 
-    def priere(self) -> Image.Image:
-        return self._full("Prière en cours", "La prière n'est pas diffusée", "", "La diffusion reprendra pour la prochaine khutba, in sha Allah.")
+    def priere(self, now: Optional[dt.datetime] = None) -> Image.Image:
+        return self._full("Prière en cours", "La prière n'est pas diffusée.", "",
+                          "La diffusion reprendra pour la prochaine khutba, in sha Allah.",
+                          eyebrow=_french_date(now) if now else "", arabic=AR_JUMUA)
 
     def entracte(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
         if planned:
             remaining = max(0, int((planned - now).total_seconds()))
             m, s = divmod(remaining, 60)
-            big = f"{m:02d}:{s:02d}"
-            sub = f"Prochaine khutba à {planned:%H:%M}"
-        else:
-            big, sub = "", ""
-        return self._full("Entracte", sub, big, "Le live continue : restez connectés.")
+            return self._full(f"Prochaine khutba à {_hm(planned)}", "", f"{m:02d}:{s:02d}",
+                              "Le live continue : restez connectés.", eyebrow="Entracte")
+        return self._full("Entracte", "", "", "Le live continue : restez connectés.", arabic=AR_KHUTBA)
 
     def termine(self, next_friday: str = "") -> Image.Image:
-        return self._full("Khutba terminée — qu'Allah vous récompense", "Jazakoum Allahou khayran", "", next_friday or "Rendez-vous vendredi prochain, in sha Allah.")
+        return self._full("Khutba terminée", "Jazakoum Allahou khayran — qu'Allah vous récompense.", "",
+                          next_friday or "Rendez-vous vendredi prochain, in sha Allah.",
+                          eyebrow="Fin de la diffusion", arabic=AR_JAZAKUM)
+
+    def _panel_shadow(self, img: Image.Image, box, radius: int):
+        sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        o = self.px(4)
+        ImageDraw.Draw(sh).rounded_rectangle([box[0], box[1] + o, box[2], box[3] + o], radius, fill=(0, 0, 0, 110))
+        img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(self.px(10))))
 
     def khutba(self, subtitle: str = "") -> Image.Image:
-        """Transparent + bandeau en bas (logo, mosquée, titre)."""
+        """Transparent + bandeau compact en bas à gauche : médaillon, titre, mosquée, titre arabe."""
+        px = self.px
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
-        h = 96
-        y0 = self.H - h - 26
-        d.rectangle([40, y0, self.W - 40, y0 + h], fill=_hex(self.cfg.dark_green, 225))
-        d.rectangle([40, y0, 52, y0 + h], fill=self.green)
-        s = h - 14
-        d.ellipse([66, y0 + 7, 66 + s, y0 + 7 + s], fill=(255, 255, 255, 255))
-        img.alpha_composite(self.logo(s - 6), (69, y0 + 10))
-        x = 66 + s + 22
-        d.text((x, y0 + 12), self.cfg.title, font=_font(FONT_B, 34), fill=(255, 255, 255, 255))
-        d.text((x, y0 + 56), self.cfg.mosque_name + ((" — " + subtitle) if subtitle else ""), font=_font(FONT_R, 24), fill=self.green)
+        f_t, f_s, f_ar = _font(SERIF, px(40)), _font(SANS_SB, px(25)), _font(ARABIC, px(36))
+        line2 = self.cfg.mosque_name + (f"  ·  {subtitle}" if subtitle else "")
+        h = px(100)
+        x0, y1 = px(56), self.H - px(46)
+        y0 = y1 - h
+        med = px(74)
+        pad = px(14)
+        tx = x0 + px(5) + pad + med + px(18)
+        sep = px(26)
+        w_ar = self._width(d, AR_KHUTBA, f_ar)
+        max_x1 = self.W - px(56)
+        line2 = self._ellipsize(d, line2, f_s, max_x1 - px(26) - tx)
+        w_text = max(self._width(d, self.cfg.title, f_t), self._width(d, line2, f_s))
+        x1 = int(tx + w_text + sep + px(1) + sep + w_ar + px(26))
+        if x1 > max_x1:  # sous-titre long : on renonce au titre arabe plutôt que de déborder
+            x1 = int(min(max_x1, tx + w_text + px(26)))
+        r = px(6)
+        self._panel_shadow(img, (x0, y0, x1, y1), r)
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle([x0, y0, x1, y1], r, fill=_alpha(self.panel, 236), corners=(False, True, True, False))
+        d.rectangle([x0, y0, x0 + px(5) - 1, y1], fill=GOLD)  # filet or à gauche
+        m = self.medallion(med, ring=max(1, px(1.5)))
+        img.alpha_composite(m, (int(x0 + px(5) + pad + med / 2 - m.width / 2), int(y0 + h / 2 - m.height / 2)))
+        d = ImageDraw.Draw(img)
+        self._text(d, (tx, y0 + px(48)), self.cfg.title, f_t, IVORY, anchor="ls")
+        self._text(d, (tx, y0 + px(81)), line2, f_s, IVORY_DIM, anchor="ls")
+        sx = tx + w_text + sep
+        if sx + sep + w_ar < x1:
+            d.line([(sx, y0 + px(22)), (sx, y1 - px(22))], fill=GOLD_SOFT, width=max(1, px(1)))
+            self._text(d, (x1 - px(26), y0 + h / 2 + px(4)), AR_KHUTBA, f_ar, GOLD, anchor="rm")
         return img
 
-    def janaza(self) -> Image.Image:
+    def _ellipsize(self, d, text: str, font, max_w: float) -> str:
+        if self._width(d, text, font) <= max_w:
+            return text
+        while text and self._width(d, text + "…", font) > max_w:
+            text = text[:-1]
+        return text.rstrip() + "…"
+
+    def janaza(self, defunt: str = "") -> Image.Image:
         """Sobre : caméra minbar, pas de bandeau ; seule une petite mention discrète."""
+        px = self.px
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
-        d.rectangle([40, self.H - 70, 420, self.H - 30], fill=(0, 0, 0, 150))
-        d.text((55, self.H - 64), "Salat al-Janaza", font=_font(FONT_R, 26), fill=(255, 255, 255, 255))
+        f_l, f_ar = _font(SANS_SB, px(24)), _font(ARABIC, px(28))
+        label = self._ellipsize(d, "Salat al-Janaza" + (f"  ·  {defunt}" if defunt else ""), f_l, self.W * 0.55)
+        w_l, w_ar = self._width(d, label, f_l), self._width(d, AR_JANAZA, f_ar)
+        gap = px(18)
+        x0, y1, h = px(56), self.H - px(46), px(50)
+        y0 = y1 - h
+        x1 = int(x0 + px(20) + w_l + gap + px(1) + gap + w_ar + px(20))
+        r = px(6)
+        d.rounded_rectangle([x0, y0, x1, y1], r, fill=(8, 14, 11, 165))
+        cy = y0 + h / 2
+        self._text(d, (x0 + px(20), cy), label, f_l, IVORY, anchor="lm")
+        sx = x0 + px(20) + w_l + gap
+        d.line([(sx, y0 + px(14)), (sx, y1 - px(14))], fill=GOLD_SOFT, width=max(1, px(1)))
+        self._text(d, (x1 - px(20), cy + px(3)), AR_JANAZA, f_ar, IVORY_DIM, anchor="rm")
         return img
 
     def render(self, scene: Optional[str], now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
         if scene == "avant":
             return self.avant(now, planned)
         if scene == "priere":
-            return self.priere()
+            return self.priere(now)
         if scene == "entracte":
             return self.entracte(now, planned)
         if scene == "termine":
