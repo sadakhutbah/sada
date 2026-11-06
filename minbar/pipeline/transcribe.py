@@ -73,10 +73,14 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print, la
     segs_iter, info = model.transcribe(
         audio, language=language, multilingual=language is None, vad_filter=True,
         beam_size=5, condition_on_previous_text=False, temperature=0.0,
+        word_timestamps=True,   # mots horodatés : mot actif mis en valeur dans les sous-titres des clips
     )
     segs = []
     for s in segs_iter:
-        segs.append({"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip(), "avg_logprob": round(s.avg_logprob, 3)})
+        seg = {"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip(), "avg_logprob": round(s.avg_logprob, 3)}
+        if s.words:
+            seg["words"] = [{"w": w.word.strip(), "s": round(w.start, 2), "e": round(w.end, 2)} for w in s.words if w.word.strip()]
+        segs.append(seg)
         if len(segs) % 20 == 0:
             log(f"  … {len(segs)} segments, {s.end:.0f}/{info.duration:.0f}s")
     res = {"model": name, "device": device, "compute_type": ctype, "language": info.language,

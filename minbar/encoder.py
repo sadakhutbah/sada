@@ -1,7 +1,10 @@
-"""Encodeur continu : UN seul ffmpeg produit le flux RTMP + l'enregistrement MKV.
+"""Encodeur continu : UN seul ffmpeg produit le flux RTMP + l'enregistrement MKV + l'enregistrement PROPRE.
 
-Graphe : [caméra] -> scale/fps -> overlay( PNG de scène relu en boucle ) -> x264 ;
-         [audio caméra] -> volume@mic (piloté en direct via ZeroMQ) -> aac.
+Graphe : [caméra] -> scale/fps -> overlay( PNG de scène relu en boucle ) -> x264 -> tee (RTMP | live_*.mkv) ;
+         [audio caméra] -> volume@mic (piloté en direct via ZeroMQ) -> asplit -> aac (live) / aac (propre).
+Sortie propre (live_*_clean.mkv) : la vidéo caméra SANS habillage (copie du flux 0:v si clean_copy, sinon x264 crf 18
+depuis la caméra mise à l'échelle) + le même audio. Même processus, même démarrage : les positions temporelles
+de live_*.mkv et live_*_clean.mkv sont alignées (les clips sont taillés dans le propre aux positions du live).
 Changer de scène = réécrire le PNG + envoyer « volume@mic volume 0|1 » : le flux ne s'interrompt pas.
 """
 from __future__ import annotations
@@ -27,6 +30,7 @@ class Encoder:
         self.mic_on = False
         self.wanted = False
         self.recordings: list[str] = []
+        self.recordings_clean: list[str] = []   # même index que recordings (caméra sans habillage)
         self._threads: list[threading.Thread] = []
 
     # ------------------------------------------------------------------ commande
@@ -34,16 +38,27 @@ class Encoder:
         c = self.cfg
         stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         rec = str(Path(c.record_dir) / f"live_{stamp}.mkv")
+        clean = str(Path(c.record_dir) / f"live_{stamp}_clean.mkv") if c.record_clean else None
         self.recording = rec
         self.recordings.append(rec)
+        if clean:
+            self.recordings_clean.append(clean)
+        copy = bool(clean and c.clean_copy)
         fg = (
             f"[0:v]scale={c.width}:{c.height}:force_original_aspect_ratio=decrease,"
-            f"pad={c.width}:{c.height}:(ow-iw)/2:(oh-ih)/2,fps={c.fps},setsar=1,format=yuv420p[cam];"
-            f"[1:v]format=rgba,fps={c.fps}[ov];"
+            f"pad={c.width}:{c.height}:(ow-iw)/2:(oh-ih)/2,fps={c.fps},setsar=1,format=yuv420p"
+            + ("[cam];" if not clean or copy else ",split=2[cam][camclean];")
+            + f"[1:v]format=rgba,fps={c.fps}[ov];"
             f"[cam][ov]overlay=format=auto:shortest=0:repeatlast=1,format=yuv420p[v];"
             f"[0:a]aresample=48000,aformat=channel_layouts=stereo,"
-            f"volume@mic=volume={1 if self.mic_on else 0}:eval=frame,azmq=bind_address={ZMQ_ESC}[a]"
+            f"volume@mic=volume={1 if self.mic_on else 0}:eval=frame,azmq=bind_address={ZMQ_ESC}"
+            + ("[a]" if not clean else ",asplit=2[a][aclean]")
         )
+        out_clean: list[str] = []
+        if clean:
+            vmap = ["-map", "0:v:0", "-c:v:0", "copy"] if copy else [
+                "-map", "[camclean]", "-c:v:0", "libx264", "-preset", "veryfast", "-crf", "18", "-g", str(c.fps * 2), "-pix_fmt", "yuv420p"]
+            out_clean = vmap + ["-map", "[aclean]", "-c:a:0", "aac", "-b:a:0", "160k", "-ar", "48000", "-f", "matroska", clean]
         return [
             "ffmpeg", "-hide_banner", "-loglevel", "warning", "-nostats", "-progress", "pipe:1",
             "-rtsp_transport", "tcp", "-i", c.camera_url,
@@ -53,7 +68,7 @@ class Encoder:
             "-maxrate", c.video_bitrate, "-bufsize", "5000k", "-g", str(c.fps * 2), "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-flags", "+global_header",
             "-f", "tee", f"[f=flv:onfail=ignore]{c.rtmp_url}|[f=matroska]{rec}",
-        ]
+        ] + out_clean
 
     # ----------------------------------------------------------------- cycle de vie
     def start(self):
@@ -66,7 +81,8 @@ class Encoder:
 
     def _spawn(self):
         cmd = self._cmd()
-        self.log("ENCODEUR : démarrage ffmpeg -> " + self.cfg.rtmp_url + "  | enreg. " + str(self.recording))
+        self.log("ENCODEUR : démarrage ffmpeg -> " + self.cfg.rtmp_url + "  | enreg. " + str(self.recording)
+                 + (f"  | propre {self.recordings_clean[-1]}" if self.cfg.record_clean else ""))
         self.log_file = open(Path(self.cfg.state_dir) / "encoder.log", "ab")
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.log_file, text=True, bufsize=1)
         self.started_at = time.monotonic()

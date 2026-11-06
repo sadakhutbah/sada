@@ -20,6 +20,9 @@ class Config:
     height: int = 720
     fps: int = 25
     video_bitrate: str = "2500k"
+    # Enregistrement propre (caméra sans habillage) pour les clips : live_*_clean.mkv, dans le même ffmpeg.
+    record_clean: bool = True
+    clean_copy: bool = True             # copie du flux caméra (qualité d'origine) ; False = x264 crf 18 en 1280x720
     # --- Horaires -----------------------------------------------------------
     mawaqit_url: str = "https://mawaqit.net/fr/m/mosquee-exemple"
     mawaqit_cache: str = str(ROOT / "data" / "cache" / "mawaqit.json")

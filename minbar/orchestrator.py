@@ -113,7 +113,8 @@ class Orchestrator:
 
     def _save_sessions(self):
         data = {
-            "run_id": self.run_id, "recordings": self.encoder.recordings, "clock_sim": self.cfg.sim_start,
+            "run_id": self.run_id, "recordings": self.encoder.recordings,
+            "recordings_clean": self.encoder.recordings_clean, "clock_sim": self.cfg.sim_start,
             "sessions": [r.__dict__ for r in self.machine.records],
             "mosque": self.cfg.mosque_name,
         }
