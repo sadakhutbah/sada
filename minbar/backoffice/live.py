@@ -9,18 +9,32 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 
-# commandes exposées dans le back-office -> (chemin API, libellé journal)
+from .. import runs
+from ..state import State
+
+@dataclass(frozen=True)
+class Command:
+    label: str
+    style: str                       # classe du bouton
+    confirm: str = ""                # question posée avant l'envoi
+    params: tuple = ()               # paramètres fixes de la requête
+
+
+# Commandes de l'orchestrateur (minbar.state.Machine.COMMANDS) proposées sur le tableau de bord.
 COMMANDS = {
-    "extend": ("extend", "+5 min"),
-    "janaza": ("janaza", "Janaza"),
-    "stop": ("stop", "Arrêter"),
-    "cancel": ("cancel", "Annuler aujourd'hui"),
+    "extend": Command("+5 min", "leaf", params=(("min", "5"),)),
+    "janaza": Command("Janaza", "light", "Basculer sur l'écran Salat al-Janaza ?"),
+    "stop": Command("Arrêter", "danger", "Arrêter le live maintenant ?"),
+    "cancel": Command("Annuler aujourd'hui", "light",
+                      "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées."),
 }
 
 STATE_LABELS = {
-    "IDLE": "En veille", "ARMÉ": "Armé (fenêtre ouverte)", "AVANT": "Début imminent", "KHUTBA": "Khutba en direct",
-    "PRIÈRE": "Prière en cours", "ENTRACTE": "Entracte", "TERMINÉ": "Terminé", "JANAZA": "Salat al-Janaza", "FIN": "Live terminé",
+    State.IDLE: "En veille", State.ARME: "Armé (fenêtre ouverte)", State.AVANT: "Début imminent",
+    State.KHUTBA: "Khutba en direct", State.PRIERE: "Prière en cours", State.ENTRACTE: "Entracte",
+    State.TERMINE: "Terminé", State.JANAZA: "Salat al-Janaza", State.FIN: "Live terminé",
 }
 SESSION_LABELS = {"pending": "à venir", "live": "en direct", "done": "terminée", "skipped": "sautée", "janaza": "janaza"}
 
@@ -53,22 +67,19 @@ def status(mosque: dict) -> dict:
 def command(mosque: dict, cmd: str, arg: str | None = None) -> dict:
     if cmd not in COMMANDS:
         raise OrchestratorError("commande inconnue")
-    path = COMMANDS[cmd][0]
-    params = {}
-    if cmd == "extend":
-        params["min"] = "5"
-    elif cmd == "janaza" and arg:
+    params = dict(COMMANDS[cmd].params)
+    if arg:
         params["name"] = arg[:80]
-    return _call(mosque, "POST", path, params or None)
+    return _call(mosque, "POST", cmd, params or None)
 
 
 def summarize(st: dict) -> dict:
     """Statut brut de l'orchestrateur -> données d'affichage."""
     sessions = st.get("sessions") or []
     live = next((s for s in sessions if s.get("status") == "live"), None)
-    planned = [s for s in sessions if not str(s.get("planned", "")).startswith("janaza")]
+    planned = [s for s in sessions if runs.is_khutba(s)]
     cur = live or next((s for s in planned if s.get("status") == "pending"), None)
-    if cur is not None and not str(cur.get("planned", "")).startswith("janaza"):
+    if cur is not None:
         n = planned.index(cur) + 1 if cur in planned else None
         session = f"Session {n}/{len(planned)} — {cur['planned']}" if n else cur.get("planned")
     else:

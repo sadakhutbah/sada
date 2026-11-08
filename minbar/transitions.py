@@ -18,9 +18,8 @@ Ce module est pur (aucune E/S) : le calcul des valeurs est testable sans ffmpeg.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-
-FULL_SCENES = {"avant", "priere", "entracte", "termine"}   # le fond masque la caméra
 
 DELAI_CHARGEMENT = 1.0   # s : le PNG du calque est relu en ≤ 0,65 s (file d'attente ffmpeg à 25 i/s)
 OUT_DUR = 0.45           # fondu de sortie de l'ancien contenu
@@ -39,7 +38,6 @@ def _clip(x: float) -> float:
 
 def ease_in_out(x: float) -> float:
     """Sinusoïdale : départ et arrivée doux."""
-    import math
     x = _clip(x)
     return 0.5 - 0.5 * math.cos(math.pi * x)
 

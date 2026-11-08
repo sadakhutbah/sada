@@ -27,6 +27,12 @@ def _password(args) -> str:
     return pw
 
 
+def _create_mosque(conn, slug: str, name: str) -> dict:
+    mid = db.create_mosque(conn, slug, name)
+    print(f"Mosquée créée : {slug} (#{mid})")
+    return db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
+
+
 def _mosque(conn, slug: str | None, name: str | None = None, create: bool = False) -> dict:
     if slug:
         m = db.one(conn, "SELECT * FROM mosques WHERE slug = ?", slug)
@@ -38,11 +44,7 @@ def _mosque(conn, slug: str | None, name: str | None = None, create: bool = Fals
     if m is None:
         if not create:
             sys.exit("Aucune mosquée : créez-la avec `mosque --slug ... --name ...` ou `create-admin --mosque ... --mosque-name ...`.")
-        slug = slug or "mosquee"
-        mid = db.create_mosque(conn, slug, name or "Ma mosquée")
-        db.audit(conn, mid, None, "mosquee.creee", "mosquee", mid, slug=slug)
-        print(f"Mosquée créée : {slug} (#{mid})")
-        m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
+        m = _create_mosque(conn, slug or "mosquee", name or "Ma mosquée")
     return m
 
 
@@ -68,8 +70,9 @@ def main(argv=None) -> int:
     m = sub.add_parser("mosque", help="créer ou configurer une mosquée")
     m.add_argument("--slug", required=True)
     m.add_argument("--name")
-    for f in ("timezone", "mawaqit-url", "orchestrator-url", "orchestrator-token", "state-dir", "output-dir", "publish-dir", "clip-title"):
-        m.add_argument(f"--{f}")
+    for f in db.MOSQUE_SETTINGS:
+        if f != "name":
+            m.add_argument("--" + f.replace("_", "-"))
 
     i = sub.add_parser("import", help="importer les runs du pipeline")
     i.add_argument("--mosque")
@@ -97,17 +100,10 @@ def main(argv=None) -> int:
             db.audit(conn, mo["id"], None, "utilisateur.cree", "utilisateur", uid, identifiant=args.username, role=args.role, via="ligne de commande")
             print(f"Compte « {args.username} » ({auth.ROLE_LABELS[args.role]}) créé pour {mo['name']}.")
         elif args.cmd == "mosque":
-            mo = db.one(conn, "SELECT * FROM mosques WHERE slug = ?", args.slug)
-            if not mo:
-                mid = db.create_mosque(conn, args.slug, args.name or args.slug)
-                db.audit(conn, mid, None, "mosquee.creee", "mosquee", mid, slug=args.slug)
-                mo = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
-                print(f"Mosquée créée : {args.slug} (#{mid})")
-            vals = {k.replace("-", "_"): getattr(args, k.replace("-", "_")) for k in
-                    ("name", "timezone", "mawaqit-url", "orchestrator-url", "orchestrator-token", "state-dir", "output-dir", "publish-dir", "clip-title")}
-            vals = {k: v for k, v in vals.items() if v is not None}
+            mo = _mosque(conn, args.slug, args.name or args.slug, create=True)
+            vals = {k: getattr(args, k) for k in db.MOSQUE_SETTINGS if getattr(args, k) is not None}
             if vals:
-                conn.execute(f"UPDATE mosques SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), mo["id"]))
+                db.update_mosque(conn, mo["id"], **vals)
                 print("Configuration mise à jour : " + ", ".join(vals))
         elif args.cmd == "import":
             mo = _mosque(conn, args.mosque)
@@ -127,15 +123,10 @@ def main(argv=None) -> int:
             print(f"Back-office : http://{args.host}:{args.port}/  (base {args.db})", flush=True)
             uvicorn.run(app, host=args.host, port=args.port, log_level="warning", proxy_headers=False)
             return 0
-    except ValueError as e:
-        sys.exit(f"Erreur : {e}")
-    except FileNotFoundError as e:
+    except (ValueError, FileNotFoundError) as e:
         sys.exit(f"Erreur : {e}")
     finally:
-        try:
-            conn.close()
-        except Exception:  # noqa: BLE001
-            pass
+        conn.close()
     return 0
 
 

@@ -11,11 +11,14 @@ Entrées à chaque tick :
 
 L'automatique propose, l'humain dispose : toute commande manuelle de scène suspend
 l'automatique (override) jusqu'à la commande « auto ».
+
+Le stream est diffusé exactement quand l'état a une scène (SCENE_OF). L'état KHUTBA a toujours une session
+ouverte (la session prévue si elle attend, sinon une session manuelle) ; l'état JANAZA, une session janaza.
 """
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Callable, Optional
 
@@ -32,14 +35,14 @@ class State(str, Enum):
     FIN = "FIN"            # stream arrêté
 
 
-# scène affichée par état (le visuel, rendu par scenes.py)
+# scène affichée par état (le visuel, rendu par scenes.py) ; pas de scène = pas de stream
 SCENE_OF = {
     State.IDLE: None, State.ARME: None, State.FIN: None,
     State.AVANT: "avant", State.KHUTBA: "khutba", State.PRIERE: "priere",
     State.ENTRACTE: "entracte", State.TERMINE: "termine", State.JANAZA: "janaza",
 }
-MANUAL_SCENES = {"avant", "khutba", "priere", "entracte", "termine", "janaza"}
 STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v}
+WAITING = (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE)
 
 
 @dataclass
@@ -48,51 +51,51 @@ class Signals:
     t: float
     voice_run: float = 0.0
     silence_run: float = 0.0
-    presence: Optional[bool] = None
 
 
 @dataclass
 class MachineParams:
-    arm_before_min: float = 15.0
-    avant_before_min: float = 2.0
-    window_after_min: float = 45.0
-    prayer_min: float = 12.0
-    voice_start_s: float = 20.0
-    silence_stop_s: float = 60.0
-    grace_s: float = 30.0
-    min_khutba_s: float = 120.0
+    # minutes d'horloge mosquée, comptées depuis l'horaire de la session (T)
+    arm_before_min: float = 15.0        # armement : on écoute la voix
+    avant_before_min: float = 2.0       # scène Avant : stream démarré
+    window_after_min: float = 45.0      # sans signal au-delà : session sautée
+    prayer_min: float = 12.0            # durée supposée de la prière
+    # durées en secondes RÉELLES : le signal est en temps réel
+    voice_start_s: float = 20.0         # voix soutenue => début de khutba
+    silence_stop_s: float = 60.0        # silence prolongé => fin de khutba
+    grace_s: float = 30.0               # délai de grâce avant de couper
+    min_khutba_s: float = 120.0         # pas d'arrêt avant cette durée
     max_khutba_s: float = 3600.0
-    terminated_hold_s: float = 45.0
+    terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
 
 
 @dataclass
 class SessionRec:
     index: int
-    planned: str
-    status: str = "pending"        # pending | live | done | skipped | janaza
+    planned: str                        # « HH:MM » ; « manuel@HH:MM » ou « janaza@HH:MM » hors programme
+    status: str = "pending"             # pending | live | done | skipped | janaza
+    recording: Optional[int] = None     # n° de l'enregistrement qui contient start_pos / end_pos
     start_pos: Optional[float] = None   # offset (s) dans l'enregistrement
     end_pos: Optional[float] = None
     start_clock: Optional[str] = None
     end_clock: Optional[str] = None
     end_reason: Optional[str] = None
-    exclude_from_pipeline: bool = False
 
 
 class Machine:
     def __init__(self, sessions: list[dt.datetime], params: MachineParams | None = None,
                  log: Callable[[str], None] | None = None,
-                 pos_fn: Callable[[], float] | None = None,
-                 on_change: Callable[[State, State, str], None] | None = None):
+                 pos_fn: Callable[[], tuple[int, float]] | None = None):
+        """pos_fn() -> (n° de l'enregistrement, position en s) : où en est l'enregistrement du live."""
         self.p = params or MachineParams()
         self.sessions = sorted(sessions)
         self.idx = 0
         self.state = State.IDLE
         self.override = False
-        self.stream_on = False
         self.log = log or (lambda m: None)
-        self.pos_fn = pos_fn or (lambda: 0.0)
-        self.on_change = on_change
+        self.pos_fn = pos_fn or (lambda: (0, 0.0))
         self.records = [SessionRec(i, s.strftime("%H:%M")) for i, s in enumerate(self.sessions)]
+        self.live: Optional[SessionRec] = None   # session ouverte (khutba ou janaza)
         self.entered_t = 0.0
         self.entered_now: Optional[dt.datetime] = None
         self.grace_until: Optional[float] = None
@@ -100,7 +103,6 @@ class Machine:
         self.janaza_name: Optional[str] = None
         self.paused_from: Optional[State] = None
         self.last_reason = ""
-        self.terminated_since: float = 0.0
 
     # ------------------------------------------------------------------ helpers
     @property
@@ -108,15 +110,17 @@ class Machine:
         return SCENE_OF[self.state]
 
     @property
+    def stream_on(self) -> bool:
+        return self.scene is not None
+
+    @property
     def session(self) -> Optional[dt.datetime]:
+        """Horaire de la session prévue en cours ou à venir."""
         return self.sessions[self.idx] if self.idx < len(self.sessions) else None
 
     @property
     def rec(self) -> Optional[SessionRec]:
-        return self.records[self.idx] if self.idx < len(self.records) else None
-
-    def next_planned(self) -> Optional[dt.datetime]:
-        return self.session
+        return self.records[self.idx] if self.idx < len(self.sessions) else None
 
     def _go(self, new: State, sig: Signals, reason: str) -> None:
         old = self.state
@@ -127,131 +131,182 @@ class Machine:
         self.entered_now = sig.now
         self.grace_until = None
         self.last_reason = reason
-        if new in (State.AVANT, State.KHUTBA, State.PRIERE, State.ENTRACTE, State.TERMINE, State.JANAZA):
-            self.stream_on = True
-        if new == State.FIN:
-            self.stream_on = False
-        if new == State.TERMINE:
-            self.terminated_since = sig.t
-        self.log(f"ÉTAT {old.value} → {new.value}  ({reason})  [horloge {sig.now:%H:%M:%S}]")
-        if self.on_change:
-            self.on_change(old, new, reason)
-
-    def _open_session(self, sig: Signals) -> None:
-        r = self.rec
-        if r:
+        if new != State.PRIERE:
+            self.paused_from = None
+        if old == State.JANAZA and self.paused_from is None:
+            self.janaza_name = None
+        if self.live and new not in (State.KHUTBA, State.JANAZA) and self.paused_from is None:
+            self._close(sig, reason)        # la session ouverte s'arrête dès qu'on quitte son écran (sauf pause)
+        if new == State.KHUTBA and not (self.live and self.live.status == "live"):
+            r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
-            r.start_pos = self.pos_fn()
-            r.start_clock = f"{sig.now:%H:%M:%S}"
+            self._open(r, sig)
+        if new == State.FIN:                # la journée est finie : plus rien à venir
+            for r in self.records:
+                if r.status == "pending":
+                    r.status, r.end_reason = "skipped", reason
+            self.idx = len(self.sessions)
+        if new == State.JANAZA and not (self.live and self.live.status == "janaza"):
+            # la Janaza ne produit AUCUN contenu dérivé (runs.is_khutba)
+            r = self._extra("janaza", sig)
+            r.status = "janaza"
+            self._open(r, sig)
+        self.log(f"ÉTAT {old.value} → {new.value}  ({reason})  [horloge {sig.now:%H:%M:%S}]")
 
-    def _close_session(self, sig: Signals, reason: str) -> None:
-        r = self.rec
-        if r and r.status == "live":
+    def _extra(self, kind: str, sig: Signals) -> SessionRec:
+        """Session hors programme (lancée à la main, janaza)."""
+        r = SessionRec(len(self.records), f"{kind}@{sig.now:%H:%M}")
+        self.records.append(r)
+        return r
+
+    def _open(self, r: SessionRec, sig: Signals) -> None:
+        if self.live is not None:
+            self._close(sig, f"remplacée par {r.planned}")
+        r.recording, r.start_pos = self.pos_fn()
+        r.start_clock = f"{sig.now:%H:%M:%S}"
+        self.live = r
+
+    def _close(self, sig: Signals, reason: str) -> None:
+        r = self.live
+        if r is None:
+            return
+        if r.status == "live":
             r.status = "done"
-            r.end_pos = self.pos_fn()
-            r.end_clock = f"{sig.now:%H:%M:%S}"
-            r.end_reason = reason
+        rec, pos = self.pos_fn()
+        # encodeur relancé pendant la session : la fin est dans un autre fichier, on garde le premier jusqu'au bout
+        r.end_pos = pos if rec == r.recording else None
+        r.end_clock = f"{sig.now:%H:%M:%S}"
+        r.end_reason = reason
+        self.live = None
 
-    def _skip_current(self, sig: Signals, why: str) -> None:
+    def _skip(self, why: str) -> None:
         r = self.rec
-        if r:
+        if r and r.status == "pending":
             r.status = "skipped"
             r.end_reason = why
-        self.log(f"Session {r.planned if r else '?'} sautée : {why}")
-        self.idx += 1
+            self.log(f"Session {r.planned} sautée : {why}")
+
+    def _window_end(self) -> dt.datetime:
+        assert self.session is not None
+        return self.session + dt.timedelta(minutes=self.p.window_after_min)
+
+    def _next_session(self, sig: Signals) -> State:
+        """Passe à la session prévue suivante (en sautant celles dont la fenêtre est close) -> état d'attente.
+
+        Une session qui n'a pas eu lieu (prière affichée à la main avant elle) reste la prochaine."""
+        if not (self.rec and self.rec.status == "pending"):
+            self.idx += 1
+        while self.session and sig.now > self._window_end():
+            self._skip("fenêtre dépassée")
+            self.idx += 1
+        if self.session is None:
+            return self._end_state()
+        return State.ENTRACTE if self.stream_on else State.IDLE
+
+    def _end_state(self) -> State:
+        """Fin du live : écran Terminé si le stream tourne, sinon directement FIN."""
+        return State.TERMINE if self.stream_on else State.FIN
 
     def _voice_ok(self, sig: Signals) -> bool:
-        if sig.voice_run < self.p.voice_start_s:
-            return False
-        return sig.presence is None or sig.presence
+        return sig.voice_run >= self.p.voice_start_s
 
-    def _after_session(self, sig: Signals, reason: str) -> State:
-        """Après la prière : entracte s'il reste une session, sinon terminé."""
-        self.idx += 1
-        # saute les sessions dont la fenêtre est déjà close
-        while self.session and sig.now > self.session + dt.timedelta(minutes=self.p.window_after_min):
-            self._skip_current(sig, "fenêtre dépassée")
-        return State.ENTRACTE if self.session else State.TERMINE
+    def clock_only(self, now: dt.datetime) -> bool:
+        """Vrai si seule l'horloge peut faire avancer la machine (aucun signal attendu) : l'horloge simulée peut accélérer."""
+        s, p = self.session, self.p
+        if self.override or s is None:
+            return False
+        if self.state == State.IDLE or (self.state == State.PRIERE and self.paused_from is None):
+            return True
+        if self.state == State.ARME:
+            return now < s - dt.timedelta(minutes=p.avant_before_min)
+        if self.state == State.ENTRACTE:
+            return now < s - dt.timedelta(minutes=p.arm_before_min)
+        return False
 
     # ----------------------------------------------------------------- commandes
     def command(self, cmd: str, sig: Signals, arg=None) -> str:
         """Commande manuelle. Renvoie un message de confirmation (ou d'erreur)."""
         cmd = cmd.lower()
         self.log(f"COMMANDE manuelle : {cmd} {arg if arg is not None else ''}")
-        if cmd == "start":
-            self.override = True
-            if self.state in (State.IDLE, State.ARME, State.FIN) and self.session is None:
-                self.idx = max(0, len(self.sessions) - 1) if self.sessions else 0
-            if self.rec and self.rec.status == "pending":
-                self._open_session(sig)
-            self._go(State.KHUTBA, sig, "commande start")
-            return "stream démarré, scène khutba (auto suspendu : « auto » pour reprendre)"
-        if cmd == "stop":
-            self.override = True
-            if self.state == State.KHUTBA:
-                self._close_session(sig, "commande stop")
-            self._go(State.TERMINE, sig, "commande stop")
-            return "écran Terminé puis arrêt du stream"
-        if cmd == "pause":
-            if self.state in (State.PRIERE,):
-                return "déjà en pause"
-            self.paused_from = self.state
-            self.override = True
-            self._go(State.PRIERE, sig, "commande pause")
-            return "pause (écran Prière en cours)"
-        if cmd == "resume":
-            back = self.paused_from or State.KHUTBA
-            self.paused_from = None
-            self._go(back, sig, "commande resume")
-            return f"reprise sur {back.value}"
-        if cmd == "auto":
-            self.override = False
-            return "automatique repris"
-        if cmd == "scene":
-            sc = str(arg or "").lower()
-            if sc not in MANUAL_SCENES:
-                return f"scène inconnue : {sc} (valides : {sorted(MANUAL_SCENES)})"
-            self.override = True
-            if sc == "khutba" and self.rec and self.rec.status == "pending":
-                self._open_session(sig)
-            self._go(STATE_OF_SCENE[sc], sig, f"commande scène {sc}")
-            return f"scène {sc} (auto suspendu)"
-        if cmd == "extend":
+        fn = self.COMMANDS.get(cmd)
+        return fn(self, sig, arg) if fn else f"commande inconnue : {cmd}"
+
+    def _start(self, sig, arg):
+        self.override = True
+        self._go(State.KHUTBA, sig, "commande start")
+        return "stream démarré, scène khutba (auto suspendu : « auto » pour reprendre)"
+
+    def _stop(self, sig, arg):
+        self.override = True
+        self._go(self._end_state(), sig, "commande stop")
+        return "écran Terminé puis arrêt du stream"
+
+    def _pause(self, sig, arg):
+        if self.state == State.PRIERE:
+            return "déjà en pause"
+        self.paused_from = self.state       # avant _go : la session ouverte reste ouverte pendant la pause
+        self.override = True
+        self._go(State.PRIERE, sig, "commande pause")
+        return "pause (écran Prière en cours)"
+
+    def _resume(self, sig, arg):
+        if self.paused_from is None:
+            return "pas en pause"
+        back = self.paused_from
+        self._go(back, sig, "commande resume")
+        return f"reprise sur {back.value}"
+
+    def _auto(self, sig, arg):
+        if self.paused_from is not None:
+            self._go(self.paused_from, sig, "commande auto (fin de pause)")
+        if self.state == State.JANAZA:           # fin de la janaza : les sessions restantes reprennent en automatique
+            self._go(State.ENTRACTE if self.session else self._end_state(), sig, "commande auto (fin de janaza)")
+        self.override = False
+        return "automatique repris"
+
+    def _scene(self, sig, arg):
+        sc = str(arg or "").lower()
+        if sc not in STATE_OF_SCENE:
+            return f"scène inconnue : {sc} (valides : {sorted(STATE_OF_SCENE)})"
+        self.override = True
+        self._go(STATE_OF_SCENE[sc], sig, f"commande scène {sc}")
+        return f"scène {sc} (auto suspendu)"
+
+    def _extend(self, sig, arg):
+        try:
             mins = float(arg or 5)
-            base = max(self.extend_until_t, sig.t)
-            self.extend_until_t = base + mins * 60  # minutes RÉELLES (khutba jouée en temps réel)
-            return f"prolongé de {mins:g} min (pas d'arrêt automatique avant)"
-        if cmd == "skip":
-            if self.session is None:
-                return "aucune session à sauter"
-            if self.state == State.KHUTBA:
-                self._close_session(sig, "commande skip")
-            else:
-                self._skip_current(sig, "commande skip")
-                self.idx -= 1  # _after_session incrémente
-            nxt = self._after_session(sig, "skip")
-            self._go(nxt, sig, "commande skip")
-            return f"session sautée, état {nxt.value}"
-        if cmd == "cancel":
-            for r in self.records:
-                if r.status in ("pending", "live"):
-                    r.status = "skipped"
-                    r.end_reason = "annulé"
-            self.idx = len(self.sessions)
-            self.override = False
-            self._go(State.TERMINE if self.stream_on else State.FIN, sig, "live du jour annulé")
-            return "live du jour annulé"
-        if cmd == "janaza":
-            self.janaza_name = (arg or None)
-            self.override = True
-            # la Janaza ne produit AUCUN contenu dérivé : on la note comme exclue
-            self.records.append(SessionRec(len(self.records), f"janaza@{sig.now:%H:%M}",
-                                           status="janaza", start_pos=self.pos_fn(),
-                                           start_clock=f"{sig.now:%H:%M:%S}",
-                                           exclude_from_pipeline=True))
-            self._go(State.JANAZA, sig, "commande janaza")
-            return "mode Janaza (pas de bandeau ; exclue du pipeline IA)"
-        return f"commande inconnue : {cmd}"
+        except ValueError:
+            return f"durée invalide : {arg} (minutes)"
+        base = max(self.extend_until_t, sig.t)
+        self.extend_until_t = base + mins * 60  # minutes RÉELLES (khutba jouée en temps réel)
+        return f"prolongé de {mins:g} min (pas d'arrêt automatique avant)"
+
+    def _skip_cmd(self, sig, arg):
+        if self.session is None:
+            return "aucune session à sauter"
+        self._skip("commande skip")
+        nxt = self._next_session(sig)
+        self._go(nxt, sig, "commande skip")
+        return f"session sautée, état {nxt.value}"
+
+    def _cancel(self, sig, arg):
+        for r in self.records:
+            if r.status in ("pending", "live"):
+                r.status = "skipped"
+                r.end_reason = "annulé"
+        self.idx = len(self.sessions)       # TERMINÉ d'abord si le stream tourne : plus rien à venir dès maintenant
+        self.override = False
+        self._go(self._end_state(), sig, "live du jour annulé")
+        return "live du jour annulé"
+
+    def _janaza(self, sig, arg):
+        self.janaza_name = (arg or None)
+        self.override = True
+        self._go(State.JANAZA, sig, "commande janaza")
+        return "mode Janaza (pas de bandeau ; exclue du pipeline IA)"
+
+    COMMANDS = {"start": _start, "stop": _stop, "pause": _pause, "resume": _resume, "auto": _auto, "scene": _scene,
+                "extend": _extend, "skip": _skip_cmd, "cancel": _cancel, "janaza": _janaza}
 
     # --------------------------------------------------------------------- tick
     def tick(self, sig: Signals) -> None:
@@ -259,51 +314,37 @@ class Machine:
 
         # Terminé -> fin : toujours actif (même en override, c'est la sortie)
         if st == State.TERMINE:
-            if sig.t - self.terminated_since >= self.p.terminated_hold_s:
-                for r in self.records:
-                    if r.status == "janaza" and r.end_pos is None:
-                        r.end_pos = self.pos_fn()
+            if sig.t - self.entered_t >= self.p.terminated_hold_s:
                 self._go(State.FIN, sig, "écran Terminé affiché, arrêt du stream")
             return
-        if st == State.JANAZA:
-            return  # uniquement manuel
-        if self.override:
-            return
+        if st == State.JANAZA or self.override:
+            return  # Janaza : uniquement manuel
 
         s = self.session
-        if st in (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE) and s is None:
-            self._go(State.TERMINE if self.stream_on else State.FIN, sig, "plus aucune session")
+        if st in WAITING and s is None:
+            self._go(self._end_state(), sig, "plus aucune session")
             return
 
-        if s is None and st in (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE):
-            return
         if st == State.IDLE:
-            assert s is not None
             if sig.now >= s - dt.timedelta(minutes=self.p.arm_before_min):
                 self._go(State.ARME, sig, f"fenêtre armée pour {s:%H:%M}")
             return
 
         if st in (State.ARME, State.AVANT, State.ENTRACTE):
-            assert s is not None
-            window_end = s + dt.timedelta(minutes=self.p.window_after_min)
-            if sig.now > window_end:
-                self._skip_current(sig, "aucun signal dans la fenêtre")
-                if self.session is None:
-                    self._go(State.TERMINE if self.stream_on else State.FIN, sig, "plus aucune session")
-                else:
-                    self._go(State.ENTRACTE if self.stream_on else State.IDLE, sig, "session suivante")
+            if sig.now > self._window_end():
+                self._skip("aucun signal dans la fenêtre")
+                nxt = self._next_session(sig)
+                self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
                 return
             if st == State.ENTRACTE:
                 armed = sig.now >= s - dt.timedelta(minutes=self.p.arm_before_min)
                 if armed and self._voice_ok(sig):
-                    self._open_session(sig)
-                    self._go(State.KHUTBA, sig, "présence + voix (2e session)" if sig.presence is not None else "voix (2e session)")
+                    self._go(State.KHUTBA, sig, "voix (2e session)")
                 return
             if self._voice_ok(sig):
                 if st == State.ARME:
                     self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
-                self._open_session(sig)
-                self._go(State.KHUTBA, sig, f"voix {sig.voice_run:.0f}s" + (" + présence" if sig.presence else ""))
+                self._go(State.KHUTBA, sig, f"voix {sig.voice_run:.0f}s")
                 return
             if st == State.ARME and sig.now >= s - dt.timedelta(minutes=self.p.avant_before_min):
                 self._go(State.AVANT, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
@@ -312,8 +353,7 @@ class Machine:
         if st == State.KHUTBA:
             elapsed = sig.t - self.entered_t
             if elapsed >= self.p.max_khutba_s and sig.t >= self.extend_until_t:
-                self._close_session(sig, "durée maximale")
-                self._go(self._to_prayer(sig), sig, "garde-fou durée maximale")
+                self._go(State.PRIERE, sig, "durée maximale")
                 return
             if sig.t < self.extend_until_t:
                 self.grace_until = None
@@ -327,23 +367,17 @@ class Machine:
                     self.grace_until = None
                     self.log("voix reprise pendant la grâce : on continue")
                 elif sig.t >= self.grace_until:
-                    self._close_session(sig, "silence prolongé")
-                    self._go(self._to_prayer(sig), sig, "silence prolongé + délai de grâce")
+                    self._go(State.PRIERE, sig, "silence prolongé")
             return
 
         if st == State.PRIERE:
             if self.paused_from is not None:
                 return
-            if self.entered_now and sig.now >= self.entered_now + dt.timedelta(minutes=self.p.prayer_min):
-                nxt = self._after_session(sig, "fin de prière")
-                self._go(nxt, sig, "fin de la prière (durée prévue)")
-            return
-
-    def _to_prayer(self, sig: Signals) -> State:
-        return State.PRIERE
+            if sig.now >= self.entered_now + dt.timedelta(minutes=self.p.prayer_min):
+                self._go(self._next_session(sig), sig, "fin de la prière (durée prévue)")
 
     # ------------------------------------------------------------------- statut
-    def status(self, sig: Signals | None = None) -> dict:
+    def status(self) -> dict:
         s = self.session
         return {
             "state": self.state.value,
@@ -353,5 +387,8 @@ class Machine:
             "next_session": s.strftime("%H:%M") if s else None,
             "last_reason": self.last_reason,
             "janaza_name": self.janaza_name,
-            "sessions": [r.__dict__ for r in self.records],
+            "sessions": self.sessions_dicts(),
         }
+
+    def sessions_dicts(self) -> list[dict]:
+        return [asdict(r) for r in self.records]

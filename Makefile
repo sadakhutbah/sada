@@ -2,7 +2,7 @@
 PY=.venv/bin/python
 
 setup:
-	uv venv -q .venv && uv pip install -q -p $(PY) -e . pyzmq
+	uv venv -q .venv && uv pip install -q -p $(PY) -e .
 	@test -x tools/bin/mediamtx || (echo "mediamtx manquant : voir README (tools/bin/)" && exit 1)
 
 test:
@@ -21,4 +21,4 @@ backoffice:
 	$(PY) -m minbar.backoffice serve
 
 pipeline:
-	$(PY) -m minbar.pipeline.run $$(ls -td data/state/*/ | head -1)sessions.json
+	$(PY) -m minbar.pipeline.run

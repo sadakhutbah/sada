@@ -15,7 +15,7 @@ def setup_env():
     cur = os.environ.get("LD_LIBRARY_PATH", "")
     want = [p for p in CUDA_LIBS if p not in cur]
     if want:
-        os.environ["LD_LIBRARY_PATH"] = ":".join(want + ([cur] if cur else ""))
+        os.environ["LD_LIBRARY_PATH"] = ":".join(want + ([cur] if cur else []))
         # ctranslate2 charge les libs à l'import : il faut ré-exécuter si le chemin vient d'être ajouté
         return True
     return False
@@ -55,7 +55,7 @@ def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
     return ("large-v3-turbo" if prefer in (None, "large-v3-turbo", "large-v3") else prefer, "cpu", "int8")
 
 
-def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print, language: str | None = None) -> dict:
+def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print) -> dict:
     from faster_whisper import WhisperModel
     name, device, ctype = pick_model(prefer, log)
     log(f"Whisper : {name} sur {device} ({ctype})")
@@ -71,7 +71,7 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print, la
     with wave.open(wav, "rb") as w:  # on décode nous-mêmes le WAV 16 kHz (évite PyAV, incompatible ici)
         audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
     segs_iter, info = model.transcribe(
-        audio, language=language, multilingual=language is None, vad_filter=True,
+        audio, multilingual=True, vad_filter=True,
         beam_size=5, condition_on_previous_text=False, temperature=0.0,
         word_timestamps=True,   # mots horodatés : mot actif mis en valeur dans les sous-titres des clips
     )

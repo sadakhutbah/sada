@@ -4,20 +4,25 @@ Règle stricte : une citation n'est acceptée que si elle est une sous-chaîne l
 (vérifié en code, pas de confiance aveugle au LLM). Le résumé est toujours étiqueté « généré, à valider ».
 """
 from __future__ import annotations
-import json
 import re
-import shutil
-import subprocess
 from collections import Counter
 
-from .arabic import arabic_ratio
+from ..text import duration as fmt_t
+from ..text import is_arabic
+from . import llm
+from .verses import shown
 
 STOP = set("le la les de des du un une et en à a au aux que qui qu ce cet cette ces pour par sur dans avec son sa ses leur leurs nous vous ils elles je tu il elle on ne pas plus se est sont être été avoir fait comme mais ou où donc car si très tout tous toute toutes aussi cela ça c d l n s j m y mon ma mes notre nos votre vos dit dire entre sans sous faire peut peuvent mes vos allah".split())
+THEME = "## Thème (résumé généré)"
 
 
-def fmt_t(sec: float) -> str:
-    sec = int(sec)
-    return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}:{sec % 60:02d}" if sec >= 3600 else f"{sec // 60:02d}:{sec % 60:02d}"
+def theme_from_markdown(md: str) -> str:
+    """Thème d'un notes.md écrit par build_notes."""
+    lines = md.splitlines()
+    for i, line in enumerate(lines):
+        if line == THEME:
+            return next((x.strip()[:300] for x in lines[i + 1:] if x.strip()), "")
+    return ""
 
 
 def _norm_ws(s: str) -> str:
@@ -43,7 +48,7 @@ def extractive_summary(segments: list[dict], n_points: int = 6) -> dict:
     """Résumé extractif : phrases du transcript les mieux notées (fréquence des mots porteurs de sens)."""
     sents = []
     for s in segments:
-        if arabic_ratio(s["text"]) > 0.5:
+        if is_arabic(s["text"]):
             continue
         for p in re.split(r"(?<=[.!?])\s+", s["text"]):
             if len(p.split()) >= 8:
@@ -54,10 +59,7 @@ def extractive_summary(segments: list[dict], n_points: int = 6) -> dict:
     return {"method": "extractif", "theme": "", "points": [p for _, p in pick], "rappels": []}
 
 
-def llm_summary(segments: list[dict], matches: list[dict], model: str | None = None, timeout: int = 420, log=print) -> dict | None:
-    claude = shutil.which("claude")
-    if not claude:
-        return None
+def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, log=print) -> dict | None:
     tr = "\n".join(f"[{fmt_t(s['start'])}] {s['text']}" for s in segments)
     vs = "\n".join(f"- {m['ref']} ({m['surah_name']}) vers {fmt_t(m['start'])}" for m in matches) or "(aucun)"
     prompt = (
@@ -70,22 +72,10 @@ def llm_summary(segments: list[dict], matches: list[dict], model: str | None = N
         "les citations doivent être des extraits littéraux (ils seront vérifiés mécaniquement et supprimés sinon).\n\n"
         f"Versets repérés automatiquement (indicatif) :\n{vs}\n\nTRANSCRIPTION :\n{tr}\n"
     )
-    cmd = [claude, "-p", "--output-format", "text"]
-    if model:
-        cmd += ["--model", model]
-    try:
-        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=timeout)
-        if r.returncode != 0:
-            log(f"claude -p a échoué ({r.returncode}) : {r.stderr[:300]}")
-            return None
-        m = re.search(r"\{.*\}", r.stdout, re.S)
-        d = json.loads(m.group(0)) if m else None
-        if d:
-            d["method"] = "claude -p"
-        return d
-    except Exception as e:  # noqa
-        log(f"résumé LLM indisponible : {e}")
-        return None
+    d = llm.ask_json(prompt, timeout, log)
+    if d:
+        d["method"] = "claude -p"
+    return d
 
 
 def build_notes(session_label: str, segments: list[dict], matches: list[dict], meta: dict, use_llm: bool = True, log=print) -> tuple[str, dict]:
@@ -113,17 +103,17 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
          f"> ⚠️ **Brouillon généré automatiquement — À VALIDER** par l'imam ou un responsable avant toute diffusion.",
          f"> Résumé : méthode **{summ.get('method')}**{' (repli : claude indisponible)' if fallback and use_llm else ''}. "
          f"Les citations ci-dessous sont des extraits littéraux du transcript ({len(quotes)} vérifiées, {rejected} rejetées car non littérales).", ""]
+    firm = shown(matches)
+    weak = [m for m in matches if m not in firm]
     L += ["## Informations", f"- Durée transcrite : {fmt_t(meta.get('duration', 0))}", f"- Transcription : {meta.get('model')} ({meta.get('device')}, {meta.get('compute_type')}), langue détectée : {meta.get('language')}",
-          f"- Versets repérés : {sum(1 for m in matches if m.get('confidence', 'sûr') in ('sûr', 'court'))} (+ {sum(1 for m in matches if m.get('confidence', 'sûr') not in ('sûr', 'court'))} formules/fragments ambigus)", ""]
+          f"- Versets repérés : {len(firm)} (+ {len(weak)} formules/fragments ambigus)", ""]
     if summ.get("theme"):
-        L += ["## Thème (résumé généré)", summ["theme"], ""]
+        L += [THEME, summ["theme"], ""]
     L += ["## Points clés (résumé généré)"] + [f"- {p}" for p in summ.get("points", [])] + [""]
     if summ.get("rappels"):
         L += ["## Rappels pratiques (résumé généré)"] + [f"- {p}" for p in summ["rappels"]] + [""]
     L += ["## Citations exactes de l'imam (transcription automatique, horodatées)"]
     L += [f"- **[{fmt_t(t)}]** « {q} »" for t, q in quotes] or ["- (aucune citation vérifiable)"]
-    firm = [m for m in matches if m.get("confidence", "sûr") in ("sûr", "court")]
-    weak = [m for m in matches if m not in firm]
     L += ["", "## Versets détectés (correspondance floue — à vérifier)", "",
           "| Horodatage | Réf. | Sourate | Score | Couverture | Confiance |", "|---|---|---|---|---|---|"]
     for m in firm:

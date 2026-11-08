@@ -1,9 +1,8 @@
-"""Rendu des scènes (PNG RGBA 1280x720) avec Pillow, sans OBS.
+"""Scènes du direct (SCENES) et leur rendu (calques RGBA 1280x720) avec Pillow, sans OBS.
 
-Le flux est composé ainsi : caméra  +  overlay(PNG de la scène courante).
- - scènes « plein écran » (avant, priere, entracte, termine) : PNG opaque qui masque la caméra ;
- - scène khutba : PNG transparent avec un bandeau en bas à gauche ; janaza : PNG quasi vide, mention discrète.
-L'encodeur relit ce PNG en continu (image2 -loop 1) : changer de scène = réécrire le fichier.
+Le flux est composé ainsi : caméra + fond commun des écrans pleins + contenu de la scène (encoder.py).
+ - écrans pleins (avant, priere, entracte, termine) : le fond masque la caméra, le contenu est le bloc de textes ;
+ - khutba : bandeau en bas à gauche ; janaza : mention discrète. Le micro n'est ouvert que sur ces deux scènes.
 
 Charte : vert profond (dérivé de cfg.dark_green), or mat en accent, texte ivoire ; titres en
 EB Garamond, textes courants en Source Sans 3, arabe en Amiri (polices OFL dans assets/fonts).
@@ -15,22 +14,19 @@ from __future__ import annotations
 import datetime as dt
 import functools
 import math
-import os
-from pathlib import Path
-from typing import Optional
+from dataclasses import dataclass
+from typing import Callable, Optional
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
-FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+from .paths import FONTS
+from .text import french_date, has_arabic, is_arabic_char
+
 SERIF = str(FONTS / "EBGaramond-SemiBold.ttf")
 SANS = str(FONTS / "SourceSans3-Regular.ttf")
 SANS_SB = str(FONTS / "SourceSans3-Semibold.ttf")
 ARABIC = str(FONTS / "Amiri-Regular.ttf")
 ARABIC_B = str(FONTS / "Amiri-Bold.ttf")
-_FALLBACK = {True: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-             False: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"}
-# rétro-compatibilité (anciens noms)
-FONT_B, FONT_R = SANS_SB, SANS
 
 RAQM = features.check("raqm")
 
@@ -45,11 +41,6 @@ AR_KHUTBA = "خطبة الجمعة"
 AR_JUMUA = "صلاة الجمعة"
 AR_JAZAKUM = "جزاكم الله خيرا"
 AR_JANAZA = "صلاة الجنازة"
-AR_MOSQUE = "مسجد بونطواز"
-
-JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
-        "septembre", "octobre", "novembre", "décembre"]
 
 
 def _hex(c: str, a: int = 255):
@@ -67,24 +58,13 @@ def _alpha(c, a: int):
 
 @functools.lru_cache(maxsize=64)
 def _font(path: str, size: int):
-    if not os.path.exists(path):
-        path = _FALLBACK["Semibold" in path or "Bold" in path]
     layout = ImageFont.Layout.RAQM if RAQM else ImageFont.Layout.BASIC
     return ImageFont.truetype(path, size, layout_engine=layout)
 
 
-def _is_ar_char(ch: str) -> bool:
-    return ("\u0600" <= ch <= "\u06ff" or "\u0750" <= ch <= "\u077f" or "\u08a0" <= ch <= "\u08ff"
-            or "\ufb50" <= ch <= "\ufdff" or "\ufe70" <= ch <= "\ufeff")
-
-
-def is_arabic(s: str) -> bool:
-    return any(_is_ar_char(ch) for ch in s)
-
-
 def _strong(ch: str) -> Optional[bool]:
     """True = arabe, False = latin (fort), None = neutre (espace, ponctuation, chiffres)."""
-    if _is_ar_char(ch) and ch.isalpha():
+    if is_arabic_char(ch) and ch.isalpha():
         return True
     if ch.isalpha():
         return False
@@ -128,7 +108,7 @@ def _runs(text: str) -> list[tuple[str, bool]]:
 
 def _shape(text: str) -> tuple[str, dict]:
     """Texte mono-écriture + options de d.text() (arabe : lettres liées et sens RTL)."""
-    if not is_arabic(text):
+    if not has_arabic(text):
         return text, {}
     if RAQM:
         return text, {"direction": "rtl", "language": "ar"}
@@ -150,10 +130,6 @@ def _run_font(font, arabic: bool):
     return font
 
 
-def _french_date(d: dt.date) -> str:
-    return f"{JOURS[d.weekday()]} {d.day}{'er' if d.day == 1 else ''} {MOIS[d.month - 1]} {d.year}"
-
-
 def _hm(t: dt.datetime) -> str:
     return f"{t:%H} h {t:%M}"
 
@@ -162,7 +138,6 @@ class SceneRenderer:
     def __init__(self, cfg):
         self.cfg = cfg
         self.W, self.H = cfg.width, cfg.height
-        self.green = _hex(cfg.green)
         self.dark = _hex(cfg.dark_green)
         # vert profond et digne, dérivé du vert de la mosquée
         self.deep = _mix(self.dark, (6, 18, 12), 0.62)
@@ -303,15 +278,17 @@ class SceneRenderer:
         name = self.cfg.mosque_name.upper()
         track = self.px(2.2)
         w_lat = sum(d.textlength(ch, font=f_lat) for ch in name) + track * (len(name) - 1)
-        w_ar = self._width(d, AR_MOSQUE, f_ar)
+        ar = self.cfg.mosque_name_ar
+        w_ar = self._width(d, ar, f_ar) if ar else 0
         gap = self.px(18)
-        total = w_lat + 2 * gap + w_ar
+        total = w_lat + (2 * gap + w_ar if ar else 0)
         x0 = cx - total / 2
         self._tracked(d, x0 + w_lat / 2, y, name, f_lat, IVORY_DIM, track)
-        dot = x0 + w_lat + gap
-        rr = self.px(2.5)
-        d.ellipse([dot - rr, y - self.px(7) - rr, dot + rr, y - self.px(7) + rr], fill=GOLD)
-        self._text(d, (x0 + w_lat + 2 * gap + w_ar / 2, y + self.px(1)), AR_MOSQUE, f_ar, IVORY_DIM)
+        if ar:
+            dot = x0 + w_lat + gap
+            rr = self.px(2.5)
+            d.ellipse([dot - rr, y - self.px(7) - rr, dot + rr, y - self.px(7) + rr], fill=GOLD)
+            self._text(d, (x0 + w_lat + 2 * gap + w_ar / 2, y + self.px(1)), ar, f_ar, IVORY_DIM)
 
     def _ink(self, d: ImageDraw.ImageDraw, text: str, font, **kw) -> tuple[int, int]:
         """(hauteur au-dessus, sous la ligne de base) de l'encre réelle du texte."""
@@ -329,19 +306,12 @@ class SceneRenderer:
         """Fond commun des écrans pleins : dégradé + motif, médaillon, pied de page.
 
         Identique pour toutes les scènes pleines : c'est le calque « fond » de l'encodeur, fixe pendant
-        les transitions (seul le bloc de textes change, voir full_content)."""
+        les transitions (seul le bloc de textes change, voir _full_content)."""
         img = self._bg()
         med_top, med = self._med_geom()
         m = self.medallion(med)
         img.alpha_composite(m, (int(self.W / 2 - m.width / 2), int(med_top + med / 2 - m.height / 2)))
         self._footer(img)
-        return img
-
-    def _full(self, title: str, sub: str = "", big: str = "", foot: str = "", *,
-              eyebrow: str = "", arabic: str = "") -> Image.Image:
-        """Écran plein complet = fond (background) + bloc de textes (_full_content)."""
-        img = self.background()
-        img.alpha_composite(self._full_content(title, sub, big, foot, eyebrow=eyebrow, arabic=arabic))
         return img
 
     def _full_content(self, title: str, sub: str = "", big: str = "", foot: str = "", *,
@@ -408,45 +378,29 @@ class SceneRenderer:
         return font
 
     # --- scènes -------------------------------------------------------------
-    # Écrans pleins : (args positionnels, options) de _full / _full_content
-    def _avant_args(self, now, planned):
-        sub = f"Début à {_hm(planned)}" if planned else ""
-        return (self.cfg.title, sub, "", "Merci de patienter, la diffusion commence très bientôt."), \
-            dict(eyebrow="Début imminent", arabic=AR_KHUTBA)
+    # Chaque scène rend son calque de contenu (transparent) à partir de l'instant affiché (Moment).
+    def _avant(self, m: "Moment") -> Image.Image:
+        sub = f"Début à {_hm(m.planned)}" if m.planned else ""
+        return self._full_content(self.cfg.title, sub, "", "Merci de patienter, la diffusion commence très bientôt.",
+                                  eyebrow="Début imminent", arabic=AR_KHUTBA)
 
-    def _priere_args(self, now=None, planned=None):
-        return ("Prière en cours", "La prière n'est pas diffusée.", "",
-                "La diffusion reprendra pour la prochaine khutba, in sha Allah."), \
-            dict(eyebrow=_french_date(now) if now else "", arabic=AR_JUMUA)
+    def _priere(self, m: "Moment") -> Image.Image:
+        return self._full_content("Prière en cours", "La prière n'est pas diffusée.", "",
+                                  "La diffusion reprendra pour la prochaine khutba, in sha Allah.",
+                                  eyebrow=french_date(m.now), arabic=AR_JUMUA)
 
-    def _entracte_args(self, now, planned):
-        if planned:
-            remaining = max(0, int((planned - now).total_seconds()))
-            m, s = divmod(remaining, 60)
-            return (f"Prochaine khutba à {_hm(planned)}", "", f"{m:02d}:{s:02d}",
-                    "Le live continue : restez connectés."), dict(eyebrow="Entracte")
-        return ("Entracte", "", "", "Le live continue : restez connectés."), dict(arabic=AR_KHUTBA)
+    def _entracte(self, m: "Moment") -> Image.Image:
+        if m.planned:
+            remaining = max(0, int((m.planned - m.now).total_seconds()))
+            mi, se = divmod(remaining, 60)
+            return self._full_content(f"Prochaine khutba à {_hm(m.planned)}", "", f"{mi:02d}:{se:02d}",
+                                      "Le live continue : restez connectés.", eyebrow="Entracte")
+        return self._full_content("Entracte", "", "", "Le live continue : restez connectés.", arabic=AR_KHUTBA)
 
-    def _termine_args(self, now=None, planned=None, next_friday: str = ""):
-        return ("Khutba terminée", "Jazakoum Allahou khayran — qu'Allah vous récompense.", "",
-                next_friday or "Rendez-vous vendredi prochain, in sha Allah."), \
-            dict(eyebrow="Fin de la diffusion", arabic=AR_JAZAKUM)
-
-    def avant(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
-        a, k = self._avant_args(now, planned)
-        return self._full(*a, **k)
-
-    def priere(self, now: Optional[dt.datetime] = None) -> Image.Image:
-        a, k = self._priere_args(now)
-        return self._full(*a, **k)
-
-    def entracte(self, now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
-        a, k = self._entracte_args(now, planned)
-        return self._full(*a, **k)
-
-    def termine(self, next_friday: str = "") -> Image.Image:
-        a, k = self._termine_args(next_friday=next_friday)
-        return self._full(*a, **k)
+    def _termine(self, m: "Moment") -> Image.Image:
+        return self._full_content("Khutba terminée", "Jazakoum Allahou khayran — qu'Allah vous récompense.", "",
+                                  "Rendez-vous vendredi prochain, in sha Allah.",
+                                  eyebrow="Fin de la diffusion", arabic=AR_JAZAKUM)
 
     def _panel_shadow(self, img: Image.Image, box, radius: int):
         sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -454,13 +408,13 @@ class SceneRenderer:
         ImageDraw.Draw(sh).rounded_rectangle([box[0], box[1] + o, box[2], box[3] + o], radius, fill=(0, 0, 0, 110))
         img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(self.px(10))))
 
-    def khutba(self, subtitle: str = "") -> Image.Image:
+    def _khutba(self, m: "Moment") -> Image.Image:
         """Transparent + bandeau compact en bas à gauche : médaillon, titre, mosquée, titre arabe."""
         px = self.px
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
         f_t, f_s, f_ar = _font(SERIF, px(40)), _font(SANS_SB, px(25)), _font(ARABIC, px(36))
-        line2 = self.cfg.mosque_name + (f"  ·  {subtitle}" if subtitle else "")
+        line2 = self.cfg.mosque_name
         h = px(100)
         x0, y1 = px(56), self.H - px(46)
         y0 = y1 - h
@@ -498,13 +452,13 @@ class SceneRenderer:
             text = text[:-1]
         return text.rstrip() + "…"
 
-    def janaza(self, defunt: str = "") -> Image.Image:
-        """Sobre : caméra minbar, pas de bandeau ; seule une petite mention discrète."""
+    def _janaza(self, m: "Moment") -> Image.Image:
+        """Sobre : caméra minbar, pas de bandeau ; seule une petite mention discrète (nom du défunt si saisi)."""
         px = self.px
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
         f_l, f_ar = _font(SANS_SB, px(24)), _font(ARABIC, px(28))
-        label = self._ellipsize(d, "Salat al-Janaza" + (f"  ·  {defunt}" if defunt else ""), f_l, self.W * 0.55)
+        label = self._ellipsize(d, "Salat al-Janaza" + (f"  ·  {m.janaza_name}" if m.janaza_name else ""), f_l, self.W * 0.55)
         w_l, w_ar = self._width(d, label, f_l), self._width(d, AR_JANAZA, f_ar)
         gap = px(18)
         x0, y1, h = px(56), self.H - px(46), px(50)
@@ -519,33 +473,32 @@ class SceneRenderer:
         self._text(d, (x1 - px(20), cy + px(3)), AR_JANAZA, f_ar, IVORY_DIM, anchor="rm")
         return img
 
-    def render(self, scene: Optional[str], now: dt.datetime, planned: Optional[dt.datetime]) -> Image.Image:
-        if scene == "avant":
-            return self.avant(now, planned)
-        if scene == "priere":
-            return self.priere(now)
-        if scene == "entracte":
-            return self.entracte(now, planned)
-        if scene == "termine":
-            return self.termine()
-        if scene == "janaza":
-            return self.janaza()
-        return self.khutba()
-
-    def layers(self, scene: Optional[str], now: dt.datetime, planned: Optional[dt.datetime]) -> tuple[bool, Image.Image]:
-        """Calques pour l'encodeur : (écran plein ?, contenu transparent).
-
-        Écran plein : le fond commun (background) masque la caméra et seul le bloc de textes est rendu ici ;
-        khutba / janaza : pas de fond, le contenu est le bandeau. fond + contenu == render()."""
-        args = {"avant": self._avant_args, "priere": self._priere_args,
-                "entracte": self._entracte_args, "termine": self._termine_args}.get(scene or "khutba")
-        if args:
-            a, k = args(now, planned)
-            return True, self._full_content(*a, **k)
-        return False, self.render(scene, now, planned)
+    def content(self, scene: str, m: "Moment") -> Image.Image:
+        """Calque de contenu de la scène ; l'encodeur le pose sur le fond commun si la scène est un écran plein."""
+        return SCENES[scene].draw(self, m)
 
 
-def write_png_atomic(img: Image.Image, path: str) -> None:
-    tmp = f"{path}.tmp.png"
-    img.save(tmp, "PNG", compress_level=1)
-    os.replace(tmp, path)
+@dataclass(frozen=True)
+class Moment:
+    """Ce que montrent les scènes : l'heure, la session prévue, le nom du défunt (Janaza, avec l'accord de la famille)."""
+    now: dt.datetime
+    planned: Optional[dt.datetime] = None
+    janaza_name: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Scene:
+    full: bool                  # écran plein : le fond commun masque la caméra
+    mic: bool                   # micro du direct ouvert
+    draw: Callable[[SceneRenderer, Moment], Image.Image]
+    ticking: bool = False       # le contenu change avec l'heure (compte à rebours) : rendu à chaque seconde
+
+
+SCENES = {
+    "avant": Scene(full=True, mic=False, draw=SceneRenderer._avant),
+    "khutba": Scene(full=False, mic=True, draw=SceneRenderer._khutba),
+    "priere": Scene(full=True, mic=False, draw=SceneRenderer._priere),
+    "entracte": Scene(full=True, mic=False, draw=SceneRenderer._entracte, ticking=True),
+    "termine": Scene(full=True, mic=False, draw=SceneRenderer._termine),
+    "janaza": Scene(full=False, mic=True, draw=SceneRenderer._janaza),
+}

@@ -31,13 +31,13 @@ def make_run(root: Path, run: str = RUN, janaza: bool = False) -> None:
                                                    "end": 14.0, "heard": "ومن يتوكل على الله فهو حسبه", "verse_text": "ومن يتوكل على الله فهو حسبه", "ref": "65:3",
                                                    "confidence": "sûr", "verse_fr": "Et quiconque place sa confiance en Allah, Il lui suffit."}]))
     (out / "translations.json").write_text(json.dumps({"seg": {}, "verse_fr": {"65:3@9.0": "Et quiconque place sa confiance en Allah, Il lui suffit."}}))
-    (out / "notes.md").write_text("# Notes\n\n## Thème\n\nLa patience\n")
+    (out / "notes.md").write_text("# Notes\n\n## Thème (résumé généré)\n\nLa patience\n")
     man = []
     for i, (a, b, kind) in enumerate([(0.0, 10.0, "verset"), (12.0, 20.0, "conclusion")], 1):
         f = f"clip{i}_{kind}_A-VALIDER.mp4"
         (out / "clips" / f).write_bytes(b"\x00\x00\x00\x18ftypmp42" + bytes(64))
-        man.append({"kind": kind, "start": a, "end": b, "why": "test", "file": f, "video_source": str(root / "rec.mkv"),
-                    "source_offset_s": 100.0 + a, "crop": None})
+        man.append({"idx": i, "kind": kind, "start": a, "end": b, "why": "test", "file": f, "video_source": str(root / "rec.mkv"),
+                    "source_offset": 100.0, "crop": None})
     (out / "clips" / "manifest.json").write_text(json.dumps(man))
     sessions = [{"index": 0, "planned": "13:30", "status": "done", "start_clock": "13:31", "end_clock": "13:52",
                  "start_pos": 100.0, "end_pos": 120.0}]
@@ -45,7 +45,7 @@ def make_run(root: Path, run: str = RUN, janaza: bool = False) -> None:
         j = root / "output" / run / "session2"
         j.mkdir()
         (j / "transcript.json").write_text(json.dumps({"segments": [], "duration": 60}))
-        sessions.append({"index": 1, "planned": "janaza", "status": "janaza", "exclude_from_pipeline": True})
+        sessions.append({"index": 1, "planned": "janaza", "status": "janaza"})
     st = root / "state" / run
     st.mkdir(parents=True)
     (st / "sessions.json").write_text(json.dumps({"sessions": sessions, "recordings": []}))
@@ -66,8 +66,7 @@ def env(tmp_path):
     importer.import_run(conn, m, RUN, extract_video=False, log=lambda *a: None)
     kid = db.one(conn, "SELECT id FROM khutbas")["id"]
     conn.execute("UPDATE khutbas SET imam_id = ? WHERE id = ?", (ids["imam"], kid))
-    app = create_app(path)
-    app.state.regen_background = False
+    app = create_app(path, regen_background=False)
     yield {"app": app, "conn": conn, "path": path, "mid": mid, "ids": ids, "kid": kid, "tmp": tmp_path}
     conn.close()
 
@@ -223,14 +222,7 @@ class FakeOrch:
 
     def manual(self, cmd, arg=None):
         self.calls.append((cmd, arg))
-        return f"ok {cmd}"
-
-    @property
-    def machine(self):
-        class M:
-            class state:
-                value = "KHUTBA"
-        return M
+        return {"message": f"ok {cmd}", "state": "KHUTBA"}
 
     def status(self):
         return {"state": "KHUTBA", "clock": "13:42:10", "stream_on": True, "mic": True, "override": False,
@@ -411,7 +403,7 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     def no_network(*a, **k):
         raise AssertionError("appel réseau interdit")
     monkeypatch.setattr(socket.socket, "connect", no_network)
-    rows = {r["key"]: r for r in publish.connector_rows(conn, env["mid"])}
+    rows = {r["key"]: r for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"]))}
     assert rows["local"]["available"]
     for key in ("facebook", "youtube", "instagram"):
         assert not rows[key]["available"] and "identifiants absents" in rows[key]["why"]
@@ -420,8 +412,8 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     # même avec des identifiants, aucune publication réelle en V1
     admin = db.one(conn, "SELECT * FROM users WHERE username = 'admin'")
     publish.save_connector(conn, env["mid"], "facebook", True, {"page_id": "123", "page_token": "secret"}, admin)
-    row = next(r for r in publish.connector_rows(conn, env["mid"]) if r["key"] == "facebook")
-    assert not row["available"] and "non implémentée" in row["why"] and row["settings"]["page_token"] == "••••••"
+    row = next(r for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"])) if r["key"] == "facebook")
+    assert not row["available"] and "non implémentée" in row["why"] and {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
     res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), "facebook", resp, "x")
     assert not res.ok
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "valide"

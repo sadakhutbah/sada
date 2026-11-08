@@ -8,22 +8,19 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import threading
 import traceback
 from pathlib import Path
 
-from ..pipeline.arabic import arabic_ratio
-from ..pipeline.translate import _key, is_formula, match_for, verse_matches
+from ..pipeline import clips as clipmod
+from ..pipeline import translate, verses
+from ..pipeline.output import SessionOutput
 from . import db
 
 STATUS_LABELS = {"a_valider": "À valider", "valide": "Validé", "rejete": "Rejeté", "publie": "Publié"}
-
-
-def _read(p: Path, default):
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
+STATUS_TABS = {"a_valider": "À valider", "valide": "Validés", "publie": "Publiés", "rejete": "Rejetés"}
+REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"     # le clip repasse par la validation
 
 
 def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
@@ -33,13 +30,11 @@ def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
 
 def load(conn, k: dict) -> dict:
     """Transcription + versets + traductions de la khutba, corrections appliquées."""
-    d = Path(k["output_dir"])
-    tr = _read(d / "transcript.json", {"segments": []})
+    o = SessionOutput(k["output_dir"])
+    tr = o.read(o.transcript, {"segments": []})
     segs = copy.deepcopy(tr.get("segments", []))
-    trans = _read(d / "translations.json", {"seg": {}, "verse_fr": {}})
-    trans.setdefault("seg", {})
-    trans.setdefault("verse_fr", {})
-    ms = _read(d / "verses.json", [])
+    trans = o.read(o.translations, translate.empty())
+    ms = o.read(o.verses, [])
     corr = corrections(conn, k["id"])
     for (i, field), c in corr.items():
         if i >= len(segs):
@@ -48,45 +43,29 @@ def load(conn, k: dict) -> dict:
             segs[i]["text"] = c["value"]
             segs[i].pop("words", None)       # horodatage par mot perdu : build_ass interpole au prorata
         elif field == "fr":
-            trans["seg"][_key(segs[i]["text"])] = {"fr": c["value"], "coran": False}
+            trans = translate.with_correction(trans, segs[i], c["value"])
     return {"segments": segs, "translations": trans, "verses": ms, "corrections": corr,
             "duration": tr.get("duration"), "model": tr.get("model"), "language": tr.get("language")}
 
 
-def verses_for_display(ms: list[dict]) -> list[dict]:
-    """Versets à montrer : détections sûres/courtes (formules rituelles exclues) + passages ambigus signalés."""
-    sure = [m for m in verse_matches(ms) if not m.get("ambiguous")]
-    keys = {(m["ref"], m["start"]) for m in sure}
-    amb = [{**m, "ambiguous": True} for m in ms
-           if (m["ref"], m["start"]) not in keys and m.get("confidence") == "ambigu" and not is_formula(m.get("heard", ""))]
-    return sorted(sure + amb, key=lambda m: m["start"])
-
-
 def transcript_rows(data: dict, t0: float = 0.0, t1: float | None = None) -> list[dict]:
-    """Lignes affichables : texte d'origine, sous-titre français affiché, verset éventuel, champ corrigeable."""
-    vms = verse_matches(data["verses"], ambiguous=True)
+    """Lignes affichables : texte d'origine, sous-titre français affiché dans les clips, verset éventuel, champ corrigeable."""
+    vms = verses.shown(data["verses"], ambiguous=True)
     rows = []
     for i, s in enumerate(data["segments"]):
         if t1 is not None and not (s["end"] > t0 and s["start"] < t1):
             continue
-        ar = arabic_ratio(s["text"]) > 0.5
-        row = {"i": i, "start": s["start"], "end": s["end"], "rel": max(0.0, s["start"] - t0), "text": s["text"],
-               "arabic": ar, "verse": None, "fr": None, "field": None, "coran": False,
-               "corrected": any((i, f) in data["corrections"] for f in ("text", "fr"))}
-        if ar:
-            m = match_for(s, vms)
-            if m:
-                row["verse"] = {"ref": m["ref"], "surah": m.get("surah_name", ""), "ambiguous": m.get("ambiguous", False),
-                                "fr": data["translations"]["verse_fr"].get(f"{m['ref']}@{m['start']}") or m.get("verse_fr", "")}
-            else:
-                e = data["translations"]["seg"].get(_key(s["text"]))
-                row["coran"] = bool(e and e.get("coran"))
-                row["fr"] = e["fr"] if e and not e.get("coran") else None
-                row["field"] = None if row["coran"] else "fr"
-        else:
-            row["fr"] = s["text"]
-            row["field"] = "text"
-        rows.append(row)
+        sub = clipmod.subtitle(s, vms, data["translations"])
+        m = sub.get("verse")
+        rows.append({
+            "i": i, "start": s["start"], "end": s["end"], "rel": max(0.0, s["start"] - t0), "text": s["text"],
+            "arabic": sub["kind"] != "speech", "coran": sub["kind"] == "recitation",
+            "verse": {"ref": m["ref"], "surah": m.get("surah_name", ""), "ambiguous": m.get("ambiguous", False),
+                      "fr": sub["fr"]} if m else None,
+            "fr": sub["fr"] if sub["kind"] in ("speech", "translation") else None,
+            "field": {"speech": "text", "translation": "fr"}.get(sub["kind"]),
+            "corrected": any((i, f) in data["corrections"] for f in ("text", "fr")),
+        })
     return rows
 
 
@@ -119,8 +98,7 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
             # déjà publié : on ne réécrit pas l'histoire ; la version corrigée (v+1) repassera par la validation
             conn.execute("UPDATE clips SET needs_regen = 1, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
         else:
-            conn.execute("UPDATE clips SET needs_regen = 1, status = 'a_valider', decided_by = NULL, decided_at = NULL, "
-                         "updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
+            conn.execute(f"UPDATE clips SET needs_regen = 1, {REQUEUE}, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
     db.audit(conn, k["mosque_id"], user["id"], "correction." + ("sous-titre" if field == "text" else "traduction"),
              "khutba", k["id"], ip=ip, segment=seg_index, avant=current, apres=value, clips=[c["id"] for c in hit])
     return len(hit)
@@ -129,7 +107,6 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
 # ------------------------------------------------------------------ régénération
 
 def can_regenerate(clip: dict) -> tuple[bool, str]:
-    import shutil
     if not shutil.which("ffmpeg"):
         return False, "ffmpeg introuvable sur cette machine"
     if not clip.get("video_source") or not Path(clip["video_source"]).exists():
@@ -139,8 +116,13 @@ def can_regenerate(clip: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def recover_interrupted(conn) -> None:
+    """Régénérations en cours quand le serveur s'est arrêté : elles ne finiront jamais."""
+    conn.execute("UPDATE clips SET regen_state = 'erreur', regen_error = 'interrompue (serveur arrêté)', updated_at = ? "
+                 "WHERE regen_state = 'en_cours'", (db.now_iso(),))
+
+
 def _render(db_path: str, clip_id: int, log=print) -> None:
-    from ..pipeline import clips as clipmod
     conn = db.connect(db_path)
     try:
         c = db.one(conn, "SELECT * FROM clips WHERE id = ?", clip_id)
@@ -148,16 +130,12 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
         m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", c["mosque_id"])
         data = load(conn, k)
         ver = c["version"] + 1
-        cdir = Path(c["file_path"]).parent
-        ass = cdir / f"clip{c['idx']}_v{ver}.ass"
-        out = cdir / f"clip{c['idx']}_{c['kind'] or 'extrait'}_v{ver}_A-VALIDER.mp4"
-        w = {"start": c["start"], "end": c["end"], "kind": c["kind"]}
-        clipmod.build_ass(data["segments"], data["verses"], c["start"], c["end"], str(ass), tr=data["translations"],
-                          header={"title": m["clip_title"], "subtitle": ""})
-        clipmod.render_clip(c["video_source"], c["source_offset"], w, ass.name, str(out), log,
-                            crop=json.loads(c["crop"]) if c["crop"] else None)
+        out = clipmod.make_clip(data["segments"], data["verses"], data["translations"],
+                                {"start": c["start"], "end": c["end"], "kind": c["kind"]}, c["idx"], ver,
+                                c["video_source"], c["source_offset"], Path(c["file_path"]).parent,
+                                {"title": m["clip_title"], "subtitle": ""}, json.loads(c["crop"]) if c["crop"] else None, log)
         conn.execute("UPDATE clips SET file_path = ?, version = ?, needs_regen = 0, regen_state = '', regen_error = '', "
-                     "status = 'a_valider', decided_by = NULL, decided_at = NULL, updated_at = ? WHERE id = ?", (str(out), ver, db.now_iso(), clip_id))
+                     f"{REQUEUE}, updated_at = ? WHERE id = ?", (str(out), ver, db.now_iso(), clip_id))
         db.audit(conn, c["mosque_id"], None, "clip.regenere", "clip", clip_id, version=ver, fichier=out.name)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
@@ -183,16 +161,23 @@ def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, back
 
 # ------------------------------------------------------------------ décision
 
+def can_validate(clip: dict) -> tuple[bool, str]:
+    if clip["needs_regen"] or clip["regen_state"] == "en_cours":
+        return False, "des corrections ne sont pas encore dans la vidéo : régénérer le clip avant de le valider"
+    if not Path(clip["file_path"]).exists():
+        return False, "fichier du clip introuvable"
+    return True, ""
+
+
 def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=None) -> None:
     if decision not in ("valide", "rejete"):
         raise ValueError("décision inconnue")
     if clip["status"] == "publie":
         raise ValueError("clip déjà publié : décision figée")
     if decision == "valide":
-        if clip["needs_regen"] or clip["regen_state"] == "en_cours":
-            raise ValueError("des corrections ne sont pas encore dans la vidéo : régénérer le clip avant de le valider")
-        if not Path(clip["file_path"]).exists():
-            raise ValueError("fichier du clip introuvable")
+        ok, why = can_validate(clip)
+        if not ok:
+            raise ValueError(why)
     conn.execute("UPDATE clips SET status = ?, decided_by = ?, decided_at = ?, reject_reason = ?, updated_at = ? WHERE id = ?",
                  (decision, user["id"], db.now_iso(), reason.strip()[:500] if decision == "rejete" else "", db.now_iso(), clip["id"]))
     db.audit(conn, clip["mosque_id"], user["id"], "clip." + ("valide" if decision == "valide" else "rejete"), "clip", clip["id"],
@@ -202,6 +187,5 @@ def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=Non
 def reopen(conn, clip: dict, user: dict, ip=None) -> None:
     if clip["status"] not in ("valide", "rejete"):
         raise ValueError("seul un clip validé ou rejeté peut être remis en file")
-    conn.execute("UPDATE clips SET status = 'a_valider', decided_by = NULL, decided_at = NULL, reject_reason = '', updated_at = ? "
-                 "WHERE id = ?", (db.now_iso(), clip["id"]))
+    conn.execute(f"UPDATE clips SET {REQUEUE}, reject_reason = '', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"]))
     db.audit(conn, clip["mosque_id"], user["id"], "clip.remis_en_file", "clip", clip["id"], ip=ip)

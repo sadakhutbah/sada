@@ -7,13 +7,18 @@ Méthode :
  4. On garde les fenêtres >= seuil, on les regroupe par (sourate, verset) et par proximité temporelle.
  5. Un « match » = sourate:verset, score max, horodatage début/fin, texte transcrit, texte exact.
 Toute correspondance reste « à vérifier par un humain » : l'outil propose, ne tranche pas.
+
+Ce module décide aussi ce qui se MONTRE comme verset (shown / for_display) : les formules rituelles
+(ta'awwudh, basmala…), que la détection floue rapproche de 16:98, 64:1…, n'en sont pas.
 """
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field, asdict
 
 from rapidfuzz import fuzz, process
 
-from .arabic import arabic_ratio, normalize
+from ..text import arabic_ratio
+from .arabic import normalize
 
 WIN = 5          # mots par fenêtre
 MIN_VERSE_WORDS = 3
@@ -133,3 +138,95 @@ def detect(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_
 
 def to_dicts(ms: list[Match]) -> list[dict]:
     return [asdict(m) for m in ms]
+
+
+# ------------------------------------------------------------------ versets montrés
+
+FORMULAS = {
+    "اعوذ بالله من الشيطان الرجيم": "Je cherche protection auprès d'Allah contre Satan le banni.",
+    "بسم الله الرحمن الرحيم": "Au nom d'Allah, le Tout Miséricordieux, le Très Miséricordieux.",
+    "اشهد ان لا اله الا الله": "J'atteste qu'il n'y a de divinité qu'Allah,",
+    "وحده لا شريك له": "Seul, sans associé.",
+    "له الملك وله الحمد": "À Lui la royauté, à Lui la louange,",
+    "وهو علي كل شيء قدير": "et Il est capable de toute chose.",
+    "الحمد لله رب العالمين": "Louange à Allah, Seigneur des mondes.",
+    "صلي الله عليه وسلم": "que la paix et les bénédictions d'Allah soient sur lui.",
+}
+FORM_NORM = {normalize(k): v for k, v in FORMULAS.items()}
+FIRM = ("sûr", "court")
+FORMULA_MATCH = 85
+
+
+def formula_fr(text: str) -> str | None:
+    """Traduction fixe d'un segment fait de formules rituelles, sinon None."""
+    if not is_formula(text):
+        return None
+    hn = normalize(text)
+    return " ".join(v for f, v in FORM_NORM.items() if fuzz.partial_ratio(f, hn) >= FORMULA_MATCH) or None
+
+
+def is_formula(heard: str) -> bool:
+    """Vrai si le texte entendu est (presque) entièrement fait de formules rituelles."""
+    words = normalize(heard).split()
+    if not words:
+        return False
+    hn = " ".join(words)
+    used: set[str] = set()
+    for f in FORM_NORM:
+        if fuzz.partial_ratio(f, hn) >= FORMULA_MATCH:
+            used |= set(f.split())
+    rest = [w for w in words if w not in used and not any(fuzz.ratio(w, u) >= 80 for u in used)]
+    return len(rest) < 3
+
+
+def shown(matches: list[dict], ambiguous: bool = False) -> list[dict]:
+    """Versets à montrer comme versets : confiance sûre/courte et pas une formule rituelle.
+
+    ambiguous=True ajoute les passages coraniques certains mais communs à plusieurs versets
+    (ex. « والله يعلم وأنتم لا تعلمون ») : carte « CORAN » sans référence (champ `ambiguous`).
+    """
+    out = []
+    for m in matches:
+        if is_formula(m.get("heard", "")):
+            continue
+        if m.get("confidence", "sûr") in FIRM:
+            out.append(m)
+        elif ambiguous and m.get("confidence") == "ambigu" and m.get("score", 0) >= 95 and len(m.get("heard", "").split()) >= 3:
+            out.append({**m, "ambiguous": True})
+    return out
+
+
+def for_display(matches: list[dict]) -> list[dict]:
+    """Liste des versets d'une khutba : détections sûres/courtes + tous les passages ambigus, signalés « à vérifier »."""
+    sure = shown(matches)
+    keys = {(m["ref"], m["start"]) for m in sure}
+    amb = [{**m, "ambiguous": True} for m in matches
+           if (m["ref"], m["start"]) not in keys and m.get("confidence") == "ambigu" and not is_formula(m.get("heard", ""))]
+    return sorted(sure + amb, key=lambda m: m["start"])
+
+
+def match_for(seg: dict, vms: list[dict]) -> dict | None:
+    """Verset (parmi vms) que récite le segment."""
+    mid = (seg["start"] + seg["end"]) / 2
+    return next((m for m in vms if m["start"] - 0.3 <= mid <= m["end"] + 0.3), None)
+
+
+def strip_quran_marks(t: str) -> str:
+    """Retire les signes de pause / annotations coraniques (U+06D6–U+06ED) et normalise les espaces."""
+    return re.sub(r"\s+", " ", re.sub(r"[\u06D6-\u06ED]", "", t)).strip()
+
+
+def recited_arabic(m: dict) -> str:
+    """Portion du texte coranique effectivement récitée (fenêtre de mots du verset la plus proche de l'entendu)."""
+    vw = strip_quran_marks(m["verse_text"]).split()
+    hn = normalize(m.get("heard", ""))
+    k = len(hn.split())
+    if not vw or k == 0 or k >= len(vw):
+        return " ".join(vw)
+    best = (0.0, 0, len(vw))
+    for n in range(max(1, k - 2), min(len(vw), k + 2) + 1):
+        for i in range(0, len(vw) - n + 1):
+            sc = fuzz.ratio(normalize(" ".join(vw[i:i + n])), hn)
+            if sc > best[0]:
+                best = (sc, i, i + n)
+    return " ".join(vw[best[1]:best[2]]) if best[0] >= 70 else " ".join(vw)

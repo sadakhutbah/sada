@@ -11,12 +11,9 @@ import time
 class SimClock:
     def __init__(self, start: dt.datetime | None = None, speed: float = 1.0):
         self._lock = threading.Lock()
-        self._real0 = time.monotonic()
-        self._offset = (start - dt.datetime.now()) if start else dt.timedelta(0)
-        self._base = start or dt.datetime.now()
         self._speed = speed
         self._anchor_real = time.monotonic()
-        self._anchor_sim = self._base
+        self._anchor_sim = start or dt.datetime.now()
 
     def now(self) -> dt.datetime:
         with self._lock:
@@ -33,10 +30,6 @@ class SimClock:
             self._anchor_sim += dt.timedelta(seconds=(t - self._anchor_real) * self._speed)
             self._anchor_real = t
             self._speed = speed
-
-    def jump(self, delta_min: float) -> None:
-        with self._lock:
-            self._anchor_sim += dt.timedelta(minutes=delta_min)
 
 
 def parse_hhmm(s: str, day: dt.date) -> dt.datetime:

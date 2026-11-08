@@ -16,7 +16,7 @@
     <h3>Orchestrateur du live</h3>
     <label for="orchestrator_url">Adresse de l'API</label><input type="url" id="orchestrator_url" name="orchestrator_url" value="{{ mosque.orchestrator_url }}">
     <label for="orchestrator_token">Jeton (si l'API en exige un)</label>
-    <input type="password" id="orchestrator_token" name="orchestrator_token" value="{{ '••••••' if mosque.orchestrator_token }}" autocomplete="off">
+    <input type="password" id="orchestrator_token" name="orchestrator_token" value="{{ MASK if mosque.orchestrator_token }}" autocomplete="off">
     <h3>Dossiers du pipeline</h3>
     <label for="state_dir">États des runs</label><input type="text" id="state_dir" name="state_dir" value="{{ mosque.state_dir }}" placeholder="{{ dirs.state }}">
     <label for="output_dir">Sorties (transcriptions, clips)</label><input type="text" id="output_dir" name="output_dir" value="{{ mosque.output_dir }}" placeholder="{{ dirs.output }}">
@@ -35,8 +35,7 @@
     <div class="small">{{ x.description }}</div>
     {% if not x.available %}<div class="small muted">{{ x.why }}</div>{% endif %}
     <form method="post" action="/admin/connecteurs/{{ x.key }}"><input type="hidden" name="csrf" value="{{ csrf }}">
-      {% if x.key == "local" %}<label>Dossier</label><input type="text" name="path" value="{{ x.path }}" placeholder="{{ dirs.publish }}">{% endif %}
-      {% for f in x.required %}<label>{{ f }}</label><input type="{{ 'password' if '•' in x.settings[f] else 'text' }}" name="{{ f }}" value="{{ x.settings[f] }}" autocomplete="off">{% endfor %}
+      {% for f in x.fields %}<label>{{ f.label }}</label><input type="{{ 'password' if f.secret and f.value else 'text' }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" autocomplete="off">{% endfor %}
       <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if x.enabled }}> Activé</label>
       <button class="btn sm ghost">Enregistrer</button>
     </form>
