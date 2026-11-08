@@ -132,7 +132,7 @@ class SceneRenderer:
         self.deep = _mix(self.dark, (6, 18, 12), 0.62)
         self.deep_top = _mix(self.dark, (4, 12, 8), 0.74)
         self.panel = _mix(self.dark, (6, 18, 12), 0.55)
-        self._logo = Image.open(cfg.logo).convert("RGBA")
+        self._logo = Image.open(cfg.logo).convert("RGBA") if cfg.logo else None
         self._logo_cache: dict[int, Image.Image] = {}
         self._bg_cache: Optional[Image.Image] = None
         self._medal_cache: dict[tuple, Image.Image] = {}
@@ -143,8 +143,11 @@ class SceneRenderer:
 
     # --- briques ------------------------------------------------------------
     def logo(self, size: int) -> Image.Image:
-        """Logo carré (fond blanc) recadré en disque."""
+        """Logo carré (fond blanc) recadré en disque ; sans logo de mosquée : emblème neutre (croissant + étoile)."""
         if size not in self._logo_cache:
+            if self._logo is None:
+                self._logo_cache[size] = self._emblem(size)
+                return self._logo_cache[size]
             k = 4
             lg = self._logo.resize((size * k, size * k), Image.Resampling.LANCZOS)
             mask = Image.new("L", lg.size, 0)
@@ -152,6 +155,30 @@ class SceneRenderer:
             lg.putalpha(mask)
             self._logo_cache[size] = lg.resize((size, size), Image.Resampling.LANCZOS)
         return self._logo_cache[size]
+
+    def _emblem(self, size: int) -> Image.Image:
+        """Emblème générique dessiné (croissant + étoile) tant qu'aucun logo n'est configuré."""
+        k = 4
+        s = size * k
+        img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        g = ImageDraw.Draw(img)
+        pale = _mix(self.dark, (255, 255, 255), 0.86)          # disque presque blanc, teinté du vert de la mosquée
+        g.ellipse([0, 0, s - 1, s - 1], fill=pale)
+        area = Image.new("L", (s, s), 0)
+        ga = ImageDraw.Draw(area)
+        R = s * 0.58
+        ga.ellipse([s / 2 - R, s / 2 - R, s / 2 + R, s / 2 + R], fill=255)          # disque plein
+        rb, bx, by = s * 0.58, s * 0.70, s * 0.30                                   # morsure de même rayon, décalée haut droite
+        ga.ellipse([bx - rb, by - rb, bx + rb, by + rb], fill=0)
+        img.paste(self.dark, (0, 0), area)                                          # croissant vert
+        # étoile or à quatre branches, au creux du croissant
+        sx, sy, e = s * 0.66, s * 0.36, s * 0.085
+        g.polygon([(sx, sy - e), (sx + e * 0.45, sy), (sx, sy + e), (sx - e * 0.45, sy)], fill=GOLD)
+        g.polygon([(sx - e * 0.8, sy), (sx, sy - e * 0.42), (sx + e * 0.8, sy), (sx, sy + e * 0.42)], fill=GOLD)
+        mask = Image.new("L", img.size, 0)
+        ImageDraw.Draw(mask).ellipse([0, 0, s - 1, s - 1], fill=255)
+        img.putalpha(mask)
+        return img.resize((size, size), Image.Resampling.LANCZOS)
 
     def medallion(self, d: int, ring: int = 2, pad: Optional[int] = None) -> Image.Image:
         """Disque blanc + logo + filet or, avec une ombre douce (taille d + marge d'ombre)."""

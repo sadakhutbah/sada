@@ -27,7 +27,9 @@ class Config(MachineParams):
     record_clean: bool = True
     clean_copy: bool = True             # copie du flux caméra (qualité d'origine) ; False = x264 crf 18 en 1280x720
     # --- Horaires -----------------------------------------------------------
-    mawaqit_url: str = "https://mawaqit.net/fr/m/mosquee-exemple"
+    # Laissez vide pour la mosquée : configurez l'URL Mawaqit (cli --mawaqit-url / Réglages → Mosquée)
+    # ou imposez les horaires (cli --times, champ jumua_times_override).
+    mawaqit_url: str = ""
     mawaqit_cache: str = str(paths.CACHE / "mawaqit.json")
     jumua_times_override: list[str] = field(default_factory=list)  # ex. ["12:30", "13:30"]
     # --- Horloge simulée ----------------------------------------------------
@@ -36,11 +38,11 @@ class Config(MachineParams):
     # --- Signaux ------------------------------------------------------------
     vad_aggressiveness: int = 3
     vad_ratio: float = 0.5              # part de trames voisées sur 1 s pour dire « voix »
-    # --- Habillage ----------------------------------------------------------
-    mosque_name: str = "Mosquée Exemple"
-    mosque_name_ar: str = "مسجد بونطواز"
+    # --- Habillage (identité de la mosquée, à définir pour chaque mosquée) ---
+    mosque_name: str = ""               # ex. "Mosquée Assalam" (pied de page, bandeau khutba, API)
+    mosque_name_ar: str = ""            # ex. "مسجد السلام" (vide : seul le nom latin est affiché)
+    logo: str = ""                      # chemin du logo de la mosquée (jpg/png) ; vide = emblème neutre dessiné
     title: str = "Khutba du vendredi"
-    logo: str = str(paths.ASSETS / "logo-fb.jpg")
     dark_green: str = "#1E7A3C"
     # --- API ----------------------------------------------------------------
     api_host: str = "127.0.0.1"

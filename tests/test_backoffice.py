@@ -57,7 +57,7 @@ def env(tmp_path):
     path = tmp_path / "bo.db"
     db.init(path)
     conn = db.connect(path)
-    mid = db.create_mosque(conn, "exemple", "Mosquée Exemple", state_dir=str(tmp_path / "state"),
+    mid = db.create_mosque(conn, "ma-mosquee", "Mosquée Exemple", state_dir=str(tmp_path / "state"),
                            output_dir=str(tmp_path / "output"), publish_dir=str(tmp_path / "pub"),
                            orchestrator_url="http://127.0.0.1:9")
     ids = {r: auth.create_user(conn, mid, r, PW, r, r.capitalize()) for r in auth.ROLES}
@@ -424,12 +424,12 @@ def test_cli_cree_admin_et_imam(tmp_path, monkeypatch, capsys):
     from minbar.backoffice.__main__ import main
     path = tmp_path / "cli.db"
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(PW + "\n"))
-    assert main(["--db", str(path), "create-admin", "--username", "chef", "--mosque", "exemple",
+    assert main(["--db", str(path), "create-admin", "--username", "chef", "--mosque", "ma-mosquee",
                  "--mosque-name", "Mosquée Exemple", "--password-stdin"]) == 0
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(PW + "\n"))
     assert main(["--db", str(path), "create-user", "--username", "imam", "--role", "imam", "--password-stdin"]) == 0
     conn = db.connect(path)
     us = db.all_(conn, "SELECT username, role, mosque_id FROM users ORDER BY id")
     assert [(u["username"], u["role"]) for u in us] == [("chef", "admin"), ("imam", "imam")]
-    assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"
+    assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "ma-mosquee"
     assert auth.authenticate(conn, "chef", PW)

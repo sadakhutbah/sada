@@ -1,8 +1,8 @@
 """Ligne de commande du back-office.
 
-    python -m minbar.backoffice create-admin --username admin [--mosque exemple --mosque-name "Mosquée Exemple"]
+    python -m minbar.backoffice create-admin --username admin [--mosque ma-mosquee --mosque-name "Votre mosquée"]
     python -m minbar.backoffice create-user --username imam1 --role imam --name "Imam Abdallah"
-    python -m minbar.backoffice mosque --slug exemple [--name ...] [--orchestrator-url ...]  # créer / configurer
+    python -m minbar.backoffice mosque --slug ma-mosquee [--name ...] [--orchestrator-url ...]  # créer / configurer
     python -m minbar.backoffice import [--run 20261106_220224] [--no-video]
     python -m minbar.backoffice serve [--host 0.0.0.0] [--port 8090]
 

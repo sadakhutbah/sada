@@ -24,7 +24,7 @@ application pourra servir plusieurs mosquées depuis un serveur central.
 
 ```bash
 # 1. Créer la mosquée et le premier administrateur (le mot de passe est demandé au clavier)
-.venv/bin/python -m minbar.backoffice create-admin --username admin --mosque exemple --mosque-name "Mosquée Exemple"
+.venv/bin/python -m minbar.backoffice create-admin --username admin --mosque votre-mosquee --mosque-name "Votre mosquée"
 
 # 2. Lancer : http://<adresse-du-pc>:8090 (téléphones sur le même réseau)
 make backoffice        # = .venv/bin/python -m minbar.backoffice serve --port 8090
@@ -35,7 +35,7 @@ Les autres comptes se créent dans **Réglages → Comptes**, ou en ligne de com
 
 ### Configurer la mosquée
 
-Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug exemple --orchestrator-url ...`) :
+Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug votre-mosquee --orchestrator-url ...`) :
 
 - **Orchestrateur** : adresse de l'API du live (défaut `http://127.0.0.1:8088`) et jeton éventuel. Les boutons
   +5 min / Janaza / Arrêter / Annuler aujourd'hui du tableau de bord passent par cette API.

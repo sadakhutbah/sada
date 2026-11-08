@@ -45,6 +45,12 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
     if cache and time.time() - cp.stat().st_mtime < max_age_h * 3600:
         cache["origin"] = "cache (frais)"
         return _finish(cache)
+    if not url:
+        if cache:
+            cache["origin"] = "cache (aucune URL Mawaqit configurée)"
+            return _finish(cache)
+        raise ValueError("aucune source d'horaires : URL Mawaqit vide (cli --mawaqit-url ou Réglages → Mosquée) "
+                         "et pas de cache local ; sinon --times / jumua_times_override")
     try:
         data = fetch_live(url, timeout)
         cp.parent.mkdir(parents=True, exist_ok=True)
