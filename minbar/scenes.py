@@ -306,7 +306,7 @@ class SceneRenderer:
         """Fond commun des écrans pleins : dégradé + motif, médaillon, pied de page.
 
         Identique pour toutes les scènes pleines : c'est le calque « fond » de l'encodeur, fixe pendant
-        les transitions (seul le bloc de textes change, voir full_content)."""
+        les transitions (seul le bloc de textes change, voir _full_content)."""
         img = self._bg()
         med_top, med = self._med_geom()
         m = self.medallion(med)

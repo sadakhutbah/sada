@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
+from .. import runs
 from ..state import State
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ def summarize(st: dict) -> dict:
     """Statut brut de l'orchestrateur -> données d'affichage."""
     sessions = st.get("sessions") or []
     live = next((s for s in sessions if s.get("status") == "live"), None)
-    planned = [s for s in sessions if s.get("status") != "janaza"]
+    planned = [s for s in sessions if runs.is_khutba(s)]
     cur = live or next((s for s in planned if s.get("status") == "pending"), None)
     if cur is not None:
         n = planned.index(cur) + 1 if cur in planned else None

@@ -234,3 +234,45 @@ def test_session_spanning_an_encoder_restart_keeps_its_first_file():
     m.command("stop", d.sig())
     r = m.records[0]
     assert (r.recording, r.start_pos, r.end_pos) == (0, 5.0, None)
+
+
+def test_prayer_shown_early_by_hand_keeps_the_session_ahead():
+    m, _ = mk()
+    d = Drv(m, at(12, 20))
+    m.command("scene", d.sig(), "priere")
+    m.command("auto", d.sig())
+    d.run(13, voice=False, clock=60)
+    assert m.records[0].status == "pending" and m.session == at(12, 30)
+
+
+def test_after_stop_no_session_is_left_pending():
+    m, _ = mk()
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    m.command("stop", d.sig())
+    d.run(50, voice=False)
+    assert m.state == State.FIN
+    assert [r.status for r in m.records] == ["done", "skipped"]
+
+
+def test_resume_without_pause_does_nothing():
+    m, _ = mk()
+    d = Drv(m, at(12, 0))
+    assert "pas en pause" in m.command("resume", d.sig())
+    assert m.state == State.IDLE and len(m.records) == 2
+
+
+def test_janaza_name_cleared_after_janaza():
+    m, _ = mk()
+    d = Drv(m, at(12, 29))
+    m.command("janaza", d.sig(), "Ahmed")
+    assert m.status()["janaza_name"] == "Ahmed"
+    m.command("stop", d.sig())
+    assert m.status()["janaza_name"] is None
+
+
+def test_cancel_closes_the_live_khutba():
+    m, _ = mk()
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    m.command("cancel", d.sig())
+    r = m.records[0]
+    assert r.status == "skipped" and r.end_clock is not None and m.live is None

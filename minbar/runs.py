@@ -56,7 +56,7 @@ def is_khutba(s: dict) -> bool:
 
 def is_done(s: dict) -> bool:
     """Session terminée : début et fin connus, prête pour le pipeline."""
-    return is_khutba(s) and s.get("status") == "done"
+    return s.get("status") == "done"
 
 
 def sources(data: dict, s: dict) -> tuple[str | None, str | None]:

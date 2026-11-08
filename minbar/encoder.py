@@ -197,7 +197,7 @@ class Encoder:
             write_png_atomic(empty, self.layer_png[k])
 
     def show(self, scene: str, full: bool, content) -> None:
-        """Affiche une scène : contenu (calque transparent) + fond si écran plein (scenes.layers).
+        """Affiche une scène : contenu (calque transparent) + fond si écran plein (scenes.SCENES).
 
         Même scène qu'à l'écran (ex. compte à rebours de l'entracte) : mise à jour du calque en place.
         Autre scène : transition animée par le fil « encoder-transitions » (le flux n'est jamais coupé).

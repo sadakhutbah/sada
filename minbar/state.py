@@ -132,12 +132,18 @@ class Machine:
         self.last_reason = reason
         if new != State.PRIERE:
             self.paused_from = None
+        if old == State.JANAZA:
+            self.janaza_name = None
         if self.live and new not in (State.KHUTBA, State.JANAZA) and self.paused_from is None:
             self._close(sig, reason)        # la session ouverte s'arrête dès qu'on quitte son écran (sauf pause)
         if new == State.KHUTBA and not (self.live and self.live.status == "live"):
             r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
             self._open(r, sig)
+        if new == State.FIN:
+            for r in self.records:
+                if r.status == "pending":
+                    r.status, r.end_reason = "skipped", reason
         if new == State.JANAZA and not (self.live and self.live.status == "janaza"):
             # la Janaza ne produit AUCUN contenu dérivé (runs.is_khutba)
             r = self._extra("janaza", sig)
@@ -183,8 +189,11 @@ class Machine:
         return self.session + dt.timedelta(minutes=self.p.window_after_min)
 
     def _next_session(self, sig: Signals) -> State:
-        """Passe à la session prévue suivante (en sautant celles dont la fenêtre est close) -> état d'attente."""
-        self.idx += 1
+        """Passe à la session prévue suivante (en sautant celles dont la fenêtre est close) -> état d'attente.
+
+        Une session qui n'a pas eu lieu (prière affichée à la main avant elle) reste la prochaine."""
+        if not (self.rec and self.rec.status == "pending"):
+            self.idx += 1
         while self.session and sig.now > self._window_end():
             self._skip("fenêtre dépassée")
             self.idx += 1
@@ -239,8 +248,9 @@ class Machine:
         return "pause (écran Prière en cours)"
 
     def _resume(self, sig, arg):
-        back = self.paused_from or State.KHUTBA
-        self.paused_from = None
+        if self.paused_from is None:
+            return "pas en pause"
+        back = self.paused_from
         self._go(back, sig, "commande resume")
         return f"reprise sur {back.value}"
 
@@ -274,13 +284,10 @@ class Machine:
         return f"session sautée, état {nxt.value}"
 
     def _cancel(self, sig, arg):
-        if self.live and self.live.status == "janaza":
-            self._close(sig, "live du jour annulé")
         for r in self.records:
             if r.status in ("pending", "live"):
                 r.status = "skipped"
                 r.end_reason = "annulé"
-        self.live = None
         self.idx = len(self.sessions)
         self.override = False
         self._go(self._end_state(), sig, "live du jour annulé")

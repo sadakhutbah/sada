@@ -13,9 +13,12 @@ from urllib.parse import parse_qs, urlparse
 
 from .state import STATE_OF_SCENE, Machine
 
-_BUTTONS = ([[c] for c in ("start", "pause", "resume", "stop", "auto", "skip", "cancel")]
-            + [["extend?min=5", "+5 min"], ["extend?min=15", "+15 min"]]
-            + [[f"scene?name={sc}", st.value.capitalize()] for sc, st in STATE_OF_SCENE.items() if sc != "janaza"] + [["janaza", "Janaza"]])
+# commandes à paramètre : un bouton par valeur (la scène janaza passe par la commande janaza, qui ouvre sa session)
+_VARIANTS = {
+    "extend": [["extend?min=5", "+5 min"], ["extend?min=15", "+15 min"]],
+    "scene": [[f"scene?name={sc}", st.value.capitalize()] for sc, st in STATE_OF_SCENE.items() if sc != "janaza"],
+}
+_BUTTONS = [b for c in Machine.COMMANDS for b in _VARIANTS.get(c, [[c]])]
 
 PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width">
 <title>Minbar Live</title><body style="font-family:sans-serif;background:#0f3d20;color:#fff;max-width:480px;margin:auto">
