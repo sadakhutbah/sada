@@ -51,7 +51,6 @@ class Signals:
     t: float
     voice_run: float = 0.0
     silence_run: float = 0.0
-    presence: Optional[bool] = None
 
 
 @dataclass
@@ -131,6 +130,10 @@ class Machine:
         self.entered_now = sig.now
         self.grace_until = None
         self.last_reason = reason
+        if new != State.PRIERE:
+            self.paused_from = None
+        if self.live and new not in (State.KHUTBA, State.JANAZA) and self.paused_from is None:
+            self._close(sig, reason)        # la session ouverte s'arrête dès qu'on quitte son écran (sauf pause)
         if new == State.KHUTBA and not (self.live and self.live.status == "live"):
             r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
@@ -161,7 +164,9 @@ class Machine:
             return
         if r.status == "live":
             r.status = "done"
-        r.end_pos = self.pos_fn()[1]
+        rec, pos = self.pos_fn()
+        # encodeur relancé pendant la session : la fin est dans un autre fichier, on garde le premier jusqu'au bout
+        r.end_pos = pos if rec == r.recording else None
         r.end_clock = f"{sig.now:%H:%M:%S}"
         r.end_reason = reason
         self.live = None
@@ -184,13 +189,28 @@ class Machine:
             self._skip("fenêtre dépassée")
             self.idx += 1
         if self.session is None:
-            return State.TERMINE if self.stream_on else State.FIN
+            return self._end_state()
         return State.ENTRACTE if self.stream_on else State.IDLE
 
+    def _end_state(self) -> State:
+        """Fin du live : écran Terminé si le stream tourne, sinon directement FIN."""
+        return State.TERMINE if self.stream_on else State.FIN
+
     def _voice_ok(self, sig: Signals) -> bool:
-        if sig.voice_run < self.p.voice_start_s:
+        return sig.voice_run >= self.p.voice_start_s
+
+    def clock_only(self, now: dt.datetime) -> bool:
+        """Vrai si seule l'horloge peut faire avancer la machine (aucun signal attendu) : l'horloge simulée peut accélérer."""
+        s, p = self.session, self.p
+        if self.override or s is None:
             return False
-        return sig.presence is None or sig.presence
+        if self.state == State.IDLE or (self.state == State.PRIERE and self.paused_from is None):
+            return True
+        if self.state == State.ARME:
+            return now < s - dt.timedelta(minutes=p.avant_before_min)
+        if self.state == State.ENTRACTE:
+            return now < s - dt.timedelta(minutes=p.arm_before_min)
+        return False
 
     # ----------------------------------------------------------------- commandes
     def command(self, cmd: str, sig: Signals, arg=None) -> str:
@@ -207,14 +227,13 @@ class Machine:
 
     def _stop(self, sig, arg):
         self.override = True
-        self._close(sig, "commande stop")
-        self._go(State.TERMINE, sig, "commande stop")
+        self._go(self._end_state(), sig, "commande stop")
         return "écran Terminé puis arrêt du stream"
 
     def _pause(self, sig, arg):
         if self.state == State.PRIERE:
             return "déjà en pause"
-        self.paused_from = self.state
+        self.paused_from = self.state       # avant _go : la session ouverte reste ouverte pendant la pause
         self.override = True
         self._go(State.PRIERE, sig, "commande pause")
         return "pause (écran Prière en cours)"
@@ -238,7 +257,10 @@ class Machine:
         return f"scène {sc} (auto suspendu)"
 
     def _extend(self, sig, arg):
-        mins = float(arg or 5)
+        try:
+            mins = float(arg or 5)
+        except ValueError:
+            return f"durée invalide : {arg} (minutes)"
         base = max(self.extend_until_t, sig.t)
         self.extend_until_t = base + mins * 60  # minutes RÉELLES (khutba jouée en temps réel)
         return f"prolongé de {mins:g} min (pas d'arrêt automatique avant)"
@@ -246,7 +268,6 @@ class Machine:
     def _skip_cmd(self, sig, arg):
         if self.session is None:
             return "aucune session à sauter"
-        self._close(sig, "commande skip")
         self._skip("commande skip")
         nxt = self._next_session(sig)
         self._go(nxt, sig, "commande skip")
@@ -262,7 +283,7 @@ class Machine:
         self.live = None
         self.idx = len(self.sessions)
         self.override = False
-        self._go(State.TERMINE if self.stream_on else State.FIN, sig, "live du jour annulé")
+        self._go(self._end_state(), sig, "live du jour annulé")
         return "live du jour annulé"
 
     def _janaza(self, sig, arg):
@@ -281,7 +302,6 @@ class Machine:
         # Terminé -> fin : toujours actif (même en override, c'est la sortie)
         if st == State.TERMINE:
             if sig.t - self.entered_t >= self.p.terminated_hold_s:
-                self._close(sig, "fin du stream")
                 self._go(State.FIN, sig, "écran Terminé affiché, arrêt du stream")
             return
         if st == State.JANAZA or self.override:
@@ -289,7 +309,7 @@ class Machine:
 
         s = self.session
         if st in WAITING and s is None:
-            self._go(State.TERMINE if self.stream_on else State.FIN, sig, "plus aucune session")
+            self._go(self._end_state(), sig, "plus aucune session")
             return
 
         if st == State.IDLE:
@@ -306,12 +326,12 @@ class Machine:
             if st == State.ENTRACTE:
                 armed = sig.now >= s - dt.timedelta(minutes=self.p.arm_before_min)
                 if armed and self._voice_ok(sig):
-                    self._go(State.KHUTBA, sig, "présence + voix (2e session)" if sig.presence is not None else "voix (2e session)")
+                    self._go(State.KHUTBA, sig, "voix (2e session)")
                 return
             if self._voice_ok(sig):
                 if st == State.ARME:
                     self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
-                self._go(State.KHUTBA, sig, f"voix {sig.voice_run:.0f}s" + (" + présence" if sig.presence else ""))
+                self._go(State.KHUTBA, sig, f"voix {sig.voice_run:.0f}s")
                 return
             if st == State.ARME and sig.now >= s - dt.timedelta(minutes=self.p.avant_before_min):
                 self._go(State.AVANT, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
@@ -320,8 +340,7 @@ class Machine:
         if st == State.KHUTBA:
             elapsed = sig.t - self.entered_t
             if elapsed >= self.p.max_khutba_s and sig.t >= self.extend_until_t:
-                self._close(sig, "durée maximale")
-                self._go(State.PRIERE, sig, "garde-fou durée maximale")
+                self._go(State.PRIERE, sig, "durée maximale")
                 return
             if sig.t < self.extend_until_t:
                 self.grace_until = None
@@ -335,8 +354,7 @@ class Machine:
                     self.grace_until = None
                     self.log("voix reprise pendant la grâce : on continue")
                 elif sig.t >= self.grace_until:
-                    self._close(sig, "silence prolongé")
-                    self._go(State.PRIERE, sig, "silence prolongé + délai de grâce")
+                    self._go(State.PRIERE, sig, "silence prolongé")
             return
 
         if st == State.PRIERE:

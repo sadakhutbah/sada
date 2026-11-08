@@ -30,10 +30,11 @@ def _zmq_esc(port: int) -> str:
     return "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + f":{port}"  # « : » échappés deux fois (graphe puis options du filtre)
 
 
-ZMQ_ADDR = "tcp://127.0.0.1:5556"        # audio (azmq)
-ZMQ_ESC = _zmq_esc(5556)
+ZMQ_APORT = 5556                          # audio (azmq)
+ZMQ_ADDR = f"tcp://127.0.0.1:{ZMQ_APORT}"
+ZMQ_ESC = _zmq_esc(ZMQ_APORT)
 # vidéo : un filtre zmq (donc un port) par paramètre animé d'une transition, cf. Encoder._animate
-ZMQ_VPORTS = (5557, 5558, 5559, 5560)
+ZMQ_VPORTS = tuple(range(ZMQ_APORT + 1, ZMQ_APORT + 5))
 ZMQ_VADDRS = [f"tcp://127.0.0.1:{p}" for p in ZMQ_VPORTS]
 
 
@@ -132,7 +133,6 @@ class Encoder:
                  + (f"  | propre {clean}" if clean else ""))
         if self._log_file:
             self._log_file.close()
-        Path(self.cfg.state_dir).mkdir(parents=True, exist_ok=True)
         self._log_file = open(self.run_dir / "encoder.log", "ab")
         self.out_time = 0.0
         self.recordings.append((rec, clean))
@@ -165,16 +165,22 @@ class Encoder:
             self.wanted = False
             p = self.proc
         if p and p.poll() is None:
-            p.stdin and p.stdin.close()
             p.terminate()  # SIGTERM : ffmpeg finalise proprement le MKV
             try:
                 p.wait(timeout=15)
             except subprocess.TimeoutExpired:
                 p.kill()
+        if self._log_file:
+            self._log_file.close()
+            self._log_file = None
         self.log("ENCODEUR : arrêté")
 
     def alive(self) -> bool:
         return bool(self.proc and self.proc.poll() is None)
+
+    def current_recording(self) -> str | None:
+        """Enregistrement en cours d'écriture (None flux coupé)."""
+        return self.recordings[-1][0] if self.wanted and self.recordings else None
 
     def position(self) -> tuple[int, float]:
         """(n° de l'enregistrement, position en s dans celui-ci). Flux coupé : le prochain enregistrement, à 0 s."""

@@ -3,7 +3,7 @@
 GET  /status
 POST /<commande>?name=...|min=...   commandes de Machine.COMMANDS (ex. /extend?min=5, /scene?name=priere,
                                     /janaza?name=... : nom du défunt seulement avec l'accord de la famille)
-GET  /  : petite page de contrôle
+GET  /  : petite page de contrôle (/?token=... si un jeton est configuré)
 """
 from __future__ import annotations
 import json
@@ -23,8 +23,9 @@ PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=
 <div id=b></div><script>
 const cmds=""" + json.dumps(_BUTTONS) + """;
 b.innerHTML=cmds.map(c=>`<button style="font-size:18px;margin:4px;padding:8px" onclick="go('${c[0]}')">${c[1]||c[0]}</button>`).join("");
-async function go(p){await fetch("/"+p,{method:"POST"});ref()}
-async function ref(){const r=await(await fetch("/status")).json();s.textContent=JSON.stringify(r,null,1)}
+const H={"X-Token":new URLSearchParams(location.search).get("token")||""};
+async function go(p){await fetch("/"+p,{method:"POST",headers:H});ref()}
+async function ref(){const r=await(await fetch("/status",{headers:H})).json();s.textContent=JSON.stringify(r,null,1)}
 ref();setInterval(ref,2000)</script>"""
 
 

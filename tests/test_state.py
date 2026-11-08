@@ -23,21 +23,21 @@ class Drv:
         self.voice = 0.0
         self.silence = 0.0
 
-    def step(self, dsec=1.0, voice=None, presence=None, clock=None):
+    def step(self, dsec=1.0, voice=None, clock=None):
         self.t += dsec
         self.now += dt.timedelta(seconds=dsec if clock is None else clock)
         if voice is True:
             self.voice += dsec; self.silence = 0
         elif voice is False:
             self.silence += dsec; self.voice = 0
-        self.m.tick(Signals(self.now, self.t, self.voice, self.silence, presence))
+        self.m.tick(Signals(self.now, self.t, self.voice, self.silence))
 
     def run(self, n, **kw):
         for _ in range(n):
             self.step(**kw)
 
     def sig(self):
-        return Signals(self.now, self.t, self.voice, self.silence, None)
+        return Signals(self.now, self.t, self.voice, self.silence)
 
 
 def test_idle_to_arme_to_avant():
@@ -62,16 +62,6 @@ def test_voice_20s_starts_khutba_only_when_armed():
     d.step(voice=True)
     assert m.state == State.KHUTBA
     assert m.records[0].status == "live"
-
-
-def test_presence_required_when_enabled():
-    m, _ = mk()
-    d = Drv(m, at(12, 20))
-    d.step(voice=True, presence=False)
-    d.run(30, voice=True, presence=False)
-    assert m.state != State.KHUTBA
-    d.step(voice=True, presence=True)
-    assert m.state == State.KHUTBA
 
 
 def _start_khutba(m, d):
@@ -197,3 +187,50 @@ def test_max_duration_guard():
     d.run(101, voice=True)
     assert m.state == State.PRIERE
     assert m.records[0].end_reason == "durée maximale"
+
+
+def test_leaving_khutba_by_hand_closes_its_session():
+    m, _ = mk()
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    m.command("scene", d.sig(), "priere")
+    m.command("auto", d.sig())
+    assert m.records[0].status == "done"
+    d.now = at(13, 29)
+    d.run(25, voice=True)
+    assert m.state == State.KHUTBA and m.records[1].status == "live"
+
+
+def test_pause_then_start_then_auto_lets_prayer_end():
+    m, _ = mk()
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    m.command("pause", d.sig())
+    m.command("start", d.sig())
+    assert m.records[0].status == "live"          # la pause n'a pas coupé la session
+    m.command("scene", d.sig(), "priere")
+    m.command("auto", d.sig())
+    d.run(13, voice=False, clock=60)
+    assert m.state in (State.ENTRACTE, State.ARME, State.KHUTBA)
+
+
+def test_stop_while_off_air_does_not_start_the_stream():
+    m, _ = mk()
+    d = Drv(m, at(12, 0))
+    m.command("stop", d.sig())
+    assert m.state == State.FIN and not m.stream_on
+
+
+def test_extend_with_bad_duration_answers():
+    m, _ = mk()
+    d = Drv(m, at(12, 29))
+    assert "invalide" in m.command("extend", d.sig(), "abc")
+
+
+def test_session_spanning_an_encoder_restart_keeps_its_first_file():
+    m, _ = mk()
+    pos = [(0, 5.0)]
+    m.pos_fn = lambda: pos[0]
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    pos[0] = (1, 30.0)                              # ffmpeg relancé : nouvel enregistrement
+    m.command("stop", d.sig())
+    r = m.records[0]
+    assert (r.recording, r.start_pos, r.end_pos) == (0, 5.0, None)

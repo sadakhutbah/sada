@@ -19,7 +19,7 @@ from .clock import SimClock, parse_hhmm
 from .config import Config
 from .encoder import Encoder
 from .scenes import SCENES, Moment, SceneRenderer
-from .state import Machine, Signals, State
+from .state import Machine, Signals
 from .vad import VadMonitor
 
 log = logging.getLogger("minbar")
@@ -104,7 +104,7 @@ class Orchestrator:
     # ------------------------------------------------------------------ API
     def signals(self) -> Signals:
         v, s = self.vad.runs()
-        return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s, presence=None)
+        return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s)
 
     def manual(self, cmd: str, arg=None) -> dict:
         with self.lock:
@@ -116,13 +116,13 @@ class Orchestrator:
         with self.lock:
             st = self.machine.status()
             v, s = self.vad.runs()
-            rec, pos = self.encoder.position()
+            _, pos = self.encoder.position()
             st.update({
                 "run_id": self.run_id,
                 "clock": self.clock.now().strftime("%H:%M:%S"), "clock_speed": self.clock.speed,
                 "vad": {"connected": self.vad.connected, "voice_run_s": round(v, 1), "silence_run_s": round(s, 1)},
                 "encoder": {"alive": self.encoder.alive(), "restarts": self.encoder.restarts,
-                            "recording": self.encoder.recordings[rec][0] if self.encoder.recordings else None,
+                            "recording": self.encoder.current_recording(),
                             "pos_s": round(pos, 1)},
                 "mic": self.encoder.mic_on,
             })
@@ -130,17 +130,7 @@ class Orchestrator:
 
     # ---------------------------------------------------------------- boucle
     def _target_speed(self) -> float:
-        m, now, p = self.machine, self.clock.now(), self.machine.p
-        s = m.session
-        if m.override or s is None:
-            return 1.0
-        if m.state in (State.IDLE, State.PRIERE):
-            return self.accel
-        if m.state == State.ARME and now < s - dt.timedelta(minutes=p.avant_before_min):
-            return self.accel
-        if m.state == State.ENTRACTE and now < s - dt.timedelta(minutes=p.arm_before_min):
-            return self.accel
-        return 1.0
+        return self.accel if self.machine.clock_only(self.clock.now()) else 1.0
 
     def run(self):
         cfg = self.cfg
