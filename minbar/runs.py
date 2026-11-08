@@ -25,8 +25,13 @@ def run_date(run_id: str) -> str:
     return f"{run_id[:4]}-{run_id[4:6]}-{run_id[6:8]}"
 
 
+def session_number(index: int) -> int:
+    """Numéro affiché d'une session (index 0 -> session 1)."""
+    return index + 1
+
+
 def session_dir(index: int) -> str:
-    return f"session{index + 1}"
+    return f"session{session_number(index)}"
 
 
 def session_index(dirname: str) -> int | None:

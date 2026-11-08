@@ -55,12 +55,13 @@ class Signals:
 
 @dataclass
 class MachineParams:
-    arm_before_min: float = 15.0        # armement T-15 min
-    avant_before_min: float = 2.0       # scène Avant T-2 min (stream démarré)
-    window_after_min: float = 45.0      # au-delà de T+45 min sans signal : session sautée
-    prayer_min: float = 12.0            # durée supposée de la prière (min d'horloge)
+    # minutes d'horloge mosquée, comptées depuis l'horaire de la session (T)
+    arm_before_min: float = 15.0        # armement : on écoute la voix
+    avant_before_min: float = 2.0       # scène Avant : stream démarré
+    window_after_min: float = 45.0      # sans signal au-delà : session sautée
+    prayer_min: float = 12.0            # durée supposée de la prière
     # durées en secondes RÉELLES : le signal est en temps réel
-    voice_start_s: float = 20.0         # voix soutenue pendant 20 s => début de khutba
+    voice_start_s: float = 20.0         # voix soutenue => début de khutba
     silence_stop_s: float = 60.0        # silence prolongé => fin de khutba
     grace_s: float = 30.0               # délai de grâce avant de couper
     min_khutba_s: float = 120.0         # pas d'arrêt avant cette durée
@@ -132,7 +133,7 @@ class Machine:
         self.last_reason = reason
         if new != State.PRIERE:
             self.paused_from = None
-        if old == State.JANAZA:
+        if old == State.JANAZA and self.paused_from is None:
             self.janaza_name = None
         if self.live and new not in (State.KHUTBA, State.JANAZA) and self.paused_from is None:
             self._close(sig, reason)        # la session ouverte s'arrête dès qu'on quitte son écran (sauf pause)
@@ -140,10 +141,11 @@ class Machine:
             r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
             self._open(r, sig)
-        if new == State.FIN:
+        if new == State.FIN:                # la journée est finie : plus rien à venir
             for r in self.records:
                 if r.status == "pending":
                     r.status, r.end_reason = "skipped", reason
+            self.idx = len(self.sessions)
         if new == State.JANAZA and not (self.live and self.live.status == "janaza"):
             # la Janaza ne produit AUCUN contenu dérivé (runs.is_khutba)
             r = self._extra("janaza", sig)
@@ -255,6 +257,8 @@ class Machine:
         return f"reprise sur {back.value}"
 
     def _auto(self, sig, arg):
+        if self.paused_from is not None:
+            self._go(self.paused_from, sig, "commande auto (fin de pause)")
         self.override = False
         return "automatique repris"
 
@@ -288,7 +292,7 @@ class Machine:
             if r.status in ("pending", "live"):
                 r.status = "skipped"
                 r.end_reason = "annulé"
-        self.idx = len(self.sessions)
+        self.idx = len(self.sessions)       # TERMINÉ d'abord si le stream tourne : plus rien à venir dès maintenant
         self.override = False
         self._go(self._end_state(), sig, "live du jour annulé")
         return "live du jour annulé"

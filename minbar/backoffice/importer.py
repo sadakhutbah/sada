@@ -70,7 +70,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
         k = db.one(conn, "SELECT * FROM khutbas WHERE mosque_id = ? AND run_id = ? AND session_index = ?",
                    mosque["id"], run_id, idx)
         if not k:
-            label = f"Session {idx + 1}" + (f" — {planned.replace(':', ' h ')}" if planned else "")
+            label = f"Session {runs.session_number(idx)}" + (f" — {planned.replace(':', ' h ')}" if planned else "")
             cur = conn.execute(
                 "INSERT INTO khutbas (mosque_id, run_id, session_index, label, planned, date, start_clock, end_clock, duration_s,"
                 " imam_id, theme, output_dir, recording, start_pos, end_pos, verses_count, imported_at)"
@@ -80,7 +80,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
                  n_verses, db.now_iso()))
             k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", cur.lastrowid)
             res["khutbas_new"] += 1
-            db.audit(conn, mosque["id"], None, "import.khutba", "khutba", k["id"], run=run_id, session=idx + 1)
+            db.audit(conn, mosque["id"], None, "import.khutba", "khutba", k["id"], run=run_id, session=runs.session_number(idx))
         elif k["verses_count"] != n_verses:            # champ dérivé : rafraîchi (aucune donnée humaine touchée)
             conn.execute("UPDATE khutbas SET verses_count = ? WHERE id = ?", (n_verses, k["id"]))
         if extract_video and not (k["video_path"] and Path(k["video_path"]).exists()):

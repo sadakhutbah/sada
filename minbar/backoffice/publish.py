@@ -17,6 +17,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import runs
 from . import db
 
 
@@ -80,7 +81,7 @@ class LocalFolder(Connector):
         k, c, m = item.khutba, item.clip, item.mosque
         dest = Path(settings.get("path") or self.defaults(m)["path"]) / (k["date"] or "sans-date")
         dest.mkdir(parents=True, exist_ok=True)
-        base = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{m['slug']}_{k['run_id']}_s{k['session_index'] + 1}_clip{c['idx']}_{c['kind']}_v{c['version']}")
+        base = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{m['slug']}_{k['run_id']}_s{runs.session_number(k['session_index'])}_clip{c['idx']}_{c['kind']}_v{c['version']}")
         src = Path(c["file_path"])
         out = dest / f"{base}.mp4"
         shutil.copy2(src, out)

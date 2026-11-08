@@ -109,7 +109,7 @@ def test_two_sessions_full_cycle():
     assert m.state == State.FIN and not m.stream_on
     seq = [l for l in logs if l.startswith("ÉTAT")]
     names = [l.split("→")[1].split()[0] for l in seq]
-    assert names == ["ARMÉ", "AVANT", "KHUTBA", "PRIÈRE", "ENTRACTE", "KHUTBA", "PRIÈRE", "TERMINÉ", "FIN"] or "KHUTBA" in names
+    assert names == ["ARMÉ", "AVANT", "KHUTBA", "PRIÈRE", "ENTRACTE", "KHUTBA", "PRIÈRE", "TERMINÉ", "FIN"]
     assert [r.status for r in m.records] == ["done", "done"]
 
 
@@ -209,7 +209,7 @@ def test_pause_then_start_then_auto_lets_prayer_end():
     m.command("scene", d.sig(), "priere")
     m.command("auto", d.sig())
     d.run(13, voice=False, clock=60)
-    assert m.state in (State.ENTRACTE, State.ARME, State.KHUTBA)
+    assert m.state == State.ENTRACTE and m.records[0].status == "done"
 
 
 def test_stop_while_off_air_does_not_start_the_stream():
@@ -276,3 +276,29 @@ def test_cancel_closes_the_live_khutba():
     m.command("cancel", d.sig())
     r = m.records[0]
     assert r.status == "skipped" and r.end_clock is not None
+
+
+def test_janaza_pause_keeps_the_name():
+    m, _ = mk()
+    d = Drv(m, at(12, 29))
+    m.command("janaza", d.sig(), "Ahmed")
+    m.command("pause", d.sig())
+    m.command("resume", d.sig())
+    assert m.state == State.JANAZA and m.status()["janaza_name"] == "Ahmed"
+
+
+def test_auto_after_pause_resumes_automatic_mode():
+    m, _ = mk()
+    d = Drv(m, at(12, 0))
+    m.command("pause", d.sig())
+    m.command("auto", d.sig())
+    d.run(16, voice=False, clock=60)
+    assert m.state == State.ARME
+
+
+def test_nothing_comes_back_after_fin():
+    m, _ = mk()
+    d = Drv(m, at(12, 0))
+    m.command("stop", d.sig())
+    assert m.status()["next_session"] is None
+    assert "aucune session" in m.command("skip", d.sig())
