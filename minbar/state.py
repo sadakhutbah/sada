@@ -337,14 +337,16 @@ class Machine:
                 self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
                 return
             if st == State.ENTRACTE:
-                armed = sig.now >= s - dt.timedelta(minutes=self.p.arm_before_min)
-                if armed and self._voice_ok(sig):
+                if sig.now >= s and self._voice_ok(sig):
                     self._go(State.KHUTBA, sig, "voix (2e session)")
                 return
-            if self._voice_ok(sig):
+            if self._voice_ok(sig) and sig.now >= s:
                 if st == State.ARME:
                     self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
-                self._go(State.KHUTBA, sig, f"voix {sig.voice_run:.0f}s")
+                self._go(State.KHUTBA, sig, f"voix {sig.voice_run:.0f}s (horaire)")
+                return
+            if st == State.ARME and self._voice_ok(sig):
+                self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
                 return
             if st == State.ARME and sig.now >= s - dt.timedelta(minutes=self.p.avant_before_min):
                 self._go(State.AVANT, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")

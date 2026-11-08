@@ -51,7 +51,7 @@ def test_idle_to_arme_to_avant():
     assert m.state == State.AVANT and m.stream_on
 
 
-def test_voice_20s_starts_khutba_only_when_armed():
+def test_voice_arms_stream_khutba_only_from_scheduled_time():
     m, _ = mk()
     d = Drv(m, at(12, 5))
     d.run(40, voice=True)  # voix hors fenêtre : rien
@@ -59,14 +59,16 @@ def test_voice_20s_starts_khutba_only_when_armed():
     d.now = at(12, 20)
     d.step(voice=True)
     assert m.state == State.ARME  # armé ; voix déjà > 20 s => démarrage anticipé au tick suivant
-    d.step(voice=True)
+    d.run(25, voice=True)         # voix soutenue avant l'horaire : stream armé, caméra pas affichée
+    assert m.state == State.AVANT and m.stream_on and m.scene == "avant"
+    d.run(11, voice=True, clock=60)  # on franchit T la voix toujours soutenue : la caméra apparaît
     assert m.state == State.KHUTBA
     assert m.records[0].status == "live"
 
 
 def _start_khutba(m, d):
-    d.now = at(12, 29)
-    d.run(25, voice=True)
+    d.now = at(12, 29, 55)
+    d.run(30, voice=True)
     assert m.state == State.KHUTBA
 
 
@@ -98,7 +100,7 @@ def test_two_sessions_full_cycle():
     assert m.state == State.PRIERE
     d.step(clock=11 * 60, voice=False)           # 11 min de prière
     assert m.state == State.ENTRACTE and m.session == at(13, 30)
-    d.now = at(13, 16); d.voice = d.silence = 0
+    d.now = at(13, 30, 5); d.voice = d.silence = 0
     d.run(25, voice=True)
     assert m.state == State.KHUTBA and m.records[1].status == "live"
     d.run(60, voice=True); d.run(20, voice=False)
@@ -195,9 +197,23 @@ def test_leaving_khutba_by_hand_closes_its_session():
     m.command("scene", d.sig(), "priere")
     m.command("auto", d.sig())
     assert m.records[0].status == "done"
-    d.now = at(13, 29)
+    d.now = at(13, 30, 5)
     d.run(25, voice=True)
     assert m.state == State.KHUTBA and m.records[1].status == "live"
+
+
+def test_khutba_scene_waits_for_the_scheduled_time():
+    m, _ = mk()
+    d = Drv(m, at(12, 26))
+    d.run(35, voice=True)     # imam qui parle avant 12:30 : stream armé, caméra cachée
+    assert m.state == State.AVANT and m.scene == "avant"
+    d.run(30, voice=False)    # la voix s'arrête avant l'horaire
+    assert m.state == State.AVANT
+    d.now = at(12, 30, 1)
+    d.step(voice=False)       # 12:30 sans voix confirmée : toujours pas de caméra
+    assert m.state == State.AVANT
+    d.run(25, voice=True)     # voix soutenue après l'horaire : la scène change
+    assert m.state == State.KHUTBA
 
 
 def test_pause_then_start_then_auto_lets_prayer_end():
@@ -311,6 +327,6 @@ def test_auto_after_janaza_hands_back_the_next_session():
     d.now = at(13, 0)
     m.command("auto", d.sig())
     assert m.state == State.ENTRACTE and m.records[-1].status == "janaza" and m.records[-1].end_clock
-    d.now = at(13, 25)
+    d.now = at(13, 30, 5)
     d.run(25, voice=True)
     assert m.state == State.KHUTBA and m.records[1].status == "live"

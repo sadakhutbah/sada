@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from ..paths import FONTS
-from ..text import AR_RUN, arabic_ratio, is_arabic
+from ..text import AR_RUN, arabic_ratio, is_arabic, reshaped_view
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
 
@@ -55,8 +55,11 @@ def _ass_ratio(name: str) -> float:
 
 
 def text_width(text: str, font_file: str, ass_size: float) -> float:
-    """Largeur en pixels d'un texte rendu par libass à la taille ASS donnée."""
-    return _font(font_file, max(1, round(ass_size / _ass_ratio(font_file)))).getlength(text)
+    """Largeur en pixels d'un texte rendu par libass à la taille ASS donnée.
+
+    Sans libraqm, PIL mesure l'arabe brut en lettres isolées (beaucoup plus large que le rendu
+    de libass) : on mesure la forme visuelle, seul estimateur fidèle sur ces machines."""
+    return _font(font_file, max(1, round(ass_size / _ass_ratio(font_file)))).getlength(reshaped_view(text))
 
 
 def _sub_w(t: str) -> float:

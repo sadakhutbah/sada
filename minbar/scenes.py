@@ -17,18 +17,16 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .paths import FONTS
-from .text import french_date, has_arabic, is_arabic_char
+from .text import french_date, shaped, is_arabic_char, RAQM
 
 SERIF = str(FONTS / "EBGaramond-SemiBold.ttf")
 SANS = str(FONTS / "SourceSans3-Regular.ttf")
 SANS_SB = str(FONTS / "SourceSans3-Semibold.ttf")
 ARABIC = str(FONTS / "Amiri-Regular.ttf")
 ARABIC_B = str(FONTS / "Amiri-Bold.ttf")
-
-RAQM = features.check("raqm")
 
 # --- palette ------------------------------------------------------------------
 IVORY = (244, 240, 230, 255)
@@ -108,16 +106,7 @@ def _runs(text: str) -> list[tuple[str, bool]]:
 
 def _shape(text: str) -> tuple[str, dict]:
     """Texte mono-écriture + options de d.text() (arabe : lettres liées et sens RTL)."""
-    if not has_arabic(text):
-        return text, {}
-    if RAQM:
-        return text, {"direction": "rtl", "language": "ar"}
-    try:  # repli sans libraqm
-        import arabic_reshaper  # type: ignore
-        from bidi.algorithm import get_display  # type: ignore
-        return get_display(arabic_reshaper.reshape(text)), {}
-    except ImportError:
-        return text, {}
+    return shaped(text)
 
 
 def _run_font(font, arabic: bool):
@@ -413,32 +402,34 @@ class SceneRenderer:
         px = self.px
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
-        f_t, f_s, f_ar = _font(SERIF, px(40)), _font(SANS_SB, px(25)), _font(ARABIC, px(36))
+        f_s, f_ar = _font(SANS_SB, px(30)), _font(ARABIC_B, px(44))
         line2 = self.cfg.mosque_name
-        h = px(100)
+        h = px(124)
         x0, y1 = px(56), self.H - px(46)
         y0 = y1 - h
-        med = px(74)
+        med = px(92)
         pad = px(14)
         tx = x0 + px(5) + pad + med + px(18)
         sep = px(26)
-        w_ar = self._width(d, AR_KHUTBA, f_ar)
         max_x1 = self.W - px(56)
+        title = self.cfg.title
+        f_t = self._fit(d, title, _font(SERIF, px(46)), SERIF, px(46), max_x1 - px(26) - tx)
+        w_ar = self._width(d, AR_KHUTBA, f_ar)
         line2 = self._ellipsize(d, line2, f_s, max_x1 - px(26) - tx)
-        w_text = max(self._width(d, self.cfg.title, f_t), self._width(d, line2, f_s))
+        w_text = max(self._width(d, title, f_t), self._width(d, line2, f_s))
         x1 = int(tx + w_text + sep + px(1) + sep + w_ar + px(26))
-        if x1 > max_x1:  # sous-titre long : on renonce au titre arabe plutôt que de déborder
+        if x1 > max_x1:  # sous-titre ou titre long : on renonce au titre arabe plutôt que de déborder
             x1 = int(min(max_x1, tx + w_text + px(26)))
         r = px(6)
         self._panel_shadow(img, (x0, y0, x1, y1), r)
         d = ImageDraw.Draw(img)
-        d.rounded_rectangle([x0, y0, x1, y1], r, fill=_alpha(self.panel, 236), corners=(False, True, True, False))
+        d.rounded_rectangle([x0, y0, x1, y1], r, fill=_alpha(self.panel, 244), corners=(False, True, True, False))
         d.rectangle([x0, y0, x0 + px(5) - 1, y1], fill=GOLD)  # filet or à gauche
         m = self.medallion(med, ring=max(1, px(1.5)))
         img.alpha_composite(m, (int(x0 + px(5) + pad + med / 2 - m.width / 2), int(y0 + h / 2 - m.height / 2)))
         d = ImageDraw.Draw(img)
-        self._text(d, (tx, y0 + px(48)), self.cfg.title, f_t, IVORY, anchor="ls")
-        self._text(d, (tx, y0 + px(81)), line2, f_s, IVORY_DIM, anchor="ls")
+        self._text(d, (tx, y0 + px(56)), title, f_t, IVORY, anchor="ls")
+        self._text(d, (tx, y0 + px(96)), line2, f_s, IVORY_DIM, anchor="ls")
         sx = tx + w_text + sep
         if sx + sep + w_ar < x1:
             d.line([(sx, y0 + px(22)), (sx, y1 - px(22))], fill=GOLD_SOFT, width=max(1, px(1)))

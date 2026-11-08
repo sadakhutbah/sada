@@ -4,6 +4,39 @@ from __future__ import annotations
 import datetime as dt
 import re
 
+# libraqm : mise en forme des lettres liées + sens RTL par Pillow/libass ; à défaut, repli sur
+# arabic_reshaper + python-bidi (optionnel : rien ne casse si le paquet est absent).
+try:
+    from PIL import features as _pil_features
+
+    RAQM = _pil_features.check("raqm")
+except ImportError:
+    RAQM = False
+
+
+def reshaped_view(text: str) -> str:
+    """Forme visuelle de l'arabe quand libraqm n'est pas là (lettres liées, ordre RTL).
+
+    libass met en forme tout seul : la forme visuelle sert alors uniquement à la MESURE
+    (PIL sans libraqm compterait les lettres isolées, beaucoup plus larges) ; le texte
+    émis reste brut. Pour un rendu Pillow, cf. shaped()."""
+    if not has_arabic(text) or RAQM:
+        return text
+    try:
+        import arabic_reshaper  # type: ignore
+        from bidi.algorithm import get_display  # type: ignore
+
+        return get_display(arabic_reshaper.reshape(text))
+    except ImportError:
+        return text
+
+
+def shaped(text: str) -> tuple[str, dict]:
+    """Texte mono-écriture prêt pour ImageDraw.text() : sous libraqm, sens RTL ; sinon forme visuelle."""
+    if not has_arabic(text) or RAQM:
+        return text, {"direction": "rtl", "language": "ar"} if RAQM else {}
+    return reshaped_view(text), {}
+
 # écriture arabe (lettres, signes, formes de présentation)
 AR_CHARS = "؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿"
 AR_RUN = re.compile(f"[{AR_CHARS}]+")

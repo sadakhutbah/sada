@@ -11,3 +11,4 @@ auto.key
 auto.crt
 *.key
 *.egg-info/
+.DS_Store

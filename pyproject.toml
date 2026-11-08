@@ -11,6 +11,8 @@ dependencies = [
   "rapidfuzz",
   "faster-whisper",
   "pyzmq",
+  "arabic-reshaper",
+  "python-bidi",
   "pytest",
   # back-office
   "fastapi",
