@@ -259,6 +259,8 @@ class Machine:
     def _auto(self, sig, arg):
         if self.paused_from is not None:
             self._go(self.paused_from, sig, "commande auto (fin de pause)")
+        if self.state == State.JANAZA:           # fin de la janaza : les sessions restantes reprennent en automatique
+            self._go(State.ENTRACTE if self.session else self._end_state(), sig, "commande auto (fin de janaza)")
         self.override = False
         return "automatique repris"
 

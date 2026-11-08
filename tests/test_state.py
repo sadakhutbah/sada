@@ -302,3 +302,15 @@ def test_nothing_comes_back_after_fin():
     m.command("stop", d.sig())
     assert m.status()["next_session"] is None
     assert "aucune session" in m.command("skip", d.sig())
+
+
+def test_auto_after_janaza_hands_back_the_next_session():
+    m, _ = mk()
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    m.command("janaza", d.sig(), "Ali")
+    d.now = at(13, 0)
+    m.command("auto", d.sig())
+    assert m.state == State.ENTRACTE and m.records[-1].status == "janaza" and m.records[-1].end_clock
+    d.now = at(13, 25)
+    d.run(25, voice=True)
+    assert m.state == State.KHUTBA and m.records[1].status == "live"
