@@ -4,7 +4,7 @@
 <h1>File de validation des clips</h1>
 <p class="muted">Aucun clip n'est publié sans validation humaine. Regardez le clip, corrigez si besoin, puis validez ou rejetez.</p>
 <nav class="tabs">
-  {% for key, label in [("a_valider", "À valider"), ("valide", "Validés"), ("publie", "Publiés"), ("rejete", "Rejetés"), ("tous", "Tous")] %}
+  {% for key, label in (STATUS_TABS.items() | list) + [("tous", "Tous")] %}
   <a href="/clips?statut={{ key }}" class="{{ 'on' if statut == key }}">{{ label }}{% if key != "tous" %} ({{ counts.get(key, 0) }}){% endif %}</a>
   {% endfor %}
 </nav>

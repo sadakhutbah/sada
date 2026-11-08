@@ -15,12 +15,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from rapidfuzz import fuzz
-
 from ..text import is_arabic
 from . import llm
-from .arabic import normalize
-from .verses import FORM_NORM, is_formula, shown
+from .verses import formula_fr, shown
 
 
 def _seg_key(text: str) -> str:
@@ -101,11 +98,9 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
     # formules rituelles connues : traduction fixe si le LLM est indisponible
     for i, s in ar:
         k = _seg_key(s["text"])
-        if k not in cache["seg"]:
-            hn = normalize(s["text"])
-            parts = [v for f, v in FORM_NORM.items() if fuzz.partial_ratio(f, hn) >= 88]
-            if parts and is_formula(s["text"]):
-                cache["seg"][k] = {"fr": " ".join(parts), "coran": False, "ar": s["text"], "fixe": True}
+        fr = formula_fr(s["text"]) if k not in cache["seg"] else None
+        if fr:
+            cache["seg"][k] = {"fr": fr, "coran": False, "ar": s["text"], "fixe": True}
     for m in vms:
         cache["verse_fr"].setdefault(verse_key(m), m["verse_fr"])
     cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1))

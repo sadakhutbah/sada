@@ -8,12 +8,12 @@ import shutil
 import subprocess
 
 
-def ask_json(prompt: str, timeout: int, log=print, model: str | None = None) -> dict | None:
+def ask_json(prompt: str, timeout: int, log=print) -> dict | None:
     exe = shutil.which("claude")
     if not exe:
         log("LLM : claude introuvable")
         return None
-    cmd = [exe, "-p", "--output-format", "text"] + (["--model", model] if model else [])
+    cmd = [exe, "-p", "--output-format", "text"]
     try:
         r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=timeout)
         if r.returncode != 0:

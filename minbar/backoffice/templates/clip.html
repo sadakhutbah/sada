@@ -28,7 +28,7 @@
       <div class="row">
         <form method="post" action="/clips/{{ c.id }}/decision"><input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="decision" value="valide">
-          <button class="btn" {{ "disabled" if c.needs_regen or c.regen_state == "en_cours" or not exists }}>Valider ce clip</button></form>
+          <button class="btn" {{ "disabled" if not validate_ok }}>Valider ce clip</button></form>
       </div>
       <form method="post" action="/clips/{{ c.id }}/decision"><input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="decision" value="rejete">
@@ -55,7 +55,7 @@
     {% if ctx.can("publish") %}
     <div class="card">
       <h2>Publication</h2>
-      {% if c.status in ("valide", "publie") %}
+      {% if publish_ok %}
       <form method="post" action="/clips/{{ c.id }}/publier"><input type="hidden" name="csrf" value="{{ csrf }}">
         <label for="connector">Destination</label>
         <select id="connector" name="connector">

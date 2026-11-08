@@ -15,16 +15,12 @@ from pathlib import Path
 
 from ..pipeline import clips as clipmod
 from ..pipeline import translate, verses
+from ..pipeline.output import SessionOutput
 from . import db
 
 STATUS_LABELS = {"a_valider": "À valider", "valide": "Validé", "rejete": "Rejeté", "publie": "Publié"}
-
-
-def _read(p: Path, default):
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
+STATUS_TABS = {"a_valider": "À valider", "valide": "Validés", "publie": "Publiés", "rejete": "Rejetés"}
+REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"     # le clip repasse par la validation
 
 
 def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
@@ -34,11 +30,11 @@ def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
 
 def load(conn, k: dict) -> dict:
     """Transcription + versets + traductions de la khutba, corrections appliquées."""
-    d = Path(k["output_dir"])
-    tr = _read(d / "transcript.json", {"segments": []})
+    o = SessionOutput(k["output_dir"])
+    tr = o.read(o.transcript, {"segments": []})
     segs = copy.deepcopy(tr.get("segments", []))
-    trans = _read(d / "translations.json", translate.empty())
-    ms = _read(d / "verses.json", [])
+    trans = o.read(o.translations, translate.empty())
+    ms = o.read(o.verses, [])
     corr = corrections(conn, k["id"])
     for (i, field), c in corr.items():
         if i >= len(segs):
@@ -102,8 +98,7 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
             # déjà publié : on ne réécrit pas l'histoire ; la version corrigée (v+1) repassera par la validation
             conn.execute("UPDATE clips SET needs_regen = 1, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
         else:
-            conn.execute("UPDATE clips SET needs_regen = 1, status = 'a_valider', decided_by = NULL, decided_at = NULL, "
-                         "updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
+            conn.execute(f"UPDATE clips SET needs_regen = 1, {REQUEUE}, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
     db.audit(conn, k["mosque_id"], user["id"], "correction." + ("sous-titre" if field == "text" else "traduction"),
              "khutba", k["id"], ip=ip, segment=seg_index, avant=current, apres=value, clips=[c["id"] for c in hit])
     return len(hit)
@@ -121,6 +116,12 @@ def can_regenerate(clip: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def recover_interrupted(conn) -> None:
+    """Régénérations en cours quand le serveur s'est arrêté : elles ne finiront jamais."""
+    conn.execute("UPDATE clips SET regen_state = 'erreur', regen_error = 'interrompue (serveur arrêté)', updated_at = ? "
+                 "WHERE regen_state = 'en_cours'", (db.now_iso(),))
+
+
 def _render(db_path: str, clip_id: int, log=print) -> None:
     conn = db.connect(db_path)
     try:
@@ -134,7 +135,7 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
                                 c["video_source"], c["source_offset"], Path(c["file_path"]).parent,
                                 {"title": m["clip_title"], "subtitle": ""}, json.loads(c["crop"]) if c["crop"] else None, log)
         conn.execute("UPDATE clips SET file_path = ?, version = ?, needs_regen = 0, regen_state = '', regen_error = '', "
-                     "status = 'a_valider', decided_by = NULL, decided_at = NULL, updated_at = ? WHERE id = ?", (str(out), ver, db.now_iso(), clip_id))
+                     f"{REQUEUE}, updated_at = ? WHERE id = ?", (str(out), ver, db.now_iso(), clip_id))
         db.audit(conn, c["mosque_id"], None, "clip.regenere", "clip", clip_id, version=ver, fichier=out.name)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
@@ -160,16 +161,23 @@ def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, back
 
 # ------------------------------------------------------------------ décision
 
+def can_validate(clip: dict) -> tuple[bool, str]:
+    if clip["needs_regen"] or clip["regen_state"] == "en_cours":
+        return False, "des corrections ne sont pas encore dans la vidéo : régénérer le clip avant de le valider"
+    if not Path(clip["file_path"]).exists():
+        return False, "fichier du clip introuvable"
+    return True, ""
+
+
 def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=None) -> None:
     if decision not in ("valide", "rejete"):
         raise ValueError("décision inconnue")
     if clip["status"] == "publie":
         raise ValueError("clip déjà publié : décision figée")
     if decision == "valide":
-        if clip["needs_regen"] or clip["regen_state"] == "en_cours":
-            raise ValueError("des corrections ne sont pas encore dans la vidéo : régénérer le clip avant de le valider")
-        if not Path(clip["file_path"]).exists():
-            raise ValueError("fichier du clip introuvable")
+        ok, why = can_validate(clip)
+        if not ok:
+            raise ValueError(why)
     conn.execute("UPDATE clips SET status = ?, decided_by = ?, decided_at = ?, reject_reason = ?, updated_at = ? WHERE id = ?",
                  (decision, user["id"], db.now_iso(), reason.strip()[:500] if decision == "rejete" else "", db.now_iso(), clip["id"]))
     db.audit(conn, clip["mosque_id"], user["id"], "clip." + ("valide" if decision == "valide" else "rejete"), "clip", clip["id"],
@@ -179,6 +187,5 @@ def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=Non
 def reopen(conn, clip: dict, user: dict, ip=None) -> None:
     if clip["status"] not in ("valide", "rejete"):
         raise ValueError("seul un clip validé ou rejeté peut être remis en file")
-    conn.execute("UPDATE clips SET status = 'a_valider', decided_by = NULL, decided_at = NULL, reject_reason = '', updated_at = ? "
-                 "WHERE id = ?", (db.now_iso(), clip["id"]))
+    conn.execute(f"UPDATE clips SET {REQUEUE}, reject_reason = '', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"]))
     db.audit(conn, clip["mosque_id"], user["id"], "clip.remis_en_file", "clip", clip["id"], ip=ip)

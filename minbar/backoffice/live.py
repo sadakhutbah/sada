@@ -9,11 +9,27 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 
 from ..state import State
 
 # commandes de l'orchestrateur exposées dans le back-office -> libellé (boutons, journal)
-COMMANDS = {"extend": "+5 min", "janaza": "Janaza", "stop": "Arrêter", "cancel": "Annuler aujourd'hui"}
+@dataclass(frozen=True)
+class Command:
+    label: str
+    style: str                       # classe du bouton
+    confirm: str = ""                # question posée avant l'envoi
+    params: tuple = ()               # paramètres fixes de la requête
+
+
+# Commandes de l'orchestrateur (minbar.state.Machine.COMMANDS) proposées sur le tableau de bord.
+COMMANDS = {
+    "extend": Command("+5 min", "leaf", params=(("min", "5"),)),
+    "janaza": Command("Janaza", "light", "Basculer sur l'écran Salat al-Janaza ?"),
+    "stop": Command("Arrêter", "danger", "Arrêter le live maintenant ?"),
+    "cancel": Command("Annuler aujourd'hui", "light",
+                      "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées."),
+}
 
 STATE_LABELS = {
     State.IDLE: "En veille", State.ARME: "Armé (fenêtre ouverte)", State.AVANT: "Début imminent",
@@ -51,10 +67,8 @@ def status(mosque: dict) -> dict:
 def command(mosque: dict, cmd: str, arg: str | None = None) -> dict:
     if cmd not in COMMANDS:
         raise OrchestratorError("commande inconnue")
-    params = {}
-    if cmd == "extend":
-        params["min"] = "5"
-    elif cmd == "janaza" and arg:
+    params = dict(COMMANDS[cmd].params)
+    if arg:
         params["name"] = arg[:80]
     return _call(mosque, "POST", cmd, params or None)
 

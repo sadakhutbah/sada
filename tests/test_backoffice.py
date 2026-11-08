@@ -31,13 +31,13 @@ def make_run(root: Path, run: str = RUN, janaza: bool = False) -> None:
                                                    "end": 14.0, "heard": "ومن يتوكل على الله فهو حسبه", "verse_text": "ومن يتوكل على الله فهو حسبه", "ref": "65:3",
                                                    "confidence": "sûr", "verse_fr": "Et quiconque place sa confiance en Allah, Il lui suffit."}]))
     (out / "translations.json").write_text(json.dumps({"seg": {}, "verse_fr": {"65:3@9.0": "Et quiconque place sa confiance en Allah, Il lui suffit."}}))
-    (out / "notes.md").write_text("# Notes\n\n## Thème\n\nLa patience\n")
+    (out / "notes.md").write_text("# Notes\n\n## Thème (résumé généré)\n\nLa patience\n")
     man = []
     for i, (a, b, kind) in enumerate([(0.0, 10.0, "verset"), (12.0, 20.0, "conclusion")], 1):
         f = f"clip{i}_{kind}_A-VALIDER.mp4"
         (out / "clips" / f).write_bytes(b"\x00\x00\x00\x18ftypmp42" + bytes(64))
-        man.append({"kind": kind, "start": a, "end": b, "why": "test", "file": f, "video_source": str(root / "rec.mkv"),
-                    "source_offset_s": 100.0 + a, "crop": None})
+        man.append({"idx": i, "kind": kind, "start": a, "end": b, "why": "test", "file": f, "video_source": str(root / "rec.mkv"),
+                    "source_offset": 100.0, "crop": None})
     (out / "clips" / "manifest.json").write_text(json.dumps(man))
     sessions = [{"index": 0, "planned": "13:30", "status": "done", "start_clock": "13:31", "end_clock": "13:52",
                  "start_pos": 100.0, "end_pos": 120.0}]

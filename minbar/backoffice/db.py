@@ -11,6 +11,7 @@ import sqlite3
 from pathlib import Path
 
 from .. import paths
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_DB = paths.BACKOFFICE_DB
 # réglages modifiables d'une mosquée (Réglages → Mosquée, `python -m minbar.backoffice mosque`)
@@ -196,7 +197,19 @@ def mosque_dirs(m: dict) -> dict:
     }
 
 
+DEFAULT_TZ = "Europe/Paris"
+
+
+def timezone(mosque: dict) -> ZoneInfo:
+    return ZoneInfo(mosque.get("timezone") or DEFAULT_TZ)
+
+
 def update_mosque(conn, mosque_id: int, **vals) -> None:
+    if "timezone" in vals:
+        try:
+            timezone(vals)
+        except (ValueError, ZoneInfoNotFoundError):
+            raise ValueError(f"fuseau horaire inconnu : {vals['timezone']} (ex. Europe/Paris)") from None
     if vals:
         conn.execute(f"UPDATE mosques SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), mosque_id))
 

@@ -22,10 +22,8 @@
   {% endif %}
   {% if ctx.can("live") %}
   <div class="controls">
-    <form method="post" action="/live/extend"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn leaf" {{ "disabled" if not live.ok }}>+5 min</button></form>
-    <form method="post" action="/live/janaza" data-confirm="Basculer sur l'écran Salat al-Janaza ?"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn light" {{ "disabled" if not live.ok }}>Janaza</button></form>
-    <form method="post" action="/live/stop" data-confirm="Arrêter le live maintenant ?"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn danger" {{ "disabled" if not live.ok }}>Arrêter</button></form>
-    <form method="post" action="/live/cancel" data-confirm="Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées."><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn light" {{ "disabled" if not live.ok }}>Annuler aujourd'hui</button></form>
+    {% for key, c in LIVE_COMMANDS.items() %}<form method="post" action="/live/{{ key }}"{% if c.confirm %} data-confirm="{{ c.confirm }}"{% endif %}><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn {{ c.style }}" {{ "disabled" if not live.ok }}>{{ c.label }}</button></form>
+    {% endfor %}
   </div>
   {% endif %}
 </section>

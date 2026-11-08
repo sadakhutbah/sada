@@ -17,12 +17,11 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-from ..paths import FONTS as FONTS_DIR
+from ..paths import FONTS
 from ..text import AR_RUN, arabic_ratio, is_arabic
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
 
-FONTS = str(FONTS_DIR)
 DEFAULT_TITLE = "Khutba du vendredi"
 
 MIN_S, MAX_S = 30.0, 90.0
@@ -44,7 +43,7 @@ WEAK_END = set("de du des la le les l' d' un une et à au aux en que qui qu' pou
 @lru_cache(maxsize=None)
 def _font(name: str, size: int):
     from PIL import ImageFont
-    return ImageFont.truetype(str(FONTS_DIR / name), size)
+    return ImageFont.truetype(str(FONTS / name), size)
 
 
 @lru_cache(maxsize=None)
@@ -266,7 +265,7 @@ AR_CARD_SIZE = 96
 AR_CARD_FONT = "NotoNaskhArabic-Bold.ttf"
 
 
-def _verse_card(m: dict, fr: str, a: float, b: float, show_ar: bool = True) -> list[str]:
+def _verse_card(m: dict, fr: str, a: float, b: float) -> list[str]:
     """Carte verset : panneau + libellé + arabe (1 ligne, si elle tient) + traduction Hamidullah en italique."""
     fr = clean_fr(fr).rstrip()
     inner = CARD_W - 130
@@ -274,7 +273,7 @@ def _verse_card(m: dict, fr: str, a: float, b: float, show_ar: bool = True) -> l
     fr_lines = [x.replace("\u00a0", " ") for x in wrap_px(q(fr), FR_CARD_FONT, FR_CARD_SIZE, inner)]
     if len(fr_lines) > 5:  # trop long : on garde la fin (le passage récité est en général à la fin)
         fr_lines = [x.replace("\u00a0", " ") for x in wrap_px(q("… " + fr[-190:].split(" ", 1)[-1]), FR_CARD_FONT, FR_CARD_SIZE, inner)[:5]]
-    ar = recited_arabic(m) if show_ar else ""
+    ar = recited_arabic(m)
     ar_size = AR_CARD_SIZE
     while ar and text_width(ar, AR_CARD_FONT, ar_size) > inner and ar_size > 74:
         ar_size -= 2
@@ -358,7 +357,7 @@ def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
 
 
 def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, path: str, tr: dict | None = None,
-              header: dict | None = None, show_arabic: bool = True) -> int:
+              header: dict | None = None) -> int:
     """Écrit le .ass du clip [t0, t1] (temps de session) ; renvoie le nombre d'unités (pages de sous-titre + cartes)."""
     tr = tr or {}
     vms = shown(matches, ambiguous=True)
@@ -382,7 +381,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                 limit = (after[0]["start"] - t0 + 3.0) if after else dur  # la carte peut empiéter 3 s sur la parole suivante
                 cb = min(dur, limit, max(m["end"] - t0 + 1.0, ca + 2.5 + len(fr) / 15.0))
                 cards.append((ca, cb))
-                ev += _verse_card(m, fr, ca, cb, show_arabic)
+                ev += _verse_card(m, fr, ca, cb)
         elif sub["kind"] == "translation" and sub["fr"]:
             fr = sub["fr"]
             words += interpolate_words(fr, a, max(b, min(a + len(fr) / 17.0, nxt - 0.05, dur)))

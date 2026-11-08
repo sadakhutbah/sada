@@ -100,8 +100,7 @@ def main(argv=None) -> int:
             db.audit(conn, mo["id"], None, "utilisateur.cree", "utilisateur", uid, identifiant=args.username, role=args.role, via="ligne de commande")
             print(f"Compte « {args.username} » ({auth.ROLE_LABELS[args.role]}) créé pour {mo['name']}.")
         elif args.cmd == "mosque":
-            mo = (db.one(conn, "SELECT * FROM mosques WHERE slug = ?", args.slug)
-                  or _create_mosque(conn, args.slug, args.name or args.slug))
+            mo = _mosque(conn, args.slug, args.name or args.slug, create=True)
             vals = {k: getattr(args, k) for k in db.MOSQUE_SETTINGS if getattr(args, k) is not None}
             if vals:
                 db.update_mosque(conn, mo["id"], **vals)

@@ -154,6 +154,15 @@ FORMULAS = {
 }
 FORM_NORM = {normalize(k): v for k, v in FORMULAS.items()}
 FIRM = ("sûr", "court")
+FORMULA_MATCH = 85
+
+
+def formula_fr(text: str) -> str | None:
+    """Traduction fixe d'un segment fait de formules rituelles, sinon None."""
+    if not is_formula(text):
+        return None
+    hn = normalize(text)
+    return " ".join(v for f, v in FORM_NORM.items() if fuzz.partial_ratio(f, hn) >= FORMULA_MATCH) or None
 
 
 def is_formula(heard: str) -> bool:
@@ -164,7 +173,7 @@ def is_formula(heard: str) -> bool:
     hn = " ".join(words)
     used: set[str] = set()
     for f in FORM_NORM:
-        if fuzz.partial_ratio(f, hn) >= 85:
+        if fuzz.partial_ratio(f, hn) >= FORMULA_MATCH:
             used |= set(f.split())
     rest = [w for w in words if w not in used and not any(fuzz.ratio(w, u) >= 80 for u in used)]
     return len(rest) < 3

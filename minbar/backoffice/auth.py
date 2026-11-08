@@ -67,6 +67,18 @@ def _dummy_hash() -> str:
     return _DUMMY
 
 
+def imams(conn, mosque_id: int) -> list[dict]:
+    """Imams actifs de la mosquée (choix de l'imam d'une khutba, imam par défaut)."""
+    return db.all_(conn, "SELECT id, display_name FROM users WHERE mosque_id = ? AND role = 'imam' AND active = 1 "
+                         "ORDER BY display_name", mosque_id)
+
+
+def imam_id(conn, mosque_id: int, value) -> int | None:
+    """Identifiant d'imam actif de la mosquée lu dans un formulaire, sinon None."""
+    iid = int(value) if str(value or "").isdigit() else None
+    return iid if iid in {u["id"] for u in imams(conn, mosque_id)} else None
+
+
 def create_user(conn, mosque_id: int, username: str, password: str, role: str, display_name: str = "") -> int:
     username = username.strip()
     if role not in ROLES:

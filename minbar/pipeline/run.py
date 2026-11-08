@@ -17,6 +17,7 @@ from . import clips as clipmod
 from . import notes as notemod
 from . import transcribe as tr
 from . import translate as trmod
+from .output import SessionOutput, clip_entry
 from .quran import load_verses
 from .verses import VerseIndex, detect, to_dicts
 
@@ -33,27 +34,27 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
     clip_video est soit alignée sur src (même processus ffmpeg : mêmes positions), soit une autre vidéo de la même
     khutba (align=True) : le décalage est alors retrouvé par intercorrélation audio.
     """
-    outdir.mkdir(parents=True, exist_ok=True)
-    wav = str(outdir / "audio.wav")
+    o = SessionOutput(outdir)
+    o.dir.mkdir(parents=True, exist_ok=True)
+    wav = str(o.audio)
     log(f"[{label}] extraction audio {start:.1f}→{end}")
     tr.extract_audio(src, wav, start, end)
-    tjson = outdir / "transcript.json"
-    res = json.loads(tjson.read_text()) if tjson.exists() and not retranscribe else tr.transcribe(wav, str(tjson), model, log)
+    res = o.read(o.transcript, None) if not retranscribe else None
+    res = res or tr.transcribe(wav, str(o.transcript), model, log)
     segs = res["segments"]
-    (outdir / "transcript.md").write_text("# Transcription — " + label + "\n\n" + "\n".join(f"- **[{fmt_t(s['start'])}]** {s['text']}" for s in segs), encoding="utf-8")
+    o.transcript_md.write_text("# Transcription — " + label + "\n\n" + "\n".join(f"- **[{fmt_t(s['start'])}]** {s['text']}" for s in segs), encoding="utf-8")
     log("chargement du Coran + index")
     idx = VerseIndex(load_verses())
     ms = to_dicts(detect(segs, idx))
-    (outdir / "verses.json").write_text(json.dumps(ms, ensure_ascii=False, indent=1))
+    o.write(o.verses, ms)
     log(f"{len(ms)} versets détectés : " + ", ".join(f"{m['ref']}@{fmt_t(m['start'])}({m['score']:.0f})" for m in ms))
     md, extra = notemod.build_notes(label, segs, ms, res, use_llm, log)
-    (outdir / "notes.md").write_text(md, encoding="utf-8")
-    log(f"notes -> {outdir/'notes.md'} (résumé : {extra['summary'].get('method')})")
+    o.notes.write_text(md, encoding="utf-8")
+    log(f"notes -> {o.notes} (résumé : {extra['summary'].get('method')})")
     manifest = []
     if nclips:
-        cdir = outdir / "clips"
-        cdir.mkdir(exist_ok=True)
-        trs = trmod.translate_session(segs, ms, outdir / "translations.json", use_llm, log=log)
+        o.clips.mkdir(exist_ok=True)
+        trs = trmod.translate_session(segs, ms, o.translations, use_llm, log=log)
         vsrc, voff = src, start
         if clip_video:
             vsrc = clip_video
@@ -66,15 +67,13 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
         log(f"clips : vidéo {vsrc}")
         wins = clipmod.select_windows(segs, ms, res["duration"], extra["quotes"], nclips)
         for i, w in enumerate(wins, 1):
-            out = clipmod.make_clip(segs, ms, trs, w, i, 1, vsrc, voff, cdir, header, crop, log)
-            manifest.append({**w, "idx": i, "file": out.name, "status": "À VALIDER", "music": False,
-                             "video_source": str(vsrc), "source_offset": round(voff, 2),
-                             "crop": crop or None, "subtitles": "français seul"})
-        (cdir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
+            out = clipmod.make_clip(segs, ms, trs, w, i, 1, vsrc, voff, o.clips, header, crop, log)
+            manifest.append(clip_entry(w, i, out, vsrc, voff, crop))
+        o.write_manifest(manifest)
     return {"segments": len(segs), "verses": len(ms), "clips": manifest}
 
 
-def _clip_video(live: str | None, clean: str | None) -> str | None:
+def _clip_video(clean: str | None) -> str | None:
     """Enregistrement caméra sans habillage (même processus ffmpeg -> mêmes positions), s'il existe."""
     if clean and Path(clean).exists() and Path(clean).stat().st_size > 0:
         return clean
@@ -132,9 +131,9 @@ def main(argv=None):
         if not live:
             log(f"session {s['index']} ({s['planned']}) ignorée : aucun enregistrement")
             continue
-        r = process(live, s["start_pos"], s["end_pos"], f"session{s['index'] + 1}_{s['planned'].replace(':', 'h')}",
+        r = process(live, s["start_pos"], s["end_pos"], f"{runs.session_dir(s['index'])}_{s['planned'].replace(':', 'h')}",
                     out / data["run_id"] / runs.session_dir(s["index"]),
-                    clip_video=forced or _clip_video(live, clean), **opts)
+                    clip_video=forced or _clip_video(clean), **opts)
         log(f"session {s['index']} : {r['segments']} segments, {r['verses']} versets, {len(r['clips'])} clips")
 
 

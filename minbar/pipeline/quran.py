@@ -21,10 +21,10 @@ def _get(edition: str) -> dict:
     return json.loads(p.read_text())["data"]["surahs"]
 
 
-def load_verses(with_translation: bool = True) -> list[dict]:
+def load_verses() -> list[dict]:
     """[{surah, ayah, surah_name, text, norm, fr}] ; la basmala préfixée au verset 1 est retirée."""
     ar = _get("quran-simple-clean")
-    fr = _get("fr.hamidullah") if with_translation else None
+    fr = _get("fr.hamidullah")
     out = []
     for si, s in enumerate(ar):
         for ai, a in enumerate(s["ayahs"]):
@@ -33,7 +33,7 @@ def load_verses(with_translation: bool = True) -> list[dict]:
                 txt = txt[len(BASMALA):].strip()
             out.append({
                 "surah": s["number"], "ayah": a["numberInSurah"], "surah_name": s["englishName"],
-                "surah_ar": s["name"], "text": txt, "norm": normalize(txt),
-                "fr": fr[si]["ayahs"][ai]["text"] if fr else "",
+                "text": txt, "norm": normalize(txt),
+                "fr": fr[si]["ayahs"][ai]["text"],
             })
     return out

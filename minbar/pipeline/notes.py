@@ -20,7 +20,7 @@ def theme_from_markdown(md: str) -> str:
     """Thème d'un notes.md écrit par build_notes."""
     lines = md.splitlines()
     for i, line in enumerate(lines):
-        if line.startswith("## Thème"):
+        if line == THEME:
             return next((x.strip()[:300] for x in lines[i + 1:] if x.strip()), "")
     return ""
 
@@ -59,7 +59,7 @@ def extractive_summary(segments: list[dict], n_points: int = 6) -> dict:
     return {"method": "extractif", "theme": "", "points": [p for _, p in pick], "rappels": []}
 
 
-def llm_summary(segments: list[dict], matches: list[dict], model: str | None = None, timeout: int = 420, log=print) -> dict | None:
+def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, log=print) -> dict | None:
     tr = "\n".join(f"[{fmt_t(s['start'])}] {s['text']}" for s in segments)
     vs = "\n".join(f"- {m['ref']} ({m['surah_name']}) vers {fmt_t(m['start'])}" for m in matches) or "(aucun)"
     prompt = (
@@ -72,7 +72,7 @@ def llm_summary(segments: list[dict], matches: list[dict], model: str | None = N
         "les citations doivent être des extraits littéraux (ils seront vérifiés mécaniquement et supprimés sinon).\n\n"
         f"Versets repérés automatiquement (indicatif) :\n{vs}\n\nTRANSCRIPTION :\n{tr}\n"
     )
-    d = llm.ask_json(prompt, timeout, log, model=model)
+    d = llm.ask_json(prompt, timeout, log)
     if d:
         d["method"] = "claude -p"
     return d

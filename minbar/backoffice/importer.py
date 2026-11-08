@@ -7,13 +7,13 @@ ne sont jamais importées.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 from pathlib import Path
 
 from .. import runs
 from ..pipeline import notes, verses as verses_mod
+from ..pipeline.output import SessionOutput
 from . import db
 
 
@@ -41,20 +41,6 @@ def _extract_video(rec: str | None, start: float | None, end: float | None, out:
         return None
 
 
-def _clip_idx(c: dict, default: int) -> int:
-    if "idx" in c:
-        return c["idx"]
-    m = re.match(r"clip(\d+)_", c["file"])      # manifests antérieurs au champ idx
-    return int(m.group(1)) if m else default
-
-
-def _clip_offset(c: dict) -> float | None:
-    """Position du début de la session dans la vidéo source du clip."""
-    if "source_offset" in c:
-        return c["source_offset"]
-    return c["source_offset_s"] - c["start"] if c.get("source_offset_s") is not None else None   # manifests antérieurs
-
-
 def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=print) -> dict:
     dirs = db.mosque_dirs(mosque)
     out = dirs["output"] / run_id
@@ -67,15 +53,16 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
     res = {"run": run_id, "khutbas_new": 0, "clips_new": 0, "skipped": []}
     for sdir in sorted(out.glob("session*")):
         idx = runs.session_index(sdir.name)
-        if idx is None or not (sdir / "transcript.json").exists():
+        o = SessionOutput(sdir)
+        if idx is None or not o.is_transcribed():
             continue
         s = recs.get(idx, {})
         if not runs.is_khutba(s):
             res["skipped"].append(sdir.name)
             continue
         rec_path, _ = runs.sources(data, s)
-        tr = json.loads((sdir / "transcript.json").read_text())
-        verses = json.loads((sdir / "verses.json").read_text()) if (sdir / "verses.json").exists() else []
+        tr = o.read(o.transcript, {})
+        verses = o.read(o.verses, [])
         start, end = s.get("start_pos"), s.get("end_pos")
         duration = (end - start) if (start is not None and end is not None) else tr.get("duration")
         planned = s.get("planned") or ""
@@ -89,7 +76,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
                 " imam_id, theme, output_dir, recording, start_pos, end_pos, verses_count, imported_at)"
                 " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (mosque["id"], run_id, idx, label, planned, date, s.get("start_clock"), s.get("end_clock"), duration,
-                 mosque.get("default_imam_id"), _theme(sdir / "notes.md"), str(sdir), rec_path, start, end,
+                 mosque.get("default_imam_id"), _theme(o.notes), str(sdir), rec_path, start, end,
                  n_verses, db.now_iso()))
             k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", cur.lastrowid)
             res["khutbas_new"] += 1
@@ -97,20 +84,19 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
         elif k["verses_count"] != n_verses:            # champ dérivé : rafraîchi (aucune donnée humaine touchée)
             conn.execute("UPDATE khutbas SET verses_count = ? WHERE id = ?", (n_verses, k["id"]))
         if extract_video and not (k["video_path"] and Path(k["video_path"]).exists()):
-            v = _extract_video(rec_path, start, end, sdir / "khutba.mp4", log)
+            v = _extract_video(rec_path, start, end, o.video, log)
             if v:
                 conn.execute("UPDATE khutbas SET video_path = ? WHERE id = ?", (v, k["id"]))
-        man = sdir / "clips" / "manifest.json"
-        for n, c in enumerate(json.loads(man.read_text()) if man.exists() else [], 1):
-            ci = _clip_idx(c, n)
+        for c in o.manifest_entries():
+            ci = c["idx"]
             if db.one(conn, "SELECT id FROM clips WHERE khutba_id = ? AND idx = ?", k["id"], ci):
                 continue
             t = db.now_iso()
             cur = conn.execute(
                 "INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, \"end\", file_path, video_source, source_offset,"
                 " crop, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (mosque["id"], k["id"], ci, c.get("kind", ""), c.get("why", ""), c["start"], c["end"],
-                 str(sdir / "clips" / c["file"]), c.get("video_source"), _clip_offset(c),
+                (mosque["id"], k["id"], ci, c["kind"], c["why"], c["start"], c["end"],
+                 str(o.clips / c["file"]), c["video_source"], c["source_offset"],
                  json.dumps(c["crop"]) if c.get("crop") else None, t, t))
             res["clips_new"] += 1
             db.audit(conn, mosque["id"], None, "import.clip", "clip", cur.lastrowid, file=c["file"])
@@ -122,7 +108,7 @@ def scan(conn, mosque: dict, extract_video: bool = True, log=print) -> list[dict
     out = db.mosque_dirs(mosque)["output"]
     results = []
     for d in sorted(out.glob("*")) if out.is_dir() else []:
-        if d.is_dir() and runs.RUN_RE.match(d.name) and any(d.glob("session*/transcript.json")):
+        if d.is_dir() and runs.RUN_RE.match(d.name) and any(SessionOutput(x).is_transcribed() for x in d.glob("session*")):
             try:
                 results.append(import_run(conn, mosque, d.name, extract_video, log))
             except Exception as e:  # noqa: BLE001

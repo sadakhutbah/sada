@@ -155,6 +155,13 @@ def default_caption(clip: dict, khutba: dict, mosque: dict, verses: list[str]) -
     return "\n".join(parts)
 
 
+def can_publish(clip: dict) -> tuple[bool, str]:
+    """Règle absolue : seul un clip validé par un humain, dans sa version validée, se publie."""
+    if clip["status"] not in ("valide", "publie") or clip["needs_regen"] or not clip["decided_by"]:
+        return False, "clip non validé : publication refusée"
+    return True, ""
+
+
 def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=None) -> Result:
     """Publie un clip VALIDÉ. Toute tentative (réussie ou refusée) est journalisée."""
     c = CONNECTORS.get(connector_key)
@@ -170,8 +177,9 @@ def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=N
 
     if c is None:
         return record("refuse", Result(False, "", "connecteur inconnu"))
-    if clip["status"] not in ("valide", "publie") or clip["needs_regen"] or not clip["decided_by"]:
-        return record("refuse", Result(False, "", "clip non validé : publication refusée"))
+    ok, why = can_publish(clip)
+    if not ok:
+        return record("refuse", Result(False, "", why))
     row = db.one(conn, "SELECT * FROM connectors WHERE mosque_id = ? AND key = ?", clip["mosque_id"], connector_key)
     ok, why = c.availability(row)
     if not ok:

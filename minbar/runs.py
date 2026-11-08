@@ -51,7 +51,7 @@ def latest(state_dir: Path = paths.STATE) -> Path | None:
 
 def is_khutba(s: dict) -> bool:
     """La Janaza n'a aucun contenu dérivé (ni transcription, ni clips, ni import)."""
-    return s.get("status") != "janaza" and not s.get("exclude_from_pipeline")
+    return s.get("status") != "janaza"
 
 
 def is_done(s: dict) -> bool:
