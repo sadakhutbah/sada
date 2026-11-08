@@ -44,10 +44,11 @@ def write_png_atomic(img: Image.Image, path: str) -> None:
 
 
 class Encoder:
-    def __init__(self, cfg, layer_dir: Path, log=print):
+    def __init__(self, cfg, run_dir: Path, log=print):
         self.cfg, self.log = cfg, log
         # calques : fond commun des écrans pleins + deux calques de contenu (double tampon)
-        self.layer_png = {k: str(Path(layer_dir) / f"scene_{k}.png") for k in ("fond", "a", "b")}
+        self.run_dir = Path(run_dir)
+        self.layer_png = {k: str(self.run_dir / f"scene_{k}.png") for k in ("fond", "a", "b")}
         # valeurs courantes des calques (aussi valeurs initiales du graphe si ffmpeg est relancé)
         self.levels: dict[str, float] = {"fond": 1.0, "a_a": 1.0, "x_a": 0.0, "y_a": 0.0,
                                          "a_b": 0.0, "x_b": 0.0, "y_b": 0.0}
@@ -132,7 +133,7 @@ class Encoder:
         if self._log_file:
             self._log_file.close()
         Path(self.cfg.state_dir).mkdir(parents=True, exist_ok=True)
-        self._log_file = open(Path(self.cfg.state_dir) / "encoder.log", "ab")
+        self._log_file = open(self.run_dir / "encoder.log", "ab")
         self.out_time = 0.0
         self.recordings.append((rec, clean))
         self.proc = subprocess.Popen(self._cmd(rec, clean), stdout=subprocess.PIPE, stderr=self._log_file, text=True, bufsize=1)
