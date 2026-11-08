@@ -60,11 +60,11 @@ class MachineParams:
     window_after_min: float = 45.0      # au-delà de T+45 min sans signal : session sautée
     prayer_min: float = 12.0            # durée supposée de la prière (min d'horloge)
     # durées en secondes RÉELLES : le signal est en temps réel
-    voice_start_s: float = 20.0         # présence + voix pendant 20 s
+    voice_start_s: float = 20.0         # voix soutenue pendant 20 s => début de khutba
     silence_stop_s: float = 60.0        # silence prolongé => fin de khutba
     grace_s: float = 30.0               # délai de grâce avant de couper
     min_khutba_s: float = 120.0         # pas d'arrêt avant cette durée
-    max_khutba_s: float = 3600.0        # garde-fou durée max
+    max_khutba_s: float = 3600.0
     terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
 
 

@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 from ..state import State
 
-# commandes de l'orchestrateur exposées dans le back-office -> libellé (boutons, journal)
 @dataclass(frozen=True)
 class Command:
     label: str

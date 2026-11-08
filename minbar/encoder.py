@@ -210,7 +210,7 @@ class Encoder:
                 self._pending = None                     # retour à la scène affichée : rien à animer
                 write_png_atomic(content, self.layer_png[self.shown[1]])
                 return
-            if not self.wanted:                          # hors direct : pas d'animation
+            if not self.wanted:
                 write_png_atomic(content, self.layer_png[self.active])
                 self.shown, self.full = (scene, self.active), full
                 self.levels.update({"fond": 1.0 if full else 0.0, f"a_{self.active}": 1.0})

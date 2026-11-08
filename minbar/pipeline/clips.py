@@ -83,7 +83,7 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
 
     def add(kind, t0, t1, why):
         a, b = snap(t0, t1)
-        if b - a < MIN_S:  # étend vers l'avant
+        if b - a < MIN_S:
             b = min(duration, a + MIN_S + 5)
             a2, b2 = snap(a, b)
             a, b = a2, max(b2, a + MIN_S)

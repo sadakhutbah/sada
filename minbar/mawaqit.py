@@ -34,7 +34,7 @@ def fetch_live(url: str, timeout: float = 15.0) -> dict:
 
 
 def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float = 15.0) -> dict:
-    """Renvoie {'jumua': [...], 'source': 'live'|'cache', ...}. Rafraîchi si le cache a plus de max_age_h."""
+    """Données Mawaqit + jumua_list (horaires de jumua) et origin (live / cache). Rafraîchi si le cache a plus de max_age_h."""
     cp = Path(cache_path)
     cache = None
     if cp.exists():

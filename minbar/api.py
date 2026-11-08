@@ -31,7 +31,7 @@ ref();setInterval(ref,2000)</script>"""
 
 def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPServer:
     class H(BaseHTTPRequestHandler):
-        def log_message(self, *a):  # silencieux
+        def log_message(self, *a):
             pass
 
         def _send(self, code, obj, ctype="application/json"):

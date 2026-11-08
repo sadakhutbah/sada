@@ -41,7 +41,7 @@ class Orchestrator:
         log.info("Sessions du jour (horloge mosquée) : %s", [s.strftime("%H:%M") for s in sessions])
         self.renderer = SceneRenderer(cfg)
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
-        self.encoder.prepare(self.renderer.background())   # calque fond commun + calques de contenu vides
+        self.encoder.prepare(self.renderer.background())
         self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position)
         self.vad = VadMonitor(cfg.camera_url, cfg.vad_aggressiveness, cfg.vad_ratio, log=log.info)
         self.lock = threading.RLock()
