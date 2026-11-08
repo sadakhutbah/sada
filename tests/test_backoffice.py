@@ -66,8 +66,7 @@ def env(tmp_path):
     importer.import_run(conn, m, RUN, extract_video=False, log=lambda *a: None)
     kid = db.one(conn, "SELECT id FROM khutbas")["id"]
     conn.execute("UPDATE khutbas SET imam_id = ? WHERE id = ?", (ids["imam"], kid))
-    app = create_app(path)
-    app.state.regen_background = False
+    app = create_app(path, regen_background=False)
     yield {"app": app, "conn": conn, "path": path, "mid": mid, "ids": ids, "kid": kid, "tmp": tmp_path}
     conn.close()
 

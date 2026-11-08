@@ -167,7 +167,9 @@ def f_details(details: str) -> str:
 
 # ------------------------------------------------------------------ application
 
-def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False, auto_import_s: float = 0) -> FastAPI:
+def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False, auto_import_s: float = 0,
+               regen_background: bool = True) -> FastAPI:
+    """regen_background=False : la régénération d'un clip se fait dans la requête (tests)."""
     db.init(db_path)
     stop = threading.Event()
 
@@ -496,13 +498,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         ctx.require("validate")
         c, k = clip_or_404(ctx, cid)
         try:
-            content.start_regeneration(ctx.conn, app.state.db_path, c, ctx.user, ctx.ip, background=app.state.regen_background)
+            content.start_regeneration(ctx.conn, app.state.db_path, c, ctx.user, ctx.ip, background=regen_background)
             ctx.flash("Régénération lancée (environ une minute) : la page se met à jour toute seule.")
         except ValueError as e:
             ctx.flash(str(e), "err")
         return back(f"/clips/{c['id']}")
 
-    app.state.regen_background = True
 
     @app.get("/api/clips/{cid}")
     def api_clip(cid: int, ctx: Ctx = Depends(get_ctx)):

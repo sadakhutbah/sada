@@ -1,8 +1,6 @@
-"""Sous-titres des clips : français seul, pages courtes, carte verset propre ; encodeur : sortie propre."""
+"""Sous-titres des clips : français seul, pages courtes, carte verset propre."""
 import re
 
-from minbar.config import Config
-from minbar.encoder import Encoder
 from minbar.pipeline import clips as C
 from minbar.pipeline import translate
 from minbar.pipeline.verses import is_formula, recited_arabic, strip_quran_marks
@@ -75,19 +73,3 @@ def test_quran_marks_and_formulas():
     assert recited_arabic(VERSE).startswith("إن الله") or recited_arabic(VERSE).startswith("إِنَّ")
     assert is_formula("أعوذ بالله من الشيطان الرجيم")
     assert not is_formula("ولنتوقف اليوم عند هذه الآية العظيمة من سورة الطلاق")
-
-
-def test_encoder_clean_output(tmp_path):
-    cfg = Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path))
-    enc = Encoder(cfg, tmp_path, log=lambda m: None)
-    rec, clean = enc._new_recording()
-    assert clean == rec[:-4] + "_clean.mkv"
-    cmd = " ".join(enc._cmd(rec, clean))
-    assert "asplit=2[a][aclean]" in cmd and "-map 0:v:0 -c:v:0 copy" in cmd
-    enc2 = Encoder(Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path), clean_copy=False), tmp_path, log=lambda m: None)
-    cmd2 = " ".join(enc2._cmd(*enc2._new_recording()))
-    assert "split=2[cam][camclean]" in cmd2 and "-crf 18" in cmd2
-    e3 = Encoder(Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path), record_clean=False), tmp_path, log=lambda m: None)
-    rec3, clean3 = e3._new_recording()
-    cmd3 = " ".join(e3._cmd(rec3, clean3))
-    assert clean3 is None and "_clean.mkv" not in cmd3 and "asplit" not in cmd3

@@ -73,14 +73,14 @@ class Encoder:
         self._log_file = None
 
     # ------------------------------------------------------------------ commande
-    def _new_recording(self) -> tuple[str, Optional[str]]:
+    def new_recording(self) -> tuple[str, Optional[str]]:
         c = self.cfg
         Path(c.record_dir).mkdir(parents=True, exist_ok=True)
         stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         rec = str(Path(c.record_dir) / f"live_{stamp}.mkv")
         return rec, (str(Path(c.record_dir) / f"live_{stamp}_clean.mkv") if c.record_clean else None)
 
-    def _cmd(self, rec: str, clean: Optional[str]) -> list[str]:
+    def ffmpeg_cmd(self, rec: str, clean: Optional[str]) -> list[str]:
         c = self.cfg
         copy = bool(clean and c.clean_copy)
         L = {k: f"{v:g}" for k, v in self.levels.items()}
@@ -128,7 +128,7 @@ class Encoder:
         threading.Thread(target=self._watch, daemon=True, name="encoder-watch").start()
 
     def _spawn(self):
-        rec, clean = self._new_recording()
+        rec, clean = self.new_recording()
         self.log("ENCODEUR : démarrage ffmpeg -> " + self.cfg.rtmp_url + "  | enreg. " + rec
                  + (f"  | propre {clean}" if clean else ""))
         if self._log_file:
@@ -136,7 +136,7 @@ class Encoder:
         self._log_file = open(self.run_dir / "encoder.log", "ab")
         self.out_time = 0.0
         self.recordings.append((rec, clean))
-        self.proc = subprocess.Popen(self._cmd(rec, clean), stdout=subprocess.PIPE, stderr=self._log_file, text=True, bufsize=1)
+        self.proc = subprocess.Popen(self.ffmpeg_cmd(rec, clean), stdout=subprocess.PIPE, stderr=self._log_file, text=True, bufsize=1)
         threading.Thread(target=self._read_progress, args=(self.proc,), daemon=True).start()
 
     def _read_progress(self, proc):

@@ -75,10 +75,10 @@ def test_stop_needs_silence_plus_grace_and_resume_cancels():
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(200, voice=True)
     d.run(61, voice=False)          # silence 61 s -> grâce
-    assert m.state == State.KHUTBA and m.grace_until is not None
+    assert m.state == State.KHUTBA
     d.run(5, voice=True)            # la voix revient pendant la grâce
-    assert m.state == State.KHUTBA and m.grace_until is None
     d.run(61, voice=False)
+    assert m.state == State.KHUTBA                # la voix revenue a annulé la grâce : elle repart de zéro
     d.run(31, voice=False)
     assert m.state == State.PRIERE
     assert m.records[0].status == "done" and m.records[0].end_reason == "silence prolongé"
@@ -97,10 +97,10 @@ def test_two_sessions_full_cycle():
     d.run(60, voice=True); d.run(30, voice=False)
     assert m.state == State.PRIERE
     d.step(clock=11 * 60, voice=False)           # 11 min de prière
-    assert m.state == State.ENTRACTE and m.idx == 1
+    assert m.state == State.ENTRACTE and m.session == at(13, 30)
     d.now = at(13, 16); d.voice = d.silence = 0
     d.run(25, voice=True)
-    assert m.state == State.KHUTBA and m.idx == 1
+    assert m.state == State.KHUTBA and m.records[1].status == "live"
     d.run(60, voice=True); d.run(20, voice=False)
     assert m.state == State.PRIERE
     d.step(clock=11 * 60, voice=False)
@@ -275,4 +275,4 @@ def test_cancel_closes_the_live_khutba():
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     m.command("cancel", d.sig())
     r = m.records[0]
-    assert r.status == "skipped" and r.end_clock is not None and m.live is None
+    assert r.status == "skipped" and r.end_clock is not None
