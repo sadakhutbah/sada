@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
+from .. import text
+from ..pipeline import verses
 from . import auth, content, db, importer, live, publish
 
 HERE = Path(__file__).resolve().parent
@@ -98,22 +100,16 @@ def f_local(iso: str | None, m: dict | None = None, fmt: str = "%d/%m/%Y %H:%M")
 
 
 def f_mmss(s) -> str:
-    if s is None:
-        return "—"
-    s = int(round(float(s)))
-    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"
+    return "—" if s is None else text.duration(s)
 
 
 def f_date(d: str | None) -> str:
     if not d:
         return "—"
     try:
-        x = dt.date.fromisoformat(d)
+        return text.french_date(dt.date.fromisoformat(d))
     except ValueError:
         return d
-    jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-    mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
-    return f"{jours[x.weekday()]} {x.day} {mois[x.month - 1]} {x.year}"
 
 
 def f_markdown(md: str) -> Markup:
@@ -211,7 +207,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     tpl = Jinja2Templates(directory=str(HERE / "templates"))
     tpl.env.filters.update(local=f_local, mmss=f_mmss, date_fr=f_date, markdown=f_markdown, details=f_details)
-    tpl.env.globals.update(STATUS=content.STATUS_LABELS, ROLES=auth.ROLE_LABELS, AUDIT=AUDIT_LABELS)
+    tpl.env.globals.update(STATUS=content.STATUS_LABELS, ROLES=auth.ROLE_LABELS, AUDIT=AUDIT_LABELS, MASK=db.MASK)
 
     def render(ctx: Ctx | None, name: str, status_code: int = 200, **kw) -> HTMLResponse:
         flash = None
@@ -221,10 +217,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                 flash = json.loads(row["flash"])
                 ctx.conn.execute("UPDATE auth_sessions SET flash = NULL WHERE id = ?", (ctx.session["id"],))
         request = ctx.request if ctx else kw.pop("request")
-        nav_pending = 0
-        if ctx is not None:
-            where, args = imam_filter(ctx)
-            nav_pending = db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = 'a_valider'", *args)["n"]
+        nav_pending = count_clips(ctx, "a_valider") if ctx is not None else 0
         base = {"nav_pending": nav_pending, "ctx": ctx, "user": ctx.user if ctx else None, "mosque": ctx.mosque if ctx else None,
                 "csrf": ctx.session["csrf"] if ctx else "", "flash": flash, "path": request.url.path}
         return tpl.TemplateResponse(request, name, {**base, **kw}, status_code=status_code)
@@ -245,32 +238,33 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
+    def error(request: Request, code: int, title: str, message: str, api_message: str):
+        if request.url.path.startswith(("/api/", "/media/")):
+            return JSONResponse({"error": api_message}, status_code=code)
+        return tpl.TemplateResponse(request, "error.html", {"code": code, "title": title, "user": None, "ctx": None,
+                                                             "message": message, "path": ""}, status_code=code)
+
     @app.exception_handler(LoginRequired)
     async def _login(request: Request, exc):
         if request.url.path.startswith(("/api/", "/media/")):
-            return JSONResponse({"error": "connexion requise"}, status_code=401)
+            return error(request, 401, "", "", "connexion requise")
         if request.method != "GET":
             return back("/connexion")
         return back("/connexion?suite=" + quote(request.url.path))
 
     @app.exception_handler(Forbidden)
     async def _forbidden(request: Request, exc):
-        if request.url.path.startswith(("/api/", "/media/")):
-            return JSONResponse({"error": "accès refusé"}, status_code=403)
-        return tpl.TemplateResponse(request, "error.html", {"code": 403, "title": "Accès refusé", "user": None, "ctx": None,
-                                                             "message": "Votre rôle ne permet pas cette action.", "path": ""}, status_code=403)
+        return error(request, 403, "Accès refusé", "Votre rôle ne permet pas cette action.", "accès refusé")
 
     @app.exception_handler(NotFound)
     async def _nf(request: Request, exc):
-        if request.url.path.startswith(("/api/", "/media/")):
-            return JSONResponse({"error": "introuvable"}, status_code=404)
-        return tpl.TemplateResponse(request, "error.html", {"code": 404, "title": "Introuvable", "user": None, "ctx": None,
-                                                             "message": "Cette page n'existe pas ou ne vous est pas accessible.", "path": ""}, status_code=404)
+        return error(request, 404, "Introuvable", "Cette page n'existe pas ou ne vous est pas accessible.", "introuvable")
 
     # ---------------------------------------------------------- accès scopés (tenant + imam)
     def khutba_or_404(ctx: Ctx, kid: int) -> dict:
-        k = db.one(ctx.conn, "SELECT * FROM khutbas WHERE id = ? AND mosque_id = ?", kid, ctx.mosque["id"])
-        if not k or (not ctx.can("history_all") and k["imam_id"] != ctx.user["id"]):
+        where, args = imam_filter(ctx)
+        k = db.one(ctx.conn, f"SELECT k.* FROM khutbas k WHERE k.id = ? AND {where}", kid, *args)
+        if not k:
             raise NotFound()
         return k
 
@@ -280,10 +274,16 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         return c, khutba_or_404(ctx, c["khutba_id"])
 
-    def imam_filter(ctx: Ctx, alias: str = "k") -> tuple[str, tuple]:
+    def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
+        """Khutbas visibles (alias k) : celles de la mosquée ; pour un imam, seulement les siennes."""
         if ctx.can("history_all"):
-            return f"{alias}.mosque_id = ?", (ctx.mosque["id"],)
-        return f"{alias}.mosque_id = ? AND {alias}.imam_id = ?", (ctx.mosque["id"], ctx.user["id"])
+            return "k.mosque_id = ?", (ctx.mosque["id"],)
+        return "k.mosque_id = ? AND k.imam_id = ?", (ctx.mosque["id"], ctx.user["id"])
+
+    def count_clips(ctx: Ctx, status: str) -> int:
+        where, args = imam_filter(ctx)
+        return db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = ?",
+                      *args, status)["n"]
 
     # ---------------------------------------------------------- connexion
     @app.get("/connexion")
@@ -349,8 +349,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     @app.get("/")
     def dashboard(ctx: Ctx = Depends(get_ctx)):
         where, args = imam_filter(ctx)
-        pending = db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = 'a_valider'", *args)["n"]
-        ready = db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = 'valide'", *args)["n"]
+        pending, ready = count_clips(ctx, "a_valider"), count_clips(ctx, "valide")
         recent = db.all_(ctx.conn, f"SELECT k.*, u.display_name imam FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id WHERE {where} "
                                    "ORDER BY k.date DESC, k.run_id DESC, k.session_index LIMIT 4", *args)
         total = db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k WHERE {where}", *args)["n"]
@@ -371,12 +370,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         arg = (f.get("name") or "").strip() or None
         try:
             r = live.command(ctx.mosque, cmd, arg)
-            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=live.COMMANDS[cmd][1],
+            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=live.COMMANDS[cmd],
                      defunt=arg, reponse=r.get("message"), etat=r.get("state"))
-            ctx.flash(f"{live.COMMANDS[cmd][1]} : {r.get('message', 'ok')}")
+            ctx.flash(f"{live.COMMANDS[cmd]} : {r.get('message', 'ok')}")
         except live.OrchestratorError as e:
-            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, commande=live.COMMANDS[cmd][1], erreur=str(e))
-            ctx.flash(f"{live.COMMANDS[cmd][1]} : échec — {e}", "err")
+            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, commande=live.COMMANDS[cmd], erreur=str(e))
+            ctx.flash(f"{live.COMMANDS[cmd]} : échec — {e}", "err")
         return back("/")
 
     # ---------------------------------------------------------- historique
@@ -413,7 +412,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         imams = db.all_(ctx.conn, "SELECT id, display_name FROM users WHERE mosque_id = ? AND role = 'imam' AND active = 1 ORDER BY display_name",
                         ctx.mosque["id"]) if ctx.can("assign") else []
         imam = db.one(ctx.conn, "SELECT display_name FROM users WHERE id = ?", k["imam_id"]) if k["imam_id"] else None
-        return render(ctx, "khutba.html", k=k, rows=content.transcript_rows(data), verses=content.verses_for_display(data["verses"]),
+        return render(ctx, "khutba.html", k=k, rows=content.transcript_rows(data), verses=verses.for_display(data["verses"]),
                       notes=notes.read_text(encoding="utf-8") if notes.exists() else "", clips=clips, imams=imams, imam=imam,
                       tr=data, has_video=bool(k["video_path"] and Path(k["video_path"]).exists()))
 
@@ -473,7 +472,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         decider = db.one(ctx.conn, "SELECT display_name FROM users WHERE id = ?", c["decided_by"]) if c["decided_by"] else None
         refs = [r["verse"]["ref"] for r in rows if r["verse"] and not r["verse"]["ambiguous"]]
         return render(ctx, "clip.html", c=c, k=k, rows=rows, regen_ok=regen_ok, regen_why=regen_why, hist=hist, pubs=pubs,
-                      decider=decider, connectors=publish.connector_rows(ctx.conn, ctx.mosque["id"]),
+                      decider=decider, connectors=publish.connector_rows(ctx.conn, ctx.mosque),
                       caption=publish.default_caption(c, k, ctx.mosque, list(dict.fromkeys(refs))),
                       exists=Path(c["file_path"]).exists())
 
@@ -529,7 +528,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         pubs = db.all_(ctx.conn, "SELECT p.*, u.display_name who, c.idx, c.kind, k.label klabel, k.date kdate FROM publications p "
                                  "JOIN clips c ON c.id = p.clip_id JOIN khutbas k ON k.id = c.khutba_id LEFT JOIN users u ON u.id = p.user_id "
                                  "WHERE p.mosque_id = ? ORDER BY p.id DESC LIMIT 100", ctx.mosque["id"])
-        return render(ctx, "publication.html", ready=ready, pubs=pubs, connectors=publish.connector_rows(ctx.conn, ctx.mosque["id"]))
+        return render(ctx, "publication.html", ready=ready, pubs=pubs, connectors=publish.connector_rows(ctx.conn, ctx.mosque))
 
     # ---------------------------------------------------------- médias (par identifiant : pas de chemin dans l'URL)
     @app.get("/media/khutba/{kid}.mp4")
@@ -624,20 +623,17 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             ctx.flash(str(e), "err")
         return back("/admin/utilisateurs")
 
-    MOSQUE_FIELDS = ("name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token", "state_dir", "output_dir",
-                     "publish_dir", "clip_title")
-
     @app.get("/admin/mosquee")
     def mosque_page(ctx: Ctx = Depends(get_ctx)):
         ctx.require("admin")
         imams = db.all_(ctx.conn, "SELECT id, display_name FROM users WHERE mosque_id = ? AND role = 'imam' ORDER BY display_name", ctx.mosque["id"])
-        return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=publish.connector_rows(ctx.conn, ctx.mosque["id"]))
+        return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=publish.connector_rows(ctx.conn, ctx.mosque))
 
     @app.post("/admin/mosquee")
     async def mosque_save(ctx: Ctx = Depends(get_ctx)):
         f = await ctx.form()
         ctx.require("admin")
-        vals = {k: (f.get(k) or "").strip() for k in MOSQUE_FIELDS}
+        vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS}
         if not vals["name"]:
             ctx.flash("Le nom est obligatoire.", "err")
             return back("/admin/mosquee")
@@ -649,14 +645,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         if vals["orchestrator_url"] and not re.match(r"^https?://", vals["orchestrator_url"]):
             ctx.flash("L'adresse de l'orchestrateur doit commencer par http:// ou https://", "err")
             return back("/admin/mosquee")
-        if vals["orchestrator_token"] == "••••••":
+        if vals["orchestrator_token"] == db.MASK:
             vals["orchestrator_token"] = ctx.mosque["orchestrator_token"]
         di = int(f["default_imam_id"]) if (f.get("default_imam_id") or "").isdigit() else None
         if di and not db.one(ctx.conn, "SELECT id FROM users WHERE id = ? AND mosque_id = ? AND role = 'imam'", di, ctx.mosque["id"]):
             di = None
-        sets = ", ".join(f"{k} = ?" for k in vals)
-        ctx.conn.execute(f"UPDATE mosques SET {sets}, default_imam_id = ?, auto_import = ? WHERE id = ?",
-                         (*vals.values(), di, 1 if f.get("auto_import") == "1" else 0, ctx.mosque["id"]))
+        db.update_mosque(ctx.conn, ctx.mosque["id"], **vals, default_imam_id=di, auto_import=1 if f.get("auto_import") == "1" else 0)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.configuree", "mosquee", ctx.mosque["id"], ip=ctx.ip,
                  champs=[k for k in vals if k != "orchestrator_token" and str(vals[k]) != str(ctx.mosque[k])])
         ctx.flash("Configuration enregistrée.")

@@ -17,12 +17,13 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-from .arabic import arabic_ratio
-from .notes import fmt_t  # noqa: F401  (réexport historique)
-from .translate import fr_for, match_for, recited_arabic, verse_matches
+from ..paths import FONTS as FONTS_DIR
+from ..text import AR_RUN, arabic_ratio, is_arabic
+from .translate import segment_fr, verse_fr
+from .verses import match_for, recited_arabic, shown
 
-FONTS_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
 FONTS = str(FONTS_DIR)
+DEFAULT_TITLE = "Khutba du vendredi"
 
 MIN_S, MAX_S = 30.0, 90.0
 W, H = 1080, 1920
@@ -56,10 +57,7 @@ def _ass_ratio(name: str) -> float:
 
 def text_width(text: str, font_file: str, ass_size: float) -> float:
     """Largeur en pixels d'un texte rendu par libass à la taille ASS donnée."""
-    try:
-        return _font(font_file, max(1, round(ass_size / _ass_ratio(font_file)))).getlength(text)
-    except Exception:  # noqa
-        return len(text) * ass_size * 0.48
+    return _font(font_file, max(1, round(ass_size / _ass_ratio(font_file)))).getlength(text)
 
 
 def _sub_w(t: str) -> float:
@@ -93,7 +91,7 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
         if b - a >= MIN_S - 1 and all(abs(a - c["start"]) > 20 for c in cands):
             cands.append({"kind": kind, "start": round(a, 2), "end": round(b, 2), "why": why})
 
-    vms = verse_matches(matches)  # les formules rituelles (ta'awwudh…) ne sont pas des « versets » à mettre en avant
+    vms = shown(matches)
     good = [m for m in vms if m["coverage"] >= 0.45] or vms
     if good:
         m = max(good, key=lambda x: (x["score"] * min(1.0, x["coverage"] + 0.2), x["end"] - x["start"]))
@@ -132,14 +130,11 @@ def _esc(t: str) -> str:
     return t.replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", " ")
 
 
-_AR_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]+")
-
-
 PROPER = {"coran": "Coran", "allah": "Allah", "ramadan": "Ramadan", "mecque": "Mecque", "médine": "Médine"}
 
 
 def clean_fr(t: str) -> str:
-    t = _AR_RE.sub("", t)  # jamais d'arabe dans les sous-titres de parole
+    t = AR_RUN.sub("", t)  # jamais d'arabe dans les sous-titres de parole
     t = re.sub(r"\s+", " ", t).strip()
     t = re.sub(r"\s+([,.;:!?…])", r"\1", t)
     t = re.sub(r"\b(" + "|".join(PROPER) + r")\b", lambda m: PROPER[m.group(1)], t)  # Whisper : « coran », « allah »
@@ -322,7 +317,7 @@ def _header(header: dict | None, t_end: float) -> list[str]:
         return []
     b = min(6.0, t_end)
     ev = [f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head,,0,0,0,,{{\\an8\\pos(540,118)\\fad(600,800)}}"
-          f"{_esc(header.get('title', 'Khutba du vendredi').upper())}"]
+          f"{_esc(header.get('title', DEFAULT_TITLE).upper())}"]
     if header.get("subtitle"):
         ev.append(f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head2,,0,0,0,,{{\\an8\\pos(540,168)\\fad(600,800)}}{_esc(header['subtitle'])}")
     return ev
@@ -345,11 +340,28 @@ ASS_HEADER = (
 )
 
 
+def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
+    """Ce que les clips montrent pour un segment (et ce que le back-office propose de corriger) :
+    speech      parole française : le texte du segment ;
+    verse       verset détecté : carte verset, traduction Hamidullah (fr) ;
+    translation parole arabe : sa traduction française (fr None : pas de traduction, rien à l'écran) ;
+    recitation  Coran non apparié : rien à l'écran (pas de traduction improvisée du Coran)."""
+    if not is_arabic(seg["text"]):
+        return {"kind": "speech", "fr": seg["text"]}
+    m = match_for(seg, vms)
+    if m:
+        return {"kind": "verse", "verse": m, "fr": verse_fr(tr, m)}
+    e = segment_fr(tr, seg)
+    if e and e.get("coran"):
+        return {"kind": "recitation", "fr": None}
+    return {"kind": "translation", "fr": e["fr"] if e else None}
+
+
 def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, path: str, tr: dict | None = None,
               header: dict | None = None, show_arabic: bool = True) -> int:
     """Écrit le .ass du clip [t0, t1] (temps de session) ; renvoie le nombre d'unités (pages de sous-titre + cartes)."""
     tr = tr or {}
-    vms = verse_matches(matches, ambiguous=True)
+    vms = shown(matches, ambiguous=True)
     dur = t1 - t0
     ev: list[str] = []
     cards: list[tuple[float, float]] = []
@@ -359,26 +371,22 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
     for k, s in enumerate(segs):
         a, b = max(s["start"], t0) - t0, min(s["end"], t1) - t0
         nxt = (segs[k + 1]["start"] - t0) if k + 1 < len(segs) else dur
-        text = s["text"].strip()
-        if arabic_ratio(text) > 0.5:
-            m = match_for(s, vms)
-            if m:
-                key = (m["ref"], m["start"])
-                if key not in seen:
-                    seen.add(key)
-                    fr = (tr.get("verse_fr") or {}).get(f"{m['ref']}@{m['start']}") or m["verse_fr"]
-                    ca = max(0.0, m["start"] - t0 - 0.2)
-                    after = [x for x in segs if x["start"] > m["end"] - 0.1]
-                    limit = (after[0]["start"] - t0 + 3.0) if after else dur  # la carte peut empiéter 3 s sur la parole suivante
-                    cb = min(dur, limit, max(m["end"] - t0 + 1.0, ca + 2.5 + len(fr) / 15.0))
-                    cards.append((ca, cb))
-                    ev += _verse_card(m, fr, ca, cb, show_arabic)
-                continue
-            e = fr_for(s, tr)
-            if not e or e.get("coran"):
-                continue  # récitation non appariée : pas de traduction improvisée du Coran
-            words += interpolate_words(e["fr"], a, max(b, min(a + len(e["fr"]) / 17.0, nxt - 0.05, dur)))
-        else:
+        sub = subtitle(s, vms, tr)
+        if sub["kind"] == "verse":
+            m, fr = sub["verse"], sub["fr"]
+            key = (m["ref"], m["start"])
+            if key not in seen:
+                seen.add(key)
+                ca = max(0.0, m["start"] - t0 - 0.2)
+                after = [x for x in segs if x["start"] > m["end"] - 0.1]
+                limit = (after[0]["start"] - t0 + 3.0) if after else dur  # la carte peut empiéter 3 s sur la parole suivante
+                cb = min(dur, limit, max(m["end"] - t0 + 1.0, ca + 2.5 + len(fr) / 15.0))
+                cards.append((ca, cb))
+                ev += _verse_card(m, fr, ca, cb, show_arabic)
+        elif sub["kind"] == "translation" and sub["fr"]:
+            fr = sub["fr"]
+            words += interpolate_words(fr, a, max(b, min(a + len(fr) / 17.0, nxt - 0.05, dur)))
+        elif sub["kind"] == "speech":
             ws = s.get("words")
             if ws:
                 for w in ws:
@@ -390,7 +398,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                     else:
                         words.append({"w": t, "s": w["s"] - t0, "e": w["e"] - t0})
             else:
-                words += interpolate_words(text, a, b)
+                words += interpolate_words(s["text"].strip(), a, b)
     words.sort(key=lambda w: w["s"])
     if words:
         words[0]["w"] = words[0]["w"][:1].upper() + words[0]["w"][1:]
@@ -463,3 +471,16 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
                "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(Path(out).resolve())]
         subprocess.run(cmd, check=True, cwd=str(Path(out).resolve().parent))
     log(f"clip -> {out} ({dur:.0f}s)")
+
+
+def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx: int, version: int,
+              video: str, offset: float, outdir: Path, header: dict | None, crop: dict | None, log=print) -> Path:
+    """Sous-titres + rendu du clip n° idx, version `version`, de la fenêtre w (temps de session) ; renvoie le MP4.
+
+    offset : position du début de la session dans `video` (temps_vidéo = temps_session + offset)."""
+    v = f"_v{version}" if version > 1 else ""
+    ass = outdir / f"clip{idx}{v}.ass"
+    out = outdir / f"clip{idx}_{w.get('kind') or 'extrait'}{v}_A-VALIDER.mp4"
+    build_ass(segments, matches, w["start"], w["end"], str(ass), tr=tr, header=header)
+    render_clip(video, offset, w, ass.name, str(out), log, crop=crop)
+    return out

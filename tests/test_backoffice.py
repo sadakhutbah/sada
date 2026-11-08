@@ -45,7 +45,7 @@ def make_run(root: Path, run: str = RUN, janaza: bool = False) -> None:
         j = root / "output" / run / "session2"
         j.mkdir()
         (j / "transcript.json").write_text(json.dumps({"segments": [], "duration": 60}))
-        sessions.append({"index": 1, "planned": "janaza", "status": "janaza", "exclude_from_pipeline": True})
+        sessions.append({"index": 1, "planned": "janaza", "status": "janaza"})
     st = root / "state" / run
     st.mkdir(parents=True)
     (st / "sessions.json").write_text(json.dumps({"sessions": sessions, "recordings": []}))
@@ -223,14 +223,7 @@ class FakeOrch:
 
     def manual(self, cmd, arg=None):
         self.calls.append((cmd, arg))
-        return f"ok {cmd}"
-
-    @property
-    def machine(self):
-        class M:
-            class state:
-                value = "KHUTBA"
-        return M
+        return {"message": f"ok {cmd}", "state": "KHUTBA"}
 
     def status(self):
         return {"state": "KHUTBA", "clock": "13:42:10", "stream_on": True, "mic": True, "override": False,
@@ -411,7 +404,7 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     def no_network(*a, **k):
         raise AssertionError("appel réseau interdit")
     monkeypatch.setattr(socket.socket, "connect", no_network)
-    rows = {r["key"]: r for r in publish.connector_rows(conn, env["mid"])}
+    rows = {r["key"]: r for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"]))}
     assert rows["local"]["available"]
     for key in ("facebook", "youtube", "instagram"):
         assert not rows[key]["available"] and "identifiants absents" in rows[key]["why"]
@@ -420,8 +413,8 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     # même avec des identifiants, aucune publication réelle en V1
     admin = db.one(conn, "SELECT * FROM users WHERE username = 'admin'")
     publish.save_connector(conn, env["mid"], "facebook", True, {"page_id": "123", "page_token": "secret"}, admin)
-    row = next(r for r in publish.connector_rows(conn, env["mid"]) if r["key"] == "facebook")
-    assert not row["available"] and "non implémentée" in row["why"] and row["settings"]["page_token"] == "••••••"
+    row = next(r for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"])) if r["key"] == "facebook")
+    assert not row["available"] and "non implémentée" in row["why"] and {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
     res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), "facebook", resp, "x")
     assert not res.ok
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "valide"

@@ -4,7 +4,8 @@ import re
 from minbar.config import Config
 from minbar.encoder import Encoder
 from minbar.pipeline import clips as C
-from minbar.pipeline.translate import _key, is_formula, recited_arabic, strip_quran_marks
+from minbar.pipeline import translate
+from minbar.pipeline.verses import is_formula, recited_arabic, strip_quran_marks
 
 VERSE = {"ref": "65:3", "surah_name": "At-Talaaq", "start": 10.0, "end": 14.0, "score": 95.0, "coverage": 0.6,
          "confidence": "sûr", "heard": "إن الله بالغ أمره قد جعل الله لكل شيء قدرا",
@@ -16,8 +17,8 @@ SEGS = [
     {"start": 10.0, "end": 14.0, "text": "إن الله بالغ أمره قد جعل الله لكل شيء قدرا"},
     {"start": 14.5, "end": 17.0, "text": "صلى الله عليه وسلم ومعه قرآن غير مترجم"},
 ]
-TR = {"seg": {_key(SEGS[1]["text"]): {"fr": "Ô musulmans, face aux épreuves de la vie,", "coran": False}},
-      "verse_fr": {"65:3@10.0": "Allah atteint ce qu'Il Se propose, et Allah a assigné une mesure à chaque chose."}}
+TR = translate.with_correction(translate.empty(), SEGS[1], "Ô musulmans, face aux épreuves de la vie,")
+TR["verse_fr"]["65:3@10.0"] = "Allah atteint ce qu'Il Se propose, et Allah a assigné une mesure à chaque chose."
 
 
 def _events(path):
@@ -78,15 +79,15 @@ def test_quran_marks_and_formulas():
 
 def test_encoder_clean_output(tmp_path):
     cfg = Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path))
-    enc = Encoder(cfg, str(tmp_path / "scene.png"), log=lambda m: None)
-    cmd = " ".join(enc._cmd())
-    assert enc.recordings_clean and enc.recordings_clean[0].endswith("_clean.mkv")
-    assert enc.recordings_clean[0] == enc.recordings[0][:-4] + "_clean.mkv"
+    enc = Encoder(cfg, tmp_path, log=lambda m: None)
+    rec, clean = enc._new_recording()
+    assert clean == rec[:-4] + "_clean.mkv"
+    cmd = " ".join(enc._cmd(rec, clean))
     assert "asplit=2[a][aclean]" in cmd and "-map 0:v:0 -c:v:0 copy" in cmd
-    cfg2 = Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path), clean_copy=False)
-    cmd2 = " ".join(Encoder(cfg2, "s.png", log=lambda m: None)._cmd())
+    enc2 = Encoder(Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path), clean_copy=False), tmp_path, log=lambda m: None)
+    cmd2 = " ".join(enc2._cmd(*enc2._new_recording()))
     assert "split=2[cam][camclean]" in cmd2 and "-crf 18" in cmd2
-    cfg3 = Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path), record_clean=False)
-    e3 = Encoder(cfg3, "s.png", log=lambda m: None)
-    cmd3 = " ".join(e3._cmd())
-    assert "_clean.mkv" not in cmd3 and not e3.recordings_clean and "asplit" not in cmd3
+    e3 = Encoder(Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path), record_clean=False), tmp_path, log=lambda m: None)
+    rec3, clean3 = e3._new_recording()
+    cmd3 = " ".join(e3._cmd(rec3, clean3))
+    assert clean3 is None and "_clean.mkv" not in cmd3 and "asplit" not in cmd3

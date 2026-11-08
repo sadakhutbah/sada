@@ -1,12 +1,13 @@
-"""Transitions de scènes : courbes, calques (fond + contenu == rendu complet), graphe de l'encodeur."""
+"""Transitions de scènes : courbes, rendu des scènes, graphe de l'encodeur."""
 import datetime as dt
+from pathlib import Path
 
-from PIL import Image, ImageChops
+from PIL import ImageChops
 
 from minbar import transitions as tr
 from minbar.config import Config
 from minbar.encoder import Encoder
-from minbar.scenes import SceneRenderer
+from minbar.scenes import SCENES, Moment, SceneRenderer
 
 
 def test_plan_curves():
@@ -32,30 +33,29 @@ def test_volume_ramp_expr():
     assert e.startswith("if(isnan(t),0,") and f"/{tr.AUDIO_DUR:g}" in e and e.count("(") == e.count(")")
 
 
-def test_layers_match_full_render():
+def test_every_scene_renders_and_janaza_shows_the_name():
     r = SceneRenderer(Config.load(None))
     now, planned = dt.datetime(2026, 11, 6, 12, 20, 5), dt.datetime(2026, 11, 6, 12, 30)
-    bg = r.background()
-    for sc in ("avant", "priere", "entracte", "termine", "khutba", "janaza"):
-        full, content = r.layers(sc, now, planned)
-        assert full == (sc in tr.FULL_SCENES)
-        comp = bg.copy() if full else Image.new("RGBA", content.size, (0, 0, 0, 0))
-        comp.alpha_composite(content)
-        diff = ImageChops.difference(r.render(sc, now, planned).convert("RGBA"), comp)
-        assert max(hi for _, hi in diff.getextrema()) <= 2, sc
+    for sc in SCENES:
+        img = r.content(sc, Moment(now, planned))
+        assert img.size == (1280, 720) and img.mode == "RGBA" and img.getbbox(), sc
+    plain = r.content("janaza", Moment(now))
+    named = r.content("janaza", Moment(now, janaza_name="Ahmed"))
+    assert ImageChops.difference(plain, named).getbbox()       # le nom saisi apparaît à l'écran
 
 
 def test_encoder_layer_graph(tmp_path):
     cfg = Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path))
-    enc = Encoder(cfg, str(tmp_path / "scene.png"), log=lambda m: None)
-    enc.prepare(SceneRenderer(cfg).background())
-    assert all((tmp_path / f"scene_{k}.png").exists() for k in ("fond", "a", "b"))
-    cmd = " ".join(enc._cmd())
+    enc = Encoder(cfg, tmp_path, log=lambda m: None)
+    r = SceneRenderer(cfg)
+    enc.prepare(r.background())
+    assert all(Path(p).exists() for p in enc.layer_png.values())
+    cmd = " ".join(enc._cmd(*enc._new_recording()))
     for f in ("zmq=bind_address", "colorchannelmixer@fond", "overlay@ca", "overlay@cb", "volume@mic=volume=0"):
         assert f in cmd
     # hors direct : la scène est posée sans animation, et le graphe relancé repart de cet état
-    full, content = SceneRenderer(cfg).layers("khutba", dt.datetime(2026, 11, 6, 12, 40), None)
-    enc.show("khutba", full, content)
+    enc.show("khutba", SCENES["khutba"].full, r.content("khutba", Moment(dt.datetime(2026, 11, 6, 12, 40))))
     enc.mic(True)
     assert enc.shown == ("khutba", "a") and enc.levels["fond"] == 0 and enc.vol == 1
-    assert "colorchannelmixer@fond=aa=0[" in " ".join(enc._cmd()) and "volume@mic=volume=1" in " ".join(enc._cmd())
+    cmd = " ".join(enc._cmd(*enc._new_recording()))
+    assert "colorchannelmixer@fond=aa=0[" in cmd and "volume@mic=volume=1" in cmd

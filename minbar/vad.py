@@ -28,7 +28,6 @@ class VadMonitor(threading.Thread):
         self._dense_since = None
         self.dense_min = 0.4
         self.connected = False
-        self.last_audio = 0.0
         self.proc: subprocess.Popen | None = None
 
     def run(self):
@@ -53,7 +52,6 @@ class VadMonitor(threading.Thread):
             if len(buf) < FRAME_BYTES:
                 return
             self.connected = True
-            self.last_audio = time.monotonic()
             try:
                 win.append(self.vad.is_speech(buf, RATE))
             except Exception:

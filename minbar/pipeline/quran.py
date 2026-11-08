@@ -5,12 +5,10 @@ from pathlib import Path
 
 import requests
 
-from ..config import ROOT
+from ..paths import CACHE
 from .arabic import normalize
 
-CACHE = ROOT / "data" / "cache"
 BASMALA = "بسم الله الرحمن الرحيم"
-SURAH_NAMES_CACHE = {}
 
 
 def _get(edition: str) -> dict:

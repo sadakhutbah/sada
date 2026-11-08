@@ -10,3 +10,4 @@ promo/node_modules/
 auto.key
 auto.crt
 *.key
+*.egg-info/

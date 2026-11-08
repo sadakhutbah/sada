@@ -10,9 +10,13 @@ import json
 import sqlite3
 from pathlib import Path
 
-from ..config import ROOT
+from .. import paths
 
-DEFAULT_DB = ROOT / "data" / "backoffice" / "minbar.db"
+DEFAULT_DB = paths.BACKOFFICE_DB
+# réglages modifiables d'une mosquée (Réglages → Mosquée, `python -m minbar.backoffice mosque`)
+MOSQUE_SETTINGS = ("name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token", "state_dir", "output_dir",
+                   "publish_dir", "clip_title")
+MASK = "••••••"                  # valeur affichée à la place d'un secret enregistré ; renvoyée telle quelle = inchangé
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS mosques (
@@ -186,10 +190,15 @@ def audit(conn, mosque_id, user_id, action: str, object_type: str = "", object_i
 def mosque_dirs(m: dict) -> dict:
     """Dossiers effectifs d'une mosquée (valeurs vides = dossiers du dépôt, mode A)."""
     return {
-        "state": Path(m.get("state_dir") or ROOT / "data" / "state"),
-        "output": Path(m.get("output_dir") or ROOT / "data" / "output"),
-        "publish": Path(m.get("publish_dir") or ROOT / "data" / "published" / m["slug"]),
+        "state": Path(m.get("state_dir") or paths.STATE),
+        "output": Path(m.get("output_dir") or paths.OUTPUT),
+        "publish": Path(m.get("publish_dir") or paths.PUBLISHED / m["slug"]),
     }
+
+
+def update_mosque(conn, mosque_id: int, **vals) -> None:
+    if vals:
+        conn.execute(f"UPDATE mosques SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), mosque_id))
 
 
 def create_mosque(conn, slug: str, name: str, **fields) -> int:
@@ -198,4 +207,5 @@ def create_mosque(conn, slug: str, name: str, **fields) -> int:
     cur = conn.execute(f"INSERT INTO mosques ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", vals)
     mid = cur.lastrowid
     conn.execute("INSERT OR IGNORE INTO connectors (mosque_id, key, enabled, settings) VALUES (?, 'local', 1, '{}')", (mid,))
+    audit(conn, mid, None, "mosquee.creee", "mosquee", mid, slug=slug)
     return mid

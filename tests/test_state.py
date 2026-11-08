@@ -1,4 +1,5 @@
 import datetime as dt
+from minbar import runs
 from minbar.state import Machine, MachineParams, Signals, State
 
 D = dt.date(2026, 11, 6)
@@ -173,8 +174,8 @@ def test_janaza_excluded_from_pipeline():
     d = Drv(m, at(13, 5))
     m.command("janaza", d.sig(), "X")
     assert m.state == State.JANAZA
-    j = [r for r in m.records if r.status == "janaza"]
-    assert j and j[0].exclude_from_pipeline
+    j = [r for r in m.sessions_dicts() if r["status"] == "janaza"]
+    assert j and not runs.is_khutba(j[0])
     d.run(100, voice=False)
     assert m.state == State.JANAZA     # jamais coupée automatiquement
     m.command("stop", d.sig())

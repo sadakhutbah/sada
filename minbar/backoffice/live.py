@@ -10,17 +10,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# commandes exposées dans le back-office -> (chemin API, libellé journal)
-COMMANDS = {
-    "extend": ("extend", "+5 min"),
-    "janaza": ("janaza", "Janaza"),
-    "stop": ("stop", "Arrêter"),
-    "cancel": ("cancel", "Annuler aujourd'hui"),
-}
+from ..state import State
+
+# commandes de l'orchestrateur exposées dans le back-office -> libellé (boutons, journal)
+COMMANDS = {"extend": "+5 min", "janaza": "Janaza", "stop": "Arrêter", "cancel": "Annuler aujourd'hui"}
 
 STATE_LABELS = {
-    "IDLE": "En veille", "ARMÉ": "Armé (fenêtre ouverte)", "AVANT": "Début imminent", "KHUTBA": "Khutba en direct",
-    "PRIÈRE": "Prière en cours", "ENTRACTE": "Entracte", "TERMINÉ": "Terminé", "JANAZA": "Salat al-Janaza", "FIN": "Live terminé",
+    State.IDLE: "En veille", State.ARME: "Armé (fenêtre ouverte)", State.AVANT: "Début imminent",
+    State.KHUTBA: "Khutba en direct", State.PRIERE: "Prière en cours", State.ENTRACTE: "Entracte",
+    State.TERMINE: "Terminé", State.JANAZA: "Salat al-Janaza", State.FIN: "Live terminé",
 }
 SESSION_LABELS = {"pending": "à venir", "live": "en direct", "done": "terminée", "skipped": "sautée", "janaza": "janaza"}
 
@@ -53,22 +51,21 @@ def status(mosque: dict) -> dict:
 def command(mosque: dict, cmd: str, arg: str | None = None) -> dict:
     if cmd not in COMMANDS:
         raise OrchestratorError("commande inconnue")
-    path = COMMANDS[cmd][0]
     params = {}
     if cmd == "extend":
         params["min"] = "5"
     elif cmd == "janaza" and arg:
         params["name"] = arg[:80]
-    return _call(mosque, "POST", path, params or None)
+    return _call(mosque, "POST", cmd, params or None)
 
 
 def summarize(st: dict) -> dict:
     """Statut brut de l'orchestrateur -> données d'affichage."""
     sessions = st.get("sessions") or []
     live = next((s for s in sessions if s.get("status") == "live"), None)
-    planned = [s for s in sessions if not str(s.get("planned", "")).startswith("janaza")]
+    planned = [s for s in sessions if s.get("status") != "janaza"]
     cur = live or next((s for s in planned if s.get("status") == "pending"), None)
-    if cur is not None and not str(cur.get("planned", "")).startswith("janaza"):
+    if cur is not None:
         n = planned.index(cur) + 1 if cur in planned else None
         session = f"Session {n}/{len(planned)} — {cur['planned']}" if n else cur.get("planned")
     else:

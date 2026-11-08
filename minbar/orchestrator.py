@@ -5,7 +5,6 @@
 from __future__ import annotations
 import argparse
 import datetime as dt
-import json
 import logging
 import os
 import signal
@@ -14,13 +13,13 @@ import threading
 import time
 from pathlib import Path
 
-from . import mawaqit
+from . import mawaqit, runs
 from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
 from .encoder import Encoder
-from .scenes import SceneRenderer
-from .state import Machine, MachineParams, Signals, State
+from .scenes import SCENES, Moment, SceneRenderer
+from .state import Machine, Signals, State
 from .vad import VadMonitor
 
 log = logging.getLogger("minbar")
@@ -29,33 +28,27 @@ log = logging.getLogger("minbar")
 class Orchestrator:
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        start = None
-        if cfg.sim_start:
-            start = parse_hhmm(cfg.sim_start, dt.date.today())
-        self.clock = SimClock(start, 1.0)
+        start = parse_hhmm(cfg.sim_start, dt.date.today()) if cfg.sim_start else None
+        self.clock = SimClock(start)
         self.accel = cfg.sim_speed if cfg.sim_start else 1.0
-        self.run_id = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.run_id = runs.new_run_id()
         self.run_dir = Path(cfg.state_dir) / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._setup_logging()
-        # horaires
         self.times = self._load_times()
         day = self.clock.now().date()
         sessions = [parse_hhmm(t, day) for t in self.times]
         log.info("Sessions du jour (horloge mosquée) : %s", [s.strftime("%H:%M") for s in sessions])
-        p = MachineParams(**{k: getattr(cfg, k) for k in MachineParams.__dataclass_fields__ if hasattr(cfg, k)})
-        self.machine = Machine(sessions, p, log=log.info, pos_fn=lambda: self.encoder.pos(),
-                               on_change=self._on_change)
         self.renderer = SceneRenderer(cfg)
-        self.scene_png = str(self.run_dir / "scene.png")
-        self.encoder = Encoder(cfg, self.scene_png, log=log.info)
+        self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())   # calque fond commun + calques de contenu vides
+        self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position)
         self.vad = VadMonitor(cfg.camera_url, cfg.vad_aggressiveness, cfg.vad_ratio, log=log.info)
         self.lock = threading.RLock()
-        self._last_scene_key = None
+        self._shown_key = None
+        self._saved = None
         self._stop = threading.Event()
         self.api = None
-        self.t0 = time.monotonic()
 
     # -------------------------------------------------------------- initialisation
     def _setup_logging(self):
@@ -72,8 +65,7 @@ class Orchestrator:
             return list(self.cfg.jumua_times_override)
         try:
             d = mawaqit.get_jumua(self.cfg.mawaqit_url, self.cfg.mawaqit_cache)
-            log.info("Mawaqit (%s) : jumua=%s jumua2=%s jumua3=%s — origine : %s",
-                     d.get("name"), d.get("jumua"), d.get("jumua2"), d.get("jumua3"), d.get("origin"))
+            log.info("Mawaqit (%s) : jumua=%s — origine : %s", d.get("name"), d["jumua_list"], d.get("origin"))
             if d["jumua_list"]:
                 return d["jumua_list"]
         except Exception as e:
@@ -81,68 +73,57 @@ class Orchestrator:
         log.warning("Repli : horaires par défaut 12:30 / 13:30")
         return ["12:30", "13:30"]
 
-    # --------------------------------------------------------------- événements
-    def _on_change(self, old: State, new: State, reason: str):
-        # le mic suit la scène (khutba et janaza uniquement)
-        if self.machine.stream_on and not self.encoder.wanted:
-            self._start_stream()
-        self._refresh_scene(force=True)
-        self.encoder.mic(new in (State.KHUTBA, State.JANAZA))
-        if new == State.FIN and self.encoder.wanted:
-            self._finish_stream()
+    # --------------------------------------------------------------- diffusion
+    def _sync(self):
+        """Aligne l'encodeur sur la machine : scène affichée, micro, flux lancé ou arrêté."""
+        m, enc = self.machine, self.encoder
+        if m.scene is not None:
+            now = self.clock.now()
+            spec = SCENES[m.scene]
+            key = (m.scene, m.session, m.janaza_name, now.strftime("%H:%M:%S") if spec.ticking else None)
+            if key != self._shown_key:
+                self._shown_key = key
+                enc.show(m.scene, spec.full, self.renderer.content(m.scene, Moment(now, m.session, m.janaza_name)))
+            if spec.mic != enc.mic_on:
+                enc.mic(spec.mic)
+        if m.stream_on and not enc.wanted:
+            enc.start()
+        elif not m.stream_on and enc.wanted:
+            enc.stop()
+            log.info("Stream arrêté. Enregistrements : %s", [r for r, _ in enc.recordings])
         self._save_sessions()
-
-    def _start_stream(self):
-        self._refresh_scene(force=True)
-        self.encoder.start()
-
-    def _finish_stream(self):
-        self.encoder.stop()
-        self._save_sessions()
-        log.info("Stream arrêté. Enregistrements : %s", self.encoder.recordings)
-
-    def _refresh_scene(self, force=False):
-        m = self.machine
-        planned = m.session
-        now = self.clock.now()
-        sc = m.scene
-        key = (sc, now.strftime("%H:%M:%S") if sc in ("entracte",) else None, planned)
-        if not force and key == self._last_scene_key:
-            return
-        self._last_scene_key = key
-        # calques séparés : l'encodeur enchaîne les scènes par un fondu (transitions.py), sans couper le flux
-        full, content = self.renderer.layers(sc or "avant", now, planned)
-        self.encoder.show(sc or "avant", full, content)
 
     def _save_sessions(self):
-        data = {
-            "run_id": self.run_id, "recordings": self.encoder.recordings,
-            "recordings_clean": self.encoder.recordings_clean, "clock_sim": self.cfg.sim_start,
-            "sessions": [r.__dict__ for r in self.machine.records],
-            "mosque": self.cfg.mosque_name,
-        }
-        (self.run_dir / "sessions.json").write_text(json.dumps(data, ensure_ascii=False, indent=1))
+        recs = self.encoder.recordings
+        data = {"run_id": self.run_id, "recordings": [r for r, _ in recs], "recordings_clean": [c for _, c in recs],
+                "clock_sim": self.cfg.sim_start, "sessions": self.machine.sessions_dicts(), "mosque": self.cfg.mosque_name}
+        if data != self._saved:
+            runs.write(self.run_dir, data)
+            self._saved = data
 
     # ------------------------------------------------------------------ API
     def signals(self) -> Signals:
         v, s = self.vad.runs()
         return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s, presence=None)
 
-    def manual(self, cmd: str, arg=None) -> str:
+    def manual(self, cmd: str, arg=None) -> dict:
         with self.lock:
             msg = self.machine.command(cmd, self.signals(), arg)
-            self._refresh_scene(force=True)
-            return msg
+            self._sync()
+            return {"message": msg, "state": self.machine.state.value}
 
     def status(self) -> dict:
         with self.lock:
             st = self.machine.status()
             v, s = self.vad.runs()
+            rec, pos = self.encoder.position()
             st.update({
+                "run_id": self.run_id,
                 "clock": self.clock.now().strftime("%H:%M:%S"), "clock_speed": self.clock.speed,
                 "vad": {"connected": self.vad.connected, "voice_run_s": round(v, 1), "silence_run_s": round(s, 1)},
                 "encoder": {"alive": self.encoder.alive(), "restarts": self.encoder.restarts,
-                            "recording": self.encoder.recording, "pos_s": round(self.encoder.pos(), 1)},
+                            "recording": self.encoder.recordings[rec][0] if self.encoder.recordings else None,
+                            "pos_s": round(pos, 1)},
                 "mic": self.encoder.mic_on,
             })
             return st
@@ -176,11 +157,7 @@ class Orchestrator:
                     self.clock.set_speed(want)
                     log.info("Horloge simulée : vitesse x%g", want)
                 self.machine.tick(self.signals())
-                if self.machine.stream_on:
-                    self._refresh_scene()
-                    # reprise du flux si l'encodeur n'a pas démarré (ex. override start depuis IDLE)
-                    if not self.encoder.wanted:
-                        self._start_stream()
+                self._sync()
             if time.monotonic() - last_status > 30:
                 last_status = time.monotonic()
                 st = self.status()
@@ -192,7 +169,7 @@ class Orchestrator:
     def shutdown(self):
         self.vad.stop()
         if self.encoder.wanted:
-            self._finish_stream()
+            self.encoder.stop()
         if self.api:
             self.api.shutdown()
         self._save_sessions()
@@ -214,8 +191,7 @@ def main(argv=None):
     ov = {k: v for k, v in vars(a).items() if k not in ("config", "times") and v is not None}
     if a.times:
         ov["jumua_times_override"] = a.times.split(",")
-    cfg = Config.load(a.config, **{k.replace("-", "_"): v for k, v in ov.items()})
-    Orchestrator(cfg).run()
+    Orchestrator(Config.load(a.config, **ov)).run()
 
 
 if __name__ == "__main__":
