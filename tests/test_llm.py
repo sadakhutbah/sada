@@ -105,6 +105,37 @@ def test_options_du_cli_reglent_l_interrupteur(monkeypatch):
     assert llm.settings().model == "m"
 
 
+def test_fichier_du_backoffice_et_priorite(serveur, tmp_path, monkeypatch):
+    """Le fichier écrit par les Réglages sert de défaut ; l'environnement reste prioritaire."""
+    cfg = tmp_path / "llm.json"
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
+    for var in ("MINBAR_LLM_ENABLED", "MINBAR_LLM_URL", "MINBAR_LLM_MODEL", "MINBAR_LLM_PROTOCOL"):
+        monkeypatch.delenv(var, raising=False)
+    llm.save_config(enabled=True, url=serveur, model="du-fichier", protocol="openai")
+    assert llm.config()["model"] == "du-fichier" and llm.enabled() is True
+    assert llm.label() == "openai · du-fichier"
+
+    monkeypatch.setenv("MINBAR_LLM_MODEL", "de-l-env")           # la ligne de commande gagne
+    assert llm.settings().model == "de-l-env"
+    monkeypatch.delenv("MINBAR_LLM_MODEL")
+
+    assert llm.ask_json("résume", 5, lambda m: None) == {"theme": "la patience", "points": ["a"]}
+
+    llm.save_config(enabled=False)
+    assert llm.enabled() is False
+    monkeypatch.setenv("MINBAR_LLM_ENABLED", "1")                # MINBAR_LLM_ENABLED l'emporte sur le fichier
+    assert llm.enabled() is True
+
+
+def test_fichier_illisible_ignore(tmp_path, monkeypatch):
+    cfg = tmp_path / "llm.json"
+    cfg.write_text("{ pas du json")
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
+    monkeypatch.delenv("MINBAR_LLM_URL", raising=False)
+    assert llm.config() == {} and llm.enabled() is True
+    assert llm.settings().url == llm.DEFAULT_URL
+
+
 def test_modele_absent_ne_casse_pas_le_pipeline():
     logs = []
     assert llm.ask_json("résume", 2, logs.append, url="http://127.0.0.1:9/v1") is None

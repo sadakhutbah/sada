@@ -26,6 +26,32 @@
     <p><button class="btn">Enregistrer</button></p>
   </form>
 </section>
+<section class="card" id="modele">
+  <h2>Modèle de langage</h2>
+  <p class="help">Résumé et traduction du pipeline. Un serveur compatible OpenAI ou Anthropic, en local
+    (Ollama, llama.cpp, LM Studio, vLLM) ou distant. Réglage de cette machine, partagé par tous les
+    lancements du pipeline : <span class="mono">{{ llm_file }}</span>.</p>
+  <form method="post" action="/admin/modele"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="check"><input type="checkbox" name="llm_enabled" value="1" {{ "checked" if llm_on }}> Activer le modèle
+      (décoché : résumé extractif et traductions fixes, aucun appel)</label>
+    <label for="llm_url">Adresse de l'API</label>
+    <input type="text" id="llm_url" name="llm_url" value="{{ llm.url }}" placeholder="http://127.0.0.1:11434/v1">
+    <label for="llm_model">Modèle</label>
+    <input type="text" id="llm_model" name="llm_model" value="{{ llm.model }}" placeholder="qwen2.5:7b-instruct">
+    <label for="llm_protocol">Format d'API</label>
+    <select id="llm_protocol" name="llm_protocol">
+      <option value="" {{ "selected" if not llm.protocol }}>— déduit de l'adresse —</option>
+      <option value="openai" {{ "selected" if llm.protocol == "openai" }}>OpenAI (/chat/completions)</option>
+      <option value="anthropic" {{ "selected" if llm.protocol == "anthropic" }}>Anthropic (/messages)</option>
+    </select>
+    <div class="help">En service : <b>{{ llm_now }}</b>{{ "" if llm_on else " (coupé)" }}. Les variables
+      <span class="mono">MINBAR_LLM_*</span> et les options <span class="mono">--llm…</span> restent prioritaires.</div>
+    <p><button class="btn">Enregistrer</button></p>
+  </form>
+  <form method="post" action="/admin/modele/tester"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn sm ghost">Tester la connexion</button>
+  </form>
+</section>
 <section class="card" id="connecteurs">
   <h2>Connecteurs de publication</h2>
   <p class="help">Les identifiants restent sur cette machine. En V1, Facebook, YouTube et Instagram restent désactivés : aucune publication réelle, aucun appel externe.</p>

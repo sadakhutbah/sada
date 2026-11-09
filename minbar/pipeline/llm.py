@@ -22,15 +22,56 @@ import shutil
 import subprocess
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
+
+from .. import paths
 
 DEFAULT_URL = "http://127.0.0.1:11434/v1"
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
 ANTHROPIC_VERSION = "2023-06-01"
+CONFIG_KEYS = ("enabled", "url", "model", "protocol")
+
+# réglage propre au processus (back-office, tests) : prioritaire sur l'environnement
+_OVERRIDE: dict = {}
+
+
+def config_path() -> Path:
+    return Path(os.environ.get("MINBAR_LLM_CONFIG") or paths.DATA / "llm.json")
+
+
+def config() -> dict:
+    """Réglages enregistrés depuis le back-office (Réglages → Mosquée). Fichier absent ou illisible : {}."""
+    try:
+        d = json.loads(config_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: d[k] for k in CONFIG_KEYS if k in d} if isinstance(d, dict) else {}
+
+
+def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "") -> None:
+    """Écrit le réglage du modèle (fichier local, lisible par le pipeline lancé à côté)."""
+    p = config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"enabled": bool(enabled), "url": url.strip(), "model": model.strip(),
+                               "protocol": protocol.strip()}, indent=1), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def use(**kw) -> None:
+    """Réglages imposés au processus courant (prioritaires sur l'environnement et le fichier)."""
+    _OVERRIDE.clear()
+    _OVERRIDE.update({k: v for k, v in kw.items() if k in CONFIG_KEYS and v is not None})
 
 
 def enabled() -> bool:
-    """Interrupteur global (MINBAR_LLM_ENABLED) : à 0, aucun appel au modèle, quelle que soit l'URL."""
-    return os.environ.get("MINBAR_LLM_ENABLED", "").strip().lower() not in ("0", "off", "false", "no", "non")
+    """Interrupteur : réglage du processus, puis MINBAR_LLM_ENABLED, puis le fichier, sinon activé."""
+    if "enabled" in _OVERRIDE:
+        return bool(_OVERRIDE["enabled"])
+    env = os.environ.get("MINBAR_LLM_ENABLED", "").strip().lower()
+    if env:
+        return env not in ("0", "off", "false", "no", "non")
+    return bool(config().get("enabled", True))
 
 
 def label() -> str:
@@ -54,10 +95,14 @@ class Settings:
 
 def settings(url: str | None = None, model: str | None = None, key: str | None = None,
              protocol: str | None = None) -> Settings:
-    """Réglages effectifs : argument, puis variable d'environnement, puis défaut local."""
-    url = (url or os.environ.get("MINBAR_LLM_URL") or DEFAULT_URL).rstrip("/")
-    proto = (protocol or os.environ.get("MINBAR_LLM_PROTOCOL") or "").strip().lower() or _guess_protocol(url)
-    return Settings(url=url, model=model or os.environ.get("MINBAR_LLM_MODEL") or DEFAULT_MODEL,
+    """Réglages effectifs : argument, réglage du processus, environnement, fichier du back-office, défaut."""
+    cfg = config()
+    url = (url or _OVERRIDE.get("url") or os.environ.get("MINBAR_LLM_URL") or cfg.get("url")
+           or DEFAULT_URL).rstrip("/")
+    model = model or _OVERRIDE.get("model") or os.environ.get("MINBAR_LLM_MODEL") or cfg.get("model") or DEFAULT_MODEL
+    proto = (protocol or _OVERRIDE.get("protocol") or os.environ.get("MINBAR_LLM_PROTOCOL")
+             or cfg.get("protocol") or "").strip().lower() or _guess_protocol(url)
+    return Settings(url=url, model=model,
                     key=key if key is not None else os.environ.get("MINBAR_LLM_API_KEY", ""), protocol=proto)
 
 
@@ -130,6 +175,16 @@ def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
     if not choices:
         raise RuntimeError(f"réponse sans « choices » : {json.dumps(d)[:200]}")
     return (choices[0].get("message") or {}).get("content") or ""
+
+
+def probe(timeout: int = 8) -> tuple[bool, str]:
+    """Le modèle répond-il ? Indépendant de l'interrupteur : c'est le bouton « Tester » du back-office."""
+    s = settings()
+    try:
+        _ask_http(s, 'Réponds uniquement {"ok": true}.', timeout, lambda m: None)
+    except Exception as e:  # noqa: BLE001 — le message est montré tel quel à l'administrateur
+        return False, f"{s.label()} injoignable : {e}"
+    return True, f"{s.label()} répond."
 
 
 def _ask_cli(prompt: str, timeout: int, log) -> str:

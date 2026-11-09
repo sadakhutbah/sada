@@ -87,6 +87,12 @@ export MINBAR_LLM_API_KEY="…"                          # seulement si le serve
 ```
 
 Équivalents en options : `--llm` / `--no-llm` (bascule), `--llm-url`, `--llm-model`, `--llm-protocol`.
+
+En pratique, tout se règle depuis le back-office : **Réglages → Modèle de langage** (bouton « Tester la
+connexion » compris). Il écrit `data/llm.json`, que le pipeline relit à chaque lancement ; les variables
+d'environnement et les options de ligne de commande restent prioritaires sur ce fichier. Aucune clé d'API
+n'est enregistrée par le web : si le serveur en exige une, elle se pose par `MINBAR_LLM_API_KEY`.
+
 Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-instruct` ou
 `modèle : désactivé (repli sans IA)`). La méthode réellement employée est aussi écrite dans l'en-tête
 des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le

@@ -263,6 +263,49 @@ def test_regeneration_refusee_sans_correction():
         content.start_regeneration(None, "x.db", clip, {"id": 1})
 
 
+def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
+    """Réglages → Modèle de langage : écrit le fichier que le pipeline lit, sans secret côté web."""
+    from minbar.pipeline import llm
+    cfg = tmp_path / "llm.json"
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
+    for var in ("MINBAR_LLM_ENABLED", "MINBAR_LLM_URL", "MINBAR_LLM_MODEL", "MINBAR_LLM_PROTOCOL"):
+        monkeypatch.delenv(var, raising=False)
+    c = client(env, "admin")
+    assert "Modèle de langage" in c.get("/admin/mosquee").text
+
+    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_enabled": "1",
+                                      "llm_url": "http://127.0.0.1:9/v1", "llm_model": "petit", "llm_protocol": "openai"})
+    assert r.status_code == 303
+    assert json.loads(cfg.read_text()) == {"enabled": True, "url": "http://127.0.0.1:9/v1",
+                                           "model": "petit", "protocol": "openai"}
+    assert llm.enabled() and llm.label() == "openai · petit"      # le pipeline lirait ceci
+
+    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_url": "", "llm_model": "", "llm_protocol": ""})
+    assert r.status_code == 303
+    assert json.loads(cfg.read_text())["enabled"] is False and llm.enabled() is False
+
+    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_enabled": "1", "llm_url": "file:///etc/passwd"})
+    assert r.status_code == 303
+    assert json.loads(cfg.read_text())["enabled"] is False         # refusée : le fichier n'a pas bougé
+
+    for who in ("imam", "responsable"):
+        ci = client(env, who)
+        assert ci.post("/admin/modele", data={"csrf": csrf(ci, "/"), "llm_enabled": "1"}).status_code == 403
+
+
+def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
+    """Le bouton « Tester » interroge l'adresse enregistrée et rapporte l'échec sans casser la page."""
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(tmp_path / "llm.json"))
+    monkeypatch.delenv("MINBAR_LLM_ENABLED", raising=False)
+    c = client(env, "admin")
+    c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_enabled": "1",
+                                  "llm_url": "http://127.0.0.1:9/v1", "llm_model": "petit", "llm_protocol": "openai"})
+    r = c.post("/admin/modele/tester", data={"csrf": csrf(c, "/admin/mosquee")})
+    assert r.status_code == 303
+    page = c.get("/admin/mosquee").text
+    assert "injoignable" in page
+
+
 def test_libelle_d_un_dars_et_commandes_proposees():
     """Le tableau de bord nomme les états du dars et ne propose que des commandes de la machine."""
     from minbar.backoffice import live

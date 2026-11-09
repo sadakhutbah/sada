@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
 from .. import text
-from ..pipeline import verses
+from ..pipeline import llm, verses
 from ..pipeline.output import SessionOutput
 from . import auth, content, db, importer, live, publish
 
@@ -626,7 +626,35 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     def mosque_page(ctx: Ctx = Depends(get_ctx)):
         ctx.require("admin")
         imams = auth.imams(ctx.conn, ctx.mosque["id"])
-        return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=publish.connector_rows(ctx.conn, ctx.mosque))
+        return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=publish.connector_rows(ctx.conn, ctx.mosque),
+                      llm=llm.config(), llm_now=llm.settings().label(), llm_on=llm.enabled(), llm_file=str(llm.config_path()))
+
+    @app.post("/admin/modele")
+    async def llm_save(ctx: Ctx = Depends(get_ctx)):
+        f = await ctx.form()
+        ctx.require("admin")
+        url = (f.get("llm_url") or "").strip()
+        model = (f.get("llm_model") or "").strip()
+        proto = (f.get("llm_protocol") or "").strip()
+        if url and not re.match(r"^https?://", url):
+            ctx.flash("L'adresse du modèle doit commencer par http:// ou https://", "err")
+            return back("/admin/mosquee#modele")
+        if proto not in ("", "openai", "anthropic"):
+            ctx.flash("Format d'API inconnu.", "err")
+            return back("/admin/mosquee#modele")
+        llm.save_config(enabled=f.get("llm_enabled") == "1", url=url, model=model, protocol=proto)
+        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "modele.configure", "mosque", ctx.mosque["id"], ip=ctx.ip,
+                 actif=f.get("llm_enabled") == "1", url=url, modele=model, protocole=proto, fichier=str(llm.config_path()))
+        ctx.flash("Modèle de langage enregistré. Le pipeline l'applique au prochain lancement (les variables "
+                  "d'environnement et les options de ligne de commande restent prioritaires).")
+        return back("/admin/mosquee#modele")
+
+    @app.post("/admin/modele/tester")
+    async def llm_test(ctx: Ctx = Depends(get_ctx)):
+        ctx.require("admin")
+        ok, msg = llm.probe()
+        ctx.flash(msg, "" if ok else "err")
+        return back("/admin/mosquee#modele")
 
     @app.post("/admin/mosquee")
     async def mosque_save(ctx: Ctx = Depends(get_ctx)):
