@@ -12,8 +12,8 @@ Les composants communs (carte, pastille, sélecteur segmenté, champ, bouton) so
 ## Développement
 
     npm install
-    npm run dev      # http://127.0.0.1:5173/app/ — relais vers le back-office sur 8774
-    npm run build    # écrit web/dist, servi par le back-office sous /app
+    npm run dev      # http://127.0.0.1:5173/ — relais vers le back-office sur 8774
+    npm run build    # écrit web/dist, servi par le back-office à la racine
 
 Le back-office se lance en parallèle : `python -m minbar.backoffice --db <base> serve --port 8774`.
 
@@ -25,10 +25,8 @@ Le back-office se lance en parallèle : `python -m minbar.backoffice --db <base>
 4. Une bibliothèque standard plutôt qu'un équivalent maison.
 5. Pas de travail jetable : un écran React n'arrive qu'avec son API d'écriture complète.
 
-## Ordre de bascule
+## Interface unique
 
-1. Connexion et tableau de bord — faits, en lecture.
-2. Khutbas et clips en lecture, puis écritures : corrections, validation / rejet, régénération, publication.
-3. Réglages (sept onglets) avec le sélecteur de dossiers côté serveur (`/api/v1/folders`).
-4. Comptes et journal.
-5. Retrait des gabarits Jinja, puis bascule du front de `/app` vers `/`.
+Les gabarits Jinja ont été retirés : ce front est la seule interface du back-office, servi à la racine.
+Le serveur ne produit plus que du JSON (`/api/v1`), les médias et le logo ; les écrans sont décrits ici,
+une seule fois. `web/dist` est versionné pour que le back-office serve le front sans étape de build.

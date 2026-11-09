@@ -18,7 +18,6 @@ dependencies = [
   # back-office
   "fastapi[standard]",
   "uvicorn",
-  "jinja2",
   "python-multipart",
   "argon2-cffi",
   "httpx",

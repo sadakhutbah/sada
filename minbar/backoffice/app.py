@@ -1,31 +1,26 @@
-"""Application web du back-office (FastAPI + Jinja2, rendu serveur, sans dépendance JS externe)."""
+"""Application web du back-office : API JSON (`/api/v1`) et front React servi à la racine.
+
+Le rendu des pages (Jinja2) a été retiré : l'unique interface est l'application React de `web/`,
+construite dans `web/dist` puis servie en fichiers statiques. Ce module ne produit donc plus que
+du JSON (API et médias) ; les écrans sont décrits une seule fois, dans le front.
+"""
 from __future__ import annotations
 
-import datetime as dt
-import html
-import json
-import re
-import secrets
 import sqlite3
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from markupsafe import Markup
 from starlette.concurrency import run_in_threadpool
 
-from .. import text
-from ..pipeline import llm, verses
-from ..pipeline.output import SessionOutput
-from . import auth, branding, content, db, dirs as dirs_mod, importer, live, publish
+from . import auth, branding, content, db, importer, live
 
 HERE = Path(__file__).resolve().parent
+FRONT = HERE.parent.parent / "web" / "dist"
 PRE_COOKIE = "minbar_pre"
 
 
@@ -43,30 +38,60 @@ class NotFound(Exception):
     pass
 
 
+class Invalid(Exception):
+    """Requête lisible mais refusée par une règle métier (champ vide, valeur inconnue…)."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+# ------------------------------------------------------------------ contexte
+
 class Ctx:
     def __init__(self, request: Request, conn, session: dict, user: dict, mosque: dict):
         self.request, self.conn, self.session, self.user, self.mosque = request, conn, session, user, mosque
         self.ip = request.client.host if request.client else None
-        self.files: dict = {}
 
     def can(self, perm: str) -> bool:
         return auth.can(self.user, perm)
 
     def require(self, perm: str) -> None:
         if not self.can(perm):
-            db.audit(self.conn, self.mosque["id"], self.user["id"], "acces.refuse", ip=self.ip, chemin=self.request.url.path, droit=perm)
+            db.audit(self.conn, self.mosque["id"], self.user["id"], "acces.refuse", ip=self.ip,
+                     chemin=self.request.url.path, droit=perm)
             raise Forbidden()
 
-    def flash(self, msg: str, kind: str = "ok") -> None:
-        self.conn.execute("UPDATE auth_sessions SET flash = ? WHERE id = ?", (json.dumps([kind, msg]), self.session["id"]))
+    def csrf_ok(self) -> bool:
+        """Jeton anti-rejeu de l'écriture : en-tête `X-CSRF` (le front), ou paramètre `csrf`."""
+        jeton = self.request.headers.get("x-csrf") or self.request.query_params.get("csrf")
+        return auth.check_csrf(self.session, jeton)
 
-    async def form(self) -> dict:
-        """Champs texte du formulaire ; jeton CSRF vérifié. `self.files` garde les fichiers envoyés."""
-        f = await self.request.form()
-        if not auth.check_csrf(self.session, f.get("csrf")):
+    def need_csrf(self) -> None:
+        if not self.csrf_ok():
             raise Forbidden()
-        self.files = {k: v for k, v in f.items() if not isinstance(v, str)}
-        return {k: (v if isinstance(v, str) else "") for k, v in f.items()}
+
+    async def body(self) -> dict:
+        """Corps de la requête, après vérification du jeton CSRF.
+
+        JSON pour le front ; un formulaire nu reste accepté pour un client sans en-tête.
+        Les fichiers envoyés (logo) sont gardés dans `self.files`.
+        """
+        self.need_csrf()
+        self.files: dict = {}
+        ctype = (self.request.headers.get("content-type") or "").lower()
+        try:
+            if ctype.startswith("application/json"):
+                corps = await self.request.json()
+            else:
+                form = await self.request.form()
+                self.files = {k: v for k, v in form.items() if not isinstance(v, str)}
+                corps = dict(form)
+        except Exception:                       # noqa: BLE001 — corps vide ou illisible
+            corps = {}
+        if not isinstance(corps, dict):
+            corps = {}
+        return {k: (v if isinstance(v, str) else "") for k, v in corps.items()}
 
 
 def get_conn(request: Request):
@@ -86,11 +111,6 @@ def _sec(request) -> bool:
 ConnDep = Annotated[sqlite3.Connection, Depends(get_conn)]
 
 
-def get_any_mosque(conn: ConnDep) -> dict | None:
-    """Mosquée de l'instance (une par machine en V1) : sert au logo de la page de connexion."""
-    return db.one(conn, "SELECT * FROM mosques ORDER BY id LIMIT 1")
-
-
 def get_ctx(request: Request, conn: ConnDep) -> Ctx:
     res = auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
                             request.client.host if request.client else None)
@@ -98,105 +118,18 @@ def get_ctx(request: Request, conn: ConnDep) -> Ctx:
         raise LoginRequired()
     s, u = res
     m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", u["mosque_id"])
+    if not m:
+        raise LoginRequired()
     return Ctx(request, conn, s, u, m)
 
 
 CtxDep = Annotated[Ctx, Depends(get_ctx)]
-AnyMosqueDep = Annotated[dict | None, Depends(get_any_mosque)]
 
 
-# ------------------------------------------------------------------ filtres
-
-
-
-def f_local(iso: str | None, m: dict | None = None, fmt: str = "%d/%m/%Y %H:%M") -> str:
-    if not iso:
-        return "—"
-    try:
-        t = dt.datetime.fromisoformat(iso)
-    except ValueError:
-        return iso
-    return t.astimezone(db.timezone(m or {})).strftime(fmt)
-
-
-def f_mmss(s) -> str:
-    return "—" if s is None else text.duration(s)
-
-
-def f_date(d: str | None) -> str:
-    if not d:
-        return "—"
-    try:
-        return text.french_date(dt.date.fromisoformat(d))
-    except ValueError:
-        return d
-
-
-def f_markdown(md: str) -> Markup:
-    """Markdown minimal des notes du pipeline (titres, listes, citations, gras) ; tout est échappé d'abord."""
-    out, in_list = [], False
-    for raw in md.splitlines():
-        line = html.escape(raw)
-        line = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", line)
-        line = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", line)
-        is_li = raw.startswith("- ")
-        if in_list and not is_li:
-            out.append("</ul>")
-            in_list = False
-        if raw.startswith("# "):
-            continue                                   # titre redondant avec la page
-        if raw.startswith("## "):
-            out.append(f"<h3>{line[3:]}</h3>")
-        elif raw.startswith("&gt; ") or raw.startswith("> "):
-            out.append(f"<p class=note-warn>{line[5:] if line.startswith('&gt; ') else line[2:]}</p>")
-        elif is_li:
-            if not in_list:
-                out.append("<ul>")
-                in_list = True
-            out.append(f"<li>{line[2:]}</li>")
-        elif raw.strip():
-            out.append(f"<p>{line}</p>")
-    if in_list:
-        out.append("</ul>")
-    return Markup("\n".join(out))
-
-
-AUDIT_LABELS = {
-    "connexion": "Connexion", "connexion.echec": "Échec de connexion", "deconnexion": "Déconnexion",
-    "live.commande": "Commande live", "live.echec": "Commande live en échec",
-    "import.khutba": "Import khutba", "import.clip": "Import clip", "import.manuel": "Import lancé",
-    "khutba.imam": "Imam rattaché", "correction.sous-titre": "Sous-titre corrigé", "correction.traduction": "Traduction corrigée",
-    "clip.regeneration": "Régénération demandée", "clip.regenere": "Clip régénéré", "clip.valide": "Clip validé",
-    "clip.rejete": "Clip rejeté", "clip.remis_en_file": "Clip remis en file",
-    "publication.publie": "Publié", "publication.refuse": "Publication refusée", "publication.erreur": "Publication en erreur",
-    "utilisateur.cree": "Compte créé", "utilisateur.modifie": "Compte modifié", "utilisateur.mot_de_passe": "Mot de passe changé",
-    "mosquee.configuree": "Configuration modifiée", "connecteur.configure": "Connecteur configuré", "acces.refuse": "Accès refusé",
-}
-
-
-def f_details(details: str) -> str:
-    try:
-        d = json.loads(details or "{}")
-    except ValueError:
-        return details
-    parts = []
-    for k, v in d.items():
-        if v is None or v == [] or v == "":
-            continue
-        if isinstance(v, list):
-            v = ", ".join(map(str, v))
-        v = str(v)
-        parts.append(f"{k} : {v[:140] + '…' if len(v) > 140 else v}")
-    return " · ".join(parts)
-
-
-# ------------------------------------------------------------------ application
+# ------------------------------------------------------------------ règles partagées
 
 def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
-    """Khutbas visibles (alias k) : celles de la mosquée ; pour un imam, seulement les siennes.
-
-    Module-level : l'API JSON (`api_v1`) applique exactement le même filtre que les pages.
-    """
+    """Khutbas visibles (alias k) : celles de la mosquée ; pour un imam, seulement les siennes."""
     if ctx.can("history_all"):
         return "k.mosque_id = ?", (ctx.mosque["id"],)
     return "k.mosque_id = ? AND k.imam_id = ?", (ctx.mosque["id"], ctx.user["id"])
@@ -207,6 +140,30 @@ def count_clips(ctx: Ctx, status: str) -> int:
     return db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                             f"WHERE {where} AND c.status = ?", *args, status)["n"]
 
+
+def khutba_or_404(ctx: Ctx, kid: int) -> dict:
+    where, args = imam_filter(ctx)
+    k = db.one(ctx.conn, f"SELECT k.* FROM khutbas k WHERE k.id = ? AND {where}", kid, *args)
+    if not k:
+        raise NotFound()
+    return k
+
+
+def clip_or_404(ctx: Ctx, cid: int) -> tuple[dict, dict]:
+    c = db.one(ctx.conn, "SELECT * FROM clips WHERE id = ? AND mosque_id = ?", cid, ctx.mosque["id"])
+    if not c:
+        raise NotFound()
+    return c, khutba_or_404(ctx, c["khutba_id"])
+
+
+def live_status(ctx: Ctx) -> dict:
+    try:
+        return {"ok": True, **live.summarize(live.status(ctx.mosque))}
+    except live.OrchestratorError as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ------------------------------------------------------------------ application
 
 def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False, auto_import_s: float = 0,
                regen_background: bool = True) -> FastAPI:
@@ -246,41 +203,17 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     app.state.db_path = str(db_path)
     app.state.secure = secure_cookies
     app.state.limiter = auth.RateLimiter()
+    app.state.regen_background = regen_background
+    # Polices et emblème : les seuls fichiers servis par le backend (le front a son propre build).
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
-    tpl = Jinja2Templates(directory=str(HERE / "templates"))
-    tpl.env.filters.update(local=f_local, mmss=f_mmss, date_fr=f_date, markdown=f_markdown, details=f_details)
-    tpl.env.globals.update(STATUS=content.STATUS_LABELS, STATUS_TABS=content.STATUS_TABS, LIVE_COMMANDS=live.COMMANDS, ROLES=auth.ROLE_LABELS, AUDIT=AUDIT_LABELS, MASK=db.MASK, LOGO=branding.url, SHORT=dirs_mod.label)
-
-    def render(ctx: Ctx | None, name: str, status_code: int = 200, **kw) -> HTMLResponse:
-        flash = None
-        if ctx is not None:
-            row = db.one(ctx.conn, "SELECT flash FROM auth_sessions WHERE id = ?", ctx.session["id"])
-            if row and row["flash"]:
-                flash = json.loads(row["flash"])
-                ctx.conn.execute("UPDATE auth_sessions SET flash = NULL WHERE id = ?", (ctx.session["id"],))
-        request = ctx.request if ctx else kw.pop("request")
-        nav_pending = count_clips(ctx, "a_valider") if ctx is not None else 0
-        base = {"nav_pending": nav_pending, "ctx": ctx, "user": ctx.user if ctx else None, "mosque": ctx.mosque if ctx else None,
-                "csrf": ctx.session["csrf"] if ctx else "", "flash": flash, "path": request.url.path}
-        return tpl.TemplateResponse(request, name, {**base, **kw}, status_code=status_code)
-
-    SECTIONS = ("mosque", "logo", "live", "folders", "model", "connectors", "access")
-
-    def section(s: str, cle: str = "") -> str:
-        """Onglet cible après un enregistrement : inconnu -> première section. `cle` vise le sous-onglet connecteur."""
-        if s not in SECTIONS:
-            return "/admin/mosque?section=mosque"
-        return f"/admin/mosque?section={s}&c={cle}" if cle else f"/admin/mosque?section={s}"
-
-    def back(url: str) -> RedirectResponse:
-        return RedirectResponse(url, status_code=303)
 
     # ---------------------------------------------------------- middleware et erreurs
     @app.middleware("http")
     async def headers(request: Request, call_next):
         resp = await call_next(request)
-        resp.headers["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self'; "
-                                                   "script-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
+        resp.headers["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
+                                                   "script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
+                                                   "form-action 'self'; base-uri 'none'")
         resp.headers["X-Content-Type-Options"] = "nosniff"
         if _sec(request):
             # uniquement derrière HTTPS (proxy ou serveur central) : un HSTS sur du HTTP local bloquerait
@@ -288,294 +221,39 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Referrer-Policy"] = "same-origin"
-        if not request.url.path.startswith(("/static", "/media")):
+        # Les fichiers du front portent une empreinte dans leur nom : ils se gardent en cache.
+        # Tout le reste (API, index.html) ne doit jamais être servi depuis un cache.
+        if not request.url.path.startswith(("/static", "/media", "/assets")):
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
-    def error(request: Request, code: int, title: str, message: str, api_message: str):
-        if request.url.path.startswith(("/api/", "/media/")):
-            return JSONResponse({"error": api_message}, status_code=code)
-        return tpl.TemplateResponse(request, "error.html", {"code": code, "title": title, "user": None, "ctx": None,
-                                                             "message": message, "path": ""}, status_code=code)
+    def error(request: Request, code: int, message: str):
+        return JSONResponse({"error": message}, status_code=code)
 
     @app.exception_handler(LoginRequired)
     async def _login(request: Request, exc):
-        if request.url.path.startswith(("/api/", "/media/")):
-            return error(request, 401, "", "", "connexion requise")
-        if request.method != "GET":
-            return back("/login")
-        return back("/login?suite=" + quote(request.url.path))
+        return error(request, 401, "connexion requise")
 
     @app.exception_handler(Forbidden)
     async def _forbidden(request: Request, exc):
-        return error(request, 403, "Accès refusé", "Votre rôle ne permet pas cette action.", "accès refusé")
+        return error(request, 403, "accès refusé")
 
     @app.exception_handler(NotFound)
     async def _nf(request: Request, exc):
-        return error(request, 404, "Introuvable", "Cette page n'existe pas ou ne vous est pas accessible.", "introuvable")
+        return error(request, 404, "introuvable")
 
-    # ---------------------------------------------------------- accès scopés (tenant + imam)
-    def khutba_or_404(ctx: Ctx, kid: int) -> dict:
-        where, args = imam_filter(ctx)
-        k = db.one(ctx.conn, f"SELECT k.* FROM khutbas k WHERE k.id = ? AND {where}", kid, *args)
-        if not k:
-            raise NotFound()
-        return k
+    @app.exception_handler(Invalid)
+    async def _invalid(request: Request, exc: Invalid):
+        return JSONResponse({"error": "refusé", "message": exc.message}, status_code=422)
 
-    def clip_or_404(ctx: Ctx, cid: int) -> tuple[dict, dict]:
-        c = db.one(ctx.conn, "SELECT * FROM clips WHERE id = ? AND mosque_id = ?", cid, ctx.mosque["id"])
-        if not c:
-            raise NotFound()
-        return c, khutba_or_404(ctx, c["khutba_id"])
+    @app.exception_handler(ValueError)
+    async def _value(request: Request, exc: ValueError):
+        return JSONResponse({"error": "refusé", "message": str(exc)}, status_code=422)
 
-    # ---------------------------------------------------------- connexion
-    @app.get("/login")
-    def login_page(request: Request, conn: ConnDep, any_mosque: AnyMosqueDep, suite: str = "/"):
-        if auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
-                             request.client.host if request.client else None):
-            return back("/")
-        pre = request.cookies.get(PRE_COOKIE) or secrets.token_urlsafe(16)
-        resp = tpl.TemplateResponse(request, "login.html", {"pre": pre, "suite": suite, "error": None, "user": None, "ctx": None, "path": "",
-                                                 "mosque": any_mosque, "csrf": ""})
-        resp.set_cookie(PRE_COOKIE, pre, httponly=True, samesite="strict", secure=_secure(request), max_age=3600)
-        return resp
-
-    def _secure(request: Request) -> bool:
-        return app.state.secure or _sec(request)
-
-    @app.post("/login")
-    async def login(request: Request, conn: ConnDep):
-        f = await request.form()
-        username, password = str(f.get("username", "")).strip(), str(f.get("password", ""))
-        suite = str(f.get("suite") or "/")
-        if not suite.startswith("/") or suite.startswith("//"):
-            suite = "/"
-        ip = request.client.host if request.client else "?"
-        pre = request.cookies.get(PRE_COOKIE)
-
-        def fail(msg, code=400):
-            return tpl.TemplateResponse(request, "login.html", {"pre": pre or secrets.token_urlsafe(16), "suite": suite, "error": msg,
-                                                                "username": username, "user": None, "ctx": None, "path": "", "mosque": None, "csrf": ""}, status_code=code)
-        if not pre or not secrets.compare_digest(pre, str(f.get("pre", ""))):
-            return fail("Session de connexion expirée : rechargez la page.", 403)
-        lim = app.state.limiter
-        if lim.blocked(ip, username):
-            return fail("Trop de tentatives. Réessayez dans quelques minutes.", 429)
-        u = await run_in_threadpool(auth.authenticate, conn, username, password)
-        if not u:
-            lim.fail(ip, username)
-            known = db.one(conn, "SELECT mosque_id FROM users WHERE username = ?", username)
-            db.audit(conn, known["mosque_id"] if known else None, None, "connexion.echec", ip=ip, identifiant=username[:64])
-            return fail("Identifiant ou mot de passe incorrect.", 401)
-        lim.success(ip, username)
-        token = auth.open_session(conn, u["id"], ip, request.headers.get("user-agent"))
-        db.audit(conn, u["mosque_id"], u["id"], "connexion", ip=ip)
-        resp = back(suite)
-        resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=_secure(request), max_age=auth.SESSION_TTL, path="/")
-        resp.delete_cookie(PRE_COOKIE)
-        return resp
-
-    @app.post("/logout")
-    async def logout(ctx: CtxDep):
-        await ctx.form()
-        auth.close_session(ctx.conn, ctx.request.cookies.get(auth.COOKIE))
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "deconnexion", ip=ctx.ip)
-        resp = back("/login")
-        resp.delete_cookie(auth.COOKIE, path="/")
-        return resp
-
-    # ---------------------------------------------------------- tableau de bord
-    def live_status(ctx: Ctx) -> dict:
-        try:
-            return {"ok": True, **live.summarize(live.status(ctx.mosque))}
-        except live.OrchestratorError as e:
-            return {"ok": False, "error": str(e)}
-
-    @app.get("/")
-    def dashboard(ctx: CtxDep):
-        where, args = imam_filter(ctx)
-        pending, ready = count_clips(ctx, "a_valider"), count_clips(ctx, "valide")
-        recent = db.all_(ctx.conn, f"SELECT k.*, u.display_name imam FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id WHERE {where} "
-                                   "ORDER BY k.date DESC, k.run_id DESC, k.session_index LIMIT 4", *args)
-        total = db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k WHERE {where}", *args)["n"]
-        cmds = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
-                                 "WHERE a.mosque_id = ? AND a.action LIKE 'live.%' ORDER BY a.id DESC LIMIT 5", ctx.mosque["id"])
-        return render(ctx, "dashboard.html", live=live_status(ctx), pending=pending, ready=ready, recent=recent, cmds=cmds, total=total)
-
+    # ---------------------------------------------------------- état du direct
     @app.get("/api/live")
     def api_live(ctx: CtxDep):
         return live_status(ctx)
-
-    @app.post("/live/{cmd}")
-    async def live_cmd(cmd: str, ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("live")
-        if cmd not in live.COMMANDS:
-            raise NotFound()
-        arg = (f.get("name") or "").strip() or None
-        info = (f.get("info") or "").strip() or None      # fiche janaza : mention sous le nom
-        try:
-            r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info)
-            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=live.COMMANDS[cmd].label,
-                     defunt=arg, mention=info, reponse=r.get("message"), etat=r.get("state"))
-            ctx.flash(f"{live.COMMANDS[cmd].label} : {r.get('message', 'ok')}")
-        except live.OrchestratorError as e:
-            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, commande=live.COMMANDS[cmd].label, erreur=str(e))
-            ctx.flash(f"{live.COMMANDS[cmd].label} : échec — {e}", "err")
-        return back("/")
-
-    # ---------------------------------------------------------- historique
-    @app.get("/sermons")
-    def khutbas(ctx: CtxDep):
-        where, args = imam_filter(ctx)
-        rows = db.all_(ctx.conn, f"""SELECT k.*, u.display_name imam,
-                   (SELECT COUNT(*) FROM clips c WHERE c.khutba_id = k.id) n_clips,
-                   (SELECT COUNT(*) FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider') n_pending
-                   FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id WHERE {where}
-                   ORDER BY k.date DESC, k.run_id DESC, k.session_index""", *args)
-        return render(ctx, "khutbas.html", rows=rows)
-
-    @app.post("/import")
-    async def do_import(ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("assign")
-        run = (f.get("run") or "").strip()
-        try:
-            if run:
-                res = [await run_in_threadpool(importer.import_run, ctx.conn, ctx.mosque, run)]
-            else:
-                res = await run_in_threadpool(importer.scan, ctx.conn, ctx.mosque)
-            nk, nc = sum(r["khutbas_new"] for r in res), sum(r["clips_new"] for r in res)
-            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "import.manuel", ip=ctx.ip, run=run or "tous", khutbas=nk, clips=nc)
-            ctx.flash(f"Import : {len(res)} run(s) parcouru(s), {nk} khutba(s) et {nc} clip(s) ajoutés.")
-        except (FileNotFoundError, ValueError) as e:
-            ctx.flash(f"Import impossible : {e}", "err")
-        return back("/sermons")
-
-    @app.get("/sermons/{kid}")
-    def khutba(kid: int, ctx: CtxDep):
-        k = khutba_or_404(ctx, kid)
-        data = content.load(ctx.conn, k)
-        notes = SessionOutput(k["output_dir"]).notes
-        clips = db.all_(ctx.conn, "SELECT * FROM clips WHERE khutba_id = ? ORDER BY idx", k["id"])
-        imams = auth.imams(ctx.conn, ctx.mosque["id"]) if ctx.can("assign") else []
-        imam = db.one(ctx.conn, "SELECT display_name FROM users WHERE id = ?", k["imam_id"]) if k["imam_id"] else None
-        return render(ctx, "khutba.html", k=k, rows=content.transcript_rows(data), verses=verses.for_display(data["verses"]),
-                      notes=notes.read_text(encoding="utf-8") if notes.exists() else "", clips=clips, imams=imams, imam=imam,
-                      tr=data, has_video=bool(k["video_path"] and Path(k["video_path"]).exists()))
-
-    @app.post("/sermons/{kid}/speaker")
-    async def khutba_imam(kid: int, ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("assign")
-        k = khutba_or_404(ctx, kid)
-        iid = auth.imam_id(ctx.conn, ctx.mosque["id"], f.get("imam_id"))
-        if f.get("imam_id") and iid is None:
-            raise NotFound()
-        speaker = (f.get("speaker") or "").strip()[:120]
-        ctx.conn.execute("UPDATE khutbas SET imam_id = ?, speaker = ? WHERE id = ?", (iid, speaker, k["id"]))
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "khutba.imam", "khutba", k["id"], ip=ctx.ip, imam=iid, intervenant=speaker or None)
-        ctx.flash("Khutba mise à jour.")
-        return back(f"/sermons/{k['id']}")
-
-    @app.post("/sermons/{kid}/revisions")
-    async def khutba_correction(kid: int, ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("validate")
-        k = khutba_or_404(ctx, kid)
-        nxt = f.get("next") or f"/sermons/{k['id']}"
-        if not nxt.startswith("/") or nxt.startswith("//"):
-            nxt = "/"
-        try:
-            n = content.save_correction(ctx.conn, k, int(f.get("seg", "-1")), f.get("field", ""), f.get("value", ""), ctx.user, ctx.ip)
-            ctx.flash("Correction enregistrée" + (f" ; {n} clip(s) à régénérer puis revalider." if n else "."))
-        except ValueError as e:
-            ctx.flash(str(e), "err")
-        return back(nxt)
-
-    # ---------------------------------------------------------- clips
-    @app.get("/clips")
-    def clips(ctx: CtxDep, statut: str = "a_valider"):
-        where, args = imam_filter(ctx)
-        cond = "" if statut == "tous" else "AND c.status = ?"
-        extra = () if statut == "tous" else (statut,)
-        rows = db.all_(ctx.conn, f"""SELECT c.*, k.label klabel, k.date kdate, u.display_name decider
-                   FROM clips c JOIN khutbas k ON k.id = c.khutba_id LEFT JOIN users u ON u.id = c.decided_by
-                   WHERE {where} {cond} ORDER BY k.date DESC, k.run_id DESC, k.session_index, c.idx""", *args, *extra)
-        counts = {r["status"]: r["n"] for r in db.all_(ctx.conn, f"SELECT c.status, COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} GROUP BY c.status", *args)}
-        return render(ctx, "clips.html", rows=rows, statut=statut, counts=counts)
-
-    @app.get("/clips/{cid}")
-    def clip(cid: int, ctx: CtxDep):
-        c, k = clip_or_404(ctx, cid)
-        data = content.load(ctx.conn, k)
-        rows = content.transcript_rows(data, c["start"], c["end"])
-        regen_ok, regen_why = content.can_regenerate(c)
-        hist = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
-                                 "WHERE a.mosque_id = ? AND ((a.object_type = 'clip' AND a.object_id = ?) OR "
-                                 "(a.object_type = 'khutba' AND a.object_id = ? AND a.action LIKE 'correction.%')) ORDER BY a.id DESC LIMIT 50",
-                       ctx.mosque["id"], c["id"], k["id"])
-        pubs = db.all_(ctx.conn, "SELECT p.*, u.display_name who FROM publications p LEFT JOIN users u ON u.id = p.user_id "
-                                 "WHERE p.clip_id = ? ORDER BY p.id DESC", c["id"])
-        decider = db.one(ctx.conn, "SELECT display_name FROM users WHERE id = ?", c["decided_by"]) if c["decided_by"] else None
-        refs = [r["verse"]["ref"] for r in rows if r["verse"] and not r["verse"]["ambiguous"]]
-        return render(ctx, "clip.html", c=c, k=k, rows=rows, regen_ok=regen_ok, regen_why=regen_why, hist=hist, pubs=pubs,
-                      decider=decider, connectors=publish.connector_rows(ctx.conn, ctx.mosque),
-                      caption=publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
-                      exists=Path(c["file_path"]).exists(), validate_ok=content.can_validate(c)[0], publish_ok=publish.can_publish(c)[0])
-
-    @app.post("/clips/{cid}/decision")
-    async def clip_decision(cid: int, ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("validate")
-        c, k = clip_or_404(ctx, cid)
-        try:
-            if f.get("decision") == "rouvrir":
-                content.reopen(ctx.conn, c, ctx.user, ctx.ip)
-                ctx.flash("Clip remis dans la file de validation.")
-            else:
-                content.decide(ctx.conn, c, f.get("decision", ""), ctx.user, f.get("reason", ""), ctx.ip)
-                ctx.flash("Clip validé." if f.get("decision") == "valide" else "Clip rejeté.")
-        except ValueError as e:
-            ctx.flash(str(e), "err")
-        return back(f"/clips/{c['id']}")
-
-    @app.post("/clips/{cid}/regenerate")
-    async def clip_regen(cid: int, ctx: CtxDep):
-        await ctx.form()
-        ctx.require("validate")
-        c, k = clip_or_404(ctx, cid)
-        try:
-            content.start_regeneration(ctx.conn, app.state.db_path, c, ctx.user, ctx.ip, background=regen_background)
-            ctx.flash("Régénération lancée (environ une minute) : la page se met à jour toute seule.")
-        except ValueError as e:
-            ctx.flash(str(e), "err")
-        return back(f"/clips/{c['id']}")
-
-
-    @app.get("/api/clips/{cid}")
-    def api_clip(cid: int, ctx: CtxDep):
-        c, _ = clip_or_404(ctx, cid)
-        return {"id": c["id"], "status": c["status"], "version": c["version"], "regen_state": c["regen_state"], "needs_regen": bool(c["needs_regen"])}
-
-    @app.post("/clips/{cid}/publish")
-    async def clip_publish(cid: int, ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("publish")
-        c, k = clip_or_404(ctx, cid)
-        res = await run_in_threadpool(publish.publish, ctx.conn, c, f.get("connector", ""), ctx.user, f.get("caption", ""), ctx.ip)
-        ctx.flash(f"Publié : {res.location}" if res.ok else f"Publication refusée : {res.message}", "ok" if res.ok else "err")
-        return back(f"/clips/{c['id']}")
-
-    @app.get("/publications")
-    def publication(ctx: CtxDep):
-        ctx.require("publish")
-        ready = db.all_(ctx.conn, "SELECT c.*, k.label klabel, k.date kdate FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
-                                  "WHERE c.mosque_id = ? AND c.status = 'valide' ORDER BY c.decided_at DESC", ctx.mosque["id"])
-        pubs = db.all_(ctx.conn, "SELECT p.*, u.display_name who, c.idx, c.kind, k.label klabel, k.date kdate FROM publications p "
-                                 "JOIN clips c ON c.id = p.clip_id JOIN khutbas k ON k.id = c.khutba_id LEFT JOIN users u ON u.id = p.user_id "
-                                 "WHERE p.mosque_id = ? ORDER BY p.id DESC LIMIT 100", ctx.mosque["id"])
-        return render(ctx, "publication.html", ready=ready, pubs=pubs, connectors=publish.connector_rows(ctx.conn, ctx.mosque))
 
     # ---------------------------------------------------------- médias (par identifiant : pas de chemin dans l'URL)
     @app.get("/media/sermon/{kid}.mp4")
@@ -592,94 +270,6 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         return FileResponse(c["file_path"], media_type="video/mp4")
 
-    # ---------------------------------------------------------- journal
-    @app.get("/audit-log")
-    def journal(ctx: CtxDep, action: str = ""):
-        ctx.require("journal")
-        rows = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
-                                 "WHERE a.mosque_id = ? AND (? = '' OR a.action LIKE ? || '%') ORDER BY a.id DESC LIMIT 300",
-                       ctx.mosque["id"], action, action)
-        return render(ctx, "journal.html", rows=rows, action=action)
-
-    # ---------------------------------------------------------- compte
-    @app.get("/account")
-    def account(ctx: CtxDep):
-        return render(ctx, "account.html")
-
-    @app.post("/account")
-    async def account_pw(ctx: CtxDep):
-        f = await ctx.form()
-        if not await run_in_threadpool(auth.verify_password, ctx.user["password_hash"], f.get("current", "")):
-            ctx.flash("Mot de passe actuel incorrect.", "err")
-            return back("/account")
-        if f.get("new") != f.get("confirm"):
-            ctx.flash("Les deux nouveaux mots de passe diffèrent.", "err")
-            return back("/account")
-        try:
-            await run_in_threadpool(auth.set_password, ctx.conn, ctx.user["id"], f.get("new", ""))
-        except ValueError as e:
-            ctx.flash(str(e), "err")
-            return back("/account")
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", ctx.user["id"], ip=ctx.ip)
-        return back("/login")
-
-    # ---------------------------------------------------------- administration
-    @app.get("/admin/users")
-    def users(ctx: CtxDep):
-        ctx.require("admin")
-        rows = db.all_(ctx.conn, "SELECT * FROM users WHERE mosque_id = ? ORDER BY role, display_name", ctx.mosque["id"])
-        return render(ctx, "users.html", rows=rows)
-
-    @app.post("/admin/users")
-    async def user_create(ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("admin")
-        try:
-            uid = await run_in_threadpool(auth.create_user, ctx.conn, ctx.mosque["id"], f.get("username", ""),
-                                          f.get("password", ""), f.get("role", ""), f.get("display_name", ""))
-            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.cree", "utilisateur", uid, ip=ctx.ip,
-                     identifiant=f.get("username"), role=f.get("role"))
-            ctx.flash(f"Compte « {f.get('username')} » créé.")
-        except ValueError as e:
-            ctx.flash(str(e), "err")
-        return back("/admin/users")
-
-    @app.post("/admin/users/{uid}")
-    async def user_update(uid: int, ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("admin")
-        u = db.one(ctx.conn, "SELECT * FROM users WHERE id = ? AND mosque_id = ?", uid, ctx.mosque["id"])
-        if not u:
-            raise NotFound()
-        try:
-            if f.get("password"):
-                await run_in_threadpool(auth.set_password, ctx.conn, uid, f["password"])
-                db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", uid, ip=ctx.ip)
-            role, active = f.get("role", u["role"]), 1 if f.get("active") == "1" else 0
-            if role not in auth.ROLES:
-                raise ValueError("rôle inconnu")
-            if uid == ctx.user["id"] and (role != "admin" or not active):
-                raise ValueError("vous ne pouvez pas retirer vos propres droits d'administrateur")
-            ctx.conn.execute("UPDATE users SET role = ?, active = ?, display_name = ? WHERE id = ?",
-                             (role, active, (f.get("display_name") or u["display_name"]).strip(), uid))
-            if not active:
-                ctx.conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (uid,))
-            db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.modifie", "utilisateur", uid, ip=ctx.ip, role=role, actif=bool(active))
-            ctx.flash(f"Compte « {u['username']} » mis à jour.")
-        except ValueError as e:
-            ctx.flash(str(e), "err")
-        return back("/admin/users")
-
-    # ---------------------------------------------------------- choix des dossiers (machine locale)
-    @app.get("/api/folders")
-    def api_dirs(ctx: CtxDep, path: str = ""):
-        """Arborescence de la machine qui héberge l'application, pour le bouton « Parcourir »."""
-        ctx.require("admin")
-        try:
-            return {"roots": dirs_mod.roots(), **dirs_mod.listing(path or None)}
-        except ValueError as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
-
     # ---------------------------------------------------------- logo de l'interface
     @app.get("/logo/{slug}")
     def logo_file(slug: str, conn: ConnDep):
@@ -689,146 +279,32 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         f = branding.path_for(m)
         if not f.exists():
             raise NotFound()
-        ext = f.suffix.lower()
-        return FileResponse(f, media_type=branding.EXT.get(ext, "application/octet-stream"),
+        return FileResponse(f, media_type=branding.EXT.get(f.suffix.lower(), "application/octet-stream"),
                             headers={"Cache-Control": "private, max-age=300"})
-
-    @app.post("/admin/logo")
-    async def logo_save(ctx: CtxDep):
-        ctx.require("admin")
-        f = await ctx.form()   # jeton CSRF vérifié ; le fichier est gardé en mémoire (2 Mo max)
-        up = ctx.files.get("logo")
-        if up is None or not getattr(up, "filename", ""):
-            ctx.flash("Aucun fichier choisi.", "err")
-            return back(section("logo"))
-        content_bytes = await up.read()
-        try:
-            rel = branding.save(ctx.mosque, up.filename, content_bytes)
-        except ValueError as e:
-            ctx.flash(str(e)[0].upper() + str(e)[1:] + ".", "err")
-            return back(section("logo"))
-        db.update_mosque(ctx.conn, ctx.mosque["id"], logo_path=rel)
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.logo", "mosque", ctx.mosque["id"], ip=ctx.ip, fichier=rel)
-        ctx.flash("Logo enregistré : il apparaît dans la barre et comme icône de l'onglet.")
-        return back(section("logo"))
-
-    @app.post("/admin/logo/delete")
-    async def logo_clear(ctx: CtxDep):
-        await ctx.form()
-        ctx.require("admin")
-        branding.clear(ctx.mosque)
-        db.update_mosque(ctx.conn, ctx.mosque["id"], logo_path="")
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.logo.retire", "mosque", ctx.mosque["id"], ip=ctx.ip)
-        ctx.flash("Logo retiré : emblème neutre repris.")
-        return back(section("logo"))
-
-    @app.get("/admin/mosque")
-    def mosque_page(ctx: CtxDep, c: str = ""):
-        ctx.require("admin")
-        imams = auth.imams(ctx.conn, ctx.mosque["id"])
-        connecteurs = publish.connector_rows(ctx.conn, ctx.mosque)
-        # un seul connecteur affiché à la fois : quatre formulaires empilés faisaient une page démesurée
-        actif = next((x for x in connecteurs if x["key"] == c), connecteurs[0] if connecteurs else None)
-        return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=connecteurs, conn=actif,
-                      llm=llm.config(), llm_now=llm.settings().label(), llm_on=llm.enabled(), llm_file=str(llm.config_path()))
-
-    @app.post("/admin/model")
-    async def llm_save(ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("admin")
-        url = (f.get("llm_url") or "").strip()
-        model = (f.get("llm_model") or "").strip()
-        proto = (f.get("llm_protocol") or "").strip()
-        if url and not re.match(r"^https?://", url):
-            ctx.flash("L'adresse du modèle doit commencer par http:// ou https://", "err")
-            return back(section("model"))
-        if proto not in ("", "openai", "anthropic"):
-            ctx.flash("Format d'API inconnu.", "err")
-            return back(section("model"))
-        llm.save_config(enabled=f.get("llm_enabled") == "1", url=url, model=model, protocol=proto)
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "modele.configure", "mosque", ctx.mosque["id"], ip=ctx.ip,
-                 actif=f.get("llm_enabled") == "1", url=url, modele=model, protocole=proto, fichier=str(llm.config_path()))
-        ctx.flash("Modèle de langage enregistré. Le pipeline l'applique au prochain lancement (les variables "
-                  "d'environnement et les options de ligne de commande restent prioritaires).")
-        return back(section("model"))
-
-    @app.post("/admin/model/test")
-    def llm_test(ctx: CtxDep):
-        ctx.require("admin")
-        ok, msg = llm.probe()
-        ctx.flash(msg, "" if ok else "err")
-        return back(section("model"))
-
-    @app.post("/admin/mosque")
-    async def mosque_save(ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("admin")
-        sect = "live" if "orchestrator_url" in f or "orchestrator_token" in f else (
-            "folders" if any(k in f for k in ("state_dir", "output_dir", "publish_dir")) else "mosque")
-        vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS if k != "logo_path" and k in f}
-        current = {k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"}
-        vals = {**current, **vals}          # un formulaire partiel ne vide pas les autres réglages
-        if not vals["name"]:
-            ctx.flash("Le nom est obligatoire.", "err")
-            return back(section(sect))
-        if vals["orchestrator_url"] and not re.match(r"^https?://", vals["orchestrator_url"]):
-            ctx.flash("L'adresse de l'orchestrateur doit commencer par http:// ou https://", "err")
-            return back(section(sect))
-        if vals["orchestrator_token"] == db.MASK:
-            vals["orchestrator_token"] = ctx.mosque["orchestrator_token"]
-        di = auth.imam_id(ctx.conn, ctx.mosque["id"], f.get("default_imam_id", ctx.mosque["default_imam_id"]))
-        try:
-            db.update_mosque(ctx.conn, ctx.mosque["id"], **vals, default_imam_id=di, auto_import=1 if f.get("auto_import") == "1" else 0)
-        except ValueError as e:
-            ctx.flash(f"{str(e)[0].upper()}{str(e)[1:]}.", "err")
-            return back(section(sect))
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.configuree", "mosquee", ctx.mosque["id"], ip=ctx.ip,
-                 champs=[k for k in vals if k != "orchestrator_token" and str(vals[k]) != str(ctx.mosque.get(k))])
-        ctx.flash("Configuration enregistrée.")
-        return back(section(sect))
-
-    @app.post("/admin/connectors/{key}")
-    async def connector_save(key: str, ctx: CtxDep):
-        f = await ctx.form()
-        ctx.require("admin")
-        if key not in publish.CONNECTORS:
-            raise NotFound()
-        publish.save_connector(ctx.conn, ctx.mosque["id"], key, f.get("enabled") == "1", f, ctx.user, ctx.ip)
-        ctx.flash(f"Connecteur « {publish.CONNECTORS[key].label} » enregistré.")
-        return back(section("connectors", key))
 
     @app.get("/health")
     def health():
         return {"ok": True}
 
-    # ---------------------------------------------------------- API JSON du front React
+    # ---------------------------------------------------------- API JSON du front
     from . import api_v1            # import tardif : api_v1 lit ce module
     app.include_router(api_v1.router)
-
-    # Le front React (web/dist) cohabite avec les pages actuelles, sous /app le temps du passage.
-    # `app.frontend` est la façon officielle de servir une application construite (FastAPI >= 0.110).
-    front = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
-    if front.is_dir():
-        app.frontend("/app", directory=str(front))
 
     # ------------------------------------------------- anciennes adresses françaises
     # Conservées en redirection permanente : un signet ou un lien déjà envoyé continue de fonctionner.
     ANCIENNES = {
-        "/connexion": "/login", "/deconnexion": "/logout", "/khutbas": "/sermons",
-        "/publication": "/publications", "/journal": "/audit-log", "/compte": "/account",
-        "/sante": "/health", "/api/dossiers": "/api/folders",
-        "/admin/utilisateurs": "/admin/users", "/admin/mosquee": "/admin/mosque",
-        "/admin/modele": "/admin/model", "/admin/modele/tester": "/admin/model/test",
-        "/admin/logo/supprimer": "/admin/logo/delete",
+        "/connexion": "/login", "/deconnexion": "/", "/compte": "/settings", "/journal": "/audit",
+        "/khutbas": "/sermons", "/publication": "/publications", "/sante": "/health",
+        "/api/dossiers": "/api/v1/folders", "/admin/utilisateurs": "/users",
+        "/admin/mosquee": "/settings", "/admin/modele": "/settings",
+        "/admin/modele/tester": "/api/v1/settings/model/test",
     }
     ANCIENS_MOTIFS = (
         ("/khutbas/{kid}", "/sermons/{kid}"),
-        ("/khutbas/{kid}/imam", "/sermons/{kid}/speaker"),
-        ("/khutbas/{kid}/correction", "/sermons/{kid}/revisions"),
-        ("/clips/{cid}/regenerer", "/clips/{cid}/regenerate"),
-        ("/clips/{cid}/publier", "/clips/{cid}/publish"),
-        ("/admin/connecteurs/{key}", "/admin/connectors/{key}"),
+        ("/clips/{cid}/regenerer", "/api/v1/clips/{cid}/regenerate"),
+        ("/clips/{cid}/publier", "/api/v1/clips/{cid}/publish"),
         ("/media/khutba/{kid}.mp4", "/media/sermon/{kid}.mp4"),
+        ("/admin/connecteurs/{key}", "/settings"),
     )
 
     def _redirection(cible: str):
@@ -844,5 +320,17 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         app.add_api_route(_vieux, _redirection(_neuf), methods=["GET", "POST"], include_in_schema=False)
     for _vieux, _neuf in ANCIENS_MOTIFS:
         app.add_api_route(_vieux, _redirection(_neuf), methods=["GET", "POST"], include_in_schema=False)
+
+    # ---------------------------------------------------------------- front React
+    # Servi en dernier recours : toute route déclarée au-dessus garde la priorité, et les chemins
+    # inconnus retombent sur index.html pour que le routeur du front gère ses propres adresses.
+    if FRONT.is_dir():
+        # Repli explicite sur index.html : le routeur du front gère ses propres adresses
+        # (/sermons/12), le serveur ne doit pas répondre 404 sur ces chemins.
+        app.frontend("/", directory=str(FRONT), fallback="index.html")
+    else:
+        @app.get("/")
+        def _front_absent():
+            return JSONResponse({"error": "front non construit : npm --prefix web run build"}, status_code=503)
 
     return app

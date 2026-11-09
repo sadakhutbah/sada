@@ -28,29 +28,26 @@ def test_jeton_recopie_dans_un_autre_navigateur_ne_sert_a_rien(env):
 
     autre = TestClient(env["app"], follow_redirects=False, headers={"user-agent": CHROME})
     autre.cookies.set("minbar_session", token)
-    r = autre.get("/")
-    assert r.status_code == 303 and r.headers["location"].startswith("/login")
+    assert autre.get("/api/v1/session").status_code == 401
 
     # la vraie session n'est pas détruite par la tentative (pas de déni de service offert au voleur)
-    assert c.get("/").status_code == 200
+    assert c.get("/api/v1/session").status_code == 200
     from minbar.backoffice import db
     traces = db.all_(env["conn"], "SELECT * FROM audit WHERE action = 'session.navigateur_inattendu'")
     assert len(traces) == 1
 
 
-def test_pas_de_boucle_de_redirection_quand_le_cookie_est_invalide(env):
-    """Le colmatage ne doit pas provoquer /login -> / -> /login sans fin."""
+def test_cookie_invalide_n_ouvre_rien_et_le_front_reste_servi(env):
+    """Un cookie invalide ne casse pas l'affichage : le front se charge, l'API répond 401."""
     from fastapi.testclient import TestClient
 
     c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF})
     c.cookies.set("minbar_session", "jeton-invente")
-    r = c.get("/login")
-    assert r.status_code == 200
+    assert c.get("/api/v1/session").status_code == 401
+    assert c.get("/").status_code == 200
 
 
 def test_cookie_de_session_httponly_samesite(env):
-    from fastapi.testclient import TestClient
-
     c = client(env, "admin")
     setc = c.login_cookie
     assert "minbar_session=" in setc and "HttpOnly" in setc and "SameSite=lax" in setc
@@ -60,27 +57,26 @@ def test_cookie_de_session_httponly_samesite(env):
 def test_cookie_secure_derriere_un_proxy_https(env):
     """Derrière un proxy HTTPS, cookies Secure et HSTS ; le jar de test refuse d'envoyer un cookie
     Secure sur une URL http:// (un vrai navigateur, lui, est déjà en https), on le passe donc à la main."""
-    import re
-
     from fastapi.testclient import TestClient
 
     c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF, "x-forwarded-proto": "https"})
-    pre = re.search(r'name="pre" value="([^"]+)"', c.get("/login").text).group(1)
-    r = c.post("/login", data={"username": "admin", "password": PW, "pre": pre, "suite": "/"},
+    pre = c.get("/api/v1/login-challenge").json()["pre"]
+    r = c.post("/api/v1/login", data={"username": "admin", "password": PW, "pre": pre},
                cookies={"minbar_pre": pre})
-    assert r.status_code == 303, r.text[:200]
+    assert r.status_code == 200, r.text[:200]
     setc = r.headers.get("set-cookie", "")
     assert "Secure" in setc
     assert r.headers.get("strict-transport-security", "").startswith("max-age=31536000")
     # le HSTS ne doit pas s'imposer en HTTP local (sinon les autres postes du réseau perdent l'accès)
     plain = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF})
-    assert "strict-transport-security" not in plain.get("/login").headers
+    assert "strict-transport-security" not in plain.get("/").headers
 
 
 def test_entetes_de_securite_par_defaut(env):
     c = client(env)
-    h = c.get("/login").headers
-    assert "frame-ancestors 'none'" in h["content-security-policy"]
-    assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
-
-
+    for url in ("/", "/api/v1/login-challenge"):
+        h = c.get(url).headers
+        assert "frame-ancestors 'none'" in h["content-security-policy"], url
+        assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
+    # la réponse JSON n'est jamais mise en cache
+    assert c.get("/api/v1/login-challenge").headers["cache-control"] == "no-store"

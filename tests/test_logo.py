@@ -1,11 +1,9 @@
 """Logo de l'interface : dépôt réseau distinct, upload validé, repli sur l'emblème neutre."""
-import re
-
 import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, csrf, env  # noqa: E402,F401  (conftest assure le chemin)
+from test_backoffice import client, env  # noqa: E402,F401  (conftest assure le chemin)
 
 
 def _png(w=64, h=64, color=(15, 42, 25)) -> bytes:
@@ -25,49 +23,44 @@ def test_le_depot_n_embarque_plus_le_logo_de_la_mosquee():
     assert (static / "emblem.svg").exists()
 
 
-def test_sans_logo_embleme_neutre_dans_la_barre_et_l_onglet(env):
+def _envoi(c, nom: str, donnees: bytes, type_mime: str):
+    return c.request("POST", "/api/v1/settings/logo", files={"logo": (nom, donnees, type_mime)},
+                     headers={"X-CSRF": c.csrf})
+
+
+def test_sans_logo_embleme_neutre(env):
     c = client(env, "admin")
-    page = c.get("/admin/mosque").text
-    assert 'href="/static/emblem.svg"' in page          # favicon
-    assert 'src="/static/emblem.svg"' in page           # barre
-    assert "logo.jpg" not in page
+    d = c.get("/api/v1/settings").json()
+    assert d["mosque"]["logo"] == "/static/emblem.svg"
+    assert c.get("/static/emblem.svg").status_code == 200       # repli servi, même sans session
 
 
 def test_upload_puis_retrait(env):
     c = client(env, "admin")
-    tok = csrf(c, "/admin/mosque")
-    up = c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("mon-logo.png", _png(), "image/png")})
-    assert up.status_code == 303, up.text
-
-    page = c.get("/admin/mosque").text
-    url = re.search(r'class="brand"[^>]*><img src="([^"]+)"', page).group(1)
+    up = _envoi(c, "mon-logo.png", _png(), "image/png")
+    assert up.status_code == 200, up.text
+    url = up.json()["logo"]
     assert url.startswith("/logo/ma-mosquee?v="), url
+    assert c.get("/api/v1/session").json()["mosque"]["logo"] == url
+
     img = c.get(url)
     assert img.status_code == 200 and img.headers["content-type"] == "image/png"
     assert img.content.startswith(b"\x89PNG")
 
-    tok = csrf(c, "/admin/mosque")
-    c.post("/admin/logo/delete", data={"csrf": tok})
-    page = c.get("/admin/mosque").text
-    assert 'src="/static/emblem.svg"' in page
+    assert c.request("DELETE", "/api/v1/settings/logo", headers={"X-CSRF": c.csrf}).status_code == 200
+    assert c.get("/api/v1/session").json()["mosque"]["logo"] == "/static/emblem.svg"
     assert c.get(url).status_code == 404
 
 
 def test_fichier_refuse(env):
     c = client(env, "admin")
-    tok = csrf(c, "/admin/mosque")
-    r = c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("notes.txt", b"pas une image", "text/plain")})
-    assert r.status_code == 303
-    page = c.get("/admin/mosque").text
-    assert "Format accepté" in page
-    # fichier trop lourd
-    tok = csrf(c, "/admin/mosque")
-    c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("gros.png", b"\x89PNG" + b"0" * (3 * 1024 * 1024), "image/png")})
-    assert "trop lourde" in c.get("/admin/mosque").text
+    r = _envoi(c, "notes.txt", b"pas une image", "text/plain")
+    assert r.status_code == 422 and "format accepté" in r.json()["message"]
+    r = _envoi(c, "gros.png", b"\x89PNG" + b"0" * (3 * 1024 * 1024), "image/png")
+    assert r.status_code == 422 and "trop lourde" in r.json()["message"]
+    assert c.get("/api/v1/settings").json()["mosque"]["logo"] == "/static/emblem.svg"
 
 
 def test_upload_reserve_a_l_admin(env):
     c = client(env, "imam")
-    tok = csrf(c, "/account")
-    r = c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("x.png", _png(), "image/png")})
-    assert r.status_code == 403
+    assert _envoi(c, "x.png", _png(), "image/png").status_code == 403

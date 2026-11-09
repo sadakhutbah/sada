@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { api, onUnauthorized, type Session } from "./api";
+import { api, onUnauthorized, setCsrf, type Session } from "./api";
 import { LANGUAGES, setLanguage } from "./i18n";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -22,14 +22,14 @@ export default function App() {
 
   useEffect(() => {
     api.session()
-      .then((s) => { sessionCourante = s; setSession(s); })
+      .then((s) => { sessionCourante = s; setCsrf(s.csrf); setSession(s); })
       .catch(() => { sessionCourante = null; setSession(null); })
       .finally(() => setPret(true));
     onUnauthorized(() => { sessionCourante = null; setSession(null); });
   }, []);
 
   if (!pret) return <p className="px-4 py-16 text-center text-muted">{t("common.loading")}</p>;
-  if (!session) return <Login onLogin={(s) => { sessionCourante = s; setSession(s); }} />;
+  if (!session) return <Login onLogin={(s) => { sessionCourante = s; setCsrf(s.csrf); setSession(s); }} />;
 
   const lien = (to: string, cle: string, perm?: string, compte?: number) =>
     perm && !session.user.permissions.includes(perm) ? null : (
@@ -52,10 +52,13 @@ export default function App() {
       </NavLink>
     );
 
+  // Déconnexion : le serveur efface la session, l'écran de connexion reprend la main sans rechargement.
   const deconnexion = async (e: React.MouseEvent) => {
     e.preventDefault();
-    await fetch("/api/v1/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
-    window.location.href = "/logout";
+    await api.logout().catch(() => {});
+    sessionCourante = null;
+    setCsrf("");
+    setSession(null);
   };
 
   return (
@@ -94,7 +97,7 @@ export default function App() {
             <span className="text-[0.85rem] whitespace-nowrap text-night-link">{session.user.name}</span>
             <span className="text-[0.78rem] whitespace-nowrap text-night-muted">{session.user.role_label}</span>
             <a
-              href="/logout"
+              href="/"
               onClick={deconnexion}
               className="text-[0.85rem] whitespace-nowrap text-night-link underline decoration-white/40 underline-offset-4 no-underline hover:text-white"
             >

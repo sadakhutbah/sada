@@ -6,7 +6,7 @@ tools/bin/
 .pytest_cache/
 promo/node_modules/
 web/node_modules/
-web/dist/
+# web/dist est versionné : le back-office sert le front tel quel, sans build à l'installation.
 
 # certificat local HTTPS
 auto.key

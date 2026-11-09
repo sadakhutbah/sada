@@ -1,4 +1,4 @@
-.PHONY: setup test demo demo-short pipeline clean backoffice bac
+.PHONY: setup test demo demo-short pipeline clean backoffice bac front
 PY=.venv/bin/python
 
 setup:
@@ -26,3 +26,7 @@ backoffice:
 
 pipeline:
 	$(PY) -m minbar.pipeline.run
+
+# Front React du back-office : reconstruit web/dist, servi par le serveur à la racine
+front:
+	npm --prefix web run build

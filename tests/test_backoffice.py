@@ -1,4 +1,8 @@
-"""Back-office : authentification, droits, cloisonnement des mosquées, validation des clips, publication."""
+"""Back-office : authentification, droits, cloisonnement des mosquées, validation des clips, publication.
+
+L'interface est le front React : toutes les routes testées ici sont celles de l'API JSON `/api/v1`
+(plus les médias et le direct), exactement ce que le navigateur appelle.
+"""
 import json
 import re
 import socket
@@ -71,26 +75,41 @@ def env(tmp_path):
     conn.close()
 
 
-def client(env, username=None, headers=None) -> TestClient:
-    c = TestClient(env["app"], follow_redirects=False, headers=headers or {})
+class Client(TestClient):
+    """Client de test qui retient le jeton anti-rejeu de sa session, comme le fait le front."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.csrf = ""
+        self.login_cookie = ""
+        self.last_login = None
+
+    def ecrire(self, chemin: str, corps: dict | None = None, methode: str = "POST"):
+        """Écriture JSON sur l'API, avec le jeton de session en en-tête."""
+        return self.request(methode, f"/api/v1{chemin}", json=corps or {}, headers={"X-CSRF": self.csrf})
+
+
+def client(env, username=None, headers=None) -> Client:
+    c = Client(env["app"], follow_redirects=False, headers=headers or {})
     if username:
         login(c, username)
     return c
 
 
-def login(c: TestClient, username: str, password: str = PW, expect_ok: bool | None = None):
-    page = c.get("/login")
-    pre = re.search(r'name="pre" value="([^"]+)"', page.text).group(1)
-    r = c.post("/login", data={"username": username, "password": password, "pre": pre, "suite": "/"})
+def login(c: Client, username: str, password: str = PW, expect_ok: bool | None = None):
+    pre = c.get("/api/v1/login-challenge").json()["pre"]
+    r = c.post("/api/v1/login", data={"username": username, "password": password, "pre": pre})
+    if r.status_code == 200:
+        c.csrf = r.json()["csrf"]
     c.login_cookie = r.headers.get("set-cookie", "")
     c.last_login = r
     if expect_ok if expect_ok is not None else password == PW:
-        assert r.status_code == 303, f"connexion refusée : {r.status_code} {getattr(r, 'text', '')[:300]}"
+        assert r.status_code == 200, f"connexion refusée : {r.status_code} {r.text[:300]}"
     return r
 
 
-def csrf(c: TestClient, url: str = "/account") -> str:
-    return re.search(r'name="csrf" value="([^"]+)"', c.get(url).text).group(1)
+def csrf(c: Client, url: str = "/api/v1/session") -> str:
+    return c.csrf
 
 
 def clip_ids(env):
@@ -101,12 +120,16 @@ def clip_ids(env):
 
 def test_rien_sans_connexion(env):
     c = client(env)
-    for url in ("/", "/sermons", f"/sermons/{env['kid']}", "/clips", "/audit-log", "/publications", "/admin/mosque"):
-        r = c.get(url)
-        assert r.status_code == 303 and r.headers["location"].startswith("/login"), url
+    for url in ("/session", "/sermons", f"/sermons/{env['kid']}", "/clips", "/audit", "/publications", "/settings"):
+        r = c.get(f"/api/v1{url}")
+        assert r.status_code == 401, url
+        assert r.headers["content-type"].startswith("application/json")
     assert c.get("/api/live").status_code == 401
     assert c.get(f"/media/clip/{clip_ids(env)[0]}.mp4").status_code == 401
-    assert c.post(f"/clips/{clip_ids(env)[0]}/decision", data={"decision": "valide"}).headers["location"] == "/login"
+    r = c.post(f"/api/v1/clips/{clip_ids(env)[0]}/decision", json={"decision": "valide"})
+    assert r.status_code == 401
+    # le front, lui, se charge sans session : c'est lui qui affiche l'écran de connexion
+    assert c.get("/").status_code == 200
 
 
 def test_mots_de_passe_haches_argon2(env):
@@ -121,15 +144,15 @@ def test_connexion_cookie_et_deconnexion(env):
     assert login(c, "admin", "mauvais-mot-de-passe").status_code == 401
     assert login(c, "inconnu", PW, expect_ok=False).status_code == 401
     r = login(c, "admin")
-    assert r.status_code == 303
+    assert r.status_code == 200
     cookie = r.headers["set-cookie"]
     assert "minbar_session=" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
     token = c.cookies.get(auth.COOKIE)
     assert db.one(env["conn"], "SELECT COUNT(*) n FROM auth_sessions WHERE token_hash = ?", token)["n"] == 0   # jeton non stocké en clair
-    assert c.get("/").status_code == 200
-    c.post("/logout", data={"csrf": csrf(c)})
+    assert c.get("/api/v1/session").status_code == 200
+    assert c.ecrire("/logout").status_code == 200
     c.cookies.set(auth.COOKIE, token)                        # rejouer l'ancien cookie ne marche plus
-    assert c.get("/").status_code == 303
+    assert c.get("/api/v1/session").status_code == 401
 
 
 def test_compte_desactive_refuse(env):
@@ -140,9 +163,9 @@ def test_compte_desactive_refuse(env):
 def test_csrf_obligatoire(env):
     c = client(env, "admin")
     cid = clip_ids(env)[0]
-    r = c.post(f"/clips/{cid}/decision", data={"decision": "rejete"})
+    r = c.post(f"/api/v1/clips/{cid}/decision", json={"decision": "rejete"})
     assert r.status_code == 403
-    r = c.post(f"/clips/{cid}/decision", data={"decision": "rejete", "csrf": "faux"})
+    r = c.post(f"/api/v1/clips/{cid}/decision", json={"decision": "rejete"}, headers={"X-CSRF": "faux"})
     assert r.status_code == 403
     assert db.one(env["conn"], "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
 
@@ -165,27 +188,26 @@ def test_journal_des_connexions(env):
 # ------------------------------------------------------------------ droits
 
 @pytest.mark.parametrize("role,url,code", [
-    ("imam", "/audit-log", 403), ("imam", "/publications", 403), ("imam", "/admin/mosque", 403), ("imam", "/admin/users", 403),
-    ("responsable", "/admin/mosque", 403), ("responsable", "/admin/users", 403),
-    ("responsable", "/audit-log", 200), ("responsable", "/publications", 200),
-    ("admin", "/admin/mosque", 200), ("admin", "/admin/users", 200), ("admin", "/audit-log", 200),
+    ("imam", "/audit", 403), ("imam", "/publications", 403), ("imam", "/settings", 403), ("imam", "/users", 403),
+    ("responsable", "/settings", 403), ("responsable", "/users", 403),
+    ("responsable", "/audit", 200), ("responsable", "/publications", 200),
+    ("admin", "/settings", 200), ("admin", "/users", 200), ("admin", "/audit", 200),
 ])
 def test_matrice_des_droits(env, role, url, code):
-    assert client(env, role).get(url).status_code == code
+    assert client(env, role).get(f"/api/v1{url}").status_code == code
 
 
 def test_imam_voit_ses_khutbas_seulement(env):
     kid, cid = env["kid"], clip_ids(env)[0]
     mine = client(env, "imam")
-    assert mine.get(f"/sermons/{kid}").status_code == 200
-    assert "La patience" in mine.get("/sermons").text
+    assert mine.get(f"/api/v1/sermons/{kid}").status_code == 200
+    assert "La patience" in mine.get("/api/v1/sermons").text
     other = client(env, "imam2")
-    assert other.get(f"/sermons/{kid}").status_code == 404
-    assert other.get(f"/clips/{cid}").status_code == 404
+    assert other.get(f"/api/v1/sermons/{kid}").status_code == 404
+    assert other.get(f"/api/v1/clips/{cid}").status_code == 404
     assert other.get(f"/media/clip/{cid}.mp4").status_code == 404
-    assert "Aucune khutba" in other.get("/sermons").text
-    r = other.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(other)})
-    assert r.status_code == 404
+    assert other.get("/api/v1/sermons").json()["count"] == 0
+    assert other.ecrire(f"/clips/{cid}/decision", {"decision": "valide"}).status_code == 404
 
 
 def test_cloisonnement_entre_mosquees(env):
@@ -193,10 +215,10 @@ def test_cloisonnement_entre_mosquees(env):
     mid2 = db.create_mosque(conn, "autre", "Autre mosquée")
     auth.create_user(conn, mid2, "admin2", PW, "admin")
     c = client(env, "admin2")
-    assert c.get(f"/sermons/{env['kid']}").status_code == 404
-    assert c.get(f"/clips/{clip_ids(env)[0]}").status_code == 404
-    assert "Aucune khutba" in c.get("/sermons").text
-    r = c.post(f"/admin/users/{env['ids']['imam']}", data={"role": "admin", "active": "1", "csrf": csrf(c)})
+    assert c.get(f"/api/v1/sermons/{env['kid']}").status_code == 404
+    assert c.get(f"/api/v1/clips/{clip_ids(env)[0]}").status_code == 404
+    assert c.get("/api/v1/sermons").json()["count"] == 0
+    r = c.ecrire(f"/users/{env['ids']['imam']}", {"role": "admin", "active": "1"}, methode="PATCH")
     assert r.status_code == 404
 
 
@@ -205,18 +227,18 @@ def test_imam_ne_peut_pas_publier(env):
     content.decide(env["conn"], db.one(env["conn"], "SELECT * FROM clips WHERE id = ?", cid), "valide",
                    db.one(env["conn"], "SELECT * FROM users WHERE username = 'responsable'"))
     c = client(env, "imam")
-    r = c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
+    r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
     assert r.status_code == 403
     assert db.one(env["conn"], "SELECT status FROM clips WHERE id = ?", cid)["status"] == "valide"
 
 
 def test_admin_cree_un_imam(env):
     c = client(env, "admin")
-    c.post("/admin/users", data={"username": "nouvel", "display_name": "Imam Nouvel", "role": "imam", "password": PW,
-                                        "csrf": csrf(c)})
+    r = c.ecrire("/users", {"username": "nouvel", "display_name": "Imam Nouvel", "role": "imam", "password": PW})
+    assert r.status_code == 200, r.text
     u = db.one(env["conn"], "SELECT * FROM users WHERE username = 'nouvel'")
     assert u and u["role"] == "imam" and u["mosque_id"] == env["mid"]
-    assert login(client(env), "nouvel").status_code == 303
+    assert login(client(env), "nouvel").status_code == 200
 
 
 # ------------------------------------------------------------------ live (vraie API de l'orchestrateur)
@@ -251,10 +273,12 @@ def orch(env):
 
 def test_tableau_de_bord_et_commandes_live(env, orch):
     c = client(env, "imam")
-    page = c.get("/").text
-    assert "13:42:10" in page and "Khutba en direct" in page and "Session 1/2 — 13:30" in page
+    d = c.get("/api/v1/dashboard").json()
+    assert d["live"]["clock"] == "13:42:10" and d["live"]["state_label"] == "Khutba en direct"
+    assert d["live"]["session"] == "Session 1/2 — 13:30"
+    assert [c["key"] for c in d["live_commands"]] == ["extend", "janaza", "stop", "cancel"]
     for cmd in ("extend", "janaza", "stop", "cancel"):
-        assert c.post(f"/live/{cmd}", data={"csrf": csrf(c, "/")}).status_code == 303
+        assert c.ecrire(f"/live/{cmd}").status_code == 200
     assert orch.calls == [("extend", "5"), ("janaza", None), ("stop", None), ("cancel", None)]
     log = db.all_(env["conn"], "SELECT * FROM audit WHERE action = 'live.commande' ORDER BY id")
     assert len(log) == 4 and all(a["user_id"] == env["ids"]["imam"] for a in log)
@@ -263,15 +287,12 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
 def test_fiche_janaza_depuis_le_tableau_de_bord(env, orch):
     """La fiche janaza (nom + mention) part à l'orchestrateur, vide si la famille n'a rien autorisé."""
     c = client(env, "imam")
-    page = c.get("/").text
-    assert 'name="name"' in page and 'placeholder="ex. Ahmed Benali"' in page
-    assert 'name="info"' in page and "accord de la famille" in page
-    r = c.post("/live/janaza", data={"csrf": csrf(c, "/"), "name": " Ahmed Benali ", "info": "67 ans"})
-    assert r.status_code == 303
+    r = c.ecrire("/live/janaza", {"name": " Ahmed Benali ", "info": "67 ans"})
+    assert r.status_code == 200
     assert orch.calls[-1] == ("janaza", "Ahmed Benali|67 ans")
     # un nom sans mention, puis une mention seule (ignorée sans nom)
-    c.post("/live/janaza", data={"csrf": csrf(c, "/"), "name": "Karim", "info": ""})
-    c.post("/live/janaza", data={"csrf": csrf(c, "/"), "name": "", "info": "67 ans"})
+    c.ecrire("/live/janaza", {"name": "Karim", "info": ""})
+    c.ecrire("/live/janaza", {"name": "", "info": "67 ans"})
     assert orch.calls[-2:] == [("janaza", "Karim"), ("janaza", None)]
 
 
@@ -291,39 +312,38 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
     for var in ("MINBAR_LLM_ENABLED", "MINBAR_LLM_URL", "MINBAR_LLM_MODEL", "MINBAR_LLM_PROTOCOL"):
         monkeypatch.delenv(var, raising=False)
     c = client(env, "admin")
-    assert "Modèle de langage" in c.get("/admin/mosque?section=model").text
+    assert c.get("/api/v1/settings").json()["model"]["label"]
 
-    r = c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque?section=model"), "llm_enabled": "1",
-                                      "llm_url": "http://127.0.0.1:9/v1", "llm_model": "petit", "llm_protocol": "openai"})
-    assert r.status_code == 303
+    r = c.ecrire("/settings/model", {"enabled": "1", "url": "http://127.0.0.1:9/v1", "model": "petit",
+                                     "protocol": "openai"}, methode="PUT")
+    assert r.status_code == 200, r.text
     assert json.loads(cfg.read_text()) == {"enabled": True, "url": "http://127.0.0.1:9/v1",
                                            "model": "petit", "protocol": "openai"}
     assert llm.enabled() and llm.label() == "openai · petit"      # le pipeline lirait ceci
 
-    r = c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque?section=model"), "llm_url": "", "llm_model": "", "llm_protocol": ""})
-    assert r.status_code == 303
+    r = c.ecrire("/settings/model", {"url": "", "model": "", "protocol": ""}, methode="PUT")
+    assert r.status_code == 200
     assert json.loads(cfg.read_text())["enabled"] is False and llm.enabled() is False
 
-    r = c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque?section=model"), "llm_enabled": "1", "llm_url": "file:///etc/passwd"})
-    assert r.status_code == 303
+    r = c.ecrire("/settings/model", {"enabled": "1", "url": "file:///etc/passwd"}, methode="PUT")
+    assert r.status_code == 422
     assert json.loads(cfg.read_text())["enabled"] is False         # refusée : le fichier n'a pas bougé
 
     for who in ("imam", "responsable"):
         ci = client(env, who)
-        assert ci.post("/admin/model", data={"csrf": csrf(ci, "/"), "llm_enabled": "1"}).status_code == 403
+        assert ci.ecrire("/settings/model", {"enabled": "1"}, methode="PUT").status_code == 403
 
 
 def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
-    """Le bouton « Tester » interroge l'adresse enregistrée et rapporte l'échec sans casser la page."""
+    """Le bouton « Tester » interroge l'adresse enregistrée et rapporte l'échec sans casser l'écran."""
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(tmp_path / "llm.json"))
     monkeypatch.delenv("MINBAR_LLM_ENABLED", raising=False)
     c = client(env, "admin")
-    c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque"), "llm_enabled": "1",
-                                  "llm_url": "http://127.0.0.1:9/v1", "llm_model": "petit", "llm_protocol": "openai"})
-    r = c.post("/admin/model/test", data={"csrf": csrf(c, "/admin/mosque")})
-    assert r.status_code == 303
-    page = c.get("/admin/mosque").text
-    assert "injoignable" in page
+    c.ecrire("/settings/model", {"enabled": "1", "url": "http://127.0.0.1:9/v1", "model": "petit",
+                                 "protocol": "openai"}, methode="PUT")
+    r = c.ecrire("/settings/model/test")
+    assert r.status_code == 422
+    assert "injoignable" in r.json()["message"]
 
 
 def test_libelle_d_un_dars_et_commandes_proposees():
@@ -336,15 +356,16 @@ def test_libelle_d_un_dars_et_commandes_proposees():
 
 def test_commande_live_orchestrateur_absent(env):
     c = client(env, "responsable")
-    assert "injoignable" in c.get("/").text
-    c.post("/live/stop", data={"csrf": csrf(c, "/")})
+    assert c.get("/api/v1/dashboard").json()["live"]["ok"] is False
+    r = c.ecrire("/live/stop")
+    assert r.status_code == 503
     assert db.one(env["conn"], "SELECT action FROM audit WHERE action LIKE 'live.%'")["action"] == "live.echec"
 
 
 def test_commande_live_role_requis(env, orch, monkeypatch):
     monkeypatch.setitem(auth.PERMS, "live", {"admin", "responsable"})
     c = client(env, "imam")
-    assert c.post("/live/stop", data={"csrf": csrf(c, "/")}).status_code == 403
+    assert c.ecrire("/live/stop").status_code == 403
     assert orch.calls == []
 
 
@@ -362,10 +383,14 @@ def test_import_idempotent_et_janaza_ignoree(env):
     assert c["source_offset"] == 100.0 and c["status"] == "a_valider"
 
 
-def test_page_detail_khutba(env):
-    t = client(env, "responsable").get(f"/sermons/{env['kid']}").text
-    assert "65:3" in t and "At-Talaaq" in t and "Et quiconque place sa confiance" in t
-    assert "La patience est une lumière." in t and "00:20" in t
+def test_fiche_khutba_par_l_api(env):
+    d = client(env, "responsable").get(f"/api/v1/sermons/{env['kid']}").json()
+    refs = [r["verse"]["ref"] for r in d["transcript"] if r["verse"]]
+    assert "65:3" in refs
+    assert any("At-Talaaq" == (r["verse"] or {}).get("surah") for r in d["transcript"])
+    assert "La patience est une lumière." in json.dumps(d["transcript"], ensure_ascii=False)
+    assert d["sermon"]["duration_s"] == 20.0
+    assert d["notes"].startswith("# Notes") and len(d["clips"]) == 2 and d["has_video"] is False
 
 
 # ------------------------------------------------------------------ validation
@@ -373,13 +398,13 @@ def test_page_detail_khutba(env):
 def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "imam")
-    c.post(f"/sermons/{env['kid']}/revisions",
-           data={"seg": "1", "field": "text", "value": "La patience est une lumière, dit le Prophète ﷺ.", "csrf": csrf(c), "next": f"/clips/{cid}"})
+    c.ecrire(f"/sermons/{env['kid']}/revisions",
+             {"seg": "1", "field": "text", "value": "La patience est une lumière, dit le Prophète ﷺ."})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["needs_regen"] == 1
     assert db.one(conn, "SELECT needs_regen FROM clips WHERE idx = 2")["needs_regen"] == 0     # segment hors du clip 2
     # valider est refusé tant que la vidéo n'est pas régénérée
-    c.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(c)})
+    c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
     # régénération : le pipeline reçoit bien la correction (build_ass réel, rendu ffmpeg simulé)
     from minbar.pipeline import clips as clipmod
@@ -390,18 +415,21 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
         Path(out).write_bytes(b"clip v2")
     monkeypatch.setattr(clipmod, "render_clip", fake_render)
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
-    c.post(f"/clips/{cid}/regenerate", data={"csrf": csrf(c)})
+    c.ecrire(f"/clips/{cid}/regenerate")
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["version"] == 2 and clip["needs_regen"] == 0 and clip["file_path"].endswith("_v2_A-VALIDER.mp4")
     assert seen["off"] == 100.0 and "Prophète" in seen["ass"]
-    c.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(c)})
+    c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["status"] == "valide" and clip["decided_by"] == env["ids"]["imam"]
     acts = [a["action"] for a in db.all_(conn, "SELECT action FROM audit WHERE user_id = ? ORDER BY id", env["ids"]["imam"])]
     assert acts[-3:] == ["correction.sous-titre", "clip.regeneration", "clip.valide"]
-    # l'historique du clip montre qui a fait quoi
-    page = c.get(f"/clips/{cid}").text
-    assert "Sous-titre corrigé" in page and "Clip validé" in page and "Imam" in page
+    # la fiche du clip montre qui a fait quoi
+    d = c.get(f"/api/v1/clips/{cid}").json()
+    actions = [h["action"] for h in d["history"]]
+    assert "correction.sous-titre" in actions and "clip.valide" in actions
+    assert any(h["who"] == "Imam" for h in d["history"])
+    assert d["clip"]["status"] == "valide" and d["status_labels"]["valide"] == "Validé"
 
 
 def test_correction_traduction_et_verset_protege(env):
@@ -422,10 +450,12 @@ def test_correction_traduction_et_verset_protege(env):
 def test_rejet_avec_motif(env):
     c = client(env, "responsable")
     cid = clip_ids(env)[1]
-    c.post(f"/clips/{cid}/decision", data={"decision": "rejete", "reason": "coupé en plein milieu", "csrf": csrf(c)})
+    c.ecrire(f"/clips/{cid}/decision", {"decision": "rejete", "reason": "coupé en plein milieu"})
     clip = db.one(env["conn"], "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["status"] == "rejete" and clip["reject_reason"] == "coupé en plein milieu"
-    assert "Rejeté" in c.get("/clips?statut=rejete").text
+    d = c.get("/api/v1/clips", params={"status": "rejete"}).json()
+    assert [i["id"] for i in d["items"]] == [cid]
+    assert d["counts"]["rejete"] == 1 and d["status_labels"]["rejete"] == "Rejeté"
 
 
 # ------------------------------------------------------------------ publication
@@ -433,8 +463,8 @@ def test_rejet_avec_motif(env):
 def test_rien_ne_se_publie_sans_validation(env):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "responsable")
-    r = c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
-    assert r.status_code == 303
+    r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
+    assert r.status_code == 422
     assert not (env["tmp"] / "pub").exists()
     p = db.one(conn, "SELECT * FROM publications")
     assert p["status"] == "refuse" and "non validé" in p["message"]
@@ -444,8 +474,9 @@ def test_rien_ne_se_publie_sans_validation(env):
 def test_publication_locale_apres_validation(env):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "responsable")
-    c.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(c)})
-    c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "Khutba — extrait", "csrf": csrf(c)})
+    c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
+    r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "Khutba — extrait"})
+    assert r.status_code == 200, r.text
     p = db.one(conn, "SELECT * FROM publications")
     assert p["status"] == "publie", p
     out = Path(p["location"])
@@ -453,24 +484,27 @@ def test_publication_locale_apres_validation(env):
     meta = json.loads(out.with_suffix(".json").read_text())
     assert meta["legende"] == "Khutba — extrait" and meta["valide_par"] == "Responsable" and meta["musique"] is False
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "publie"
-    assert "Publié" in c.get("/publications").text
+    d = c.get("/api/v1/publications").json()
+    assert d["publications"] and d["publications"][0]["status"] == "publie"
+    assert any(i["id"] == cid for i in d["publications"])
 
 
 def test_correction_apres_publication_ne_reecrit_pas_l_historique(env, monkeypatch):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "responsable")
-    c.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(c)})
-    c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
-    c.post(f"/sermons/{env['kid']}/revisions", data={"seg": "1", "field": "text", "value": "Texte corrigé.", "csrf": csrf(c)})
+    c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
+    c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
+    c.ecrire(f"/sermons/{env['kid']}/revisions", {"seg": "1", "field": "text", "value": "Texte corrigé."})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["status"] == "publie" and clip["needs_regen"] == 1
     from minbar.pipeline import clips as clipmod
     monkeypatch.setattr(clipmod, "render_clip", lambda src, off, w, ass, out, log=print, crop=None: Path(out).write_bytes(b"v2"))
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
-    c.post(f"/clips/{cid}/regenerate", data={"csrf": csrf(c)})
+    c.ecrire(f"/clips/{cid}/regenerate")
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["version"] == 2 and clip["status"] == "a_valider" and clip["decided_by"] is None   # v2 repasse en validation
-    r = c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
+    r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
+    assert r.status_code == 422
     assert db.one(conn, "SELECT status FROM publications ORDER BY id DESC")["status"] == "refuse"
 
 
