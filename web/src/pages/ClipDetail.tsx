@@ -1,26 +1,41 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Card, Field, Kicker, Pill, Segmented, inputClass } from "../ui";
 import { dateFr, mmss } from "../format";
 
-/** Fiche d'un clip : la vidéo, la décision, les sous-titres, la publication et l'historique.
- *  Quatre blocs sur un seul écran serait trop haut : ils sont derrière des sous-onglets, la vidéo
- *  restant visible en haut. Reprise fidèle de la page « clip » du back-office en gabarits. */
+/** Fiche d'un clip : écran de validation.
+ *  Grand écran : la vidéo à gauche (hauteur plafonnée, jamais plein écran), à droite un panneau collant
+ *  qui porte le formulaire découpé en sous-onglets (Décision, Sous-titres, Publication, Historique).
+ *  Sous 1000 px, les deux blocs s'empilent. Tout ce qui sert à décider tient sans défiler. */
+
+type Message = { texte: string; ko: boolean } | null;
+type Agir = (action: () => Promise<any>, succes: string) => Promise<void>;
+
+/** Un chemin de la machine ne s'affiche jamais : seules les adresses web restent lisibles. */
+const estChemin = (v: unknown) => typeof v === "string" && /^(\/|~\/|[A-Za-z]:[\\/]|\\\\)/.test(v.trim());
+
+/** Les booléens venus de SQLite arrivent en 0/1 : `{0 && …}` afficherait « 0 », on force donc un vrai booléen. */
+const oui = (v: unknown) => Boolean(v);
+
 export default function ClipDetail() {
   const { id } = useParams();
   const { t, i18n } = useTranslation();
   const cid = Number(id);
   const [d, setD] = useState<any>(null);
-  const [onglet, setOnglet] = useState("clip");
-  const [message, setMessage] = useState<{ texte: string; ko: boolean } | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [onglet, setOnglet] = useState("decision");
+  const [message, setMessage] = useState<Message>(null);
   const [occupe, setOccupe] = useState(false);
 
   const recharger = () =>
-    api.clip(cid).then(setD).catch((e) => setMessage({ texte: e.message, ko: true }));
+    api.clip(cid).then((r) => { setD(r); setErreur(null); }).catch((e) => setErreur(e?.message ?? String(e)));
 
   useEffect(() => {
+    setD(null);
+    setMessage(null);
+    setOnglet("decision");
     recharger();
   }, [cid]);
 
@@ -32,7 +47,7 @@ export default function ClipDetail() {
     return () => window.clearTimeout(minuteur);
   }, [enCours, d]);
 
-  const agir = async (action: () => Promise<any>, succes: string) => {
+  const agir: Agir = async (action, succes) => {
     setOccupe(true);
     setMessage(null);
     try {
@@ -40,149 +55,233 @@ export default function ClipDetail() {
       setMessage({ texte: succes, ko: false });
       await recharger();
     } catch (e: any) {
-      setMessage({ texte: e.message ?? String(e), ko: true });
+      setMessage({ texte: e?.message ?? String(e), ko: true });
     } finally {
       setOccupe(false);
     }
   };
 
   if (!d) {
-    return message ? <p className="py-16 text-center text-live">{message.texte}</p>
-                   : <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
+    return (
+      <div className="grid gap-3">
+        <Fil />
+        {erreur ? (
+          <div className="rounded-[10px] border border-[#efc9c4] bg-err-bg px-4.5 py-3.5">
+            <p className="m-0 font-semibold text-[#8a2219]">{t("clips.detail.loadError")}</p>
+            <p className="m-0 mt-0.5 text-[0.88rem] text-[#8a2219]/80">{erreur}</p>
+          </div>
+        ) : (
+          <div className="grid gap-4 min-[1000px]:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)]">
+            <div className="h-[50vh] max-h-[560px] min-h-[240px] animate-pulse rounded-[10px] bg-night/85" />
+            <Card><p className="m-0 text-muted">{t("common.loading")}</p></Card>
+          </div>
+        )}
+      </div>
+    );
   }
 
   const c = d.clip;
   const libelles = d.status_labels ?? {};
-  const decides = d.history ?? [];
+  const peutPublier = oui(d.can_publish);
+  const ongletActif = onglet === "publication" && !peutPublier ? "decision" : onglet;
 
   return (
-    <div className="grid gap-4">
-      <div>
-        <p className="m-0 mb-2 text-[0.88rem]">
-          <Link to="/clips" className="text-deep underline decoration-leaf underline-offset-4">← {t("clips.title")}</Link>
-          {" · "}
-          <Link to={`/sermons/${d.sermon.id}`} className="text-deep underline decoration-leaf underline-offset-4">
-            {dateFr(d.sermon.date, i18n.language)} · {d.sermon.label}
-          </Link>
-        </p>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">
+    <div className="grid gap-3">
+      <header className="grid gap-1">
+        <Fil sermon={d.sermon} langue={i18n.language} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="m-0 font-serif text-[1.9rem] font-normal leading-[1.1] text-deeper">
             {t("clips.clip")} {c.idx} · {t(`clips.kinds.${c.kind}`)}
           </h1>
           <Pill statut={c.status} label={libelles[c.status] ?? c.status} />
         </div>
-        <p className="mt-1.5 mb-0 max-w-[80ch] text-[0.88rem] text-muted">
-          {t("clips.detail.extract", { de: mmss(c.start), a: mmss(c.end), s: Math.round(c.end - c.start) })}
-          {" · "}{t("clips.detail.version", { n: c.version })}
-          {c.why ? ` · ${c.why}` : ""}
-        </p>
-      </div>
+      </header>
 
-      {message && (
-        <p className={`m-0 rounded-lg px-3 py-2 text-[0.9rem] ${message.ko ? "bg-err-bg text-[#8a2219]" : "bg-paper-2 text-deep"}`}>
-          {message.texte}
-        </p>
-      )}
-      {c.regen_state === "erreur" && (
-        <p className="m-0 rounded-lg bg-err-bg px-3 py-2 text-[0.9rem] text-[#8a2219]">
-          {t("clips.detail.regenError")} : {c.regen_error}
-        </p>
-      )}
-      {c.needs_regen && c.regen_state !== "en_cours" && (
-        <p className="m-0 rounded-lg bg-err-bg px-3 py-2 text-[0.9rem] text-[#8a2219]">{t("clips.detail.needsRegen")}</p>
-      )}
+      <div className="grid items-start gap-4 min-[1000px]:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)]">
+        <Lecteur c={c} existe={oui(d.exists)} />
 
-      <Card>
-        {d.exists ? (
-          <video
-            key={c.version}
-            controls
-            preload="metadata"
-            playsInline
-            className="w-full rounded-lg bg-night"
-            src={`/media/clip/${c.id}.mp4?v=${c.version}`}
+        <Card className="grid gap-3 min-[1000px]:sticky min-[1000px]:top-4 min-[1000px]:max-h-[calc(100vh-2rem)] min-[1000px]:overflow-y-auto">
+          <Segmented
+            valeur={ongletActif}
+            onChange={(cle) => { setOnglet(cle); setMessage(null); }}
+            items={[
+              { cle: "decision", label: t("clips.detail.decision") },
+              { cle: "sous-titres", label: t("clips.detail.subtitles") },
+              { cle: "publication", label: t("clips.detail.publish"), eteint: !peutPublier },
+              { cle: "historique", label: t("clips.detail.history") },
+            ]}
           />
-        ) : (
-          <p className="m-0 text-muted">{t("clips.detail.noFile")}</p>
-        )}
-      </Card>
 
-      <Segmented
-        valeur={onglet}
-        onChange={setOnglet}
-        items={[
-          { cle: "clip", label: t("clips.detail.decision") },
-          { cle: "sous-titres", label: t("clips.detail.subtitles") },
-          ...(d.can_publish ? [{ cle: "publication", label: t("clips.detail.publish") }] : []),
-          { cle: "historique", label: t("clips.detail.history") },
-        ]}
-      />
+          {message && <Bandeau ko={message.ko}>{message.texte}</Bandeau>}
 
-      {onglet === "clip" && <Decision c={c} d={d} occupe={occupe} agir={agir} />}
-      {onglet === "sous-titres" && <SousTitres d={d} agir={agir} />}
-      {onglet === "publication" && d.can_publish && <Publication d={d} occupe={occupe} agir={agir} />}
-      {onglet === "historique" && (
-        <Card>
-          {decides.length === 0 ? <p className="m-0 text-muted">{t("common.empty")}</p> : (
-            <ul className="m-0 grid list-none gap-2 p-0">
-              {decides.map((a: any) => (
-                <li key={a.id} className="text-[0.93rem]">
-                  <b>{(d.labels ?? {})[a.action] ?? a.action}</b> · {a.who ?? t("clips.detail.system")}
-                  {" · "}<span className="text-muted">{(a.created_at ?? "").replace("T", " ").slice(0, 16)}</span>
-                  {a.details && a.details !== "{}" && (
-                    <><br /><span className="text-[0.85rem] text-muted">{a.details}</span></>
-                  )}
-                </li>
-              ))}
-            </ul>
+          {ongletActif === "decision" && (
+            <Decision c={c} d={d} occupe={occupe} agir={agir} versPublication={() => setOnglet("publication")} />
           )}
+          {ongletActif === "sous-titres" && <SousTitres d={d} occupe={occupe} agir={agir} />}
+          {ongletActif === "publication" && <Publication d={d} occupe={occupe} agir={agir} />}
+          {ongletActif === "historique" && <Historique d={d} />}
         </Card>
-      )}
+      </div>
     </div>
   );
 }
 
-function Decision({ c, d, occupe, agir }: { c: any; d: any; occupe: boolean; agir: any }) {
+/** Fil d'Ariane : retour à la file, puis la khutba d'origine. */
+function Fil({ sermon, langue }: { sermon?: any; langue?: string }) {
+  const { t } = useTranslation();
+  const lien = "text-deep underline decoration-leaf underline-offset-4 hover:text-deeper";
+  return (
+    <p className="m-0 text-[0.85rem] text-muted">
+      <Link to="/clips" className={lien}>← {t("clips.title")}</Link>
+      {sermon && (
+        <>
+          {" · "}
+          <Link to={`/sermons/${sermon.id}`} className={lien}>
+            {dateFr(sermon.date, langue)} · {sermon.label}
+          </Link>
+        </>
+      )}
+    </p>
+  );
+}
+
+/** Scène vidéo : fond nuit, hauteur fixe plafonnée, image entière (contain) quel que soit le format. */
+function Lecteur({ c, existe }: { c: any; existe: boolean }) {
+  const { t } = useTranslation();
+  const enCours = c.regen_state === "en_cours";
+  return (
+    <div className="relative overflow-hidden rounded-[10px] bg-night">
+      {existe ? (
+        <video
+          key={c.version}
+          controls
+          preload="metadata"
+          playsInline
+          className="block h-[50vh] max-h-[560px] min-h-[240px] w-full bg-night object-contain"
+          src={`/media/clip/${c.id}.mp4?v=${c.version}`}
+        />
+      ) : (
+        <div className="grid h-[50vh] max-h-[560px] min-h-[240px] place-items-center px-6 text-center">
+          <p className="m-0 text-[0.95rem] text-night-muted">{t("clips.detail.noFile")}</p>
+        </div>
+      )}
+      {enCours && (
+        <span className="absolute top-3 left-3 inline-flex items-center gap-2 rounded-full bg-night/85 px-3 py-1 text-[0.8rem] font-semibold text-night-ink">
+          <span className="size-2 animate-pulse rounded-full bg-leaf" />
+          {t("clips.detail.regenerate")}
+        </span>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-white/10 px-3.5 py-2 text-[0.82rem] text-night-muted">
+        <span className="tabular-nums">
+          {mmss(c.start)}–{mmss(c.end)} · {t("clips.detail.seconds", { s: Math.round(c.end - c.start) })}
+        </span>
+        <span>{t("clips.detail.version", { n: c.version })}</span>
+      </div>
+    </div>
+  );
+}
+
+function Bandeau({ ko, children }: { ko: boolean; children: ReactNode }) {
+  return (
+    <p className={`m-0 rounded-lg px-3 py-2 text-[0.88rem] leading-snug ${ko ? "bg-err-bg text-[#8a2219]" : "bg-paper-2 text-deep"}`}>
+      {children}
+    </p>
+  );
+}
+
+/** Ligne de la fiche : libellé discret à gauche, valeur à droite. */
+function Ligne({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="text-muted">{label}</dt>
+      <dd className="m-0 min-w-0 text-ink">{children}</dd>
+    </>
+  );
+}
+
+function Decision({ c, d, occupe, agir, versPublication }: {
+  c: any; d: any; occupe: boolean; agir: Agir; versPublication: () => void;
+}) {
   const { t, i18n } = useTranslation();
   const [motif, setMotif] = useState("");
-  const valider = c.status === "a_valider" && d.can_validate;
+  const aValider = c.status === "a_valider";
+  const enCours = c.regen_state === "en_cours";
+  const aRegenerer = oui(c.needs_regen) || c.regen_state === "erreur";
+  const valider = aValider && oui(d.can_validate) && !oui(c.needs_regen);
+  const duree = Math.round(c.end - c.start);
 
   return (
-    <Card className="grid gap-4">
-      <div>
-        <Kicker>{t("clips.detail.decision")}</Kicker>
-        {c.status === "publie" ? (
-          <p className="m-0 text-[0.95rem]">
-            {t("clips.detail.published", { n: c.version })}
-            {c.decided_at ? ` — ${dateFr((c.decided_at ?? "").slice(0, 10), i18n.language)}` : ""}.
-            {c.needs_regen ? ` ${t("clips.detail.publishedRegen", { n: c.version + 1 })}` : ""}
-          </p>
-        ) : c.status === "a_valider" ? (
-          <p className="m-0 text-[0.92rem] text-muted">{t("clips.intro")}</p>
-        ) : (
-          <p className="m-0 text-[0.95rem]">
-            {t("clips.detail.decided", { statut: d.status_labels?.[c.status] ?? c.status })}
-            {c.reject_reason ? ` — ${c.reject_reason}` : ""}
-          </p>
-        )}
-      </div>
+    <div className="grid gap-3.5">
+      {/* La fiche : ce qu'il faut savoir pour décider. */}
+      <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[0.9rem]">
+        <Ligne label={t("clips.status")}>
+          {c.status === "publie" ? (
+            <>
+              {t("clips.detail.published", { n: c.version })}
+              {c.decided_at ? ` — ${dateFr(String(c.decided_at).slice(0, 10), i18n.language)}` : ""}
+            </>
+          ) : (
+            d.status_labels?.[c.status] ?? c.status
+          )}
+          {!aValider && c.reject_reason ? <span className="text-muted"> — {c.reject_reason}</span> : null}
+        </Ligne>
+        <Ligne label={t("clips.detail.excerpt")}>
+          <span className="tabular-nums">{mmss(c.start)}–{mmss(c.end)}</span>
+        </Ligne>
+        <Ligne label={t("clips.duration")}>
+          <span className="tabular-nums">{t("clips.detail.seconds", { s: duree })}</span>
+        </Ligne>
+        <Ligne label={t("clips.detail.versionLabel")}>{c.version}</Ligne>
+        {c.why ? <Ligne label={t("clips.why")}>{c.why}</Ligne> : null}
+      </dl>
 
-      {c.status === "a_valider" && (
-        <div className="grid gap-4">
+      {/* États de la vidéo : régénération attendue, en cours ou en échec. */}
+      {enCours && <Bandeau ko={false}>{t("clips.detail.regenRunning")}</Bandeau>}
+      {!enCours && c.regen_state === "erreur" && (
+        <Bandeau ko>{t("clips.detail.regenError")}{c.regen_error && !estChemin(c.regen_error) ? ` : ${c.regen_error}` : ""}</Bandeau>
+      )}
+      {!enCours && oui(c.needs_regen) && (
+        <Bandeau ko>{c.status === "publie" ? t("clips.detail.publishedRegen", { n: c.version + 1 }) : t("clips.detail.needsRegen")}</Bandeau>
+      )}
+
+      {/* Quand la vidéo doit être refaite, la régénération devient l'action principale. */}
+      {aRegenerer && !enCours && (
+        d.can_regenerate ? (
           <Btn
-            disabled={occupe || !valider}
+            variante="leaf"
+            disabled={occupe}
+            onClick={() => agir(() => api.regenerer(c.id), t("clips.detail.regenStarted"))}
+          >
+            {t("clips.detail.regenerate")}
+          </Btn>
+        ) : (
+          d.regenerate_reason ? <p className="m-0 text-[0.85rem] text-muted">{d.regenerate_reason}</p> : null
+        )
+      )}
+
+      {aValider && (
+        <div className="grid gap-2.5 border-t border-line pt-3.5">
+          <Btn
+            variante={aRegenerer ? "ghost" : "plein"}
+            disabled={occupe || !valider || enCours}
             onClick={() => agir(() => api.decision(c.id, "valide"), t("clips.detail.validated"))}
           >
             {t("clips.detail.validate")}
           </Btn>
-          {!valider && <p className="m-0 text-[0.85rem] text-muted">{t("clips.detail.validateBlocked")}</p>}
-          <div>
-            <Field label={t("clips.detail.reason")}>
-              <input className={inputClass} value={motif} onChange={(e) => setMotif(e.target.value)} />
-            </Field>
+          {!valider && !aRegenerer && (
+            <p className="m-0 text-[0.82rem] text-muted">{t("clips.detail.validateBlocked")}</p>
+          )}
+          <div className="flex gap-2">
+            <input
+              className={`${inputClass} min-h-11 py-2 text-[0.9rem]`}
+              placeholder={t("clips.detail.reason")}
+              aria-label={t("clips.detail.reason")}
+              value={motif}
+              onChange={(e) => setMotif(e.target.value)}
+            />
             <Btn
-              variante="danger"
-              className="mt-2"
+              variante="dangerGhost"
+              className="shrink-0"
               disabled={occupe}
               onClick={() => agir(() => api.decision(c.id, "rejete", motif), t("clips.detail.rejected"))}
             >
@@ -192,125 +291,176 @@ function Decision({ c, d, occupe, agir }: { c: any; d: any; occupe: boolean; agi
         </div>
       )}
 
-      {c.status !== "a_valider" && (
-        <Btn
-          variante="ghost"
-          disabled={occupe}
-          onClick={() => agir(() => api.decision(c.id, "rouvrir"), t("clips.detail.reopened"))}
-        >
-          {t("clips.detail.reopen")}
-        </Btn>
-      )}
-
-      {(c.needs_regen || c.regen_state === "erreur") && (
-        <div className="border-t border-line pt-3">
-          <Kicker>{t("clips.detail.regenerate")}</Kicker>
-          {d.can_regenerate ? (
-            <Btn
-              variante="leaf"
-              disabled={occupe || c.regen_state === "en_cours"}
-              onClick={() => agir(() => api.regenerer(c.id), t("clips.detail.regenStarted"))}
-            >
-              {t("clips.detail.regenerate")}
-            </Btn>
-          ) : (
-            <p className="m-0 text-[0.85rem] text-muted">{d.regenerate_reason}</p>
+      {!aValider && (
+        <div className="flex flex-wrap gap-2 border-t border-line pt-3.5">
+          {c.status === "valide" && oui(d.can_publish) && (
+            <Btn onClick={versPublication}>{t("clips.detail.goPublish")}</Btn>
           )}
+          <Btn
+            variante="ghost"
+            disabled={occupe}
+            onClick={() => agir(() => api.decision(c.id, "rouvrir"), t("clips.detail.reopened"))}
+          >
+            {t("clips.detail.reopen")}
+          </Btn>
         </div>
       )}
-    </Card>
+
+      {aValider && <p className="m-0 text-[0.8rem] leading-snug text-muted">{t("clips.intro")}</p>}
+    </div>
   );
 }
 
-function SousTitres({ d, agir }: { d: any; agir: any }) {
+function SousTitres({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }) {
   const { t } = useTranslation();
   const [saisie, setSaisie] = useState<Record<number, string>>({});
   const lignes = useMemo(() => d.segments ?? [], [d]);
+  const modifiable = oui(d.can_validate);
+  const initial = (r: any) => (r.field === "fr" ? r.fr ?? "" : r.text);
+
+  if (!lignes.length) return <p className="m-0 text-[0.9rem] text-muted">{t("clips.detail.noSubtitles")}</p>;
 
   return (
-    <Card>
-      <p className="m-0 mb-3 text-[0.85rem] text-muted">{t("clips.detail.subtitlesHelp")}</p>
-      <ul className="m-0 grid list-none gap-3 p-0">
-        {lignes.map((r: any) => (
-          <li key={r.i} className="border-b border-line pb-3 last:border-0 last:pb-0">
-            <p className="m-0 text-[0.78rem] tabular-nums text-muted">
-              {mmss(r.rel)} · {r.verse ? r.verse.ref : t("clips.detail.line")}
-              {r.corrected ? ` · ${t("clips.detail.corrected")}` : ""}
-            </p>
-            <p className="m-0 text-[0.95rem]" dir="auto">{r.text}</p>
-            {r.verse && r.verse.fr && <p className="m-0 text-[0.9rem] text-muted" dir="auto">{r.verse.fr}</p>}
-            {r.field && d.can_validate && (
-              <div className="mt-1.5 flex items-center gap-2">
-                <input
-                  className={`${inputClass} py-1.5 text-[0.9rem]`}
-                  dir="auto"
-                  value={saisie[r.i] ?? (r.field === "fr" ? r.fr ?? "" : r.text)}
-                  onChange={(e) => setSaisie({ ...saisie, [r.i]: e.target.value })}
-                />
-                <Btn
-                  variante="ghost"
-                  className="min-h-9 px-3 py-1 text-[0.85rem]"
-                  onClick={() => agir(() => api.correction(d.sermon.id, r.i, r.field,
-                    saisie[r.i] ?? (r.field === "fr" ? r.fr ?? "" : r.text)), t("clips.detail.saved"))}
-                >
-                  {t("common.save")}
-                </Btn>
-              </div>
-            )}
-          </li>
-        ))}
+    <div className="grid gap-2">
+      <p className="m-0 text-[0.82rem] leading-snug text-muted">{t("clips.detail.subtitlesHelp")}</p>
+      <ul className="m-0 grid list-none p-0">
+        {lignes.map((r: any) => {
+          const valeur = saisie[r.i] ?? initial(r);
+          const change = valeur !== initial(r);
+          return (
+            <li key={r.i} className="grid gap-1 border-b border-line py-2.5 last:border-0">
+              <p className="m-0 flex items-baseline gap-2 text-[0.76rem] text-muted">
+                <span className="tabular-nums font-semibold text-deep">{mmss(r.rel)}</span>
+                <span>{r.verse ? r.verse.ref : t("clips.detail.line")}</span>
+                {oui(r.corrected) && (
+                  <span className="rounded-full bg-paper-2 px-1.5 font-semibold text-deep">{t("clips.detail.corrected")}</span>
+                )}
+              </p>
+              <p className="m-0 text-[0.92rem] leading-snug" dir="auto">{r.text}</p>
+              {r.verse?.fr ? <p className="m-0 text-[0.85rem] leading-snug text-muted" dir="auto">{r.verse.fr}</p> : null}
+              {r.field && modifiable && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    className={`${inputClass} py-1.5 text-[0.88rem]`}
+                    dir="auto"
+                    value={valeur}
+                    onChange={(e) => setSaisie({ ...saisie, [r.i]: e.target.value })}
+                  />
+                  <Btn
+                    variante={change ? "plein" : "ghost"}
+                    className="min-h-9 shrink-0 px-3 py-1 text-[0.85rem]"
+                    disabled={occupe || !change}
+                    onClick={() => agir(() => api.correction(d.sermon.id, r.i, r.field, valeur), t("clips.detail.saved"))}
+                  >
+                    {t("common.save")}
+                  </Btn>
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
-    </Card>
+    </div>
   );
 }
 
-function Publication({ d, occupe, agir }: { d: any; occupe: boolean; agir: any }) {
+function Publication({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }) {
   const { t, i18n } = useTranslation();
-  const dispo = (d.connectors ?? []).filter((x: any) => x.available);
+  const connecteurs = d.connectors ?? [];
+  const dispo = connecteurs.filter((x: any) => oui(x.available));
   const [dest, setDest] = useState(dispo[0]?.key ?? "local");
   const [legende, setLegende] = useState(d.caption ?? "");
   const pubs = d.publications ?? [];
 
   return (
-    <Card className="grid gap-4">
-      {d.can_publish ? (
-        <>
-          <div>
-            <Field label={t("clips.detail.destination")}>
-              <select className={inputClass} value={dest} onChange={(e) => setDest(e.target.value)}>
-                {(d.connectors ?? []).map((x: any) => (
-                  <option key={x.key} value={x.key} disabled={!x.available}>
-                    {x.label}{x.available ? "" : ` — ${x.why}`}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <Field label={t("clips.detail.caption")}>
-            <textarea className={`${inputClass} min-h-28`} dir="auto" value={legende} onChange={(e) => setLegende(e.target.value)} />
-          </Field>
-          <Btn disabled={occupe || !dispo.length} onClick={() => agir(() => api.publier(d.clip.id, dest, legende), t("clips.detail.publishedOk"))}>
-            {t("clips.detail.publishBtn")}
-          </Btn>
-        </>
-      ) : (
-        <p className="m-0 text-muted">{t("clips.detail.publishBlocked")}</p>
-      )}
+    <div className="grid gap-3">
+      <Field label={t("clips.detail.destination")}>
+        <select className={`${inputClass} py-2`} value={dest} onChange={(e) => setDest(e.target.value)}>
+          {connecteurs.map((x: any) => (
+            <option key={x.key} value={x.key} disabled={!oui(x.available)}>
+              {x.label}{oui(x.available) || !x.why ? "" : ` — ${x.why}`}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t("clips.detail.caption")}>
+        <textarea
+          className={`${inputClass} min-h-28 py-2 text-[0.92rem]`}
+          dir="auto"
+          value={legende}
+          onChange={(e) => setLegende(e.target.value)}
+        />
+      </Field>
+      <Btn disabled={occupe || !dispo.length} onClick={() => agir(() => api.publier(d.clip.id, dest, legende), t("clips.detail.publishedOk"))}>
+        {t("clips.detail.publishBtn")}
+      </Btn>
 
       {pubs.length > 0 && (
         <div className="border-t border-line pt-3">
           <Kicker>{t("clips.detail.publications")}</Kicker>
-          <ul className="m-0 grid list-none gap-1.5 p-0 text-[0.9rem]">
-            {pubs.map((p: any) => (
-              <li key={p.id}>
-                <Pill statut={p.status === "publie" ? "publie" : "rejete"} label={p.status} /> {p.connector} · v{p.clip_version}
-                {" · "}{dateFr((p.created_at ?? "").slice(0, 10), i18n.language)}
-                <br /><span className="text-muted">{p.location || p.message}</span>
-              </li>
-            ))}
+          <ul className="m-0 grid list-none gap-2 p-0 text-[0.88rem]">
+            {pubs.map((p: any) => {
+              const lien = typeof p.location === "string" && /^https?:\/\//.test(p.location) ? p.location : null;
+              const note = lien ? null : (p.message && !estChemin(p.message) ? p.message : null);
+              return (
+                <li key={p.id} className="grid gap-0.5">
+                  <span className="flex flex-wrap items-center gap-x-2">
+                    <Pill statut={p.status === "publie" ? "publie" : "rejete"} label={p.status} />
+                    <span className="font-semibold">{p.connector}</span>
+                    <span className="text-muted">v{p.clip_version} · {dateFr(String(p.created_at ?? "").slice(0, 10), i18n.language)}</span>
+                  </span>
+                  {lien && (
+                    <a href={lien} target="_blank" rel="noreferrer" className="truncate text-deep underline decoration-leaf underline-offset-4">
+                      {lien}
+                    </a>
+                  )}
+                  {note && <span className="text-muted">{note}</span>}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
-    </Card>
+    </div>
+  );
+}
+
+/** Détails d'une action : JSON aplati en « clé : valeur », sans jamais montrer de chemin. */
+function details(brut: unknown): string {
+  if (!brut || brut === "{}") return "";
+  try {
+    const o = typeof brut === "string" ? JSON.parse(brut) : brut;
+    if (o && typeof o === "object") {
+      return Object.entries(o)
+        .filter(([, v]) => v !== null && v !== "" && typeof v !== "object" && !estChemin(v))
+        .map(([k, v]) => `${k} : ${v}`)
+        .join(" · ");
+    }
+  } catch {
+    /* texte libre */
+  }
+  return estChemin(brut) ? "" : String(brut);
+}
+
+function Historique({ d }: { d: any }) {
+  const { t } = useTranslation();
+  const actions = d.history ?? [];
+  if (!actions.length) return <p className="m-0 text-[0.9rem] text-muted">{t("clips.detail.noHistory")}</p>;
+  return (
+    <ol className="m-0 grid list-none p-0">
+      {actions.map((a: any) => {
+        const plus = details(a.details);
+        return (
+          <li key={a.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 border-b border-line py-2 text-[0.88rem] last:border-0">
+            <span className="tabular-nums text-muted">{String(a.created_at ?? "").replace("T", " ").slice(0, 16)}</span>
+            <span>
+              <b className="font-semibold">{(d.labels ?? {})[a.action] ?? a.action}</b>
+              <span className="text-muted"> · {a.who ?? t("clips.detail.system")}</span>
+              {plus && <span className="block text-[0.82rem] text-muted">{plus}</span>}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

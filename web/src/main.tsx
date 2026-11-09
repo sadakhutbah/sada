@@ -7,7 +7,8 @@ import App from "./App";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter basename="/app">
+    {/* Le front est servi à la racine : pas de préfixe d'URL à retirer. */}
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </StrictMode>,

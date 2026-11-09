@@ -27,12 +27,14 @@ export function Btn({
   variante = "plein",
   className = "",
   ...reste
-}: { children: ReactNode; variante?: "plein" | "ghost" | "leaf" | "danger" | "light" } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}: { children: ReactNode; variante?: "plein" | "ghost" | "leaf" | "danger" | "dangerGhost" | "light" } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const styles = {
     plein: "border-deep bg-deep text-white hover:bg-deeper",
     ghost: "border-deep bg-transparent text-deep hover:bg-paper-2",
     leaf: "border-leaf bg-leaf text-night hover:bg-leaf-2",
     danger: "border-live bg-live text-white hover:bg-[#b42c23]",
+    // Action destructive secondaire : visible sans voler la place de l'action principale.
+    dangerGhost: "border-live/50 bg-transparent text-[#b42c23] hover:bg-err-bg",
     light: "border-white/25 bg-white/10 text-white hover:bg-white/18",
   }[variante];
   return (
