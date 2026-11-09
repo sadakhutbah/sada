@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Khutba du {{ k.date|date_fr }}{% endblock %}
 {% block main %}
-<p class="small"><a href="/khutbas">← Khutbas</a></p>
+<p class="small"><a href="/sermons">← Khutbas</a></p>
 <p class="kicker">{{ k.label }}</p>
 <h1>{{ k.date|date_fr }}</h1>
 <div class="row muted small">
@@ -15,7 +15,7 @@
   <section>
     <div class="card">
       {% if has_video %}
-      <video id="player" controls preload="metadata" playsinline src="/media/khutba/{{ k.id }}.mp4"></video>
+      <video id="player" controls preload="metadata" playsinline src="/media/sermon/{{ k.id }}.mp4"></video>
       {% else %}<p class="muted">Vidéo de la khutba non disponible (enregistrement introuvable sur cette machine).</p>{% endif %}
     </div>
     <div class="card">
@@ -42,7 +42,7 @@
     {% if ctx.can("assign") %}
     <div class="card">
       <h2>Rattachement</h2>
-      <form method="post" action="/khutbas/{{ k.id }}/imam">
+      <form method="post" action="/sermons/{{ k.id }}/speaker">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label for="imam_id">Imam (compte)</label>
         <select id="imam_id" name="imam_id"><option value="">— non renseigné —</option>
@@ -58,7 +58,7 @@
     <div class="spread"><h2>Transcription</h2><span class="muted small">{{ rows|length }} segments · {{ tr.model or "" }}</span></div>
     <p class="help">Cliquez sur un horodatage pour écouter le passage.{% if ctx.can("validate") %} Les corrections s'appliquent aux sous-titres des clips (après régénération).{% endif %}</p>
     <div class="scroll">
-      {% set next = "/khutbas/" ~ k.id %}
+      {% set next = "/sermons/" ~ k.id %}
       {% for r in rows %}{% with editable=ctx.can("validate"), seek=True %}{% include "_segment.html" %}{% endwith %}{% endfor %}
     </div>
   </section>

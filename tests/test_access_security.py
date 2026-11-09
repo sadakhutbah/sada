@@ -29,7 +29,7 @@ def test_jeton_recopie_dans_un_autre_navigateur_ne_sert_a_rien(env):
     autre = TestClient(env["app"], follow_redirects=False, headers={"user-agent": CHROME})
     autre.cookies.set("minbar_session", token)
     r = autre.get("/")
-    assert r.status_code == 303 and r.headers["location"].startswith("/connexion")
+    assert r.status_code == 303 and r.headers["location"].startswith("/login")
 
     # la vraie session n'est pas détruite par la tentative (pas de déni de service offert au voleur)
     assert c.get("/").status_code == 200
@@ -39,12 +39,12 @@ def test_jeton_recopie_dans_un_autre_navigateur_ne_sert_a_rien(env):
 
 
 def test_pas_de_boucle_de_redirection_quand_le_cookie_est_invalide(env):
-    """Le colmatage ne doit pas provoquer /connexion -> / -> /connexion sans fin."""
+    """Le colmatage ne doit pas provoquer /login -> / -> /login sans fin."""
     from fastapi.testclient import TestClient
 
     c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF})
     c.cookies.set("minbar_session", "jeton-invente")
-    r = c.get("/connexion")
+    r = c.get("/login")
     assert r.status_code == 200
 
 
@@ -65,8 +65,8 @@ def test_cookie_secure_derriere_un_proxy_https(env):
     from fastapi.testclient import TestClient
 
     c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF, "x-forwarded-proto": "https"})
-    pre = re.search(r'name="pre" value="([^"]+)"', c.get("/connexion").text).group(1)
-    r = c.post("/connexion", data={"username": "admin", "password": PW, "pre": pre, "suite": "/"},
+    pre = re.search(r'name="pre" value="([^"]+)"', c.get("/login").text).group(1)
+    r = c.post("/login", data={"username": "admin", "password": PW, "pre": pre, "suite": "/"},
                cookies={"minbar_pre": pre})
     assert r.status_code == 303, r.text[:200]
     setc = r.headers.get("set-cookie", "")
@@ -74,12 +74,12 @@ def test_cookie_secure_derriere_un_proxy_https(env):
     assert r.headers.get("strict-transport-security", "").startswith("max-age=31536000")
     # le HSTS ne doit pas s'imposer en HTTP local (sinon les autres postes du réseau perdent l'accès)
     plain = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF})
-    assert "strict-transport-security" not in plain.get("/connexion").headers
+    assert "strict-transport-security" not in plain.get("/login").headers
 
 
 def test_entetes_de_securite_par_defaut(env):
     c = client(env)
-    h = c.get("/connexion").headers
+    h = c.get("/login").headers
     assert "frame-ancestors 'none'" in h["content-security-policy"]
     assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
 

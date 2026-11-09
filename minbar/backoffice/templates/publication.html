@@ -20,7 +20,7 @@
         {% if not x.available %}<div class="small muted">{{ x.why }}</div>{% endif %}
       </div>
     {% endfor %}
-    {% if ctx.can("admin") %}<p class="small"><a href="/admin/mosquee#connecteurs">Configurer les connecteurs</a></p>{% endif %}
+    {% if ctx.can("admin") %}<p class="small"><a href="/admin/mosque?section=connectors">Configurer les connecteurs</a></p>{% endif %}
   </section>
 </div>
 <section class="card">

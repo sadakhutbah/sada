@@ -7,7 +7,7 @@
     <h1>Connexion</h1>
     <p class="muted small">Espace réservé aux responsables et imams de la mosquée.</p>
     {% if error %}<div class="flash err" role="alert">{{ error }}</div>{% endif %}
-    <form method="post" action="/connexion">
+    <form method="post" action="/login">
       <input type="hidden" name="pre" value="{{ pre }}">
       <input type="hidden" name="suite" value="{{ suite }}">
       <label for="username">Identifiant</label>

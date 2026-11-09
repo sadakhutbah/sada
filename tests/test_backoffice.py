@@ -79,9 +79,9 @@ def client(env, username=None, headers=None) -> TestClient:
 
 
 def login(c: TestClient, username: str, password: str = PW, expect_ok: bool | None = None):
-    page = c.get("/connexion")
+    page = c.get("/login")
     pre = re.search(r'name="pre" value="([^"]+)"', page.text).group(1)
-    r = c.post("/connexion", data={"username": username, "password": password, "pre": pre, "suite": "/"})
+    r = c.post("/login", data={"username": username, "password": password, "pre": pre, "suite": "/"})
     c.login_cookie = r.headers.get("set-cookie", "")
     c.last_login = r
     if expect_ok if expect_ok is not None else password == PW:
@@ -89,7 +89,7 @@ def login(c: TestClient, username: str, password: str = PW, expect_ok: bool | No
     return r
 
 
-def csrf(c: TestClient, url: str = "/compte") -> str:
+def csrf(c: TestClient, url: str = "/account") -> str:
     return re.search(r'name="csrf" value="([^"]+)"', c.get(url).text).group(1)
 
 
@@ -101,12 +101,12 @@ def clip_ids(env):
 
 def test_rien_sans_connexion(env):
     c = client(env)
-    for url in ("/", "/khutbas", f"/khutbas/{env['kid']}", "/clips", "/journal", "/publication", "/admin/mosquee"):
+    for url in ("/", "/sermons", f"/sermons/{env['kid']}", "/clips", "/audit-log", "/publications", "/admin/mosque"):
         r = c.get(url)
-        assert r.status_code == 303 and r.headers["location"].startswith("/connexion"), url
+        assert r.status_code == 303 and r.headers["location"].startswith("/login"), url
     assert c.get("/api/live").status_code == 401
     assert c.get(f"/media/clip/{clip_ids(env)[0]}.mp4").status_code == 401
-    assert c.post(f"/clips/{clip_ids(env)[0]}/decision", data={"decision": "valide"}).headers["location"] == "/connexion"
+    assert c.post(f"/clips/{clip_ids(env)[0]}/decision", data={"decision": "valide"}).headers["location"] == "/login"
 
 
 def test_mots_de_passe_haches_argon2(env):
@@ -127,7 +127,7 @@ def test_connexion_cookie_et_deconnexion(env):
     token = c.cookies.get(auth.COOKIE)
     assert db.one(env["conn"], "SELECT COUNT(*) n FROM auth_sessions WHERE token_hash = ?", token)["n"] == 0   # jeton non stocké en clair
     assert c.get("/").status_code == 200
-    c.post("/deconnexion", data={"csrf": csrf(c)})
+    c.post("/logout", data={"csrf": csrf(c)})
     c.cookies.set(auth.COOKIE, token)                        # rejouer l'ancien cookie ne marche plus
     assert c.get("/").status_code == 303
 
@@ -165,10 +165,10 @@ def test_journal_des_connexions(env):
 # ------------------------------------------------------------------ droits
 
 @pytest.mark.parametrize("role,url,code", [
-    ("imam", "/journal", 403), ("imam", "/publication", 403), ("imam", "/admin/mosquee", 403), ("imam", "/admin/utilisateurs", 403),
-    ("responsable", "/admin/mosquee", 403), ("responsable", "/admin/utilisateurs", 403),
-    ("responsable", "/journal", 200), ("responsable", "/publication", 200),
-    ("admin", "/admin/mosquee", 200), ("admin", "/admin/utilisateurs", 200), ("admin", "/journal", 200),
+    ("imam", "/audit-log", 403), ("imam", "/publications", 403), ("imam", "/admin/mosque", 403), ("imam", "/admin/users", 403),
+    ("responsable", "/admin/mosque", 403), ("responsable", "/admin/users", 403),
+    ("responsable", "/audit-log", 200), ("responsable", "/publications", 200),
+    ("admin", "/admin/mosque", 200), ("admin", "/admin/users", 200), ("admin", "/audit-log", 200),
 ])
 def test_matrice_des_droits(env, role, url, code):
     assert client(env, role).get(url).status_code == code
@@ -177,13 +177,13 @@ def test_matrice_des_droits(env, role, url, code):
 def test_imam_voit_ses_khutbas_seulement(env):
     kid, cid = env["kid"], clip_ids(env)[0]
     mine = client(env, "imam")
-    assert mine.get(f"/khutbas/{kid}").status_code == 200
-    assert "La patience" in mine.get("/khutbas").text
+    assert mine.get(f"/sermons/{kid}").status_code == 200
+    assert "La patience" in mine.get("/sermons").text
     other = client(env, "imam2")
-    assert other.get(f"/khutbas/{kid}").status_code == 404
+    assert other.get(f"/sermons/{kid}").status_code == 404
     assert other.get(f"/clips/{cid}").status_code == 404
     assert other.get(f"/media/clip/{cid}.mp4").status_code == 404
-    assert "Aucune khutba" in other.get("/khutbas").text
+    assert "Aucune khutba" in other.get("/sermons").text
     r = other.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(other)})
     assert r.status_code == 404
 
@@ -193,10 +193,10 @@ def test_cloisonnement_entre_mosquees(env):
     mid2 = db.create_mosque(conn, "autre", "Autre mosquée")
     auth.create_user(conn, mid2, "admin2", PW, "admin")
     c = client(env, "admin2")
-    assert c.get(f"/khutbas/{env['kid']}").status_code == 404
+    assert c.get(f"/sermons/{env['kid']}").status_code == 404
     assert c.get(f"/clips/{clip_ids(env)[0]}").status_code == 404
-    assert "Aucune khutba" in c.get("/khutbas").text
-    r = c.post(f"/admin/utilisateurs/{env['ids']['imam']}", data={"role": "admin", "active": "1", "csrf": csrf(c)})
+    assert "Aucune khutba" in c.get("/sermons").text
+    r = c.post(f"/admin/users/{env['ids']['imam']}", data={"role": "admin", "active": "1", "csrf": csrf(c)})
     assert r.status_code == 404
 
 
@@ -205,14 +205,14 @@ def test_imam_ne_peut_pas_publier(env):
     content.decide(env["conn"], db.one(env["conn"], "SELECT * FROM clips WHERE id = ?", cid), "valide",
                    db.one(env["conn"], "SELECT * FROM users WHERE username = 'responsable'"))
     c = client(env, "imam")
-    r = c.post(f"/clips/{cid}/publier", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
+    r = c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
     assert r.status_code == 403
     assert db.one(env["conn"], "SELECT status FROM clips WHERE id = ?", cid)["status"] == "valide"
 
 
 def test_admin_cree_un_imam(env):
     c = client(env, "admin")
-    c.post("/admin/utilisateurs", data={"username": "nouvel", "display_name": "Imam Nouvel", "role": "imam", "password": PW,
+    c.post("/admin/users", data={"username": "nouvel", "display_name": "Imam Nouvel", "role": "imam", "password": PW,
                                         "csrf": csrf(c)})
     u = db.one(env["conn"], "SELECT * FROM users WHERE username = 'nouvel'")
     assert u and u["role"] == "imam" and u["mosque_id"] == env["mid"]
@@ -291,26 +291,26 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
     for var in ("MINBAR_LLM_ENABLED", "MINBAR_LLM_URL", "MINBAR_LLM_MODEL", "MINBAR_LLM_PROTOCOL"):
         monkeypatch.delenv(var, raising=False)
     c = client(env, "admin")
-    assert "Modèle de langage" in c.get("/admin/mosquee?section=modele").text
+    assert "Modèle de langage" in c.get("/admin/mosque?section=model").text
 
-    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee?section=modele"), "llm_enabled": "1",
+    r = c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque?section=model"), "llm_enabled": "1",
                                       "llm_url": "http://127.0.0.1:9/v1", "llm_model": "petit", "llm_protocol": "openai"})
     assert r.status_code == 303
     assert json.loads(cfg.read_text()) == {"enabled": True, "url": "http://127.0.0.1:9/v1",
                                            "model": "petit", "protocol": "openai"}
     assert llm.enabled() and llm.label() == "openai · petit"      # le pipeline lirait ceci
 
-    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee?section=modele"), "llm_url": "", "llm_model": "", "llm_protocol": ""})
+    r = c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque?section=model"), "llm_url": "", "llm_model": "", "llm_protocol": ""})
     assert r.status_code == 303
     assert json.loads(cfg.read_text())["enabled"] is False and llm.enabled() is False
 
-    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee?section=modele"), "llm_enabled": "1", "llm_url": "file:///etc/passwd"})
+    r = c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque?section=model"), "llm_enabled": "1", "llm_url": "file:///etc/passwd"})
     assert r.status_code == 303
     assert json.loads(cfg.read_text())["enabled"] is False         # refusée : le fichier n'a pas bougé
 
     for who in ("imam", "responsable"):
         ci = client(env, who)
-        assert ci.post("/admin/modele", data={"csrf": csrf(ci, "/"), "llm_enabled": "1"}).status_code == 403
+        assert ci.post("/admin/model", data={"csrf": csrf(ci, "/"), "llm_enabled": "1"}).status_code == 403
 
 
 def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
@@ -318,11 +318,11 @@ def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(tmp_path / "llm.json"))
     monkeypatch.delenv("MINBAR_LLM_ENABLED", raising=False)
     c = client(env, "admin")
-    c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_enabled": "1",
+    c.post("/admin/model", data={"csrf": csrf(c, "/admin/mosque"), "llm_enabled": "1",
                                   "llm_url": "http://127.0.0.1:9/v1", "llm_model": "petit", "llm_protocol": "openai"})
-    r = c.post("/admin/modele/tester", data={"csrf": csrf(c, "/admin/mosquee")})
+    r = c.post("/admin/model/test", data={"csrf": csrf(c, "/admin/mosque")})
     assert r.status_code == 303
-    page = c.get("/admin/mosquee").text
+    page = c.get("/admin/mosque").text
     assert "injoignable" in page
 
 
@@ -363,7 +363,7 @@ def test_import_idempotent_et_janaza_ignoree(env):
 
 
 def test_page_detail_khutba(env):
-    t = client(env, "responsable").get(f"/khutbas/{env['kid']}").text
+    t = client(env, "responsable").get(f"/sermons/{env['kid']}").text
     assert "65:3" in t and "At-Talaaq" in t and "Et quiconque place sa confiance" in t
     assert "La patience est une lumière." in t and "00:20" in t
 
@@ -373,7 +373,7 @@ def test_page_detail_khutba(env):
 def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "imam")
-    c.post(f"/khutbas/{env['kid']}/correction",
+    c.post(f"/sermons/{env['kid']}/revisions",
            data={"seg": "1", "field": "text", "value": "La patience est une lumière, dit le Prophète ﷺ.", "csrf": csrf(c), "next": f"/clips/{cid}"})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["needs_regen"] == 1
@@ -390,7 +390,7 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
         Path(out).write_bytes(b"clip v2")
     monkeypatch.setattr(clipmod, "render_clip", fake_render)
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
-    c.post(f"/clips/{cid}/regenerer", data={"csrf": csrf(c)})
+    c.post(f"/clips/{cid}/regenerate", data={"csrf": csrf(c)})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["version"] == 2 and clip["needs_regen"] == 0 and clip["file_path"].endswith("_v2_A-VALIDER.mp4")
     assert seen["off"] == 100.0 and "Prophète" in seen["ass"]
@@ -433,7 +433,7 @@ def test_rejet_avec_motif(env):
 def test_rien_ne_se_publie_sans_validation(env):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "responsable")
-    r = c.post(f"/clips/{cid}/publier", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
+    r = c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
     assert r.status_code == 303
     assert not (env["tmp"] / "pub").exists()
     p = db.one(conn, "SELECT * FROM publications")
@@ -445,7 +445,7 @@ def test_publication_locale_apres_validation(env):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "responsable")
     c.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(c)})
-    c.post(f"/clips/{cid}/publier", data={"connector": "local", "caption": "Khutba — extrait", "csrf": csrf(c)})
+    c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "Khutba — extrait", "csrf": csrf(c)})
     p = db.one(conn, "SELECT * FROM publications")
     assert p["status"] == "publie", p
     out = Path(p["location"])
@@ -453,24 +453,24 @@ def test_publication_locale_apres_validation(env):
     meta = json.loads(out.with_suffix(".json").read_text())
     assert meta["legende"] == "Khutba — extrait" and meta["valide_par"] == "Responsable" and meta["musique"] is False
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "publie"
-    assert "Publié" in c.get("/publication").text
+    assert "Publié" in c.get("/publications").text
 
 
 def test_correction_apres_publication_ne_reecrit_pas_l_historique(env, monkeypatch):
     conn, cid = env["conn"], clip_ids(env)[0]
     c = client(env, "responsable")
     c.post(f"/clips/{cid}/decision", data={"decision": "valide", "csrf": csrf(c)})
-    c.post(f"/clips/{cid}/publier", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
-    c.post(f"/khutbas/{env['kid']}/correction", data={"seg": "1", "field": "text", "value": "Texte corrigé.", "csrf": csrf(c)})
+    c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
+    c.post(f"/sermons/{env['kid']}/revisions", data={"seg": "1", "field": "text", "value": "Texte corrigé.", "csrf": csrf(c)})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["status"] == "publie" and clip["needs_regen"] == 1
     from minbar.pipeline import clips as clipmod
     monkeypatch.setattr(clipmod, "render_clip", lambda src, off, w, ass, out, log=print, crop=None: Path(out).write_bytes(b"v2"))
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
-    c.post(f"/clips/{cid}/regenerer", data={"csrf": csrf(c)})
+    c.post(f"/clips/{cid}/regenerate", data={"csrf": csrf(c)})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["version"] == 2 and clip["status"] == "a_valider" and clip["decided_by"] is None   # v2 repasse en validation
-    r = c.post(f"/clips/{cid}/publier", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
+    r = c.post(f"/clips/{cid}/publish", data={"connector": "local", "caption": "x", "csrf": csrf(c)})
     assert db.one(conn, "SELECT status FROM publications ORDER BY id DESC")["status"] == "refuse"
 
 

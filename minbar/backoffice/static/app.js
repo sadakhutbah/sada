@@ -16,7 +16,7 @@
     };
     var tick = function () {
       fetch("/api/live", { credentials: "same-origin" }).then(function (r) {
-        if (r.status === 401) { location.href = "/connexion"; return null; }
+        if (r.status === 401) { location.href = "/login"; return null; }
         return r.json();
       }).then(function (s) {
         if (!s) return;
@@ -75,7 +75,7 @@
     };
     var load = function (path) {
       listEl.innerHTML = "<li class=\"muted\">Chargement…</li>";
-      fetch("/api/dossiers?path=" + encodeURIComponent(path), { credentials: "same-origin" })
+      fetch("/api/folders?path=" + encodeURIComponent(path), { credentials: "same-origin" })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d.error) { noteEl.textContent = d.error; listEl.innerHTML = ""; return; }

@@ -248,13 +248,13 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                 "csrf": ctx.session["csrf"] if ctx else "", "flash": flash, "path": request.url.path}
         return tpl.TemplateResponse(request, name, {**base, **kw}, status_code=status_code)
 
-    SECTIONS = ("identite", "image", "live", "dossiers", "modele", "connecteurs", "acces")
+    SECTIONS = ("mosque", "logo", "live", "folders", "model", "connectors", "access")
 
     def section(s: str, cle: str = "") -> str:
         """Onglet cible après un enregistrement : inconnu -> première section. `cle` vise le sous-onglet connecteur."""
         if s not in SECTIONS:
-            return "/admin/mosquee?section=identite"
-        return f"/admin/mosquee?section={s}&c={cle}" if cle else f"/admin/mosquee?section={s}"
+            return "/admin/mosque?section=mosque"
+        return f"/admin/mosque?section={s}&c={cle}" if cle else f"/admin/mosque?section={s}"
 
     def back(url: str) -> RedirectResponse:
         return RedirectResponse(url, status_code=303)
@@ -287,8 +287,8 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         if request.url.path.startswith(("/api/", "/media/")):
             return error(request, 401, "", "", "connexion requise")
         if request.method != "GET":
-            return back("/connexion")
-        return back("/connexion?suite=" + quote(request.url.path))
+            return back("/login")
+        return back("/login?suite=" + quote(request.url.path))
 
     @app.exception_handler(Forbidden)
     async def _forbidden(request: Request, exc):
@@ -324,7 +324,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                       *args, status)["n"]
 
     # ---------------------------------------------------------- connexion
-    @app.get("/connexion")
+    @app.get("/login")
     def login_page(request: Request, conn: ConnDep, any_mosque: AnyMosqueDep, suite: str = "/"):
         if auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
                              request.client.host if request.client else None):
@@ -338,7 +338,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     def _secure(request: Request) -> bool:
         return app.state.secure or _sec(request)
 
-    @app.post("/connexion")
+    @app.post("/login")
     async def login(request: Request, conn: ConnDep):
         f = await request.form()
         username, password = str(f.get("username", "")).strip(), str(f.get("password", ""))
@@ -370,12 +370,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         resp.delete_cookie(PRE_COOKIE)
         return resp
 
-    @app.post("/deconnexion")
+    @app.post("/logout")
     async def logout(ctx: CtxDep):
         await ctx.form()
         auth.close_session(ctx.conn, ctx.request.cookies.get(auth.COOKIE))
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "deconnexion", ip=ctx.ip)
-        resp = back("/connexion")
+        resp = back("/login")
         resp.delete_cookie(auth.COOKIE, path="/")
         return resp
 
@@ -420,7 +420,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back("/")
 
     # ---------------------------------------------------------- historique
-    @app.get("/khutbas")
+    @app.get("/sermons")
     def khutbas(ctx: CtxDep):
         where, args = imam_filter(ctx)
         rows = db.all_(ctx.conn, f"""SELECT k.*, u.display_name imam,
@@ -445,9 +445,9 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             ctx.flash(f"Import : {len(res)} run(s) parcouru(s), {nk} khutba(s) et {nc} clip(s) ajoutés.")
         except (FileNotFoundError, ValueError) as e:
             ctx.flash(f"Import impossible : {e}", "err")
-        return back("/khutbas")
+        return back("/sermons")
 
-    @app.get("/khutbas/{kid}")
+    @app.get("/sermons/{kid}")
     def khutba(kid: int, ctx: CtxDep):
         k = khutba_or_404(ctx, kid)
         data = content.load(ctx.conn, k)
@@ -459,7 +459,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                       notes=notes.read_text(encoding="utf-8") if notes.exists() else "", clips=clips, imams=imams, imam=imam,
                       tr=data, has_video=bool(k["video_path"] and Path(k["video_path"]).exists()))
 
-    @app.post("/khutbas/{kid}/imam")
+    @app.post("/sermons/{kid}/speaker")
     async def khutba_imam(kid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("assign")
@@ -471,14 +471,14 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         ctx.conn.execute("UPDATE khutbas SET imam_id = ?, speaker = ? WHERE id = ?", (iid, speaker, k["id"]))
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "khutba.imam", "khutba", k["id"], ip=ctx.ip, imam=iid, intervenant=speaker or None)
         ctx.flash("Khutba mise à jour.")
-        return back(f"/khutbas/{k['id']}")
+        return back(f"/sermons/{k['id']}")
 
-    @app.post("/khutbas/{kid}/correction")
+    @app.post("/sermons/{kid}/revisions")
     async def khutba_correction(kid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("validate")
         k = khutba_or_404(ctx, kid)
-        nxt = f.get("next") or f"/khutbas/{k['id']}"
+        nxt = f.get("next") or f"/sermons/{k['id']}"
         if not nxt.startswith("/") or nxt.startswith("//"):
             nxt = "/"
         try:
@@ -535,7 +535,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             ctx.flash(str(e), "err")
         return back(f"/clips/{c['id']}")
 
-    @app.post("/clips/{cid}/regenerer")
+    @app.post("/clips/{cid}/regenerate")
     async def clip_regen(cid: int, ctx: CtxDep):
         await ctx.form()
         ctx.require("validate")
@@ -553,7 +553,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         c, _ = clip_or_404(ctx, cid)
         return {"id": c["id"], "status": c["status"], "version": c["version"], "regen_state": c["regen_state"], "needs_regen": bool(c["needs_regen"])}
 
-    @app.post("/clips/{cid}/publier")
+    @app.post("/clips/{cid}/publish")
     async def clip_publish(cid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("publish")
@@ -562,7 +562,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         ctx.flash(f"Publié : {res.location}" if res.ok else f"Publication refusée : {res.message}", "ok" if res.ok else "err")
         return back(f"/clips/{c['id']}")
 
-    @app.get("/publication")
+    @app.get("/publications")
     def publication(ctx: CtxDep):
         ctx.require("publish")
         ready = db.all_(ctx.conn, "SELECT c.*, k.label klabel, k.date kdate FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
@@ -573,7 +573,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return render(ctx, "publication.html", ready=ready, pubs=pubs, connectors=publish.connector_rows(ctx.conn, ctx.mosque))
 
     # ---------------------------------------------------------- médias (par identifiant : pas de chemin dans l'URL)
-    @app.get("/media/khutba/{kid}.mp4")
+    @app.get("/media/sermon/{kid}.mp4")
     def media_khutba(kid: int, ctx: CtxDep):
         k = khutba_or_404(ctx, kid)
         if not k["video_path"] or not Path(k["video_path"]).exists():
@@ -588,7 +588,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return FileResponse(c["file_path"], media_type="video/mp4")
 
     # ---------------------------------------------------------- journal
-    @app.get("/journal")
+    @app.get("/audit-log")
     def journal(ctx: CtxDep, action: str = ""):
         ctx.require("journal")
         rows = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
@@ -597,35 +597,35 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return render(ctx, "journal.html", rows=rows, action=action)
 
     # ---------------------------------------------------------- compte
-    @app.get("/compte")
+    @app.get("/account")
     def account(ctx: CtxDep):
         return render(ctx, "account.html")
 
-    @app.post("/compte")
+    @app.post("/account")
     async def account_pw(ctx: CtxDep):
         f = await ctx.form()
         if not await run_in_threadpool(auth.verify_password, ctx.user["password_hash"], f.get("current", "")):
             ctx.flash("Mot de passe actuel incorrect.", "err")
-            return back("/compte")
+            return back("/account")
         if f.get("new") != f.get("confirm"):
             ctx.flash("Les deux nouveaux mots de passe diffèrent.", "err")
-            return back("/compte")
+            return back("/account")
         try:
             await run_in_threadpool(auth.set_password, ctx.conn, ctx.user["id"], f.get("new", ""))
         except ValueError as e:
             ctx.flash(str(e), "err")
-            return back("/compte")
+            return back("/account")
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", ctx.user["id"], ip=ctx.ip)
-        return back("/connexion")
+        return back("/login")
 
     # ---------------------------------------------------------- administration
-    @app.get("/admin/utilisateurs")
+    @app.get("/admin/users")
     def users(ctx: CtxDep):
         ctx.require("admin")
         rows = db.all_(ctx.conn, "SELECT * FROM users WHERE mosque_id = ? ORDER BY role, display_name", ctx.mosque["id"])
         return render(ctx, "users.html", rows=rows)
 
-    @app.post("/admin/utilisateurs")
+    @app.post("/admin/users")
     async def user_create(ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
@@ -637,9 +637,9 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             ctx.flash(f"Compte « {f.get('username')} » créé.")
         except ValueError as e:
             ctx.flash(str(e), "err")
-        return back("/admin/utilisateurs")
+        return back("/admin/users")
 
-    @app.post("/admin/utilisateurs/{uid}")
+    @app.post("/admin/users/{uid}")
     async def user_update(uid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
@@ -663,10 +663,10 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             ctx.flash(f"Compte « {u['username']} » mis à jour.")
         except ValueError as e:
             ctx.flash(str(e), "err")
-        return back("/admin/utilisateurs")
+        return back("/admin/users")
 
     # ---------------------------------------------------------- choix des dossiers (machine locale)
-    @app.get("/api/dossiers")
+    @app.get("/api/folders")
     def api_dirs(ctx: CtxDep, path: str = ""):
         """Arborescence de la machine qui héberge l'application, pour le bouton « Parcourir »."""
         ctx.require("admin")
@@ -695,19 +695,19 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         up = ctx.files.get("logo")
         if up is None or not getattr(up, "filename", ""):
             ctx.flash("Aucun fichier choisi.", "err")
-            return back(section("image"))
+            return back(section("logo"))
         content_bytes = await up.read()
         try:
             rel = branding.save(ctx.mosque, up.filename, content_bytes)
         except ValueError as e:
             ctx.flash(str(e)[0].upper() + str(e)[1:] + ".", "err")
-            return back(section("image"))
+            return back(section("logo"))
         db.update_mosque(ctx.conn, ctx.mosque["id"], logo_path=rel)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.logo", "mosque", ctx.mosque["id"], ip=ctx.ip, fichier=rel)
         ctx.flash("Logo enregistré : il apparaît dans la barre et comme icône de l'onglet.")
-        return back(section("image"))
+        return back(section("logo"))
 
-    @app.post("/admin/logo/supprimer")
+    @app.post("/admin/logo/delete")
     async def logo_clear(ctx: CtxDep):
         await ctx.form()
         ctx.require("admin")
@@ -715,9 +715,9 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         db.update_mosque(ctx.conn, ctx.mosque["id"], logo_path="")
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.logo.retire", "mosque", ctx.mosque["id"], ip=ctx.ip)
         ctx.flash("Logo retiré : emblème neutre repris.")
-        return back(section("image"))
+        return back(section("logo"))
 
-    @app.get("/admin/mosquee")
+    @app.get("/admin/mosque")
     def mosque_page(ctx: CtxDep, c: str = ""):
         ctx.require("admin")
         imams = auth.imams(ctx.conn, ctx.mosque["id"])
@@ -727,7 +727,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=connecteurs, conn=actif,
                       llm=llm.config(), llm_now=llm.settings().label(), llm_on=llm.enabled(), llm_file=str(llm.config_path()))
 
-    @app.post("/admin/modele")
+    @app.post("/admin/model")
     async def llm_save(ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
@@ -736,30 +736,30 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         proto = (f.get("llm_protocol") or "").strip()
         if url and not re.match(r"^https?://", url):
             ctx.flash("L'adresse du modèle doit commencer par http:// ou https://", "err")
-            return back(section("modele"))
+            return back(section("model"))
         if proto not in ("", "openai", "anthropic"):
             ctx.flash("Format d'API inconnu.", "err")
-            return back(section("modele"))
+            return back(section("model"))
         llm.save_config(enabled=f.get("llm_enabled") == "1", url=url, model=model, protocol=proto)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "modele.configure", "mosque", ctx.mosque["id"], ip=ctx.ip,
                  actif=f.get("llm_enabled") == "1", url=url, modele=model, protocole=proto, fichier=str(llm.config_path()))
         ctx.flash("Modèle de langage enregistré. Le pipeline l'applique au prochain lancement (les variables "
                   "d'environnement et les options de ligne de commande restent prioritaires).")
-        return back(section("modele"))
+        return back(section("model"))
 
-    @app.post("/admin/modele/tester")
+    @app.post("/admin/model/test")
     def llm_test(ctx: CtxDep):
         ctx.require("admin")
         ok, msg = llm.probe()
         ctx.flash(msg, "" if ok else "err")
-        return back(section("modele"))
+        return back(section("model"))
 
-    @app.post("/admin/mosquee")
+    @app.post("/admin/mosque")
     async def mosque_save(ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
         sect = "live" if "orchestrator_url" in f or "orchestrator_token" in f else (
-            "dossiers" if any(k in f for k in ("state_dir", "output_dir", "publish_dir")) else "identite")
+            "folders" if any(k in f for k in ("state_dir", "output_dir", "publish_dir")) else "mosque")
         vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS if k != "logo_path" and k in f}
         current = {k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"}
         vals = {**current, **vals}          # un formulaire partiel ne vide pas les autres réglages
@@ -782,7 +782,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         ctx.flash("Configuration enregistrée.")
         return back(section(sect))
 
-    @app.post("/admin/connecteurs/{key}")
+    @app.post("/admin/connectors/{key}")
     async def connector_save(key: str, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
@@ -790,10 +790,44 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         publish.save_connector(ctx.conn, ctx.mosque["id"], key, f.get("enabled") == "1", f, ctx.user, ctx.ip)
         ctx.flash(f"Connecteur « {publish.CONNECTORS[key].label} » enregistré.")
-        return back(section("connecteurs", key))
+        return back(section("connectors", key))
 
-    @app.get("/sante")
+    @app.get("/health")
     def health():
         return {"ok": True}
+
+    # ------------------------------------------------- anciennes adresses françaises
+    # Conservées en redirection permanente : un signet ou un lien déjà envoyé continue de fonctionner.
+    ANCIENNES = {
+        "/connexion": "/login", "/deconnexion": "/logout", "/khutbas": "/sermons",
+        "/publication": "/publications", "/journal": "/audit-log", "/compte": "/account",
+        "/sante": "/health", "/api/dossiers": "/api/folders",
+        "/admin/utilisateurs": "/admin/users", "/admin/mosquee": "/admin/mosque",
+        "/admin/modele": "/admin/model", "/admin/modele/tester": "/admin/model/test",
+        "/admin/logo/supprimer": "/admin/logo/delete",
+    }
+    ANCIENS_MOTIFS = (
+        ("/khutbas/{kid}", "/sermons/{kid}"),
+        ("/khutbas/{kid}/imam", "/sermons/{kid}/speaker"),
+        ("/khutbas/{kid}/correction", "/sermons/{kid}/revisions"),
+        ("/clips/{cid}/regenerer", "/clips/{cid}/regenerate"),
+        ("/clips/{cid}/publier", "/clips/{cid}/publish"),
+        ("/admin/connecteurs/{key}", "/admin/connectors/{key}"),
+        ("/media/khutba/{kid}.mp4", "/media/sermon/{kid}.mp4"),
+    )
+
+    def _redirection(cible: str):
+        def aller(request: Request):
+            adresse = cible
+            for nom, valeur in request.path_params.items():
+                adresse = adresse.replace("{" + nom + "}", str(valeur))
+            q = request.url.query
+            return RedirectResponse(adresse + (f"?{q}" if q else ""), status_code=308)
+        return aller
+
+    for _vieux, _neuf in ANCIENNES.items():
+        app.add_api_route(_vieux, _redirection(_neuf), methods=["GET", "POST"], include_in_schema=False)
+    for _vieux, _neuf in ANCIENS_MOTIFS:
+        app.add_api_route(_vieux, _redirection(_neuf), methods=["GET", "POST"], include_in_schema=False)
 
     return app

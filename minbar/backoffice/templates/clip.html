@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Clip {{ c.idx }}{% endblock %}
 {% block main %}
-<p class="small"><a href="/clips">← File de validation</a> · <a href="/khutbas/{{ k.id }}">{{ k.date|date_fr }} · {{ k.label }}</a></p>
+<p class="small"><a href="/clips">← File de validation</a> · <a href="/sermons/{{ k.id }}">{{ k.date|date_fr }} · {{ k.label }}</a></p>
 <div class="spread">
   <h1>Clip {{ c.idx }} · {{ c.kind }}</h1>
   <span class="pill {{ c.status }}">{{ STATUS[c.status] }}</span>
@@ -45,7 +45,7 @@
       {% if c.needs_regen or c.regen_state == "erreur" %}
       <h3>Régénération</h3>
       {% if regen_ok %}
-      <form method="post" action="/clips/{{ c.id }}/regenerer"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <form method="post" action="/clips/{{ c.id }}/regenerate"><input type="hidden" name="csrf" value="{{ csrf }}">
         <button class="btn leaf sm" {{ "disabled" if c.regen_state == "en_cours" }}>Régénérer le clip avec les corrections</button></form>
       {% else %}<p class="muted small">Régénération impossible ici : {{ regen_why }}.</p>{% endif %}
       {% endif %}
@@ -56,7 +56,7 @@
     <div class="card">
       <h2>Publication</h2>
       {% if publish_ok %}
-      <form method="post" action="/clips/{{ c.id }}/publier"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <form method="post" action="/clips/{{ c.id }}/publish"><input type="hidden" name="csrf" value="{{ csrf }}">
         <label for="connector">Destination</label>
         <select id="connector" name="connector">
           {% for x in connectors %}<option value="{{ x.key }}" {{ "disabled" if not x.available }}>{{ x.label }}{% if not x.available %} — {{ x.why }}{% endif %}</option>{% endfor %}

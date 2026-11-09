@@ -15,7 +15,7 @@
     {% endif %}
     {% if editable and r.field %}
     <details class="fix"><summary>{{ "Corriger le sous-titre" if r.field == "text" else "Corriger la traduction" }}</summary>
-      <form method="post" action="/khutbas/{{ k.id }}/correction">
+      <form method="post" action="/sermons/{{ k.id }}/revisions">
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="seg" value="{{ r.i }}">
         <input type="hidden" name="field" value="{{ r.field }}"><input type="hidden" name="next" value="{{ next }}">
         <textarea name="value" aria-label="Texte corrigé">{{ r.fr if r.field == "fr" else r.text }}</textarea>

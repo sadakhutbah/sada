@@ -17,13 +17,13 @@
   <label for="menu-toggle" class="burger" aria-hidden="true">☰</label>
   <nav class="nav">
     <a href="/" class="{{ 'on' if path == '/' }}">Tableau de bord</a>
-    <a href="/khutbas" class="{{ 'on' if path.startswith('/khutbas') }}">{{ "Mes khutbas" if user.role == "imam" else "Khutbas" }}</a>
+    <a href="/sermons" class="{{ 'on' if path.startswith('/sermons') }}">{{ "Mes khutbas" if user.role == "imam" else "Khutbas" }}</a>
     <a href="/clips" class="{{ 'on' if path.startswith('/clips') }}">Clips{% if nav_pending %}<span class="badge">{{ nav_pending }}</span>{% endif %}</a>
-    {% if ctx.can("publish") %}<a href="/publication" class="{{ 'on' if path.startswith('/publication') }}">Publication</a>{% endif %}
-    {% if ctx.can("journal") %}<a href="/journal" class="{{ 'on' if path.startswith('/journal') }}">Journal</a>{% endif %}
-    {% if ctx.can("admin") %}<a href="/admin/mosquee" class="{{ 'on' if path.startswith('/admin') }}">Réglages</a>{% endif %}
-    <span class="who"><a href="/compte" title="Mon compte">{{ user.display_name }}</a> · {{ ROLES[user.role] }}
-      <form method="post" action="/deconnexion"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Déconnexion</button></form></span>
+    {% if ctx.can("publish") %}<a href="/publications" class="{{ 'on' if path.startswith('/publications') }}">Publication</a>{% endif %}
+    {% if ctx.can("journal") %}<a href="/audit-log" class="{{ 'on' if path.startswith('/audit-log') }}">Journal</a>{% endif %}
+    {% if ctx.can("admin") %}<a href="/admin/mosque" class="{{ 'on' if path.startswith('/admin') }}">Réglages</a>{% endif %}
+    <span class="who"><a href="/account" title="Mon compte">{{ user.display_name }}</a> · {{ ROLES[user.role] }}
+      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn">Déconnexion</button></form></span>
   </nav>
 </div></header>
 {% endif %}

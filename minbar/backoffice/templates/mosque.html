@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Réglages{% endblock %}
 {% block main %}
-{% set tab = request.query_params.get("section", "identite") %}
-{% if tab not in ["identite", "image", "live", "dossiers", "modele", "connecteurs", "acces"] %}{% set tab = "identite" %}{% endif %}
+{% set tab = request.query_params.get("section", "mosque") %}
+{% if tab not in ["mosque", "logo", "live", "folders", "model", "connectors", "access"] %}{% set tab = "mosque" %}{% endif %}
 <h1>Réglages</h1>
 <nav class="tabs">
-  {% for key, label in [("identite", "Mosquée"), ("image", "Logo"), ("live", "Live"), ("dossiers", "Dossiers"), ("modele", "Modèle"), ("connecteurs", "Publication"), ("acces", "Accès")] %}
-  <a href="/admin/mosquee?section={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>
+  {% for key, label in [("mosque", "Mosquée"), ("logo", "Logo"), ("live", "Live"), ("folders", "Dossiers"), ("model", "Modèle"), ("connectors", "Publication"), ("access", "Accès")] %}
+  <a href="/admin/mosque?section={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>
   {% endfor %}
 </nav>
 
-{% if tab == "identite" %}
-<form method="post" action="/admin/mosquee" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% if tab == "mosque" %}
+<form method="post" action="/admin/mosque" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
   <h2>La mosquée</h2>
   <p class="help">Ces informations apparaissent sur les clips et les fiches publiées.</p>
   <label for="name">Nom</label><input type="text" id="name" name="name" value="{{ mosque.name }}" required>
@@ -27,7 +27,7 @@
   <p><button class="btn">Enregistrer</button></p>
 </form>
 
-{% elif tab == "image" %}
+{% elif tab == "logo" %}
 <section class="card">
   <h2>Logo de l'interface</h2>
   <p class="help">Ce logo apparaît en haut du back-office et comme icône de l'onglet du navigateur.
@@ -42,7 +42,7 @@
     <p><button class="btn">Envoyer</button></p>
   </form>
   {% if mosque.logo_path %}
-  <form method="post" action="/admin/logo/supprimer"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <form method="post" action="/admin/logo/delete"><input type="hidden" name="csrf" value="{{ csrf }}">
     <button class="btn sm ghost">Retirer le logo</button>
     <span class="small muted">L'emblème neutre reprend sa place.</span>
   </form>
@@ -50,7 +50,7 @@
 </section>
 
 {% elif tab == "live" %}
-<form method="post" action="/admin/mosquee" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+<form method="post" action="/admin/mosque" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
   <h2>Orchestrateur du live</h2>
   <p class="help">Le programme qui pilote OBS et les enregistrements, sur cette machine ou une autre.</p>
   <label for="orchestrator_url">Adresse de l'API</label><input type="url" id="orchestrator_url" name="orchestrator_url" value="{{ mosque.orchestrator_url }}">
@@ -59,8 +59,8 @@
   <p><button class="btn">Enregistrer</button></p>
 </form>
 
-{% elif tab == "dossiers" %}
-<form method="post" action="/admin/mosquee" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% elif tab == "folders" %}
+<form method="post" action="/admin/mosque" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
   <h2>Dossiers sur cette machine</h2>
   <p class="help">Choisissez avec le bouton <b>Parcourir</b> : la fenêtre montre les dossiers réels de la machine
     qui héberge l'application, aucun chemin à taper. Un champ laissé vide garde le dossier par défaut du programme.</p>
@@ -84,13 +84,13 @@
   <p><button class="btn">Enregistrer</button></p>
 </form>
 
-{% elif tab == "modele" %}
+{% elif tab == "model" %}
 <section class="card">
   <h2>Modèle de langage</h2>
   <p class="help">Résumé et traduction du pipeline. Un serveur compatible OpenAI ou Anthropic, en local
     (Ollama, llama.cpp, LM Studio, vLLM) ou distant. Réglage de cette machine, partagé par tous les
     lancements du pipeline : <span class="mono">{{ SHORT(llm_file) }}</span>.</p>
-  <form method="post" action="/admin/modele"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <form method="post" action="/admin/model"><input type="hidden" name="csrf" value="{{ csrf }}">
     <label class="check"><input type="checkbox" name="llm_enabled" value="1" {{ "checked" if llm_on }}> Activer le modèle
       (décoché : résumé extractif et traductions fixes, aucun appel)</label>
     <label for="llm_url">Adresse de l'API</label>
@@ -109,15 +109,15 @@
       <span class="mono">MINBAR_LLM_API_KEY</span> — jamais par ce formulaire.</div>
     <p><button class="btn">Enregistrer</button></p>
   </form>
-  <form method="post" action="/admin/modele/tester"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <form method="post" action="/admin/model/test"><input type="hidden" name="csrf" value="{{ csrf }}">
     <button class="btn sm ghost">Tester la connexion</button>
   </form>
 </section>
 
-{% elif tab == "connecteurs" %}
+{% elif tab == "connectors" %}
 <div class="tabs sub">
   {% for x in connectors %}
-  <a class="tab {{ 'on' if conn and x.key == conn.key }}" href="/admin/mosquee?section=connecteurs&c={{ x.key }}">{{ x.label }}
+  <a class="tab {{ 'on' if conn and x.key == conn.key }}" href="/admin/mosque?section=connectors&c={{ x.key }}">{{ x.label }}
     {% if not x.available %}<span class="dot-off" title="désactivé"></span>{% endif %}</a>
   {% endfor %}
 </div>
@@ -130,7 +130,7 @@
     <div class="spread"><b>{{ x.label }}</b><span class="pill {{ 'valide' if x.available else 'grey' }}">{{ "actif" if x.available else "désactivé" }}</span></div>
     <div class="small">{{ x.description }}</div>
     {% if not x.available %}<div class="small muted">{{ x.why }}</div>{% endif %}
-    <form method="post" action="/admin/connecteurs/{{ x.key }}"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <form method="post" action="/admin/connectors/{{ x.key }}"><input type="hidden" name="csrf" value="{{ csrf }}">
       {% for f in x.fields %}
       <label>{{ f.label }}</label>
       <div class="row">
@@ -145,11 +145,11 @@
   {% endif %}
 </section>
 
-{% elif tab == "acces" %}
+{% elif tab == "access" %}
 <section class="card">
   <h2>Comptes et accès</h2>
   <p>Les comptes, leurs rôles et leurs mots de passe se gèrent sur leur propre page.</p>
-  <p><a class="btn sm" href="/admin/utilisateurs">Gérer les comptes</a></p>
+  <p><a class="btn sm" href="/admin/users">Gérer les comptes</a></p>
 </section>
 {% endif %}
 

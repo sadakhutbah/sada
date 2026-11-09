@@ -46,15 +46,15 @@
 
 <div class="grid g3">
   <a class="card item" href="/clips"><div class="grow"><p class="kicker">Clips à valider</p><div class="stat">{{ pending }}</div></div></a>
-  {% if ctx.can("publish") %}<a class="card item" href="/publication"><div class="grow"><p class="kicker">Prêts à publier</p><div class="stat">{{ ready }}</div></div></a>{% endif %}
-  <a class="card item" href="/khutbas"><div class="grow"><p class="kicker">{{ "Mes khutbas" if user.role == "imam" else "Khutbas archivées" }}</p><div class="stat">{{ total }}</div></div></a>
+  {% if ctx.can("publish") %}<a class="card item" href="/publications"><div class="grow"><p class="kicker">Prêts à publier</p><div class="stat">{{ ready }}</div></div></a>{% endif %}
+  <a class="card item" href="/sermons"><div class="grow"><p class="kicker">{{ "Mes khutbas" if user.role == "imam" else "Khutbas archivées" }}</p><div class="stat">{{ total }}</div></div></a>
 </div>
 
 <div class="grid g2">
   <section class="card">
     <h2>Dernières khutbas</h2>
     {% if recent %}<div class="list">{% for k in recent %}
-      <a class="item" href="/khutbas/{{ k.id }}"><div class="grow"><div class="t">{{ k.date|date_fr }}</div>
+      <a class="item" href="/sermons/{{ k.id }}"><div class="grow"><div class="t">{{ k.date|date_fr }}</div>
         <div class="muted small">{{ k.label }} · {{ k.duration_s|mmss }}{% if k.imam %} · {{ k.imam }}{% endif %}</div></div></a>
     {% endfor %}</div>{% else %}<p class="muted">{{ "Aucune khutba ne vous est encore rattachée." if user.role == "imam" else "Aucune khutba importée pour l'instant." }}</p>{% endif %}
   </section>

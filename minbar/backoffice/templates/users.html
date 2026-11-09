@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Comptes{% endblock %}
 {% block main %}
-<p class="small"><a href="/admin/mosquee">Mosquée</a> · <b>Comptes</b></p>
+<p class="small"><a href="/admin/mosque">Mosquée</a> · <b>Comptes</b></p>
 <h1>Comptes</h1>
 <p class="muted small"><b>Administrateur</b> : tout, dont comptes et réglages · <b>Responsable</b> : live, validation, publication, journal ·
   <b>Imam</b> : live, ses khutbas, validation de ses clips.</p>
@@ -11,7 +11,7 @@
   <details class="connector {{ '' if u.active else 'off' }}">
     <summary class="spread"><span><b>{{ u.display_name }}</b> <span class="muted small">({{ u.username }})</span></span>
       <span class="pill {{ 'valide' if u.active else 'grey' }}">{{ ROLES[u.role] }}{% if not u.active %} · désactivé{% endif %}</span></summary>
-    <form method="post" action="/admin/utilisateurs/{{ u.id }}"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <form method="post" action="/admin/users/{{ u.id }}"><input type="hidden" name="csrf" value="{{ csrf }}">
       <label>Nom affiché</label><input type="text" name="display_name" value="{{ u.display_name }}">
       <label>Rôle</label><select name="role">{% for r, l in ROLES.items() %}<option value="{{ r }}" {{ "selected" if r == u.role }}>{{ l }}</option>{% endfor %}</select>
       <label class="check"><input type="checkbox" name="active" value="1" {{ "checked" if u.active }}> Compte actif</label>
@@ -24,7 +24,7 @@
 </section>
 <section class="card">
   <h2>Nouveau compte</h2>
-  <form method="post" action="/admin/utilisateurs"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <form method="post" action="/admin/users"><input type="hidden" name="csrf" value="{{ csrf }}">
     <label for="u">Identifiant</label><input type="text" id="u" name="username" autocapitalize="none" required>
     <label for="d">Nom affiché</label><input type="text" id="d" name="display_name" placeholder="ex. Imam Abdallah">
     <label for="r">Rôle</label><select id="r" name="role">{% for r, l in ROLES.items() %}<option value="{{ r }}" {{ "selected" if r == "imam" }}>{{ l }}</option>{% endfor %}</select>

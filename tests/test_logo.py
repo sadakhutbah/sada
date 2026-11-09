@@ -27,7 +27,7 @@ def test_le_depot_n_embarque_plus_le_logo_de_la_mosquee():
 
 def test_sans_logo_embleme_neutre_dans_la_barre_et_l_onglet(env):
     c = client(env, "admin")
-    page = c.get("/admin/mosquee").text
+    page = c.get("/admin/mosque").text
     assert 'href="/static/emblem.svg"' in page          # favicon
     assert 'src="/static/emblem.svg"' in page           # barre
     assert "logo.jpg" not in page
@@ -35,39 +35,39 @@ def test_sans_logo_embleme_neutre_dans_la_barre_et_l_onglet(env):
 
 def test_upload_puis_retrait(env):
     c = client(env, "admin")
-    tok = csrf(c, "/admin/mosquee")
+    tok = csrf(c, "/admin/mosque")
     up = c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("mon-logo.png", _png(), "image/png")})
     assert up.status_code == 303, up.text
 
-    page = c.get("/admin/mosquee").text
+    page = c.get("/admin/mosque").text
     url = re.search(r'class="brand"[^>]*><img src="([^"]+)"', page).group(1)
     assert url.startswith("/logo/ma-mosquee?v="), url
     img = c.get(url)
     assert img.status_code == 200 and img.headers["content-type"] == "image/png"
     assert img.content.startswith(b"\x89PNG")
 
-    tok = csrf(c, "/admin/mosquee")
-    c.post("/admin/logo/supprimer", data={"csrf": tok})
-    page = c.get("/admin/mosquee").text
+    tok = csrf(c, "/admin/mosque")
+    c.post("/admin/logo/delete", data={"csrf": tok})
+    page = c.get("/admin/mosque").text
     assert 'src="/static/emblem.svg"' in page
     assert c.get(url).status_code == 404
 
 
 def test_fichier_refuse(env):
     c = client(env, "admin")
-    tok = csrf(c, "/admin/mosquee")
+    tok = csrf(c, "/admin/mosque")
     r = c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("notes.txt", b"pas une image", "text/plain")})
     assert r.status_code == 303
-    page = c.get("/admin/mosquee").text
+    page = c.get("/admin/mosque").text
     assert "Format accepté" in page
     # fichier trop lourd
-    tok = csrf(c, "/admin/mosquee")
+    tok = csrf(c, "/admin/mosque")
     c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("gros.png", b"\x89PNG" + b"0" * (3 * 1024 * 1024), "image/png")})
-    assert "trop lourde" in c.get("/admin/mosquee").text
+    assert "trop lourde" in c.get("/admin/mosque").text
 
 
 def test_upload_reserve_a_l_admin(env):
     c = client(env, "imam")
-    tok = csrf(c, "/compte")
+    tok = csrf(c, "/account")
     r = c.post("/admin/logo", data={"csrf": tok}, files={"logo": ("x.png", _png(), "image/png")})
     assert r.status_code == 403
