@@ -28,6 +28,16 @@ DEFAULT_MODEL = "qwen2.5:7b-instruct"
 ANTHROPIC_VERSION = "2023-06-01"
 
 
+def enabled() -> bool:
+    """Interrupteur global (MINBAR_LLM_ENABLED) : à 0, aucun appel au modèle, quelle que soit l'URL."""
+    return os.environ.get("MINBAR_LLM_ENABLED", "").strip().lower() not in ("0", "off", "false", "no", "non")
+
+
+def label() -> str:
+    """Nom court de la méthode effective (journal de démarrage du pipeline)."""
+    return settings().label()
+
+
 @dataclass(frozen=True)
 class Settings:
     url: str
@@ -58,6 +68,9 @@ def _guess_protocol(url: str) -> str:
 
 def ask_json(prompt: str, timeout: int, log=print, *, url=None, model=None, key=None, protocol=None) -> dict | None:
     """Réponse JSON du modèle, ou None s'il est indisponible (le pipeline a toujours un repli)."""
+    if not enabled():
+        log("LLM désactivé (MINBAR_LLM_ENABLED=0) : repli sans modèle")
+        return None
     s = settings(url, model, key, protocol)
     try:
         text = _ask_cli(prompt, timeout, log) if s.protocol == "claude-cli" else _ask_http(s, prompt, timeout, log)

@@ -17,7 +17,7 @@ from ..text import duration as fmt_t
 from . import clips as clipmod
 from . import notes as notemod
 from . import transcribe as tr
-from . import translate as trmod
+from . import llm, translate as trmod
 from .output import SessionOutput, clip_entry
 from .quran import load_verses
 from .verses import VerseIndex, detect, to_dicts
@@ -82,6 +82,16 @@ def _clip_video(clean: str | None) -> str | None:
     return None
 
 
+def apply_llm_options(a) -> None:
+    """Les modules notes/translate lisent l'environnement : les options du CLI le renseignent une fois pour toutes."""
+    for env_name, val in (("MINBAR_LLM_URL", a.llm_url), ("MINBAR_LLM_MODEL", a.llm_model),
+                          ("MINBAR_LLM_PROTOCOL", a.llm_protocol)):
+        if val:
+            os.environ[env_name] = val
+    if a.llm is not None:
+        os.environ["MINBAR_LLM_ENABLED"] = "1" if a.llm else "0"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("sessions", nargs="?", help="sessions.json écrit par l'orchestrateur (défaut : le dernier run)")
@@ -91,7 +101,8 @@ def main(argv=None):
     ap.add_argument("--label", default="session")
     ap.add_argument("--out", default=str(paths.OUTPUT))
     ap.add_argument("--model", help="large-v3 | large-v3-turbo | medium | small | cpu | force (retranscrire)")
-    ap.add_argument("--no-llm", action="store_true")
+    ap.add_argument("--llm", action=argparse.BooleanOptionalAction, default=None,
+                    help="activer ou couper l'appel au modèle (défaut : MINBAR_LLM_ENABLED, sinon activé)")
     ap.add_argument("--llm-url", default=os.environ.get("MINBAR_LLM_URL"),
                     help="endpoint du modèle (défaut : http://127.0.0.1:11434/v1, Ollama)")
     ap.add_argument("--llm-model", default=os.environ.get("MINBAR_LLM_MODEL"),
@@ -107,17 +118,15 @@ def main(argv=None):
     ap.add_argument("--title", default=clipmod.DEFAULT_TITLE)
     ap.add_argument("--subtitle", default="", help="ligne sous le titre des clips (ex. mosquée · date)")
     a = ap.parse_args(argv)
-    # les modules notes/translate lisent l'environnement : les options du CLI le renseignent une fois pour toutes
-    for env_name, val in (("MINBAR_LLM_URL", a.llm_url), ("MINBAR_LLM_MODEL", a.llm_model),
-                          ("MINBAR_LLM_PROTOCOL", a.llm_protocol)):
-        if val:
-            os.environ[env_name] = val
+    apply_llm_options(a)
+    log(f"modèle : {llm.label() if llm.enabled() else 'désactivé (repli sans IA)'}")
     if tr.setup_env() and not os.environ.get("MINBAR_REEXEC"):
         os.environ["MINBAR_REEXEC"] = "1"
         os.execv(sys.executable, [sys.executable, "-m", "minbar.pipeline.run"] + (argv if argv is not None else sys.argv[1:]))
     out = Path(a.out)
     opts = {
-        "model": None if a.model == "force" else a.model, "retranscribe": a.model == "force", "use_llm": not a.no_llm,
+        "model": None if a.model == "force" else a.model, "retranscribe": a.model == "force",
+        "use_llm": llm.enabled(),
         "nclips": 0 if a.no_clips else a.clips,
         "crop": {k: float(v) for k, v in (kv.split("=") for kv in a.crop.split(","))} if a.crop else None,
         "header": {"title": a.title, "subtitle": a.subtitle} if a.title else None,

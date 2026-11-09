@@ -73,6 +73,38 @@ def test_environnement_prime_sur_le_defaut(monkeypatch):
     assert s.label() == "openai · mistral-small"
 
 
+def test_interrupteur_coupe_tout_appel(serveur, monkeypatch):
+    monkeypatch.setenv("MINBAR_LLM_ENABLED", "0")
+    _Handler.seen = {}
+    logs = []
+    assert llm.ask_json("résume", 5, logs.append, url=serveur) is None
+    assert _Handler.seen == {}                      # aucune requête n'est partie
+    assert "désactivé" in logs[0]
+
+
+def test_interrupteur_valeurs(monkeypatch):
+    for off in ("0", "off", "false", "non", " NON "):
+        monkeypatch.setenv("MINBAR_LLM_ENABLED", off)
+        assert llm.enabled() is False
+    for on in ("1", "on", "true", "oui", ""):
+        monkeypatch.setenv("MINBAR_LLM_ENABLED", on)
+        assert llm.enabled() is True
+
+
+def test_options_du_cli_reglent_l_interrupteur(monkeypatch):
+    from types import SimpleNamespace
+
+    from minbar.pipeline import run
+    monkeypatch.setenv("MINBAR_LLM_ENABLED", "1")
+    a = SimpleNamespace(llm=False, llm_url="http://127.0.0.1:9/v1", llm_model="m", llm_protocol="openai")
+    run.apply_llm_options(a)
+    assert llm.enabled() is False
+    a.llm = True
+    run.apply_llm_options(a)
+    assert llm.enabled() is True
+    assert llm.settings().model == "m"
+
+
 def test_modele_absent_ne_casse_pas_le_pipeline():
     logs = []
     assert llm.ask_json("résume", 2, logs.append, url="http://127.0.0.1:9/v1") is None

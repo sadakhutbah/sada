@@ -79,16 +79,18 @@ une API distante). Sans configuration, l'adresse visée est Ollama sur la machin
 extractif et traductions fixes — et la note Markdown l'indique.
 
 ```bash
+export MINBAR_LLM_ENABLED="1"                          # interrupteur : 0 coupe tout appel, quelle que soit l'URL
 export MINBAR_LLM_URL="http://127.0.0.1:11434/v1"      # racine de l'API (…/v1, …/v1/messages)
 export MINBAR_LLM_MODEL="qwen2.5:7b-instruct"          # nom du modèle côté serveur
 export MINBAR_LLM_PROTOCOL="openai"                    # openai | anthropic (déduit de l'URL sinon)
 export MINBAR_LLM_API_KEY="…"                          # seulement si le serveur en exige une
 ```
 
-Équivalents en options : `--llm-url`, `--llm-model`, `--llm-protocol`. La méthode réellement employée
-(`openai · qwen2.5:7b-instruct`) est écrite dans l'en-tête des notes. L'ancien appel au binaire
-`claude`, en sous-processus, n'est plus le défaut : il faut le demander avec
-`MINBAR_LLM_PROTOCOL=claude-cli`.
+Équivalents en options : `--llm` / `--no-llm` (bascule), `--llm-url`, `--llm-model`, `--llm-protocol`.
+Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-instruct` ou
+`modèle : désactivé (repli sans IA)`). La méthode réellement employée est aussi écrite dans l'en-tête
+des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le
+demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
 
 ## Notifications à l'imam
 
