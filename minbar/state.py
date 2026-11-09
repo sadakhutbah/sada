@@ -62,6 +62,7 @@ class Signals:
     voice_run: float = 0.0
     silence_run: float = 0.0
     presence: bool | None = None    # mouvement au minbar ; None = détection désactivée
+    face_run: float | None = None    # secondes sans visage de face au minbar ; None = détection indisponible
 
 
 @dataclass
@@ -76,6 +77,10 @@ class MachineParams:
     silence_stop_s: float = 60.0        # silence prolongé => fin de khutba
     grace_s: float = 30.0               # délai de grâce avant de couper
     min_khutba_s: float = 120.0         # pas d'arrêt avant cette durée
+    # visage au minbar : l'imam tourne le dos pendant la prière (0 = signal ignoré)
+    face_absence_s: float = 45.0        # plus de visage de face depuis ce délai ...
+    face_silence_ratio: float = 0.5     # ... ET au moins cette part du seuil de silence
+    face_return_s: float = 3.0          # visage de retour sous ce délai : la grâce s'annule
     max_khutba_s: float = 3600.0
     terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
     # dars et conférences : plus souples que la khutba (aucune prière ne suit)
@@ -143,6 +148,7 @@ class Machine:
         self.entered_t = 0.0
         self.entered_now: Optional[dt.datetime] = None
         self.grace_until: Optional[float] = None
+        self.grace_reason: Optional[str] = None
         self.extend_until_t: float = 0.0
         self.janaza_name: Optional[str] = None
         self.paused_from: Optional[State] = None
@@ -426,16 +432,27 @@ class Machine:
             if sig.t < self.extend_until_t:
                 self.grace_until = None
                 return
+            # le silence seul ne conclut rien (une salle pleine n'est jamais muette) :
+            # il faut le silence ET le minbar vide de tout visage de face
+            face_gone = (not dars and sig.face_run is not None and self.p.face_absence_s > 0
+                         and sig.face_run >= self.p.face_absence_s
+                         and sig.silence_run >= silence_s * self.p.face_silence_ratio)
             if self.grace_until is None:
                 if sig.silence_run >= silence_s and elapsed >= self.p.min_khutba_s:
                     self.grace_until = sig.t + grace_s
+                    self.grace_reason = "silence prolongé"
                     self.log(f"silence {sig.silence_run:.0f}s : délai de grâce {grace_s:.0f}s")
+                elif face_gone and elapsed >= self.p.min_khutba_s:
+                    self.grace_until = sig.t + grace_s
+                    self.grace_reason = "minbar sans visage de face"
+                    self.log(f"plus de visage de face depuis {sig.face_run:.0f}s : délai de grâce {grace_s:.0f}s")
             else:
-                if sig.voice_run >= 2.0:
+                face_back = (sig.face_run is not None and sig.face_run <= self.p.face_return_s)
+                if sig.voice_run >= 2.0 or face_back:
                     self.grace_until = None
-                    self.log("voix reprise pendant la grâce : on continue")
+                    self.log("voix ou visage repris pendant la grâce : on continue")
                 elif sig.t >= self.grace_until:
-                    self._go(end, sig, "silence prolongé")
+                    self._go(end, sig, getattr(self, "grace_reason", None) or "silence prolongé")
             return
 
         if st == State.PRIERE:

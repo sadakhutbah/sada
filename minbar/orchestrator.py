@@ -21,6 +21,7 @@ from .config import Config
 from .encoder import Encoder
 from .scenes import SCENES, Moment, SceneRenderer
 from .state import Machine, Signals
+from .faces import FaceGate, FaceMonitor, yunet_detector
 from .presence import MotionGate, PresenceMonitor
 from .vad import VadMonitor
 
@@ -68,6 +69,13 @@ class Orchestrator:
                               pixel_delta=cfg.presence_pixel_delta, hold_s=cfg.presence_hold_s)
             self.presence = PresenceMonitor(cfg.camera_url, gate, fps=cfg.presence_fps, log=log.info)
             log.info("Présence : mouvement dans la zone %s (seuil %.3f)" % (tuple(cfg.presence_roi), cfg.presence_threshold))
+        self.faces = None
+        if cfg.face == "yunet":
+            gate = FaceGate(detect=yunet_detector(cfg.face_threshold, (cfg.face_width, cfg.face_height)),
+                            roi=tuple(cfg.face_roi), threshold=cfg.face_threshold, hold_s=cfg.face_hold_s)
+            self.faces = FaceMonitor(cfg.camera_url, gate, width=cfg.face_width, height=cfg.face_height,
+                                     fps=cfg.face_fps, log=log.info)
+            log.info("Visage : YuNet, zone %s, seuil %.2f" % (tuple(cfg.face_roi), cfg.face_threshold))
         self.lock = threading.RLock()
         self._shown_key = None
         self._saved = None
@@ -151,7 +159,9 @@ class Orchestrator:
     def signals(self) -> Signals:
         v, s = self.vad.runs()
         pres = self.presence.present() if self.presence else None
-        return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s, presence=pres)
+        face_run = self.faces.absence_run() if self.faces else None
+        return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s,
+                       presence=pres, face_run=face_run)
 
     def manual(self, cmd: str, arg=None) -> dict:
         with self.lock:
@@ -164,6 +174,8 @@ class Orchestrator:
             st = self.machine.status()
             v, s = self.vad.runs()
             _, pos = self.encoder.position()
+            face_abs = self.faces.absence_run() if self.faces else None
+            face_score = self.faces.last_score() if self.faces else None
             st.update({
                 "run_id": self.run_id,
                 "clock": self.clock.now().strftime("%H:%M:%S"), "clock_speed": self.clock.speed,
@@ -177,6 +189,12 @@ class Orchestrator:
                      "score": self.presence.last_score()}
                     if self.presence else {"mode": "off", "present": None, "score": None}
                 ),
+                "face": (
+                    {"mode": self.cfg.face, "present": self.faces.present(),
+                     "absence_s": round(face_abs, 1) if face_abs is not None else None,
+                     "score": round(face_score, 2) if face_score is not None else None}
+                    if self.faces else {"mode": "off", "present": None, "absence_s": None, "score": None}
+                ),
             })
             return st
 
@@ -189,6 +207,8 @@ class Orchestrator:
         self.vad.start()
         if self.presence:
             self.presence.start()
+        if self.faces:
+            self.faces.start()
         self.api = make_server(self, cfg.api_host, cfg.api_port, cfg.api_token)
         log.info("API de contrôle : http://%s:%d/   | état initial %s", cfg.api_host, cfg.api_port, self.machine.state.value)
         for sig_ in (signal.SIGINT, signal.SIGTERM):
@@ -214,6 +234,8 @@ class Orchestrator:
         self.vad.stop()
         if self.presence:
             self.presence.stop()
+        if self.faces:
+            self.faces.stop()
         if self.encoder.wanted:
             self.encoder.stop()
         if self.api:
@@ -238,6 +260,8 @@ def main(argv=None):
     ap.add_argument("--terminated-hold", type=float, dest="terminated_hold_s")
     ap.add_argument("--api-port", type=int)
     ap.add_argument("--presence", choices=["off", "motion"], help="détection de présence au minbar")
+    ap.add_argument("--face", choices=["off", "yunet"], help="détection de visage de face au minbar")
+    ap.add_argument("--face-absence", type=float, dest="face_absence_s", help="secondes sans visage avant la fin de khutba")
     ap.add_argument("--events-file", help="programme JSON des dars et conférences")
     ap.add_argument("--notify-url", default=os.environ.get("MINBAR_NOTIFY_URL"),
                     help="webhook qui reçoit les messages destinés à l'imam")

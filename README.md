@@ -141,6 +141,36 @@ puis `curl -s 127.0.0.1:8088/status` → `presence.score` au repos (0) et quand 
 Le seuil se met à mi-chemin entre les deux. Si la caméra ne donne plus d'image, `presence.present` vaut
 `null` : la machine ignore alors ce signal au lieu de bloquer le démarrage.
 
+## Visage au minbar : comment se termine une khutba
+
+Le silence ne conclut rien : une salle pleine n'est jamais muette, une toux ou une chaise remettent le
+compteur à zéro. Le signal retenu est **le visage de face** : pendant la khutba, l'imam se tient debout face
+à l'assemblée ; à la prière il se tourne vers la qibla et le minbar n'a plus aucun visage de face.
+
+Un ffmpeg lit la caméra à 5 i/s en 320×180 ; chaque image passe par **YuNet** (modèle ONNX de 232 Ko,
+embarqué dans `minbar/models/`, CPU, sans GPU) sur la zone du minbar. Aucune image n'est écrite, aucune
+identité n'est calculée : seuls un score et un booléen sortent du module.
+
+```yaml
+face: yunet                 # off | yunet
+face_roi: [0.0, 0.0, 1.0, 1.0]   # zone du minbar (x0, y0, x1, y1) en fractions
+face_threshold: 0.6         # score minimal d'un visage de face
+face_hold_s: 4              # un visage vu vaut « présent » pendant ce délai
+face_fps: 5                 # images analysées par seconde
+face_absence_s: 45          # plus de visage de face depuis ce délai…
+face_silence_ratio: 0.5     # … ET au moins cette part du seuil de silence
+face_return_s: 3            # visage de retour sous ce délai : la grâce s'annule
+```
+
+La bascule vers PRIÈRE exige **les deux** : plus de visage de face depuis `face_absence_s` **et** un
+silence d'au moins `face_silence_ratio × silence_stop_s`. Puis la grâce habituelle s'applique ; un visage
+qui revient ou une voix qui reprend l'annule. Si la caméra ne donne plus d'image, le signal vaut `null` et
+la machine retombe sur le silence seul au lieu de couper par accident.
+
+Vérification : `curl -s 127.0.0.1:8088/status` → `face.present`, `face.absence_s`, `face.score`.
+Sur l'enregistrement du 06/11, le visage est détecté pendant toute la khutba (score 0,84–0,92) et plus du
+tout ensuite.
+
 ### Règles
 
 - Rien ne se publie sans validation humaine (vérifié côté serveur, chaque tentative est journalisée).

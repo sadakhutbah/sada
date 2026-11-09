@@ -52,6 +52,14 @@ class Config(MachineParams):
     presence_fps: float = 2.0           # images analysées par seconde (2 suffit, coût négligeable)
     presence_width: int = 160
     presence_height: int = 90
+    # --- Visage au minbar (YuNet, CPU) : signal de fin de khutba --------------
+    face: str = "yunet"                 # off | yunet
+    face_threshold: float = 0.6         # score minimal d'un visage de face
+    face_hold_s: float = 4.0            # un visage vu vaut « présent » pendant ce délai
+    face_roi: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])  # x0,y0,x1,y1 en fractions
+    face_fps: float = 5.0               # images analysées par seconde
+    face_width: int = 320
+    face_height: int = 180
     title: str = "Khutba du vendredi"
     dark_green: str = "#1E7A3C"
     # --- Notifications à l'imam (webhook ou Telegram ; rien n'est publié) ---

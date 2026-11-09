@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
   "requests",
   "webrtcvad-wheels",
+  "opencv-python-headless",
   "numpy",
   "pillow",
   "rapidfuzz",
@@ -26,5 +27,6 @@ dependencies = [
 packages = ["minbar", "minbar.pipeline", "minbar.backoffice"]
 [tool.setuptools.package-data]
 "minbar.backoffice" = ["templates/*.html", "static/*", "static/fonts/*"]
+"minbar" = ["models/*.onnx"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
