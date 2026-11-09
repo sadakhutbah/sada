@@ -1,28 +1,37 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
-import { Card, Field, Segmented, inputClass } from "../ui";
+import { Btn, Card, Field, Tabs, Title, inputClass } from "../ui";
 
-/** Un dossier vide n'est pas une case blanche : c'est le dossier par défaut du programme. */
-function Chemin({ valeur }: { valeur?: string }) {
+/** Un dossier vide n'est pas une case blanche : c'est le dossier par défaut du programme,
+ *  et le chemin par défaut est rappelé dessous en clair relatif (« data/state »). */
+function Chemin({ valeur, defaut }: { valeur?: string; defaut?: string }) {
   const { t } = useTranslation();
-  if (valeur) return <input className={`${inputClass} font-mono text-[0.88rem]`} defaultValue={valeur} readOnly />;
   return (
-    <span className="block w-full rounded-lg border border-dashed border-[#bfcbb6] bg-paper-2 px-3 py-2.5 text-[0.92rem] text-muted">
-      {t("settings.defaultFolder")}
-    </span>
+    <>
+      <input
+        className={`${inputClass} font-mono text-[0.88rem]`}
+        defaultValue={valeur ?? ""}
+        placeholder={t("settings.defaultFolder")}
+        readOnly
+      />
+      <span className="mt-1 block text-[0.82rem] text-muted">
+        {t("settings.byDefault")}{" "}<span className="font-mono">{defaut || t("settings.defaultFolder")}</span>
+      </span>
+    </>
   );
 }
 
 export default function Settings() {
   const { t } = useTranslation();
   const [d, setD] = useState<any>(null);
-  const [onglet, setOnglet] = useState("mosque");
+  const [onglet, setOnglet] = useState("folders");
 
   useEffect(() => { api.settings().then(setD).catch(() => setD(null)); }, []);
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
   const m = d.mosque;
+  const defauts = d.defaults ?? {};
 
   const contenu: Record<string, React.ReactNode> = {
     mosque: (
@@ -38,14 +47,27 @@ export default function Settings() {
       </div>
     ),
     folders: (
-      <div className="max-w-2xl">
-        {/* L'aide décrit les trois champs : elle se place avant la grille, pas sous le premier. */}
-        <p className="mt-0 mb-3 text-[0.86rem] text-muted">{t("settings.foldersHint")}</p>
-        <div className="grid gap-3.5">
-          <Field label={t("settings.stateDir")}><Chemin valeur={m.state_dir} /></Field>
-          <Field label={t("settings.outputDir")}><Chemin valeur={m.output_dir} /></Field>
-          <Field label={t("settings.publishDir")}><Chemin valeur={m.publish_dir} /></Field>
+      <div>
+        <Title>{t("settings.foldersTitle")}</Title>
+        {/* L'introduction décrit les trois champs : elle se place avant, pas sous le premier. */}
+        <p className="mt-0 mb-4 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.foldersHint")}</p>
+        <div className="grid gap-4">
+          {[
+            { cle: "state_dir", defaut: defauts.state, label: t("settings.stateDir"), quoi: t("settings.shortState") },
+            { cle: "output_dir", defaut: defauts.output, label: t("settings.outputDir"), quoi: t("settings.shortOutput") },
+            { cle: "publish_dir", defaut: defauts.publish, label: t("settings.publishDir"), quoi: t("settings.shortPublish") },
+          ].map((ch) => (
+            <div key={ch.cle}>
+              <Field label={`${ch.label} — ${ch.quoi}`}>
+                <Chemin valeur={m[ch.cle]} defaut={ch.defaut} />
+              </Field>
+              <Btn variante="ghost" className="mt-2 min-h-9 px-3 py-1.5 text-[0.9rem]" disabled title={t("settings.soon")}>
+                {t("common.browse")}
+              </Btn>
+            </div>
+          ))}
         </div>
+        <Btn className="mt-5" disabled title={t("settings.soon")}>{t("common.save")}</Btn>
       </div>
     ),
   };
@@ -60,10 +82,12 @@ export default function Settings() {
   return (
     <div className="grid gap-4">
       <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("settings.title")}</h1>
-      <Card>
-      <Segmented items={onglets} valeur={onglet} onChange={setOnglet} />
-      <div key={onglet}>{contenu[onglet] ?? <p className="text-muted">{t("settings.soon")}</p>}</div>
-      </Card>
+      <div>
+        <Tabs items={onglets} valeur={onglet} onChange={setOnglet} />
+        <Card>
+          <div key={onglet}>{contenu[onglet] ?? <p className="text-muted">{t("settings.soon")}</p>}</div>
+        </Card>
+      </div>
     </div>
   );
 }

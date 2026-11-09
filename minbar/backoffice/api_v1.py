@@ -82,7 +82,13 @@ def session(ctx: CtxDep):
 
     Sert aussi de sonde : sans session, l'intercepteur d'authentification répond 401.
     """
-    return {"user": _user(ctx), "mosque": _mosque(ctx), "csrf": (ctx.session or {}).get("csrf", "")}
+    # Le nombre de clips à valider accompagne la session : la navigation l'affiche en pastille
+    # sans une seconde requête au démarrage.
+    where, args = imam_filter(ctx)
+    a_valider = db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
+                                 f"WHERE {where} AND c.status = 'a_valider'", *args)["n"]
+    return {"user": _user(ctx), "mosque": _mosque(ctx), "csrf": (ctx.session or {}).get("csrf", ""),
+            "counts": {"pending": a_valider}}
 
 
 @router.get("/dashboard")
@@ -133,8 +139,13 @@ def clips(ctx: CtxDep, status: str = "", limit: int = Query(200, ge=1, le=1000))
     rows = db.all_(ctx.conn, f"SELECT c.*, k.label sermon, k.date, k.title, k.session_no "
                              f"FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                              f"WHERE {where} {extra} ORDER BY c.id DESC LIMIT ?", *args, *extra_args, limit)
-    return {"items": rows, "count": len(rows), "status_labels": content.STATUS_LABELS,
-            "tabs": content.STATUS_TABS}
+    # Comptes par statut pour les filtres (« À valider (8) ») : comptés sur la mosquée entière,
+    # sinon le premier filtre choisi effacerait les autres chiffres.
+    par_statut = {r["status"]: r["n"] for r in db.all_(
+        ctx.conn, f"SELECT c.status, COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
+                  f"WHERE {where} GROUP BY c.status", *args)}
+    return {"items": rows, "count": len(rows), "counts": par_statut,
+            "status_labels": content.STATUS_LABELS, "tabs": content.STATUS_TABS}
 
 
 @router.get("/publications")
@@ -152,7 +163,11 @@ def settings(ctx: CtxDep):
     ctx.require("admin")
     m = _mosque(ctx)
     m.update({k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS})
-    return {"mosque": m, "sections": ("mosque", "logo", "live", "folders", "model", "connectors", "access")}
+    # « par défaut : data/state » — même source que les gabarits, et jamais un chemin de la machine.
+    from . import dirs as dirs_mod
+    defauts = {k: dirs_mod.label(v) for k, v in db.mosque_dirs(ctx.mosque).items()}
+    return {"mosque": m, "defaults": defauts,
+            "sections": ("mosque", "logo", "live", "folders", "model", "connectors", "access")}
 
 
 @router.get("/users")

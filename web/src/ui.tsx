@@ -6,9 +6,11 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   );
 }
 
-export function Kicker({ children }: { children: ReactNode }) {
+export function Kicker({ children, sombre = false }: { children: ReactNode; sombre?: boolean }) {
   return (
-    <p className="m-0 mb-2 text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-green">{children}</p>
+    <p className={`m-0 mb-2 text-[0.75rem] font-semibold uppercase tracking-[0.14em] ${sombre ? "text-leaf" : "text-green"}`}>
+      {children}
+    </p>
   );
 }
 
@@ -58,7 +60,44 @@ export function Pill({ statut, label }: { statut: string; label: string }) {
   );
 }
 
-/** Sélecteur segmenté : un seul bloc, pas une seconde rangée de pastilles. */
+/** Onglets de premier niveau : pastilles séparées, l'active pleine en vert profond (.tabs du back-office). */
+export function Tabs({
+  items,
+  valeur,
+  onChange,
+}: {
+  items: { cle: string; label: string; compte?: number; eteint?: boolean }[];
+  valeur: string;
+  onChange: (cle: string) => void;
+}) {
+  return (
+    <div className="mb-3.5 flex flex-wrap gap-2">
+      {items.map((it) => (
+        <button
+          key={it.cle}
+          onClick={() => onChange(it.cle)}
+          disabled={it.eteint}
+          className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[0.93rem] font-semibold ${
+            it.eteint ? "cursor-not-allowed border-line bg-white/60 text-muted/60" : "cursor-pointer"
+          } ${
+            valeur === it.cle
+              ? "border-deep bg-deep text-white"
+              : "border-line bg-white text-deep hover:border-leaf hover:bg-paper-2"
+          }`}
+        >
+          {it.label}
+          {it.compte !== undefined && (
+            <span className={`rounded-full px-1.5 text-[0.78rem] ${valeur === it.cle ? "bg-white/20" : "bg-paper-2 text-muted"}`}>
+              {it.compte}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Sélecteur segmenté : un seul bloc, pour les sous-onglets d'un même écran. */
 export function Segmented({
   items,
   valeur,

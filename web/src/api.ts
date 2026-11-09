@@ -3,6 +3,7 @@ export type Session = {
   user: { id: number; name: string; role: string; role_label: string; permissions: string[] };
   mosque: { id: number; slug: string; name: string; timezone: string; logo: string; clip_title: string };
   csrf: string;
+  counts: { pending: number };
 };
 
 let surExpiration: (() => void) | null = null;
@@ -25,7 +26,8 @@ export const api = {
   dashboard: () => demande<any>("/dashboard"),
   sermons: () => demande<{ items: any[] }>("/sermons"),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
-  clips: (status = "") => demande<{ items: any[]; status_labels: Record<string, string> }>(`/clips${status ? `?status=${status}` : ""}`),
+  clips: (status = "") =>
+    demande<{ items: any[]; status_labels: Record<string, string>; counts: Record<string, number> }>(`/clips${status ? `?status=${status}` : ""}`),
   publications: () => demande<any>("/publications"),
   settings: () => demande<any>("/settings"),
   users: () => demande<any>("/users"),
