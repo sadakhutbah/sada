@@ -33,8 +33,12 @@ def reshaped_view(text: str) -> str:
 
 def shaped(text: str) -> tuple[str, dict]:
     """Texte mono-écriture prêt pour ImageDraw.text() : sous libraqm, sens RTL ; sinon forme visuelle."""
-    if not has_arabic(text) or RAQM:
-        return text, {"direction": "rtl", "language": "ar"} if RAQM else {}
+    if RAQM:
+        # direction arabe pour un texte qui contient de l'arabe seulement : sinon la ponctuation
+        # d'une phrase française se retrouve du mauvais côté
+        return text, ({"direction": "rtl", "language": "ar"} if has_arabic(text) else {})
+    if not has_arabic(text):
+        return text, {}
     return reshaped_view(text), {}
 
 # écriture arabe (lettres, signes, formes de présentation)
