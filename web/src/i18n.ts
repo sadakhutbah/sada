@@ -25,7 +25,7 @@ const fr = {
   },
   clips: {
     title: "Clips", sermon: "Khutba", kind: "Type", status: "Statut", duration: "Durée", why: "Raison",
-    all: "Tous",
+    all: "Tous", kinds: { verset: "Verset", conclusion: "Conclusion" },
   },
   publications: { title: "Publication", connector: "Connecteur", enabled: "Activé", configured: "Réglé" },
   settings: {
@@ -60,7 +60,7 @@ const en: typeof fr = {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",
     theme: "Theme", open: "Open",
   },
-  clips: { title: "Clips", sermon: "Sermon", kind: "Kind", status: "Status", duration: "Length", why: "Reason", all: "All" },
+  clips: { title: "Clips", sermon: "Sermon", kind: "Kind", status: "Status", duration: "Length", why: "Reason", all: "All", kinds: { verset: "Verse", conclusion: "Conclusion" } },
   publications: { title: "Publishing", connector: "Connector", enabled: "Enabled", configured: "Configured" },
   settings: {
     title: "Settings",

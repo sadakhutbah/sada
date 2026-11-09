@@ -74,7 +74,10 @@ export function Segmented({
         <button
           key={it.cle}
           onClick={() => onChange(it.cle)}
-          className={`inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[7px] border-0 px-3.5 py-1 text-[0.88rem] font-semibold ${
+          disabled={it.eteint}
+          className={`inline-flex min-h-8 items-center gap-1.5 rounded-[7px] border-0 px-3.5 py-1 text-[0.88rem] font-semibold ${
+            it.eteint ? "cursor-not-allowed text-muted/60" : "cursor-pointer"
+          } ${
             valeur === it.cle
               ? "bg-white text-deeper shadow-[0_1px_2px_rgba(23,38,28,0.14),inset_0_-2px_0_var(--color-leaf)]"
               : "bg-transparent text-muted hover:bg-white/60 hover:text-ink"
@@ -98,5 +101,27 @@ export function Field({ label, aide, children }: { label: string; aide?: string;
   );
 }
 
+/** En-têtes et cellules de tableau : un seul padding horizontal (8 px) pour que titres et valeurs s'alignent,
+ *  et pas de bordure sous la dernière ligne (elle doublerait celle de la carte). */
+export const thClass =
+  "border-b border-line px-2 py-2 text-left text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-muted";
+export const tdClass = "border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0";
+
+/** Tableau simple, sans en-tête triable : la dernière ligne ne garde pas de bordure. */
+export function Table({ entetes, children }: { entetes: string[]; children: ReactNode }) {
+  return (
+    <table className="w-full border-collapse text-[0.95rem]">
+      <thead>
+        <tr>
+          {entetes.map((h) => (
+            <th key={h} className={thClass}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
+  );
+}
+
 export const inputClass =
-  "w-full rounded-lg border border-[#bfcbb6] bg-white px-3 py-2.5 text-ink disabled:bg-paper-2 disabled:text-muted";
+  "w-full rounded-lg border border-[#bfcbb6] bg-white px-3 py-2.5 text-ink read-only:cursor-default read-only:bg-paper-2 read-only:text-muted disabled:bg-paper-2 disabled:text-muted";

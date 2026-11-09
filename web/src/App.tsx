@@ -38,8 +38,8 @@ export default function App() {
         to={to}
         end={to === "/"}
         className={({ isActive }) =>
-          `rounded-lg px-2.5 py-1.5 text-[0.95rem] font-semibold no-underline transition-colors ${
-            isActive ? "bg-leaf/20 text-white" : "text-night-ink hover:bg-white/10 hover:text-white"
+          `rounded-lg px-2.5 py-1.5 text-[0.95rem] font-semibold whitespace-nowrap no-underline transition-colors ${
+            isActive ? "bg-leaf/15 text-white" : "text-night-link hover:bg-white/10 hover:text-white"
           }`
         }
       >
@@ -56,17 +56,17 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-night text-night-ink shadow-[0_1px_0_rgba(0,0,0,0.2)]">
-        <div className="mx-auto flex max-w-[1180px] flex-nowrap items-center gap-3 px-4 py-2.5">
+        <div className="mx-auto flex max-w-[1100px] flex-nowrap items-center gap-3 px-4 py-2.5">
           <div className="flex shrink-0 items-center gap-2.5">
             {session.mosque.logo && (
-              <img src={session.mosque.logo} alt="" className="size-8 rounded-full border-2 border-leaf object-cover" />
+              <img src={session.mosque.logo} alt="" className="size-[34px] shrink-0 rounded-full border-2 border-leaf object-cover" />
             )}
             <span className="font-serif text-[1.35rem] leading-none text-white">{session.mosque.name}</span>
             <span className="hidden text-[0.72rem] tracking-[0.14em] text-night-muted uppercase lg:inline">
               {t("app.office")}
             </span>
           </div>
-          <nav className="ml-auto flex flex-nowrap items-center gap-0.5 overflow-x-auto">
+          <nav className="ml-auto flex flex-nowrap items-center gap-0.5">
             {lien("/", "dashboard")}
             {lien("/sermons", "sermons")}
             {lien("/clips", "clips")}
@@ -86,7 +86,10 @@ export default function App() {
                 <option key={l.code} value={l.code} className="text-ink">{l.label}</option>
               ))}
             </select>
-            <span className="text-[0.85rem] text-night-muted">{session.user.name}</span>
+            <span className="text-[0.85rem] whitespace-nowrap text-night-muted">
+              {session.user.name}
+              <span className="hidden xl:inline"> · {session.user.role_label}</span>
+            </span>
             <a
               href="/logout"
               onClick={deconnexion}

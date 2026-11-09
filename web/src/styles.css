@@ -20,36 +20,39 @@
   --color-err-bg: #fbe9e7;
   --color-night-ink: #e7efe0;
   --color-night-muted: #a9bba9;
+  --color-night-link: #d5e2cf;
+  --color-dot-off: #6b7c6e;
+  --color-live-off: #f3c7c2;
   --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
   --font-sans: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-arabic: "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
-}
+/* Les règles de base doivent vivre dans @layer base : hors couche, elles l'emportent sur tout utilitaire
+   Tailwind (c'est ce qui rendait les liens de la barre vert foncé sur fond nuit). */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
 
-body {
+  body {
   background: var(--color-paper);
   color: var(--color-ink);
   font: 400 16px/1.5 var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  font-synthesis: none;
-  margin: 0;
-}
+    font-synthesis: none;
+    margin: 0;
+  }
 
-a {
-  color: var(--color-deep);
-}
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid var(--color-leaf);
+    outline-offset: 1px;
+  }
 
-input:focus,
-select:focus,
-textarea:focus {
-  outline: 2px solid var(--color-leaf);
-  outline-offset: 1px;
-}
-
-::selection {
-  background: var(--color-leaf);
-  color: var(--color-night);
+  ::selection {
+    background: var(--color-leaf);
+    color: var(--color-night);
+  }
 }
