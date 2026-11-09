@@ -192,6 +192,22 @@ def f_details(details: str) -> str:
 
 # ------------------------------------------------------------------ application
 
+def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
+    """Khutbas visibles (alias k) : celles de la mosquée ; pour un imam, seulement les siennes.
+
+    Module-level : l'API JSON (`api_v1`) applique exactement le même filtre que les pages.
+    """
+    if ctx.can("history_all"):
+        return "k.mosque_id = ?", (ctx.mosque["id"],)
+    return "k.mosque_id = ? AND k.imam_id = ?", (ctx.mosque["id"], ctx.user["id"])
+
+
+def count_clips(ctx: Ctx, status: str) -> int:
+    where, args = imam_filter(ctx)
+    return db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
+                            f"WHERE {where} AND c.status = ?", *args, status)["n"]
+
+
 def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False, auto_import_s: float = 0,
                regen_background: bool = True) -> FastAPI:
     """regen_background=False : la régénération d'un clip se fait dans la requête (tests)."""
@@ -311,17 +327,6 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         if not c:
             raise NotFound()
         return c, khutba_or_404(ctx, c["khutba_id"])
-
-    def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
-        """Khutbas visibles (alias k) : celles de la mosquée ; pour un imam, seulement les siennes."""
-        if ctx.can("history_all"):
-            return "k.mosque_id = ?", (ctx.mosque["id"],)
-        return "k.mosque_id = ? AND k.imam_id = ?", (ctx.mosque["id"], ctx.user["id"])
-
-    def count_clips(ctx: Ctx, status: str) -> int:
-        where, args = imam_filter(ctx)
-        return db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = ?",
-                      *args, status)["n"]
 
     # ---------------------------------------------------------- connexion
     @app.get("/login")
@@ -795,6 +800,16 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     @app.get("/health")
     def health():
         return {"ok": True}
+
+    # ---------------------------------------------------------- API JSON du front React
+    from . import api_v1            # import tardif : api_v1 lit ce module
+    app.include_router(api_v1.router)
+
+    # Le front React (web/dist) cohabite avec les pages actuelles, sous /app le temps du passage.
+    # `app.frontend` est la façon officielle de servir une application construite (FastAPI >= 0.110).
+    front = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+    if front.is_dir():
+        app.frontend("/app", directory=str(front))
 
     # ------------------------------------------------- anciennes adresses françaises
     # Conservées en redirection permanente : un signet ou un lien déjà envoyé continue de fonctionner.

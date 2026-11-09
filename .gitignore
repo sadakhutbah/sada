@@ -5,6 +5,8 @@ __pycache__/
 tools/bin/
 .pytest_cache/
 promo/node_modules/
+web/node_modules/
+web/dist/
 
 # certificat local HTTPS
 auto.key
