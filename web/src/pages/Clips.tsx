@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Card, Pill, Tabs } from "../ui";
@@ -38,10 +39,11 @@ export default function Clips() {
         ) : (
           <ul className="m-0 grid list-none p-0">
             {data.items.map((c: any) => (
-              <li
-                key={c.id}
-                className="flex items-start justify-between gap-4 border-b border-line py-3 last:border-0 last:pb-0"
-              >
+              <li key={c.id} className="border-b border-line last:border-0">
+                <Link
+                  to={`/clips/${c.id}`}
+                  className="flex items-start justify-between gap-4 py-3 no-underline hover:bg-paper-2/60"
+                >
                 <div>
                   <p className="m-0 text-[1rem] font-bold text-ink">
                     {t("clips.clip")} {c.idx}
@@ -56,7 +58,8 @@ export default function Clips() {
                   </p>
                   {c.why && <p className="m-0 text-[0.88rem] text-muted">{c.why}</p>}
                 </div>
-                <Pill statut={c.status} label={libelles[c.status] ?? c.status} />
+                  <Pill statut={c.status} label={libelles[c.status] ?? c.status} />
+                </Link>
               </li>
             ))}
           </ul>

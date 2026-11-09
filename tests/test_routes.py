@@ -29,7 +29,7 @@ NAVIGATION = {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*
 def test_les_adresses_du_front_retombent_sur_l_index(env):
     """Le routeur du front gère ses propres adresses : le serveur ne rend plus de page."""
     c = client(env)
-    for url in ("/sermons", "/clips", "/settings", "/sermons/12"):
+    for url in ("/sermons", "/clips", "/settings", "/sermons/12", "/clips/8"):
         r = c.get(url, headers=NAVIGATION)
         assert r.status_code == 200 and 'id="root"' in r.text, url
 

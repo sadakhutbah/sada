@@ -67,6 +67,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         "can_publish": publish.can_publish(c)[0],
         "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
         "caption": publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
+        "labels": AUDIT_LABELS,          # l'historique se lit en clair, pas en clés techniques
         "exists": bool(c["file_path"]) and Path(c["file_path"]).exists(),
         "status_labels": content.STATUS_LABELS,
     }

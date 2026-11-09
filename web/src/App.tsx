@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Sermons from "./pages/Sermons";
 import Clips from "./pages/Clips";
+import ClipDetail from "./pages/ClipDetail";
 import Publications from "./pages/Publications";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
@@ -112,6 +113,7 @@ export default function App() {
           <Route path="/sermons" element={<Sermons />} />
           <Route path="/sermons/:id" element={<Sermons />} />
           <Route path="/clips" element={<Clips />} />
+          <Route path="/clips/:id" element={<ClipDetail />} />
           <Route path="/publications" element={<Publications />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/users" element={<Users />} />

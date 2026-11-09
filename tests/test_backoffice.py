@@ -197,6 +197,23 @@ def test_matrice_des_droits(env, role, url, code):
     assert client(env, role).get(f"/api/v1{url}").status_code == code
 
 
+def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
+    """Écran de lecture : la vidéo se sert, la fiche porte les segments et l'historique en clair."""
+    c = client(env, "admin")
+    cid = clip_ids(env)[0]
+    d = c.get(f"/api/v1/clips/{cid}").json()
+    assert d["exists"] is True and d["clip"]["version"] == 1
+    assert d["can_validate"] is True
+    assert d["labels"]["clip.valide"] == "Clip validé"   # l'historique se lit, pas en clés techniques
+    assert d["status_labels"]["a_valider"]
+    assert len(d["segments"]) >= 1
+    assert c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"}).status_code == 200
+    assert [a["action"] for a in c.get(f"/api/v1/clips/{cid}").json()["history"]][:1] == ["clip.valide"]
+
+    r = c.get(f"/media/clip/{cid}.mp4")
+    assert r.status_code == 200 and r.content[4:12] == b"ftypmp42"
+
+
 def test_imam_voit_ses_khutbas_seulement(env):
     kid, cid = env["kid"], clip_ids(env)[0]
     mine = client(env, "imam")
