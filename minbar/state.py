@@ -150,7 +150,8 @@ class Machine:
         self.grace_until: Optional[float] = None
         self.grace_reason: Optional[str] = None
         self.extend_until_t: float = 0.0
-        self.janaza_name: Optional[str] = None
+        self.janaza_name: Optional[str] = None   # fiche janaza : nom du défunt et mention (accord de la famille)
+        self.janaza_info: Optional[str] = None
         self.paused_from: Optional[State] = None
         self.last_reason = ""
 
@@ -184,7 +185,7 @@ class Machine:
         if new != State.PRIERE:
             self.paused_from = None
         if old == State.JANAZA and self.paused_from is None:
-            self.janaza_name = None
+            self.janaza_name = self.janaza_info = None
         if self.live and new not in (State.KHUTBA, State.DARS, State.JANAZA) and self.paused_from is None:
             self._close(sig, reason)        # la session ouverte s'arrête dès qu'on quitte son écran (sauf pause)
         if new in (State.KHUTBA, State.DARS) and not (self.live and self.live.status == "live"):
@@ -362,10 +363,18 @@ class Machine:
         return "live du jour annulé"
 
     def _janaza(self, sig, arg):
-        self.janaza_name = (arg or None)
+        """arg = « nom » ou « nom|mention » : la fiche saisie au tableau de bord (champs facultatifs).
+
+        Rien n'est nominatif sans le consentement de la famille : un champ vide reste vide.
+        """
+        name, _, info = (arg or "").partition("|")
+        name, info = name.strip()[:80] or None, info.strip()[:60] or None
+        if not name:
+            info = None                     # une mention seule n'a pas de sens sans nom
+        self.janaza_name, self.janaza_info = name, info
         self.override = True
         self._go(State.JANAZA, sig, "commande janaza")
-        return "mode Janaza (pas de bandeau ; exclue du pipeline IA)"
+        return "mode Janaza (écran plein ; exclue du pipeline IA)"
 
     COMMANDS = {"start": _start, "stop": _stop, "pause": _pause, "resume": _resume, "auto": _auto, "scene": _scene,
                 "extend": _extend, "skip": _skip_cmd, "cancel": _cancel, "janaza": _janaza}
@@ -471,7 +480,7 @@ class Machine:
             "stream_on": self.stream_on,
             "next_session": s.strftime("%H:%M") if s else None,
             "last_reason": self.last_reason,
-            "janaza_name": self.janaza_name,
+            "janaza_name": self.janaza_name, "janaza_info": self.janaza_info,
             "kind": self.kind,
             "event": self.rec.event() if self.rec else None,
             "sessions": self.sessions_dicts(),

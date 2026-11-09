@@ -25,7 +25,9 @@ class Command:
 # Commandes de l'orchestrateur (minbar.state.Machine.COMMANDS) proposées sur le tableau de bord.
 COMMANDS = {
     "extend": Command("+5 min", "leaf", params=(("min", "5"),)),
-    "janaza": Command("Janaza", "light", "Basculer sur l'écran Salat al-Janaza ?"),
+    "janaza": Command("Déclarer une janaza", "light",
+                      "Basculer sur l'écran Salat al-Janaza ?"),
+
     "stop": Command("Arrêter", "danger", "Arrêter le live maintenant ?"),
     "cancel": Command("Annuler aujourd'hui", "light",
                       "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées."),
@@ -59,12 +61,15 @@ def status(mosque: dict) -> dict:
     return _call(mosque, "GET", "status")
 
 
-def command(mosque: dict, cmd: str, arg: str | None = None) -> dict:
+def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = None) -> dict:
+    """arg : nom du défunt (janaza) ou minutes (extend) ; info : mention de la fiche janaza."""
     if cmd not in COMMANDS:
         raise OrchestratorError("commande inconnue")
     params = dict(COMMANDS[cmd].params)
     if arg:
         params["name"] = arg[:80]
+    if info and arg:                    # une mention seule n'a pas de sens sans nom
+        params["info"] = info[:60]
     return _call(mosque, "POST", cmd, params or None)
 
 
@@ -84,6 +89,7 @@ def summarize(st: dict) -> dict:
         "clock": st.get("clock"), "session": session, "next_session": st.get("next_session"),
         "stream_on": bool(st.get("stream_on")), "mic": bool(st.get("mic")), "override": bool(st.get("override")),
         "last_reason": st.get("last_reason") or "", "run_id": st.get("run_id"),
+        "janaza_name": st.get("janaza_name"), "janaza_info": st.get("janaza_info"),
         "encoder_alive": bool((st.get("encoder") or {}).get("alive")),
         "vad_connected": bool((st.get("vad") or {}).get("connected")),
         "sessions": [{"planned": s.get("planned"), "status": SESSION_LABELS.get(s.get("status"), s.get("status")),

@@ -369,10 +369,11 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         if cmd not in live.COMMANDS:
             raise NotFound()
         arg = (f.get("name") or "").strip() or None
+        info = (f.get("info") or "").strip() or None      # fiche janaza : mention sous le nom
         try:
-            r = live.command(ctx.mosque, cmd, arg)
+            r = live.command(ctx.mosque, cmd, arg, info)
             db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=live.COMMANDS[cmd].label,
-                     defunt=arg, reponse=r.get("message"), etat=r.get("state"))
+                     defunt=arg, mention=info, reponse=r.get("message"), etat=r.get("state"))
             ctx.flash(f"{live.COMMANDS[cmd].label} : {r.get('message', 'ok')}")
         except live.OrchestratorError as e:
             db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, commande=live.COMMANDS[cmd].label, erreur=str(e))

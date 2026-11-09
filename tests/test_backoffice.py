@@ -255,6 +255,21 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
     assert len(log) == 4 and all(a["user_id"] == env["ids"]["imam"] for a in log)
 
 
+def test_fiche_janaza_depuis_le_tableau_de_bord(env, orch):
+    """La fiche janaza (nom + mention) part à l'orchestrateur, vide si la famille n'a rien autorisé."""
+    c = client(env, "imam")
+    page = c.get("/").text
+    assert 'name="name"' in page and 'placeholder="ex. Ahmed Benali"' in page
+    assert 'name="info"' in page and "accord de la famille" in page
+    r = c.post("/live/janaza", data={"csrf": csrf(c, "/"), "name": " Ahmed Benali ", "info": "67 ans"})
+    assert r.status_code == 303
+    assert orch.calls[-1] == ("janaza", "Ahmed Benali|67 ans")
+    # un nom sans mention, puis une mention seule (ignorée sans nom)
+    c.post("/live/janaza", data={"csrf": csrf(c, "/"), "name": "Karim", "info": ""})
+    c.post("/live/janaza", data={"csrf": csrf(c, "/"), "name": "", "info": "67 ans"})
+    assert orch.calls[-2:] == [("janaza", "Karim"), ("janaza", None)]
+
+
 def test_regeneration_refusee_sans_correction():
     """Le bouton n'est proposé que sur un clip corrigé ; un POST direct ne doit pas écraser une validation."""
     from minbar.backoffice import content

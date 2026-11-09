@@ -22,9 +22,25 @@
   {% endif %}
   {% if ctx.can("live") %}
   <div class="controls">
-    {% for key, c in LIVE_COMMANDS.items() %}<form method="post" action="/live/{{ key }}"{% if c.confirm %} data-confirm="{{ c.confirm }}"{% endif %}><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn {{ c.style }}" {{ "disabled" if not live.ok }}>{{ c.label }}</button></form>
+    {% for key, c in LIVE_COMMANDS.items() if key != "janaza" %}<form method="post" action="/live/{{ key }}"{% if c.confirm %} data-confirm="{{ c.confirm }}"{% endif %}><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn {{ c.style }}" {{ "disabled" if not live.ok }}>{{ c.label }}</button></form>
     {% endfor %}
   </div>
+  {% if "janaza" in LIVE_COMMANDS %}
+  <details class="fiche" {% if live.janaza_name %}open{% endif %}>
+    <summary>{{ LIVE_COMMANDS["janaza"].label }}{% if live.janaza_name %} · {{ live.janaza_name }}{% endif %}</summary>
+    <form method="post" action="/live/janaza" data-confirm="Basculer sur l'écran Salat al-Janaza ?">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="j-name">Nom du défunt</label>
+      <input type="text" id="j-name" name="name" maxlength="80" autocomplete="off"
+             placeholder="ex. Ahmed Benali" {% if not live.ok %}disabled{% endif %}>
+      <label for="j-info">Mention</label>
+      <input type="text" id="j-info" name="info" maxlength="60" autocomplete="off"
+             placeholder="ex. 67 ans · père de notre frère Karim" {% if not live.ok %}disabled{% endif %}>
+      <p class="muted small">Laissez vide pour l'écran générique. Le nom et la mention n'apparaissent qu'avec l'accord de la famille.</p>
+      <button class="btn {{ LIVE_COMMANDS["janaza"].style }}" {{ "disabled" if not live.ok }}>Déclarer la janaza</button>
+    </form>
+  </details>
+  {% endif %}
   {% endif %}
 </section>
 

@@ -128,11 +128,11 @@ class Orchestrator:
             spec = SCENES[m.scene]
             ev = m.rec.event() if m.scene == "dars" and m.rec is not None else None
             nxt = self._next_event(now) if m.scene in ("dars_fin", "entracte") else None
-            key = (m.scene, m.session, m.janaza_name, (ev or {}).get("title"),
+            key = (m.scene, m.session, m.janaza_name, m.janaza_info, (ev or {}).get("title"),
                    getattr(nxt, "starts", None), now.strftime("%H:%M:%S") if spec.ticking else None)
             if key != self._shown_key:
                 self._shown_key = key
-                moment = Moment(now, m.session, m.janaza_name, event=ev, next_event=nxt)
+                moment = Moment(now, m.session, m.janaza_name, m.janaza_info, event=ev, next_event=nxt)
                 enc.show(m.scene, spec.full, self.renderer.content(m.scene, moment))
             if spec.mic != enc.mic_on:
                 enc.mic(spec.mic)

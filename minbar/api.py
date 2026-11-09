@@ -2,7 +2,7 @@
 
 GET  /status
 POST /<commande>?name=...|min=...   commandes de Machine.COMMANDS (ex. /extend?min=5, /scene?name=priere,
-                                    /janaza?name=... : nom du défunt seulement avec l'accord de la famille)
+                                    /janaza?name=...[&info=...] : nom et mention du défunt, seulement avec l'accord de la famille)
 GET  /  : petite page de contrôle (/?token=... si un jeton est configuré)
 """
 from __future__ import annotations
@@ -70,6 +70,8 @@ def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPSer
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             cmd = u.path.strip("/")
             arg = q.get("name") or q.get("min")
+            if q.get("info"):                       # fiche janaza : « nom|mention »
+                arg = f'{q.get("name", "")}|{q["info"]}'
             if cmd not in Machine.COMMANDS:
                 return self._send(404, {"error": "commande inconnue"})
             self._send(200, {"ok": True, **orch.manual(cmd, arg)})

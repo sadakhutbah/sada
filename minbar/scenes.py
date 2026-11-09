@@ -506,16 +506,15 @@ class SceneRenderer:
     def _janaza(self, m: "Moment") -> Image.Image:
         """Écran plein dédié à la prière funéraire : sobre, sans caméra ni bandeau.
 
-        Le nom du défunt n'apparaît que s'il a été saisi (accord de la famille) ; sinon la carte
-        reste générique. Le micro reste ouvert : la prière s'entend, l'image est remplacée.
+        La fiche saisie au tableau de bord n'apparaît que si elle l'a été (accord de la famille) :
+        nom en titre, mention en second. Sinon la carte reste générique. Le micro reste ouvert :
+        la prière s'entend, l'image est remplacée.
         """
-        name = m.janaza_name
-        return self._full_content(
-            name or "Prière funéraire",
-            "" if name else "La prière n'est pas diffusée.",
-            "",
-            "Le direct reprendra après la prière, in sha Allah.",
-            eyebrow="Salat al-Janaza", arabic=AR_JANAZA)
+        name, info = m.janaza_name, m.janaza_info
+        sub = (info or "") if name else "La prière n'est pas diffusée."
+        return self._full_content(name or "Prière funéraire", sub, "",
+                                  "Le direct reprendra après la prière, in sha Allah.",
+                                  eyebrow="Salat al-Janaza", arabic=AR_JANAZA)
 
     def content(self, scene: str, m: "Moment") -> Image.Image:
         """Calque de contenu de la scène ; l'encodeur le pose sur le fond commun si la scène est un écran plein."""
@@ -529,6 +528,7 @@ class Moment:
     now: dt.datetime
     planned: Optional[dt.datetime] = None
     janaza_name: Optional[str] = None
+    janaza_info: Optional[str] = None   # mention sous le nom (âge, qualité…), même accord de la famille
     event: Optional[dict] = None        # dars / conférence en cours : title, speaker, series, session_no, kind
     next_event: Optional["EventInstance"] = None   # prochaine occurrence, pour l'écran de fin et l'entracte
 
