@@ -1,4 +1,4 @@
-.PHONY: setup test demo demo-short pipeline clean backoffice
+.PHONY: setup test demo demo-short pipeline clean backoffice bac
 PY=.venv/bin/python
 
 setup:
@@ -15,6 +15,10 @@ demo:
 # Démo courte : extrait de 5 min de khutba (~15 min)
 demo-short:
 	CUT=300 ./demo.sh
+
+# Bac à sable : écrans rendus en direct (http://127.0.0.1:8088) + tableau de bord (8090, base data/sandbox/bo.db)
+bac:
+	$(PY) tools/bac_a_sable.py
 
 # Back-office web (http://<machine>:8090) ; créer d'abord un admin : $(PY) -m minbar.backoffice create-admin --username admin
 backoffice:
