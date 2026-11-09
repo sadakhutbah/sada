@@ -29,7 +29,7 @@ from .. import paths
 DEFAULT_URL = "http://127.0.0.1:11434/v1"
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
 ANTHROPIC_VERSION = "2023-06-01"
-CONFIG_KEYS = ("enabled", "url", "model", "protocol")
+CONFIG_KEYS = ("enabled", "url", "model", "protocol", "key")
 
 # réglage propre au processus (back-office, tests) : prioritaire sur l'environnement
 _OVERRIDE: dict = {}
@@ -49,12 +49,19 @@ def config() -> dict:
 
 
 def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "") -> None:
-    """Écrit le réglage du modèle (fichier local, lisible par le pipeline lancé à côté)."""
+    """Écrit le réglage du modèle (fichier local, lisible par le pipeline lancé à côté).
+
+    La clé d'API n'est jamais écrite ici : absente du formulaire web, elle n'est que conservée si elle a été
+    posée à la main dans le fichier (droits 600).
+    """
     p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
+    data = {"enabled": bool(enabled), "url": url.strip(), "model": model.strip(), "protocol": protocol.strip()}
+    if (old_key := config().get("key")):
+        data["key"] = old_key
     tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"enabled": bool(enabled), "url": url.strip(), "model": model.strip(),
-                               "protocol": protocol.strip()}, indent=1), encoding="utf-8")
+    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    tmp.chmod(0o600)
     os.replace(tmp, p)
 
 
@@ -103,7 +110,8 @@ def settings(url: str | None = None, model: str | None = None, key: str | None =
     proto = (protocol or _OVERRIDE.get("protocol") or os.environ.get("MINBAR_LLM_PROTOCOL")
              or cfg.get("protocol") or "").strip().lower() or _guess_protocol(url)
     return Settings(url=url, model=model,
-                    key=key if key is not None else os.environ.get("MINBAR_LLM_API_KEY", ""), protocol=proto)
+                    key=key if key is not None else (os.environ.get("MINBAR_LLM_API_KEY") or cfg.get("key", "")),
+                    protocol=proto)
 
 
 def _guess_protocol(url: str) -> str:

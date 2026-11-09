@@ -45,7 +45,9 @@
       <option value="anthropic" {{ "selected" if llm.protocol == "anthropic" }}>Anthropic (/messages)</option>
     </select>
     <div class="help">En service : <b>{{ llm_now }}</b>{{ "" if llm_on else " (coupé)" }}. Les variables
-      <span class="mono">MINBAR_LLM_*</span> et les options <span class="mono">--llm…</span> restent prioritaires.</div>
+      <span class="mono">MINBAR_LLM_*</span> et les options <span class="mono">--llm…</span> restent prioritaires.
+      Si le serveur exige une clé, elle se pose une fois dans le fichier local (droits 600) ou par
+      <span class="mono">MINBAR_LLM_API_KEY</span> — jamais par ce formulaire.</div>
     <p><button class="btn">Enregistrer</button></p>
   </form>
   <form method="post" action="/admin/modele/tester"><input type="hidden" name="csrf" value="{{ csrf }}">

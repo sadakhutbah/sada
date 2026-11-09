@@ -90,8 +90,13 @@ export MINBAR_LLM_API_KEY="…"                          # seulement si le serve
 
 En pratique, tout se règle depuis le back-office : **Réglages → Modèle de langage** (bouton « Tester la
 connexion » compris). Il écrit `data/llm.json`, que le pipeline relit à chaque lancement ; les variables
-d'environnement et les options de ligne de commande restent prioritaires sur ce fichier. Aucune clé d'API
-n'est enregistrée par le web : si le serveur en exige une, elle se pose par `MINBAR_LLM_API_KEY`.
+d'environnement et les options de ligne de commande restent prioritaires sur ce fichier. Si le serveur
+exige une clé, elle se pose une fois hors du formulaire : `MINBAR_LLM_API_KEY`, ou la clé `key` du fichier
+local (droits 600) — le web ne l'écrit jamais. Exemple d'API distante, compatible OpenAI :
+
+```json
+{"enabled": true, "url": "https://api.deepseek.com/v1", "model": "deepseek-flash", "protocol": "openai"}
+```
 
 Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-instruct` ou
 `modèle : désactivé (repli sans IA)`). La méthode réellement employée est aussi écrite dans l'en-tête

@@ -127,6 +127,19 @@ def test_fichier_du_backoffice_et_priorite(serveur, tmp_path, monkeypatch):
     assert llm.enabled() is True
 
 
+def test_la_cle_locale_survit_a_un_enregistrement(tmp_path, monkeypatch):
+    """La clé posée à la main dans le fichier n'est ni effacée ni réécrite par le formulaire ; le fichier est privé."""
+    cfg = tmp_path / "llm.json"
+    cfg.write_text(json.dumps({"enabled": True, "url": "https://api.exemple/v1", "model": "m", "key": "sk-test"}))
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
+    monkeypatch.delenv("MINBAR_LLM_API_KEY", raising=False)
+    llm.save_config(enabled=True, url="https://api.exemple/v1", model="autre", protocol="openai")
+    d = json.loads(cfg.read_text())
+    assert d["key"] == "sk-test" and d["model"] == "autre"
+    assert oct(cfg.stat().st_mode)[-3:] == "600"
+    assert llm.settings().key == "sk-test"
+
+
 def test_fichier_illisible_ignore(tmp_path, monkeypatch):
     cfg = tmp_path / "llm.json"
     cfg.write_text("{ pas du json")
