@@ -1,6 +1,8 @@
 """Dars et conférences : entrée dédiée, fin souple, écran de fin, aucun mélange avec la khutba."""
 import datetime as dt
 
+import pytest
+
 from minbar.state import Machine, MachineParams, SCENE_OF, Signals, State
 
 D = dt.date(2026, 11, 10)                    # mardi
@@ -40,8 +42,7 @@ def mk(**params):
     logs = []
     meta = [{"kind": "dars", "title": "Tafsir Al-Kahf", "speaker": "Imam Abdallah",
              "series": "Tafsir Al-Kahf", "session_no": 7}]
-    m = Machine([at(19, 0)], MachineParams(**params), log=logs.append,
-                kinds=["dars"], meta=meta)
+    m = Machine([at(19, 0)], MachineParams(**params), log=logs.append, extras=meta)
     return m, logs
 
 
@@ -88,7 +89,7 @@ def test_garde_fou_duree_maximale_dars():
 
 
 def test_une_khutba_reste_une_khutba():
-    m = Machine([at(19, 0)], MachineParams(), kinds=["khutba"], meta=[{}])
+    m = Machine([at(19, 0)], MachineParams(), extras=[{"kind": "khutba"}])
     d = Drv(m, at(18, 59))
     d.run(5)
     d.run(75, voice=True)
@@ -110,3 +111,10 @@ def test_commande_start_en_dars():
     d.step()
     m.command("start", d.sig())
     assert m.state == State.DARS and m.scene == "dars"
+
+
+def test_extras_et_sessions_doivent_s_aligner():
+    """Un désalignement silencieux transformerait un dars en khutba : la machine refuse."""
+    with pytest.raises(ValueError):
+        Machine([at(19, 0), at(20, 0)], MachineParams(),
+                extras=[{"kind": "dars"}])

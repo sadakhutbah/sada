@@ -52,9 +52,9 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
     o.notes.write_text(md, encoding="utf-8")
     log(f"notes -> {o.notes} (résumé : {extra['summary'].get('method')})")
     manifest = []
+    o.clips.mkdir(exist_ok=True)
+    trs = trmod.translate_session(segs, ms, o.translations, use_llm, log=log)
     if nclips:
-        o.clips.mkdir(exist_ok=True)
-        trs = trmod.translate_session(segs, ms, o.translations, use_llm, log=log)
         vsrc, voff = src, start
         if clip_video:
             vsrc = clip_video

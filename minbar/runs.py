@@ -54,8 +54,8 @@ def latest(state_dir: Path = paths.STATE) -> Path | None:
     return runs[-1] / SESSIONS if runs else None
 
 
-def is_khutba(s: dict) -> bool:
-    """La Janaza n'a aucun contenu dérivé (ni transcription, ni clips, ni import)."""
+def produces_content(s: dict) -> bool:
+    """La session alimente le pipeline (transcription, clips, import) : tout sauf la Janaza."""
     return s.get("status") != "janaza"
 
 

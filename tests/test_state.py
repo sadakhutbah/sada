@@ -1,6 +1,6 @@
 import datetime as dt
 from minbar import runs
-from minbar.state import Machine, MachineParams, Signals, State
+from minbar.state import STATE_LABELS, Machine, MachineParams, Signals, State
 
 D = dt.date(2026, 11, 6)
 
@@ -167,7 +167,7 @@ def test_janaza_excluded_from_pipeline():
     m.command("janaza", d.sig(), "X")
     assert m.state == State.JANAZA
     j = [r for r in m.sessions_dicts() if r["status"] == "janaza"]
-    assert j and not runs.is_khutba(j[0])
+    assert j and not runs.produces_content(j[0])
     d.run(100, voice=False)
     assert m.state == State.JANAZA     # jamais coupée automatiquement
     m.command("stop", d.sig())
@@ -318,6 +318,12 @@ def test_nothing_comes_back_after_fin():
     m.command("stop", d.sig())
     assert m.status()["next_session"] is None
     assert "aucune session" in m.command("skip", d.sig())
+
+
+def test_chaque_etat_a_un_libelle_d_affichage():
+    """Un état sans libellé s'affiche brut dans le back-office (« DARS »)."""
+    assert set(STATE_LABELS) == set(State)
+    assert all(v and v != k.value for k, v in STATE_LABELS.items())
 
 
 def test_auto_after_janaza_hands_back_the_next_session():

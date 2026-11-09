@@ -12,7 +12,7 @@ import urllib.request
 from dataclasses import dataclass
 
 from .. import runs
-from ..state import State
+from ..state import STATE_LABELS
 
 @dataclass(frozen=True)
 class Command:
@@ -31,11 +31,6 @@ COMMANDS = {
                       "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées."),
 }
 
-STATE_LABELS = {
-    State.IDLE: "En veille", State.ARME: "Armé (fenêtre ouverte)", State.AVANT: "Début imminent",
-    State.KHUTBA: "Khutba en direct", State.PRIERE: "Prière en cours", State.ENTRACTE: "Entracte",
-    State.TERMINE: "Terminé", State.JANAZA: "Salat al-Janaza", State.FIN: "Live terminé",
-}
 SESSION_LABELS = {"pending": "à venir", "live": "en direct", "done": "terminée", "skipped": "sautée", "janaza": "janaza"}
 
 
@@ -77,7 +72,7 @@ def summarize(st: dict) -> dict:
     """Statut brut de l'orchestrateur -> données d'affichage."""
     sessions = st.get("sessions") or []
     live = next((s for s in sessions if s.get("status") == "live"), None)
-    planned = [s for s in sessions if runs.is_khutba(s)]
+    planned = [s for s in sessions if runs.produces_content(s)]
     cur = live or next((s for s in planned if s.get("status") == "pending"), None)
     if cur is not None:
         n = planned.index(cur) + 1 if cur in planned else None

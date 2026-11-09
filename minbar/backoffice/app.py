@@ -473,7 +473,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         refs = [r["verse"]["ref"] for r in rows if r["verse"] and not r["verse"]["ambiguous"]]
         return render(ctx, "clip.html", c=c, k=k, rows=rows, regen_ok=regen_ok, regen_why=regen_why, hist=hist, pubs=pubs,
                       decider=decider, connectors=publish.connector_rows(ctx.conn, ctx.mosque),
-                      caption=publish.default_caption(c, k, ctx.mosque, list(dict.fromkeys(refs))),
+                      caption=publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
                       exists=Path(c["file_path"]).exists(), validate_ok=content.can_validate(c)[0], publish_ok=publish.can_publish(c)[0])
 
     @app.post("/clips/{cid}/decision")

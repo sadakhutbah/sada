@@ -346,3 +346,4 @@ class Encoder:
             finally:
                 s.close()
             time.sleep(1.0)
+        self.log(f"ZMQ « {msg} » abandonné : aucune réponse du graphe audio")

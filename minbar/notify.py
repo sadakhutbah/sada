@@ -6,6 +6,7 @@ dans le journal (« à blanc ») et le reste du direct n'est pas affecté.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import urllib.request
 from typing import Callable, Optional
@@ -14,19 +15,25 @@ from .state import Machine, State
 
 # états qui méritent un message (les allers-retours ARME/IDLE sont du bruit)
 NOTIFY_STATES = {State.ARME, State.KHUTBA, State.DARS, State.FIN}
+# tournure d'un type de session dans une phrase
+KIND_NOUNS = {"khutba": "la khutba", "dars": "le dars", "conference": "la conférence"}
+
+
+def should_send(state: State, m: Machine, now: dt.datetime) -> bool:
+    """Faut-il notifier ce passage d'état ? Un rappel ne concerne qu'une session encore à venir."""
+    if state not in NOTIFY_STATES:
+        return False
+    return state is not State.ARME or (m.session is not None and m.session > now)
 
 
 def message_for(state: State, m: Machine) -> Optional[str]:
     """Texte à envoyer à l'imam pour ce changement d'état ; None si rien à dire."""
     ref = m.session.strftime("%H:%M") if m.session else "—"
-    ev = m.rec
-    quoi = "le dars" if m.kind == "dars" else "la khutba"
+    quoi = KIND_NOUNS.get(m.kind, f"le {m.kind}")
+    titre = f" · {m.rec.title}" if m.rec is not None and m.rec.title else ""
     if state == State.ARME:
         return f"Rappel : {quoi} de {ref} approche, le direct se prépare."
-    if state == State.KHUTBA:
-        return f"Le direct a commencé ({quoi} de {ref})."
-    if state == State.DARS:
-        titre = f" — {ev.title}" if ev is not None and ev.title else ""
+    if state in (State.KHUTBA, State.DARS):
         return f"Le direct a commencé ({quoi} de {ref}{titre})."
     if state == State.FIN:
         fin = m.rec.end_reason if m.rec is not None else None

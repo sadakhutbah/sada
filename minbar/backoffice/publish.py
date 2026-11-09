@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import runs
+from ..events import kind_label
 from . import db
 
 
@@ -148,10 +149,10 @@ def connector_rows(conn, mosque: dict) -> list[dict]:
     return out
 
 
-def default_caption(clip: dict, khutba: dict, mosque: dict, verses: list[str]) -> str:
+def default_caption(khutba: dict, mosque: dict, verses: list[str]) -> str:
     kind = (khutba.get("kind") or "khutba")
     if kind != "khutba" and khutba.get("title"):
-        first = f"{'Dars' if kind == 'dars' else 'Conférence'} : {khutba['title']} — {mosque['name']}"
+        first = f"{kind_label(kind)} : {khutba['title']} — {mosque['name']}"
     else:
         first = f"{mosque['clip_title']} — {mosque['name']}"
     parts = [first, f"{khutba['date'] or ''} · {khutba['label']}".strip(" ·")]

@@ -5,7 +5,8 @@ from PIL import ImageChops
 
 from minbar.config import Config
 from minbar.events import EventInstance
-from minbar.scenes import SCENES, Moment, SceneRenderer
+from minbar.scenes import SCENE_LABELS, SCENES, Moment, SceneRenderer
+from minbar.state import SCENE_OF
 
 NOW = dt.datetime(2026, 11, 10, 19, 10)
 EV = {"kind": "dars", "title": "Tafsir de la sourate Al-Kahf", "speaker": "Imam Abdallah",
@@ -28,6 +29,12 @@ def test_dars_bandeau_et_ecran_de_fin():
 def test_scenes_dars_declarees():
     assert SCENES["dars"].full is False and SCENES["dars"].mic is True
     assert SCENES["dars_fin"].full is True and SCENES["dars_fin"].mic is False
+
+
+def test_les_tables_de_scenes_s_accordent():
+    """SCENES, SCENE_OF et les libellés sont trois registres tenus à la main : un nom oublié casse une page."""
+    assert set(SCENES) == {v for v in SCENE_OF.values() if v} == set(SCENE_LABELS)
+    assert all(SCENES[n].label == SCENE_LABELS[n] and SCENE_LABELS[n] for n in SCENES)
 
 
 def test_calque_de_dars_se_pose_sur_la_camera():

@@ -11,15 +11,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .scenes import SCENE_LABELS
 from .state import STATE_OF_SCENE, Machine
 
-# libellés des boutons de scène qui ne sont pas le nom de l'état capitalisé
-_SCENE_LABELS = {"dars_fin": "Fin dars", "khutba": "Khutba", "priere": "Prière"}
 # commandes à paramètre : un bouton par valeur (la scène janaza passe par la commande janaza, qui ouvre sa session)
 _VARIANTS = {
     "extend": [["extend?min=5", "+5 min"], ["extend?min=15", "+15 min"]],
-    "scene": [[f"scene?name={sc}", _SCENE_LABELS.get(sc, st.value.capitalize())]
-              for sc, st in STATE_OF_SCENE.items() if sc != "janaza"],
+    "scene": [[f"scene?name={sc}", SCENE_LABELS[sc]]
+              for sc in STATE_OF_SCENE if sc != "janaza"],
 }
 _BUTTONS = [b for c in Machine.COMMANDS for b in _VARIANTS.get(c, [[c]])]
 

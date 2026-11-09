@@ -59,7 +59,7 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
     todo = [(i, s) for i, s in ar if _seg_key(s["text"]) not in cache["seg"]]
     vtodo = [m for m in vms if verse_key(m) not in cache["verse_fr"]]
     if (todo or vtodo) and use_llm:
-        lines = "\n".join(f"{i}\t[{s['start']:.0f}s]\t{s['text']}" for i, s in ar)
+        lines = "\n".join(f"{i}\t[{s['start']:.0f}s]\t{s['text']}" for i, s in todo)
         vlines = "\n".join(f"{verse_key(m)}\tentendu : {m['heard']}\tHamidullah : {m['verse_fr']}" for m in vtodo) or "(aucun)"
         prompt = (
             "Tu prépares les sous-titres FRANÇAIS d'un court extrait vidéo d'une khutba du vendredi (sermon). "
@@ -81,7 +81,7 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
         log(f"traduction : {len(todo)} segment(s) arabes, {len(vtodo)} verset(s) via claude -p")
         d = llm.ask_json(prompt, timeout, log)
         if d:
-            for i, s in ar:
+            for i, s in todo:
                 e = (d.get("seg") or {}).get(str(i))
                 if isinstance(e, str):
                     e = {"fr": e, "coran": False}

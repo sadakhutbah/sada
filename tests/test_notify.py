@@ -1,7 +1,7 @@
 """Notifications à l'imam : messages, destinations, échec réseau sans conséquence sur le direct."""
 import datetime as dt
 
-from minbar.notify import Notifier, message_for
+from minbar.notify import Notifier, message_for, should_send
 from minbar.state import Machine, MachineParams, State
 
 D = dt.date(2026, 11, 10)
@@ -9,8 +9,8 @@ META = {"kind": "dars", "title": "Tafsir Al-Kahf", "speaker": "Imam Abdallah"}
 
 
 def mk(kind="khutba", meta=None):
-    return Machine([dt.datetime.combine(D, dt.time(19, 0))], MachineParams(),
-                   kinds=[kind], meta=[meta if meta is not None else {}])
+    extra = {"kind": kind, **(meta or {})}
+    return Machine([dt.datetime.combine(D, dt.time(19, 0))], MachineParams(), extras=[extra])
 
 
 def test_message_par_etat():
@@ -70,3 +70,11 @@ def test_notify_state_ignore_les_etats_sans_message():
     assert n.notify_state(State.AVANT, m) is False
     assert n.notify_state(State.ARME, m) is True
     assert len(sent) == 1
+
+
+def test_rappel_seulement_pour_une_session_a_venir():
+    m = mk()
+    assert should_send(State.ARME, m, dt.datetime(2026, 11, 10, 18, 50)) is True
+    assert should_send(State.ARME, m, dt.datetime(2026, 11, 10, 19, 5)) is False   # déjà passée : pas de rappel
+    assert should_send(State.AVANT, m, dt.datetime(2026, 11, 10, 18, 50)) is False
+    assert should_send(State.DARS, m, dt.datetime(2026, 11, 10, 19, 5)) is True

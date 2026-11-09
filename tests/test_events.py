@@ -5,6 +5,7 @@ import json
 import pytest
 
 from minbar import events as ev
+from minbar.state import Machine, MachineParams
 
 
 def D(y, m, d):
@@ -37,8 +38,19 @@ def test_recurrence_apres_isha():
     assert inst is not None
     assert inst.starts == dt.datetime(2026, 11, 10, 19, 0)   # isha 18:45 + 15 min
     assert inst.label == "Dars : Tafsir Al-Kahf"
-    assert inst.banner == "Tafsir Al-Kahf  ·  séance 7"
+    assert inst.as_event()["session_no"] == 7
     assert dars.instance(D(2026, 11, 11), TIMES) is None      # mercredi : rien
+
+
+def test_instance_porte_la_forme_canonique_de_l_evenement():
+    """as_event() alimente la machine : le numéro de séance du fichier arrive tel quel dans sessions.json."""
+    inst = prog()[0].instance(D(2026, 11, 10), TIMES)
+    assert inst is not None
+    m = Machine([inst.starts], MachineParams(), extras=[inst.as_event()])
+    rec = m.sessions_dicts()[0]
+    assert (rec["kind"], rec["title"], rec["series"], rec["session_no"]) == \
+        ("dars", "Tafsir Al-Kahf", "Tafsir Al-Kahf", 7)
+    assert rec["speaker"] == "Imam Abdallah"
 
 
 def test_recurrence_heure_absolue():
@@ -110,4 +122,4 @@ def test_ecriture_et_relecture(tmp_path):
     _l, err = ev.load(p)
     assert err is None
     inst = lst[0].instance(D(2026, 11, 10), TIMES)
-    assert inst is not None and inst.to_dict()["session"] == 7
+    assert inst is not None and inst.as_event()["session_no"] == 7

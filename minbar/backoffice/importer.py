@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 from .. import runs
+from ..events import kind_label
 from ..pipeline import notes, verses as verses_mod
 from ..pipeline.output import SessionOutput
 from . import db
@@ -46,7 +47,7 @@ def khutba_label(session: dict) -> str:
     kind = session.get("kind") or "khutba"
     title = (session.get("title") or "").strip()
     if kind != "khutba" and title:
-        label = f"{'Dars' if kind == 'dars' else 'Conférence'} — {title}"
+        label = f"{kind_label(kind)} — {title}"
         if session.get("session_no"):
             label += f" · séance {session['session_no']}"
         return label
@@ -70,7 +71,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
         if idx is None or not o.is_transcribed():
             continue
         s = recs.get(idx, {})
-        if not runs.is_khutba(s):
+        if not runs.produces_content(s):
             res["skipped"].append(sdir.name)
             continue
         rec_path, _ = runs.sources(data, s)

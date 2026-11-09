@@ -146,6 +146,8 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
 
 
 def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, background: bool = True) -> None:
+    if not (clip["needs_regen"] or clip["regen_state"] == "erreur"):
+        raise ValueError("aucune correction à appliquer : le clip est déjà validé")
     ok, why = can_regenerate(clip)
     if not ok:
         raise ValueError(f"régénération impossible : {why}")

@@ -43,13 +43,12 @@ def test_migration_ajoute_les_colonnes(tmp_path):
 
 
 def test_legende_dun_clip_de_dars():
-    clip = {"kind": "verset"}
     khutba = {"kind": "dars", "title": "Tafsir Al-Kahf", "label": "Dars — Tafsir Al-Kahf · séance 7",
               "date": "2026-11-10"}
-    cap = publish.default_caption(clip, khutba, MOSQUE, ["65:3"])
+    cap = publish.default_caption(khutba, MOSQUE, ["65:3"])
     assert cap.splitlines()[0] == "Dars : Tafsir Al-Kahf — Mosquée Exemple"
     assert "65:3" in cap
 
     khutba = {"kind": "khutba", "title": "", "label": "Session 1 — 12 h 30", "date": "2026-11-06"}
-    cap = publish.default_caption(clip, khutba, MOSQUE, [])
+    cap = publish.default_caption(khutba, MOSQUE, [])
     assert cap.splitlines()[0] == "Khutba du vendredi — Mosquée Exemple"

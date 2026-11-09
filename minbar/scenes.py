@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .paths import FONTS
-from .text import french_date, shaped, is_arabic_char, RAQM
+from .text import JOURS, french_date, shaped, is_arabic_char, RAQM
 
 if TYPE_CHECKING:                       # uniquement pour les annotations
     from .events import EventInstance
@@ -42,7 +42,6 @@ AR_KHUTBA = "خطبة الجمعة"
 AR_JUMUA = "صلاة الجمعة"
 AR_JAZAKUM = "جزاكم الله خيرا"
 AR_JANAZA = "صلاة الجنازة"
-JOURS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 AR_DARS = "درس"
 AR_CONF = "محاضرة"
 
@@ -108,11 +107,6 @@ def _runs(text: str) -> list[tuple[str, bool]]:
     if base_rtl:
         runs.reverse()
     return runs
-
-
-def _shape(text: str) -> tuple[str, dict]:
-    """Texte mono-écriture + options de d.text() (arabe : lettres liées et sens RTL)."""
-    return shaped(text)
 
 
 def _run_font(font, arabic: bool):
@@ -251,7 +245,7 @@ class SceneRenderer:
         out = []
         for seg, ar in _runs(text):
             f = _run_font(font, ar)
-            t, opts = _shape(seg)
+            t, opts = shaped(seg)
             opts.update({k: v for k, v in kw.items() if v is not None})
             out.append((t, f, opts, d.textlength(t, font=f, **opts)))
         return out
@@ -413,7 +407,7 @@ class SceneRenderer:
 
     def _entracte(self, m: "Moment") -> Image.Image:
         nxt = m.next_event
-        if nxt is not None and getattr(nxt, "kind", "khutba") != "khutba":
+        if nxt is not None and nxt.kind != "khutba":
             remaining = max(0, int((nxt.starts - m.now).total_seconds()))
             mi, se = divmod(remaining, 60)
             return self._full_content(f"Prochain cours à {_hm(nxt.starts)}", nxt.title, f"{mi:02d}:{se:02d}",
@@ -448,7 +442,7 @@ class SceneRenderer:
         bits = [self.cfg.mosque_name] if self.cfg.mosque_name else []
         if ev.get("speaker"):
             bits.append(ev["speaker"])
-        no = ev.get("session_no") or ev.get("session")
+        no = ev.get("session_no")
         if ev.get("series"):
             bits.append(ev["series"] + (f" · séance {no}" if no else ""))
         arabic = AR_CONF if ev.get("kind") == "conference" else AR_DARS
@@ -459,7 +453,7 @@ class SceneRenderer:
         nxt = m.next_event
         foot = "Merci de votre présence."
         if nxt:
-            jour = JOURS[nxt.starts.weekday()] if hasattr(nxt, "starts") else ""
+            jour = JOURS[nxt.starts.weekday()]
             foot = f"Prochain cours : {jour} {_hm(nxt.starts)} — {nxt.title}"
         return self._full_content("Dars terminé", "Qu'Allah vous récompense.", "", foot,
                                   eyebrow="Fin de la diffusion", arabic=AR_DARS)
@@ -550,16 +544,19 @@ class Scene:
     full: bool                  # écran plein : le fond commun masque la caméra
     mic: bool                   # micro du direct ouvert
     draw: Callable[[SceneRenderer, Moment], Image.Image]
+    label: str                  # libellé du bouton de contrôle : le nom de l'état ne convient pas toujours
     ticking: bool = False       # le contenu change avec l'heure (compte à rebours) : rendu à chaque seconde
 
 
 SCENES = {
-    "avant": Scene(full=True, mic=False, draw=SceneRenderer._avant),
-    "khutba": Scene(full=False, mic=True, draw=SceneRenderer._khutba),
-    "priere": Scene(full=True, mic=False, draw=SceneRenderer._priere),
-    "entracte": Scene(full=True, mic=False, draw=SceneRenderer._entracte, ticking=True),
-    "termine": Scene(full=True, mic=False, draw=SceneRenderer._termine),
-    "janaza": Scene(full=False, mic=True, draw=SceneRenderer._janaza),
-    "dars": Scene(full=False, mic=True, draw=SceneRenderer._dars),
-    "dars_fin": Scene(full=True, mic=False, draw=SceneRenderer._dars_fin),
+    "avant": Scene(full=True, mic=False, draw=SceneRenderer._avant, label="Avant"),
+    "khutba": Scene(full=False, mic=True, draw=SceneRenderer._khutba, label="Khutba"),
+    "priere": Scene(full=True, mic=False, draw=SceneRenderer._priere, label="Prière"),
+    "entracte": Scene(full=True, mic=False, draw=SceneRenderer._entracte, label="Entracte", ticking=True),
+    "termine": Scene(full=True, mic=False, draw=SceneRenderer._termine, label="Terminé"),
+    "janaza": Scene(full=False, mic=True, draw=SceneRenderer._janaza, label="Janaza"),
+    "dars": Scene(full=False, mic=True, draw=SceneRenderer._dars, label="Dars"),
+    "dars_fin": Scene(full=True, mic=False, draw=SceneRenderer._dars_fin, label="Fin dars"),
 }
+
+SCENE_LABELS = {name: sc.label for name, sc in SCENES.items()}

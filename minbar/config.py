@@ -52,7 +52,6 @@ class Config(MachineParams):
     presence_fps: float = 2.0           # images analysées par seconde (2 suffit, coût négligeable)
     presence_width: int = 160
     presence_height: int = 90
-    terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
     title: str = "Khutba du vendredi"
     dark_green: str = "#1E7A3C"
     # --- Notifications à l'imam (webhook ou Telegram ; rien n'est publié) ---

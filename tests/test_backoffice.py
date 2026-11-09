@@ -255,6 +255,22 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
     assert len(log) == 4 and all(a["user_id"] == env["ids"]["imam"] for a in log)
 
 
+def test_regeneration_refusee_sans_correction():
+    """Le bouton n'est proposé que sur un clip corrigé ; un POST direct ne doit pas écraser une validation."""
+    from minbar.backoffice import content
+    clip = {"id": 1, "mosque_id": 1, "version": 1, "needs_regen": 0, "regen_state": ""}
+    with pytest.raises(ValueError, match="aucune correction"):
+        content.start_regeneration(None, "x.db", clip, {"id": 1})
+
+
+def test_libelle_d_un_dars_et_commandes_proposees():
+    """Le tableau de bord nomme les états du dars et ne propose que des commandes de la machine."""
+    from minbar.backoffice import live
+    from minbar.state import Machine
+    assert live.summarize({"state": "DARS", "sessions": []})["state_label"] == "Dars en direct"
+    assert set(live.COMMANDS) <= set(Machine.COMMANDS)
+
+
 def test_commande_live_orchestrateur_absent(env):
     c = client(env, "responsable")
     assert "injoignable" in c.get("/").text

@@ -20,7 +20,7 @@ from .clock import SimClock, parse_hhmm
 from .config import Config
 from .encoder import Encoder
 from .scenes import SCENES, Moment, SceneRenderer
-from .state import Machine, Signals, State
+from .state import Machine, Signals
 from .presence import MotionGate, PresenceMonitor
 from .vad import VadMonitor
 
@@ -46,16 +46,14 @@ class Orchestrator:
             log.warning(ev_err)
         self.instances = events_mod.instances_on(self.program, day, self.prayer_times)
         sessions = jumua + [i.starts for i in self.instances]
-        kinds = ["khutba"] * len(jumua) + [i.kind for i in self.instances]
-        meta = [{}] * len(jumua) + [i.to_dict() for i in self.instances]
+        extras = [{} for _ in jumua] + [i.as_event() for i in self.instances]
         log.info("Sessions du jour (horloge mosquée) : %s", [s.strftime("%H:%M") for s in sessions])
         for i in self.instances:
             log.info("Programme : %s à %s — %s", i.label, i.starts.strftime("%H:%M"), i.speaker or "intervenant à préciser")
         self.renderer = SceneRenderer(cfg)
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())
-        self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position,
-                               kinds=kinds, meta=meta)
+        self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position, extras=extras)
         self.notifier = notify.from_config(cfg, log=log.info)
         self._notified_state = None
         if self.notifier.enabled:
@@ -107,16 +105,6 @@ class Orchestrator:
         return ["12:30", "13:30"]
 
     # --------------------------------------------------------------- événements
-    def _current_event(self):
-        """Dars ou conférence en cours (None pour une khutba)."""
-        s = self.machine.session
-        if s is None:
-            return None
-        for i in self.instances:
-            if i.starts == s:
-                return i
-        return None
-
     def _next_event(self, now: dt.datetime):
         """Prochain cours, annoncé sur l'écran de fin et pendant l'entracte."""
         found = events_mod.next_instances(self.program, now, count=1, days=21,
@@ -130,22 +118,19 @@ class Orchestrator:
         if m.scene is not None:
             now = self.clock.now()
             spec = SCENES[m.scene]
-            ev = self._current_event() if m.scene in ("dars", "entracte", "dars_fin") else None
+            ev = m.rec.event() if m.scene == "dars" and m.rec is not None else None
             nxt = self._next_event(now) if m.scene in ("dars_fin", "entracte") else None
-            key = (m.scene, m.session, m.janaza_name, getattr(ev, "title", None),
+            key = (m.scene, m.session, m.janaza_name, (ev or {}).get("title"),
                    getattr(nxt, "starts", None), now.strftime("%H:%M:%S") if spec.ticking else None)
             if key != self._shown_key:
                 self._shown_key = key
-                moment = Moment(now, m.session, m.janaza_name,
-                                event=ev.to_dict() if ev is not None else None, next_event=nxt)
+                moment = Moment(now, m.session, m.janaza_name, event=ev, next_event=nxt)
                 enc.show(m.scene, spec.full, self.renderer.content(m.scene, moment))
             if spec.mic != enc.mic_on:
                 enc.mic(spec.mic)
         if m.state != self._notified_state:
             self._notified_state = m.state
-            # un rappel ne concerne qu'une session encore à venir (une session déjà passée est sautée)
-            if m.state in notify.NOTIFY_STATES and (m.state is not State.ARME
-                                                    or (m.session is not None and m.session > self.clock.now())):
+            if notify.should_send(m.state, m, self.clock.now()):
                 self.notifier.notify_state(m.state, m)
         if m.stream_on and not enc.wanted:
             enc.start()

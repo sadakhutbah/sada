@@ -46,6 +46,13 @@ SCENE_OF = {
 }
 STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v}
 WAITING = (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE)
+# libellés d'affichage du back-office (états bruts : DARS, DARS_FIN…)
+STATE_LABELS = {
+    State.IDLE: "En veille", State.ARME: "Armé (fenêtre ouverte)", State.AVANT: "Début imminent",
+    State.KHUTBA: "Khutba en direct", State.PRIERE: "Prière en cours", State.ENTRACTE: "Entracte",
+    State.TERMINE: "Terminé", State.JANAZA: "Salat al-Janaza", State.DARS: "Dars en direct",
+    State.DARS_FIN: "Dars terminé", State.FIN: "Live terminé",
+}
 
 
 @dataclass
@@ -96,21 +103,31 @@ class SessionRec:
     series: str = ""
     session_no: Optional[int] = None
 
+    def event(self) -> Optional[dict]:
+        """Événement porté par la session (None pour une khutba ordinaire) ; même forme que EventInstance.as_event()."""
+        if self.kind == "khutba":
+            return None
+        return {"kind": self.kind, "title": self.title, "speaker": self.speaker,
+                "series": self.series, "session_no": self.session_no}
+
 
 class Machine:
     def __init__(self, sessions: list[dt.datetime], params: MachineParams | None = None,
                  log: Callable[[str], None] | None = None,
                  pos_fn: Callable[[], tuple[int, float]] | None = None,
-                 kinds: list[str] | None = None, meta: list[dict] | None = None):
+                 extras: list[dict] | None = None):
         """pos_fn() -> (n° de l'enregistrement, position en s) : où en est l'enregistrement du live.
 
-        `kinds` / `meta` suivent `sessions` (même ordre avant tri) : type et libellé de chaque session.
+        `extras` suit `sessions` (même ordre avant tri) : événement de chaque session (forme
+        `EventInstance.as_event()`, `{}` pour une khutba ordinaire). Aucune liste parallèle : le type
+        de la session est dans son événement.
         """
         self.p = params or MachineParams()
         order = sorted(range(len(sessions)), key=lambda i: sessions[i])
+        if extras is not None and len(extras) != len(sessions):
+            raise ValueError(f"extras ({len(extras)}) et sessions ({len(sessions)}) doivent avoir la même longueur")
         self.sessions = [sessions[i] for i in order]
-        kinds = [kinds[i] if kinds and i < len(kinds) else "khutba" for i in order]
-        meta = [meta[i] if meta and i < len(meta) else {} for i in order]
+        extras = [extras[i] if extras else {} for i in order]
         self.idx = 0
         self.state = State.IDLE
         self.override = False
@@ -118,8 +135,8 @@ class Machine:
         self.pos_fn = pos_fn or (lambda: (0, 0.0))
         self.records = []
         for i, s in enumerate(self.sessions):
-            m = meta[i] if i < len(meta) else {}
-            self.records.append(SessionRec(i, s.strftime("%H:%M"), kind=kinds[i] or "khutba",
+            m = extras[i]
+            self.records.append(SessionRec(i, s.strftime("%H:%M"), kind=m.get("kind") or "khutba",
                                            title=m.get("title", ""), speaker=m.get("speaker", ""),
                                            series=m.get("series", ""), session_no=m.get("session_no")))
         self.live: Optional[SessionRec] = None   # session ouverte (khutba ou janaza)
@@ -174,14 +191,14 @@ class Machine:
                     r.status, r.end_reason = "skipped", reason
             self.idx = len(self.sessions)
         if new == State.JANAZA and not (self.live and self.live.status == "janaza"):
-            # la Janaza ne produit AUCUN contenu dérivé (runs.is_khutba)
+            # la Janaza ne produit AUCUN contenu dérivé (runs.produces_content)
             r = self._extra("janaza", sig)
             r.status = "janaza"
             self._open(r, sig)
         self.log(f"ÉTAT {old.value} → {new.value}  ({reason})  [horloge {sig.now:%H:%M:%S}]")
 
     def _extra(self, kind: str, sig: Signals) -> SessionRec:
-        """Session hors programme (lancée à la main, janaza)."""
+        """Session hors programme, lancée à la main : c'est une khutba (la Janaza est marquée par son statut)."""
         r = SessionRec(len(self.records), f"{kind}@{sig.now:%H:%M}")
         self.records.append(r)
         return r
@@ -439,9 +456,7 @@ class Machine:
             "last_reason": self.last_reason,
             "janaza_name": self.janaza_name,
             "kind": self.kind,
-            "event": ({"kind": self.rec.kind, "title": self.rec.title, "speaker": self.rec.speaker,
-                       "series": self.rec.series, "session_no": self.rec.session_no}
-                      if self.rec and self.rec.kind != "khutba" else None),
+            "event": self.rec.event() if self.rec else None,
             "sessions": self.sessions_dicts(),
         }
 

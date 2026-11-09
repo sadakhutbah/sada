@@ -22,13 +22,19 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Optional
 
+from .text import JOURS
+
 KINDS = {"khutba", "dars", "conference"}
 PRAYERS = ("dhuhr", "asr", "maghrib", "isha")
-WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+KIND_LABELS = {"khutba": "Khutba", "dars": "Dars", "conference": "Conférence"}
+
+
+def kind_label(kind: str) -> str:
+    return KIND_LABELS.get(kind, kind)
 
 
 def parse_hhmm(value: str) -> dt.time:
@@ -60,21 +66,14 @@ class EventInstance:
     publish: bool = True
     uid: str = ""
 
-    def to_dict(self) -> dict:
-        d = asdict(self)
-        d["starts"] = self.starts.isoformat(timespec="minutes")
-        return d
+    def as_event(self) -> dict:
+        """Forme canonique d'un événement : les clés que lisent la machine et les scènes (celles de SessionRec)."""
+        return {"kind": self.kind, "title": self.title, "speaker": self.speaker,
+                "series": self.series, "session_no": self.session}
 
     @property
     def label(self) -> str:
-        kind = {"dars": "Dars", "conference": "Conférence", "khutba": "Khutba"}.get(self.kind, self.kind)
-        return f"{kind} : {self.title}" if self.title else kind
-
-    @property
-    def banner(self) -> str:
-        """Ligne de bandeau : série et numéro de séance si présents."""
-        bits = [b for b in (self.series, f"séance {self.session}" if self.session else "") if b]
-        return "  ·  ".join(bits)
+        return f"{kind_label(self.kind)} : {self.title}" if self.title else kind_label(self.kind)
 
 
 @dataclass
@@ -148,14 +147,14 @@ def _parse(raw: dict, idx: int) -> Event:
         if not isinstance(r, dict):
             raise ValueError(f"{where} : « recurrence » doit être un objet")
         wd = str(r.get("weekday", "")).strip().lower()
-        if wd not in WEEKDAYS:
-            raise ValueError(f"{where} : jour de récurrence inconnu {wd!r} (attendu : {WEEKDAYS})")
+        if wd not in JOURS:
+            raise ValueError(f"{where} : jour de récurrence inconnu {wd!r} (attendu : {JOURS})")
         after = str(r.get("after", "")).strip().lower() or None
         if after and after not in PRAYERS:
             raise ValueError(f"{where} : prière inconnue {after!r} (attendu : {PRAYERS})")
         if not after and not r.get("time"):
             raise ValueError(f"{where} : une récurrence demande « time » ou « after »")
-        rec = Recurrence(weekday=WEEKDAYS.index(wd), time=r.get("time"), after=after,
+        rec = Recurrence(weekday=JOURS.index(wd), time=r.get("time"), after=after,
                          offset_min=float(r.get("offset_min", 0) or 0))
     date = time = None
     if raw.get("date"):
