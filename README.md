@@ -47,6 +47,27 @@ Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug v
 - **Connecteurs** : seul « Dossier local » publie en V1 (copie du clip + fiche JSON dans `data/published/<mosquée>/<date>/`).
   Facebook, YouTube et Instagram sont présents mais désactivés : aucun appel externe.
 
+## Présence au minbar
+
+Le démarrage automatique exige deux signaux : la voix (`vad`, webrtcvad) et, si elle est activée, la
+**présence** devant le minbar. La v1 ne fait pas tourner YOLO : un ffmpeg lit la caméra à 2 i/s en
+160×90 niveaux de gris, et l'on compare chaque image à la précédente dans une zone choisie. Aucune image
+n'est écrite, aucun visage n'est calculé ; il ne sort qu'un score et un booléen.
+
+```yaml
+# config.yaml
+presence: motion            # off | motion
+presence_roi: [0.25, 0.10, 0.75, 0.95]   # zone du minbar, en fractions (x0, y0, x1, y1)
+presence_threshold: 0.004   # part de pixels de la zone qui changent pour dire « mouvement »
+presence_hold_s: 8          # un mouvement vaut « présent » pendant 8 s
+presence_pixel_delta: 12    # écart de niveau (0–255) compté comme un vrai changement
+```
+
+Calibrage (une fois, depuis la caméra réelle) : lancer `python -m minbar.orchestrator --presence motion`,
+puis `curl -s 127.0.0.1:8088/status` → `presence.score` au repos (0) et quand quelqu'un monte au minbar.
+Le seuil se met à mi-chemin entre les deux. Si la caméra ne donne plus d'image, `presence.present` vaut
+`null` : la machine ignore alors ce signal au lieu de bloquer le démarrage.
+
 ### Règles
 
 - Rien ne se publie sans validation humaine (vérifié côté serveur, chaque tentative est journalisée).

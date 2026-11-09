@@ -20,6 +20,7 @@ from .config import Config
 from .encoder import Encoder
 from .scenes import SCENES, Moment, SceneRenderer
 from .state import Machine, Signals
+from .presence import MotionGate, PresenceMonitor
 from .vad import VadMonitor
 
 log = logging.getLogger("minbar")
@@ -44,6 +45,13 @@ class Orchestrator:
         self.encoder.prepare(self.renderer.background())
         self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position)
         self.vad = VadMonitor(cfg.camera_url, cfg.vad_aggressiveness, cfg.vad_ratio, log=log.info)
+        self.presence = None
+        if cfg.presence == "motion":
+            gate = MotionGate(width=cfg.presence_width, height=cfg.presence_height,
+                              roi=tuple(cfg.presence_roi), threshold=cfg.presence_threshold,
+                              pixel_delta=cfg.presence_pixel_delta, hold_s=cfg.presence_hold_s)
+            self.presence = PresenceMonitor(cfg.camera_url, gate, fps=cfg.presence_fps, log=log.info)
+            log.info("Présence : mouvement dans la zone %s (seuil %.3f)" % (tuple(cfg.presence_roi), cfg.presence_threshold))
         self.lock = threading.RLock()
         self._shown_key = None
         self._saved = None
@@ -104,7 +112,8 @@ class Orchestrator:
     # ------------------------------------------------------------------ API
     def signals(self) -> Signals:
         v, s = self.vad.runs()
-        return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s)
+        pres = self.presence.present() if self.presence else None
+        return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s, presence=pres)
 
     def manual(self, cmd: str, arg=None) -> dict:
         with self.lock:
@@ -125,6 +134,11 @@ class Orchestrator:
                             "recording": self.encoder.current_recording(),
                             "pos_s": round(pos, 1)},
                 "mic": self.encoder.mic_on,
+                "presence": (
+                    {"mode": "motion", "present": self.presence.present(),
+                     "score": self.presence.last_score()}
+                    if self.presence else {"mode": "off", "present": None, "score": None}
+                ),
             })
             return st
 
@@ -135,6 +149,8 @@ class Orchestrator:
     def run(self):
         cfg = self.cfg
         self.vad.start()
+        if self.presence:
+            self.presence.start()
         self.api = make_server(self, cfg.api_host, cfg.api_port, cfg.api_token)
         log.info("API de contrôle : http://%s:%d/   | état initial %s", cfg.api_host, cfg.api_port, self.machine.state.value)
         for sig_ in (signal.SIGINT, signal.SIGTERM):
@@ -158,6 +174,8 @@ class Orchestrator:
 
     def shutdown(self):
         self.vad.stop()
+        if self.presence:
+            self.presence.stop()
         if self.encoder.wanted:
             self.encoder.stop()
         if self.api:
@@ -181,6 +199,7 @@ def main(argv=None):
     ap.add_argument("--grace", type=float, dest="grace_s")
     ap.add_argument("--terminated-hold", type=float, dest="terminated_hold_s")
     ap.add_argument("--api-port", type=int)
+    ap.add_argument("--presence", choices=["off", "motion"], help="détection de présence au minbar")
     a = ap.parse_args(argv)
     ov = {k: v for k, v in vars(a).items() if k not in ("config", "times") and v is not None}
     if a.times:

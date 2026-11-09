@@ -51,6 +51,7 @@ class Signals:
     t: float
     voice_run: float = 0.0
     silence_run: float = 0.0
+    presence: bool | None = None    # mouvement au minbar ; None = détection désactivée
 
 
 @dataclass

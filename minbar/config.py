@@ -42,6 +42,16 @@ class Config(MachineParams):
     mosque_name: str = ""               # ex. "Mosquée Assalam" (pied de page, bandeau khutba, API)
     mosque_name_ar: str = ""            # ex. "مسجد السلام" (vide : seul le nom latin est affiché)
     logo: str = ""                      # chemin du logo de la mosquée (jpg/png) ; vide = emblème neutre dessiné
+    # --- Présence au minbar (v1 : mouvement, sans YOLO) ---------------------
+    presence: str = "off"               # off | motion
+    presence_threshold: float = 0.004   # part de pixels de la zone qui changent pour dire « mouvement »
+    presence_roi: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])  # x0,y0,x1,y1 en fractions
+    presence_hold_s: float = 8.0        # un mouvement vaut « présent » pendant ce délai
+    presence_pixel_delta: int = 12      # écart de niveau (0-255) compté comme un changement réel
+    presence_fps: float = 2.0           # images analysées par seconde (2 suffit, coût négligeable)
+    presence_width: int = 160
+    presence_height: int = 90
+    terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
     title: str = "Khutba du vendredi"
     dark_green: str = "#1E7A3C"
     # --- API ----------------------------------------------------------------
