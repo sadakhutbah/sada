@@ -3,6 +3,7 @@
     python -m minbar.pipeline.run                                        # dernier run de l'orchestrateur
     python -m minbar.pipeline.run data/state/<run>/sessions.json         # toutes les sessions terminées
     python -m minbar.pipeline.run --input video.mkv --start 0 --end 1000 --label test
+    python -m minbar.pipeline.run --llm-url http://127.0.0.1:8000/v1 --llm-model mistral-small
 """
 from __future__ import annotations
 import argparse
@@ -91,6 +92,12 @@ def main(argv=None):
     ap.add_argument("--out", default=str(paths.OUTPUT))
     ap.add_argument("--model", help="large-v3 | large-v3-turbo | medium | small | cpu | force (retranscrire)")
     ap.add_argument("--no-llm", action="store_true")
+    ap.add_argument("--llm-url", default=os.environ.get("MINBAR_LLM_URL"),
+                    help="endpoint du modèle (défaut : http://127.0.0.1:11434/v1, Ollama)")
+    ap.add_argument("--llm-model", default=os.environ.get("MINBAR_LLM_MODEL"),
+                    help="nom du modèle côté serveur (ex. qwen2.5:7b-instruct)")
+    ap.add_argument("--llm-protocol", default=os.environ.get("MINBAR_LLM_PROTOCOL"), choices=["openai", "anthropic", "claude-cli"],
+                    help="format d'API (déduit de l'URL si absent)")
     ap.add_argument("--no-clips", action="store_true")
     ap.add_argument("--clips", type=int, default=3)
     ap.add_argument("--only-session", type=int)
@@ -100,6 +107,11 @@ def main(argv=None):
     ap.add_argument("--title", default=clipmod.DEFAULT_TITLE)
     ap.add_argument("--subtitle", default="", help="ligne sous le titre des clips (ex. mosquée · date)")
     a = ap.parse_args(argv)
+    # les modules notes/translate lisent l'environnement : les options du CLI le renseignent une fois pour toutes
+    for env_name, val in (("MINBAR_LLM_URL", a.llm_url), ("MINBAR_LLM_MODEL", a.llm_model),
+                          ("MINBAR_LLM_PROTOCOL", a.llm_protocol)):
+        if val:
+            os.environ[env_name] = val
     if tr.setup_env() and not os.environ.get("MINBAR_REEXEC"):
         os.environ["MINBAR_REEXEC"] = "1"
         os.execv(sys.executable, [sys.executable, "-m", "minbar.pipeline.run"] + (argv if argv is not None else sys.argv[1:]))

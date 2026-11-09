@@ -1,4 +1,4 @@
-"""Notes en Markdown : résumé (claude -p si dispo, sinon extractif), citations EXACTES uniquement.
+"""Notes en Markdown : résumé (modèle de langage si disponible, sinon extractif), citations EXACTES uniquement.
 
 Règle stricte : une citation n'est acceptée que si elle est une sous-chaîne littérale d'un segment du transcript
 (vérifié en code, pas de confiance aveugle au LLM). Le résumé est toujours étiqueté « généré, à valider ».
@@ -74,7 +74,7 @@ def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, l
     )
     d = llm.ask_json(prompt, timeout, log)
     if d:
-        d["method"] = "claude -p"
+        d["method"] = llm.settings().label()
     return d
 
 
@@ -101,7 +101,7 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
     quotes.sort()
     L = [f"# Notes de khutba — {session_label}", "",
          f"> ⚠️ **Brouillon généré automatiquement — À VALIDER** par l'imam ou un responsable avant toute diffusion.",
-         f"> Résumé : méthode **{summ.get('method')}**{' (repli : claude indisponible)' if fallback and use_llm else ''}. "
+         f"> Résumé : méthode **{summ.get('method')}**{' (repli : modèle indisponible)' if fallback and use_llm else ''}. "
          f"Les citations ci-dessous sont des extraits littéraux du transcript ({len(quotes)} vérifiées, {rejected} rejetées car non littérales).", ""]
     firm = shown(matches)
     weak = [m for m in matches if m not in firm]

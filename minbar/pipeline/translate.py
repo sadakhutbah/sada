@@ -4,7 +4,7 @@
   Le LLM choisit seulement, dans la traduction Hamidullah, l'EXTRAIT correspondant au passage récité :
   il doit être une sous-chaîne littérale (vérifié en code), sinon on garde la traduction complète.
 - Formules rituelles (ta'awwudh, basmala, shahada…) : traductions fixes, pas de « carte verset ».
-- Autres segments arabes : `claude -p` (même LLM que notes.py), traduction sobre, fidèle, courte.
+- Autres segments arabes : modèle de langage (même endpoint que notes.py), traduction sobre, fidèle, courte.
   Un segment que le LLM signale comme citation coranique NON appariée n'est pas traduit (rien à l'écran
   plutôt qu'une traduction du Coran improvisée).
 Cache : translations.json ; relancer ne rappelle pas le LLM. Lire et modifier ce cache : segment_fr, verse_fr, with_correction.
@@ -29,7 +29,7 @@ def verse_key(m: dict) -> str:
 
 
 def empty() -> dict:
-    return {"seg": {}, "verse_fr": {}, "method": ""}
+    return {"seg": {}, "verse_fr": {}}
 
 
 def segment_fr(tr: dict, seg: dict) -> dict | None:
@@ -51,7 +51,7 @@ def with_correction(tr: dict, seg: dict, fr: str) -> dict:
 
 def translate_session(segments: list[dict], matches: list[dict], cache_path: str | Path, use_llm: bool = True,
                       timeout: int = 600, log=print) -> dict:
-    """-> {"seg": {clé_segment: {"fr": str, "coran": bool}}, "verse_fr": {ref@start: extrait}, "method": str}"""
+    """-> {"seg": {clé_segment: {"fr": str, "coran": bool}}, "verse_fr": {ref@start: extrait}}"""
     cache_path = Path(cache_path)
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else empty()
     vms = shown(matches, ambiguous=True)
@@ -78,7 +78,7 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
             "(sinon recopie-la entière).\n\n"
             f"VERSETS :\n{vlines}\n\nSEGMENTS (numéro, temps, texte) :\n{lines}\n"
         )
-        log(f"traduction : {len(todo)} segment(s) arabes, {len(vtodo)} verset(s) via claude -p")
+        log(f"traduction : {len(todo)} segment(s) arabes, {len(vtodo)} verset(s) via {llm.settings().label()}")
         d = llm.ask_json(prompt, timeout, log)
         if d:
             for i, s in todo:
@@ -94,7 +94,6 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
                 cache["verse_fr"][k] = ex if ok else m["verse_fr"]
                 if not ok:
                     log(f"traduction : extrait Hamidullah non littéral pour {k}, traduction complète gardée")
-            cache["method"] = "claude -p"
     # formules rituelles connues : traduction fixe si le LLM est indisponible
     for i, s in ar:
         k = _seg_key(s["text"])

@@ -70,6 +70,26 @@ conférences dans `data/events.json` (modèle : `examples/events.example.json`, 
 - Un fichier illisible n'empêche pas la diffusion : l'erreur est journalisée et les khutbas restent
   programmées.
 
+## Modèle de langage (résumé et traduction)
+
+Le pipeline utilise un modèle servi en local, par HTTP, au format **OpenAI** ou **Anthropic**. Aucun
+binaire externe n'est requis : tout serveur compatible convient (Ollama, llama.cpp, LM Studio, vLLM, ou
+une API distante). Sans configuration, l'adresse visée est Ollama sur la machine
+(`http://127.0.0.1:11434/v1`) ; si rien ne répond, le pipeline continue avec ses replis — résumé
+extractif et traductions fixes — et la note Markdown l'indique.
+
+```bash
+export MINBAR_LLM_URL="http://127.0.0.1:11434/v1"      # racine de l'API (…/v1, …/v1/messages)
+export MINBAR_LLM_MODEL="qwen2.5:7b-instruct"          # nom du modèle côté serveur
+export MINBAR_LLM_PROTOCOL="openai"                    # openai | anthropic (déduit de l'URL sinon)
+export MINBAR_LLM_API_KEY="…"                          # seulement si le serveur en exige une
+```
+
+Équivalents en options : `--llm-url`, `--llm-model`, `--llm-protocol`. La méthode réellement employée
+(`openai · qwen2.5:7b-instruct`) est écrite dans l'en-tête des notes. L'ancien appel au binaire
+`claude`, en sous-processus, n'est plus le défaut : il faut le demander avec
+`MINBAR_LLM_PROTOCOL=claude-cli`.
+
 ## Notifications à l'imam
 
 L'orchestrateur prévient l'imam par un message court — rappel avant la session, début du direct,
