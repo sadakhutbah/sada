@@ -105,3 +105,17 @@ def test_aucun_chemin_de_la_machine_dans_la_page(env):
             assert str(paths.ROOT) not in note and str(_P.home()) not in note, note
         if sect == "modele":                       # l'aide du modèle ne nomme plus le fichier par son chemin
             assert str(paths.ROOT) not in page and str(_P.home()) not in page
+
+
+def test_les_connecteurs_sont_decoupes(env):
+    """Un seul formulaire de connecteur par écran : quatre empilés faisaient une page démesurée."""
+    c = client(env, "admin")
+    for cle, libelle in (("local", "Dossier local"), ("facebook", "Page Facebook"),
+                         ("youtube", "YouTube"), ("instagram", "Instagram")):
+        page = c.get(f"/admin/mosquee?section=connecteurs&c={cle}").text
+        assert page.count('class="connector') == 1
+        assert libelle in page
+        for autre in ("Page Facebook", "YouTube", "Instagram", "Dossier local"):
+            if autre != libelle:                       # présent comme sous-onglet, pas comme formulaire
+                assert page.count(f'<label>{autre}</label>') == 0
+    assert 'class="connector' in c.get("/admin/mosquee?section=connecteurs").text   # sans paramètre : le premier

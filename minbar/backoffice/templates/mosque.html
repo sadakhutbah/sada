@@ -115,10 +115,17 @@
 </section>
 
 {% elif tab == "connecteurs" %}
+<div class="tabs sub">
+  {% for x in connectors %}
+  <a class="tab {{ 'on' if conn and x.key == conn.key }}" href="/admin/mosquee?section=connecteurs&c={{ x.key }}">{{ x.label }}
+    {% if not x.available %}<span class="dot-off" title="désactivé"></span>{% endif %}</a>
+  {% endfor %}
+</div>
 <section class="card">
   <h2>Connecteurs de publication</h2>
   <p class="help">Les identifiants restent sur cette machine. En V1, Facebook, YouTube et Instagram restent désactivés : aucune publication réelle, aucun appel externe.</p>
-  {% for x in connectors %}
+  {% set x = conn %}
+  {% if x %}
   <div class="connector {{ '' if x.available else 'off' }}">
     <div class="spread"><b>{{ x.label }}</b><span class="pill {{ 'valide' if x.available else 'grey' }}">{{ "actif" if x.available else "désactivé" }}</span></div>
     <div class="small">{{ x.description }}</div>
@@ -135,7 +142,7 @@
       <button class="btn sm ghost">Enregistrer</button>
     </form>
   </div>
-  {% endfor %}
+  {% endif %}
 </section>
 
 {% elif tab == "acces" %}

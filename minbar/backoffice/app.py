@@ -240,9 +240,11 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     SECTIONS = ("identite", "image", "live", "dossiers", "modele", "connecteurs", "acces")
 
-    def section(s: str) -> str:
-        """Onglet cible après un enregistrement : inconnu -> première section."""
-        return f"/admin/mosquee?section={s}" if s in SECTIONS else "/admin/mosquee?section=identite"
+    def section(s: str, cle: str = "") -> str:
+        """Onglet cible après un enregistrement : inconnu -> première section. `cle` vise le sous-onglet connecteur."""
+        if s not in SECTIONS:
+            return "/admin/mosquee?section=identite"
+        return f"/admin/mosquee?section={s}&c={cle}" if cle else f"/admin/mosquee?section={s}"
 
     def back(url: str) -> RedirectResponse:
         return RedirectResponse(url, status_code=303)
@@ -703,10 +705,13 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back(section("image"))
 
     @app.get("/admin/mosquee")
-    def mosque_page(ctx: Ctx = Depends(get_ctx)):
+    def mosque_page(ctx: Ctx = Depends(get_ctx), c: str = ""):
         ctx.require("admin")
         imams = auth.imams(ctx.conn, ctx.mosque["id"])
-        return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=publish.connector_rows(ctx.conn, ctx.mosque),
+        connecteurs = publish.connector_rows(ctx.conn, ctx.mosque)
+        # un seul connecteur affiché à la fois : quatre formulaires empilés faisaient une page démesurée
+        actif = next((x for x in connecteurs if x["key"] == c), connecteurs[0] if connecteurs else None)
+        return render(ctx, "mosque.html", imams=imams, dirs=db.mosque_dirs(ctx.mosque), connectors=connecteurs, conn=actif,
                       llm=llm.config(), llm_now=llm.settings().label(), llm_on=llm.enabled(), llm_file=str(llm.config_path()))
 
     @app.post("/admin/modele")
@@ -772,7 +777,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         publish.save_connector(ctx.conn, ctx.mosque["id"], key, f.get("enabled") == "1", f, ctx.user, ctx.ip)
         ctx.flash(f"Connecteur « {publish.CONNECTORS[key].label} » enregistré.")
-        return back(section("connecteurs"))
+        return back(section("connecteurs", key))
 
     @app.get("/sante")
     def health():
