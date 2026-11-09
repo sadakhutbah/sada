@@ -6,9 +6,11 @@ import html
 import json
 import re
 import secrets
+import sqlite3
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Request
@@ -16,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
+from starlette.concurrency import run_in_threadpool
 
 from .. import text
 from ..pipeline import llm, verses
@@ -80,12 +83,15 @@ def _sec(request) -> bool:
     return request.url.scheme == "https" or fwd == "https"
 
 
-def get_any_mosque(conn=Depends(get_conn)) -> dict | None:
+ConnDep = Annotated[sqlite3.Connection, Depends(get_conn)]
+
+
+def get_any_mosque(conn: ConnDep) -> dict | None:
     """Mosquée de l'instance (une par machine en V1) : sert au logo de la page de connexion."""
     return db.one(conn, "SELECT * FROM mosques ORDER BY id LIMIT 1")
 
 
-def get_ctx(request: Request, conn=Depends(get_conn)) -> Ctx:
+def get_ctx(request: Request, conn: ConnDep) -> Ctx:
     res = auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
                             request.client.host if request.client else None)
     if not res:
@@ -93,6 +99,10 @@ def get_ctx(request: Request, conn=Depends(get_conn)) -> Ctx:
     s, u = res
     m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", u["mosque_id"])
     return Ctx(request, conn, s, u, m)
+
+
+CtxDep = Annotated[Ctx, Depends(get_ctx)]
+AnyMosqueDep = Annotated[dict | None, Depends(get_any_mosque)]
 
 
 # ------------------------------------------------------------------ filtres
@@ -315,7 +325,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- connexion
     @app.get("/connexion")
-    def login_page(request: Request, conn=Depends(get_conn), suite: str = "/", any_mosque=Depends(get_any_mosque)):
+    def login_page(request: Request, conn: ConnDep, any_mosque: AnyMosqueDep, suite: str = "/"):
         if auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
                              request.client.host if request.client else None):
             return back("/")
@@ -329,7 +339,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return app.state.secure or _sec(request)
 
     @app.post("/connexion")
-    async def login(request: Request, conn=Depends(get_conn)):
+    async def login(request: Request, conn: ConnDep):
         f = await request.form()
         username, password = str(f.get("username", "")).strip(), str(f.get("password", ""))
         suite = str(f.get("suite") or "/")
@@ -346,7 +356,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         lim = app.state.limiter
         if lim.blocked(ip, username):
             return fail("Trop de tentatives. Réessayez dans quelques minutes.", 429)
-        u = auth.authenticate(conn, username, password)
+        u = await run_in_threadpool(auth.authenticate, conn, username, password)
         if not u:
             lim.fail(ip, username)
             known = db.one(conn, "SELECT mosque_id FROM users WHERE username = ?", username)
@@ -361,7 +371,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return resp
 
     @app.post("/deconnexion")
-    async def logout(ctx: Ctx = Depends(get_ctx)):
+    async def logout(ctx: CtxDep):
         await ctx.form()
         auth.close_session(ctx.conn, ctx.request.cookies.get(auth.COOKIE))
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "deconnexion", ip=ctx.ip)
@@ -377,7 +387,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             return {"ok": False, "error": str(e)}
 
     @app.get("/")
-    def dashboard(ctx: Ctx = Depends(get_ctx)):
+    def dashboard(ctx: CtxDep):
         where, args = imam_filter(ctx)
         pending, ready = count_clips(ctx, "a_valider"), count_clips(ctx, "valide")
         recent = db.all_(ctx.conn, f"SELECT k.*, u.display_name imam FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id WHERE {where} "
@@ -388,11 +398,11 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return render(ctx, "dashboard.html", live=live_status(ctx), pending=pending, ready=ready, recent=recent, cmds=cmds, total=total)
 
     @app.get("/api/live")
-    def api_live(ctx: Ctx = Depends(get_ctx)):
+    def api_live(ctx: CtxDep):
         return live_status(ctx)
 
     @app.post("/live/{cmd}")
-    async def live_cmd(cmd: str, ctx: Ctx = Depends(get_ctx)):
+    async def live_cmd(cmd: str, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("live")
         if cmd not in live.COMMANDS:
@@ -400,7 +410,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         arg = (f.get("name") or "").strip() or None
         info = (f.get("info") or "").strip() or None      # fiche janaza : mention sous le nom
         try:
-            r = live.command(ctx.mosque, cmd, arg, info)
+            r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info)
             db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=live.COMMANDS[cmd].label,
                      defunt=arg, mention=info, reponse=r.get("message"), etat=r.get("state"))
             ctx.flash(f"{live.COMMANDS[cmd].label} : {r.get('message', 'ok')}")
@@ -411,7 +421,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- historique
     @app.get("/khutbas")
-    def khutbas(ctx: Ctx = Depends(get_ctx)):
+    def khutbas(ctx: CtxDep):
         where, args = imam_filter(ctx)
         rows = db.all_(ctx.conn, f"""SELECT k.*, u.display_name imam,
                    (SELECT COUNT(*) FROM clips c WHERE c.khutba_id = k.id) n_clips,
@@ -421,12 +431,15 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return render(ctx, "khutbas.html", rows=rows)
 
     @app.post("/import")
-    async def do_import(ctx: Ctx = Depends(get_ctx)):
+    async def do_import(ctx: CtxDep):
         f = await ctx.form()
         ctx.require("assign")
         run = (f.get("run") or "").strip()
         try:
-            res = [importer.import_run(ctx.conn, ctx.mosque, run)] if run else importer.scan(ctx.conn, ctx.mosque)
+            if run:
+                res = [await run_in_threadpool(importer.import_run, ctx.conn, ctx.mosque, run)]
+            else:
+                res = await run_in_threadpool(importer.scan, ctx.conn, ctx.mosque)
             nk, nc = sum(r["khutbas_new"] for r in res), sum(r["clips_new"] for r in res)
             db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "import.manuel", ip=ctx.ip, run=run or "tous", khutbas=nk, clips=nc)
             ctx.flash(f"Import : {len(res)} run(s) parcouru(s), {nk} khutba(s) et {nc} clip(s) ajoutés.")
@@ -435,7 +448,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back("/khutbas")
 
     @app.get("/khutbas/{kid}")
-    def khutba(kid: int, ctx: Ctx = Depends(get_ctx)):
+    def khutba(kid: int, ctx: CtxDep):
         k = khutba_or_404(ctx, kid)
         data = content.load(ctx.conn, k)
         notes = SessionOutput(k["output_dir"]).notes
@@ -447,7 +460,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                       tr=data, has_video=bool(k["video_path"] and Path(k["video_path"]).exists()))
 
     @app.post("/khutbas/{kid}/imam")
-    async def khutba_imam(kid: int, ctx: Ctx = Depends(get_ctx)):
+    async def khutba_imam(kid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("assign")
         k = khutba_or_404(ctx, kid)
@@ -461,7 +474,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back(f"/khutbas/{k['id']}")
 
     @app.post("/khutbas/{kid}/correction")
-    async def khutba_correction(kid: int, ctx: Ctx = Depends(get_ctx)):
+    async def khutba_correction(kid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("validate")
         k = khutba_or_404(ctx, kid)
@@ -477,7 +490,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- clips
     @app.get("/clips")
-    def clips(ctx: Ctx = Depends(get_ctx), statut: str = "a_valider"):
+    def clips(ctx: CtxDep, statut: str = "a_valider"):
         where, args = imam_filter(ctx)
         cond = "" if statut == "tous" else "AND c.status = ?"
         extra = () if statut == "tous" else (statut,)
@@ -488,7 +501,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return render(ctx, "clips.html", rows=rows, statut=statut, counts=counts)
 
     @app.get("/clips/{cid}")
-    def clip(cid: int, ctx: Ctx = Depends(get_ctx)):
+    def clip(cid: int, ctx: CtxDep):
         c, k = clip_or_404(ctx, cid)
         data = content.load(ctx.conn, k)
         rows = content.transcript_rows(data, c["start"], c["end"])
@@ -507,7 +520,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                       exists=Path(c["file_path"]).exists(), validate_ok=content.can_validate(c)[0], publish_ok=publish.can_publish(c)[0])
 
     @app.post("/clips/{cid}/decision")
-    async def clip_decision(cid: int, ctx: Ctx = Depends(get_ctx)):
+    async def clip_decision(cid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("validate")
         c, k = clip_or_404(ctx, cid)
@@ -523,7 +536,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back(f"/clips/{c['id']}")
 
     @app.post("/clips/{cid}/regenerer")
-    async def clip_regen(cid: int, ctx: Ctx = Depends(get_ctx)):
+    async def clip_regen(cid: int, ctx: CtxDep):
         await ctx.form()
         ctx.require("validate")
         c, k = clip_or_404(ctx, cid)
@@ -536,21 +549,21 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
 
     @app.get("/api/clips/{cid}")
-    def api_clip(cid: int, ctx: Ctx = Depends(get_ctx)):
+    def api_clip(cid: int, ctx: CtxDep):
         c, _ = clip_or_404(ctx, cid)
         return {"id": c["id"], "status": c["status"], "version": c["version"], "regen_state": c["regen_state"], "needs_regen": bool(c["needs_regen"])}
 
     @app.post("/clips/{cid}/publier")
-    async def clip_publish(cid: int, ctx: Ctx = Depends(get_ctx)):
+    async def clip_publish(cid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("publish")
         c, k = clip_or_404(ctx, cid)
-        res = publish.publish(ctx.conn, c, f.get("connector", ""), ctx.user, f.get("caption", ""), ctx.ip)
+        res = await run_in_threadpool(publish.publish, ctx.conn, c, f.get("connector", ""), ctx.user, f.get("caption", ""), ctx.ip)
         ctx.flash(f"Publié : {res.location}" if res.ok else f"Publication refusée : {res.message}", "ok" if res.ok else "err")
         return back(f"/clips/{c['id']}")
 
     @app.get("/publication")
-    def publication(ctx: Ctx = Depends(get_ctx)):
+    def publication(ctx: CtxDep):
         ctx.require("publish")
         ready = db.all_(ctx.conn, "SELECT c.*, k.label klabel, k.date kdate FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                                   "WHERE c.mosque_id = ? AND c.status = 'valide' ORDER BY c.decided_at DESC", ctx.mosque["id"])
@@ -561,14 +574,14 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- médias (par identifiant : pas de chemin dans l'URL)
     @app.get("/media/khutba/{kid}.mp4")
-    def media_khutba(kid: int, ctx: Ctx = Depends(get_ctx)):
+    def media_khutba(kid: int, ctx: CtxDep):
         k = khutba_or_404(ctx, kid)
         if not k["video_path"] or not Path(k["video_path"]).exists():
             raise NotFound()
         return FileResponse(k["video_path"], media_type="video/mp4")
 
     @app.get("/media/clip/{cid}.mp4")
-    def media_clip(cid: int, ctx: Ctx = Depends(get_ctx)):
+    def media_clip(cid: int, ctx: CtxDep):
         c, _ = clip_or_404(ctx, cid)
         if not Path(c["file_path"]).exists():
             raise NotFound()
@@ -576,7 +589,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- journal
     @app.get("/journal")
-    def journal(ctx: Ctx = Depends(get_ctx), action: str = ""):
+    def journal(ctx: CtxDep, action: str = ""):
         ctx.require("journal")
         rows = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
                                  "WHERE a.mosque_id = ? AND (? = '' OR a.action LIKE ? || '%') ORDER BY a.id DESC LIMIT 300",
@@ -585,20 +598,20 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- compte
     @app.get("/compte")
-    def account(ctx: Ctx = Depends(get_ctx)):
+    def account(ctx: CtxDep):
         return render(ctx, "account.html")
 
     @app.post("/compte")
-    async def account_pw(ctx: Ctx = Depends(get_ctx)):
+    async def account_pw(ctx: CtxDep):
         f = await ctx.form()
-        if not auth.verify_password(ctx.user["password_hash"], f.get("current", "")):
+        if not await run_in_threadpool(auth.verify_password, ctx.user["password_hash"], f.get("current", "")):
             ctx.flash("Mot de passe actuel incorrect.", "err")
             return back("/compte")
         if f.get("new") != f.get("confirm"):
             ctx.flash("Les deux nouveaux mots de passe diffèrent.", "err")
             return back("/compte")
         try:
-            auth.set_password(ctx.conn, ctx.user["id"], f.get("new", ""))
+            await run_in_threadpool(auth.set_password, ctx.conn, ctx.user["id"], f.get("new", ""))
         except ValueError as e:
             ctx.flash(str(e), "err")
             return back("/compte")
@@ -607,18 +620,18 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- administration
     @app.get("/admin/utilisateurs")
-    def users(ctx: Ctx = Depends(get_ctx)):
+    def users(ctx: CtxDep):
         ctx.require("admin")
         rows = db.all_(ctx.conn, "SELECT * FROM users WHERE mosque_id = ? ORDER BY role, display_name", ctx.mosque["id"])
         return render(ctx, "users.html", rows=rows)
 
     @app.post("/admin/utilisateurs")
-    async def user_create(ctx: Ctx = Depends(get_ctx)):
+    async def user_create(ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
         try:
-            uid = auth.create_user(ctx.conn, ctx.mosque["id"], f.get("username", ""), f.get("password", ""), f.get("role", ""),
-                                   f.get("display_name", ""))
+            uid = await run_in_threadpool(auth.create_user, ctx.conn, ctx.mosque["id"], f.get("username", ""),
+                                          f.get("password", ""), f.get("role", ""), f.get("display_name", ""))
             db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.cree", "utilisateur", uid, ip=ctx.ip,
                      identifiant=f.get("username"), role=f.get("role"))
             ctx.flash(f"Compte « {f.get('username')} » créé.")
@@ -627,7 +640,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back("/admin/utilisateurs")
 
     @app.post("/admin/utilisateurs/{uid}")
-    async def user_update(uid: int, ctx: Ctx = Depends(get_ctx)):
+    async def user_update(uid: int, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
         u = db.one(ctx.conn, "SELECT * FROM users WHERE id = ? AND mosque_id = ?", uid, ctx.mosque["id"])
@@ -635,7 +648,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         try:
             if f.get("password"):
-                auth.set_password(ctx.conn, uid, f["password"])
+                await run_in_threadpool(auth.set_password, ctx.conn, uid, f["password"])
                 db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", uid, ip=ctx.ip)
             role, active = f.get("role", u["role"]), 1 if f.get("active") == "1" else 0
             if role not in auth.ROLES:
@@ -654,7 +667,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- choix des dossiers (machine locale)
     @app.get("/api/dossiers")
-    def api_dirs(path: str = "", ctx: Ctx = Depends(get_ctx)):
+    def api_dirs(ctx: CtxDep, path: str = ""):
         """Arborescence de la machine qui héberge l'application, pour le bouton « Parcourir »."""
         ctx.require("admin")
         try:
@@ -664,7 +677,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- logo de l'interface
     @app.get("/logo/{slug}")
-    def logo_file(slug: str, conn=Depends(get_conn)):
+    def logo_file(slug: str, conn: ConnDep):
         m = db.one(conn, "SELECT * FROM mosques WHERE slug = ?", slug)
         if not m or not (m.get("logo_path") or "").strip():
             raise NotFound()
@@ -676,7 +689,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                             headers={"Cache-Control": "private, max-age=300"})
 
     @app.post("/admin/logo")
-    async def logo_save(ctx: Ctx = Depends(get_ctx)):
+    async def logo_save(ctx: CtxDep):
         ctx.require("admin")
         f = await ctx.form()   # jeton CSRF vérifié ; le fichier est gardé en mémoire (2 Mo max)
         up = ctx.files.get("logo")
@@ -695,7 +708,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back(section("image"))
 
     @app.post("/admin/logo/supprimer")
-    async def logo_clear(ctx: Ctx = Depends(get_ctx)):
+    async def logo_clear(ctx: CtxDep):
         await ctx.form()
         ctx.require("admin")
         branding.clear(ctx.mosque)
@@ -705,7 +718,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back(section("image"))
 
     @app.get("/admin/mosquee")
-    def mosque_page(ctx: Ctx = Depends(get_ctx), c: str = ""):
+    def mosque_page(ctx: CtxDep, c: str = ""):
         ctx.require("admin")
         imams = auth.imams(ctx.conn, ctx.mosque["id"])
         connecteurs = publish.connector_rows(ctx.conn, ctx.mosque)
@@ -715,7 +728,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                       llm=llm.config(), llm_now=llm.settings().label(), llm_on=llm.enabled(), llm_file=str(llm.config_path()))
 
     @app.post("/admin/modele")
-    async def llm_save(ctx: Ctx = Depends(get_ctx)):
+    async def llm_save(ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
         url = (f.get("llm_url") or "").strip()
@@ -735,14 +748,14 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back(section("modele"))
 
     @app.post("/admin/modele/tester")
-    async def llm_test(ctx: Ctx = Depends(get_ctx)):
+    def llm_test(ctx: CtxDep):
         ctx.require("admin")
         ok, msg = llm.probe()
         ctx.flash(msg, "" if ok else "err")
         return back(section("modele"))
 
     @app.post("/admin/mosquee")
-    async def mosque_save(ctx: Ctx = Depends(get_ctx)):
+    async def mosque_save(ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
         sect = "live" if "orchestrator_url" in f or "orchestrator_token" in f else (
@@ -770,7 +783,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return back(section(sect))
 
     @app.post("/admin/connecteurs/{key}")
-    async def connector_save(key: str, ctx: Ctx = Depends(get_ctx)):
+    async def connector_save(key: str, ctx: CtxDep):
         f = await ctx.form()
         ctx.require("admin")
         if key not in publish.CONNECTORS:

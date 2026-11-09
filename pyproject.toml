@@ -16,7 +16,7 @@ dependencies = [
   "python-bidi",
   "pytest",
   # back-office
-  "fastapi",
+  "fastapi[standard]",
   "uvicorn",
   "jinja2",
   "python-multipart",
@@ -30,3 +30,7 @@ packages = ["minbar", "minbar.pipeline", "minbar.backoffice"]
 "minbar" = ["models/*.onnx"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.fastapi]
+entrypoint = "minbar.backoffice.asgi:app"
+
