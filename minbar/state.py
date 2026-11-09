@@ -32,6 +32,8 @@ class State(str, Enum):
     ENTRACTE = "ENTRACTE"  # compte à rebours vers la prochaine khutba
     TERMINE = "TERMINÉ"    # écran de fin, avant arrêt du stream
     JANAZA = "JANAZA"      # mode manuel : caméra minbar sans bandeau
+    DARS = "DARS"          # dars ou conférence : caméra + bandeau de l'événement
+    DARS_FIN = "DARS_FIN"  # écran de fin d'un dars (prochain cours), avant arrêt du stream
     FIN = "FIN"            # stream arrêté
 
 
@@ -40,6 +42,7 @@ SCENE_OF = {
     State.IDLE: None, State.ARME: None, State.FIN: None,
     State.AVANT: "avant", State.KHUTBA: "khutba", State.PRIERE: "priere",
     State.ENTRACTE: "entracte", State.TERMINE: "termine", State.JANAZA: "janaza",
+    State.DARS: "dars", State.DARS_FIN: "dars_fin",
 }
 STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v}
 WAITING = (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE)
@@ -68,6 +71,12 @@ class MachineParams:
     min_khutba_s: float = 120.0         # pas d'arrêt avant cette durée
     max_khutba_s: float = 3600.0
     terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
+    # dars et conférences : plus souples que la khutba (aucune prière ne suit)
+    dars_window_after_min: float = 90.0 # un dars peut commencer plus tard qu'une khutba
+    dars_max_s: float = 7200.0
+    dars_silence_stop_s: float = 180.0
+    dars_grace_s: float = 90.0
+    dars_fin_hold_s: float = 45.0       # écran « Dars terminé » avant arrêt du stream
 
 
 @dataclass
@@ -81,21 +90,38 @@ class SessionRec:
     start_clock: Optional[str] = None
     end_clock: Optional[str] = None
     end_reason: Optional[str] = None
+    kind: str = "khutba"                # khutba | dars | conference
+    title: str = ""
+    speaker: str = ""
+    series: str = ""
+    session_no: Optional[int] = None
 
 
 class Machine:
     def __init__(self, sessions: list[dt.datetime], params: MachineParams | None = None,
                  log: Callable[[str], None] | None = None,
-                 pos_fn: Callable[[], tuple[int, float]] | None = None):
-        """pos_fn() -> (n° de l'enregistrement, position en s) : où en est l'enregistrement du live."""
+                 pos_fn: Callable[[], tuple[int, float]] | None = None,
+                 kinds: list[str] | None = None, meta: list[dict] | None = None):
+        """pos_fn() -> (n° de l'enregistrement, position en s) : où en est l'enregistrement du live.
+
+        `kinds` / `meta` suivent `sessions` (même ordre avant tri) : type et libellé de chaque session.
+        """
         self.p = params or MachineParams()
-        self.sessions = sorted(sessions)
+        order = sorted(range(len(sessions)), key=lambda i: sessions[i])
+        self.sessions = [sessions[i] for i in order]
+        kinds = [kinds[i] if kinds and i < len(kinds) else "khutba" for i in order]
+        meta = [meta[i] if meta and i < len(meta) else {} for i in order]
         self.idx = 0
         self.state = State.IDLE
         self.override = False
         self.log = log or (lambda m: None)
         self.pos_fn = pos_fn or (lambda: (0, 0.0))
-        self.records = [SessionRec(i, s.strftime("%H:%M")) for i, s in enumerate(self.sessions)]
+        self.records = []
+        for i, s in enumerate(self.sessions):
+            m = meta[i] if i < len(meta) else {}
+            self.records.append(SessionRec(i, s.strftime("%H:%M"), kind=kinds[i] or "khutba",
+                                           title=m.get("title", ""), speaker=m.get("speaker", ""),
+                                           series=m.get("series", ""), session_no=m.get("session_no")))
         self.live: Optional[SessionRec] = None   # session ouverte (khutba ou janaza)
         self.entered_t = 0.0
         self.entered_now: Optional[dt.datetime] = None
@@ -136,9 +162,9 @@ class Machine:
             self.paused_from = None
         if old == State.JANAZA and self.paused_from is None:
             self.janaza_name = None
-        if self.live and new not in (State.KHUTBA, State.JANAZA) and self.paused_from is None:
+        if self.live and new not in (State.KHUTBA, State.DARS, State.JANAZA) and self.paused_from is None:
             self._close(sig, reason)        # la session ouverte s'arrête dès qu'on quitte son écran (sauf pause)
-        if new == State.KHUTBA and not (self.live and self.live.status == "live"):
+        if new in (State.KHUTBA, State.DARS) and not (self.live and self.live.status == "live"):
             r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
             self._open(r, sig)
@@ -187,9 +213,19 @@ class Machine:
             r.end_reason = why
             self.log(f"Session {r.planned} sautée : {why}")
 
+    @property
+    def kind(self) -> str:
+        """Type de la session prévue en cours (khutba, dars, conference)."""
+        return self.rec.kind if self.rec else "khutba"
+
+    def _entry_state(self) -> State:
+        """État d'entrée d'une session : DARS pour un dars / une conférence, KHUTBA sinon."""
+        return State.KHUTBA if self.kind == "khutba" else State.DARS
+
     def _window_end(self) -> dt.datetime:
         assert self.session is not None
-        return self.session + dt.timedelta(minutes=self.p.window_after_min)
+        late = self.p.window_after_min if self.kind == "khutba" else self.p.dars_window_after_min
+        return self.session + dt.timedelta(minutes=late)
 
     def _next_session(self, sig: Signals) -> State:
         """Passe à la session prévue suivante (en sautant celles dont la fenêtre est close) -> état d'attente.
@@ -234,8 +270,10 @@ class Machine:
 
     def _start(self, sig, arg):
         self.override = True
-        self._go(State.KHUTBA, sig, "commande start")
-        return "stream démarré, scène khutba (auto suspendu : « auto » pour reprendre)"
+        st = self._entry_state()
+        self._go(st, sig, "commande start")
+        sc = SCENE_OF[st]
+        return f"stream démarré, scène {sc} (auto suspendu : « auto » pour reprendre)"
 
     def _stop(self, sig, arg):
         self.override = True
@@ -318,6 +356,10 @@ class Machine:
             if sig.t - self.entered_t >= self.p.terminated_hold_s:
                 self._go(State.FIN, sig, "écran Terminé affiché, arrêt du stream")
             return
+        if st == State.DARS_FIN:
+            if sig.t - self.entered_t >= self.p.dars_fin_hold_s:
+                self._go(State.FIN, sig, "écran de fin du dars affiché, arrêt du stream")
+            return
         if st == State.JANAZA or self.override:
             return  # Janaza : uniquement manuel
 
@@ -337,14 +379,15 @@ class Machine:
                 nxt = self._next_session(sig)
                 self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
                 return
+            entry = self._entry_state()
             if st == State.ENTRACTE:
                 if sig.now >= s and self._voice_ok(sig):
-                    self._go(State.KHUTBA, sig, "voix (2e session)")
+                    self._go(entry, sig, "voix (2e session)")
                 return
             if self._voice_ok(sig) and sig.now >= s:
                 if st == State.ARME:
                     self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
-                self._go(State.KHUTBA, sig, f"voix {sig.voice_run:.0f}s (horaire)")
+                self._go(entry, sig, f"voix {sig.voice_run:.0f}s (horaire)")
                 return
             if st == State.ARME and self._voice_ok(sig):
                 self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
@@ -353,24 +396,29 @@ class Machine:
                 self._go(State.AVANT, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
             return
 
-        if st == State.KHUTBA:
+        if st in (State.KHUTBA, State.DARS):
+            dars = st == State.DARS
+            max_s = self.p.dars_max_s if dars else self.p.max_khutba_s
+            silence_s = self.p.dars_silence_stop_s if dars else self.p.silence_stop_s
+            grace_s = self.p.dars_grace_s if dars else self.p.grace_s
+            end = State.DARS_FIN if dars else State.PRIERE
             elapsed = sig.t - self.entered_t
-            if elapsed >= self.p.max_khutba_s and sig.t >= self.extend_until_t:
-                self._go(State.PRIERE, sig, "durée maximale")
+            if elapsed >= max_s and sig.t >= self.extend_until_t:
+                self._go(end, sig, "durée maximale")
                 return
             if sig.t < self.extend_until_t:
                 self.grace_until = None
                 return
             if self.grace_until is None:
-                if sig.silence_run >= self.p.silence_stop_s and elapsed >= self.p.min_khutba_s:
-                    self.grace_until = sig.t + self.p.grace_s
-                    self.log(f"silence {sig.silence_run:.0f}s : délai de grâce {self.p.grace_s:.0f}s")
+                if sig.silence_run >= silence_s and elapsed >= self.p.min_khutba_s:
+                    self.grace_until = sig.t + grace_s
+                    self.log(f"silence {sig.silence_run:.0f}s : délai de grâce {grace_s:.0f}s")
             else:
                 if sig.voice_run >= 2.0:
                     self.grace_until = None
                     self.log("voix reprise pendant la grâce : on continue")
                 elif sig.t >= self.grace_until:
-                    self._go(State.PRIERE, sig, "silence prolongé")
+                    self._go(end, sig, "silence prolongé")
             return
 
         if st == State.PRIERE:
@@ -390,6 +438,10 @@ class Machine:
             "next_session": s.strftime("%H:%M") if s else None,
             "last_reason": self.last_reason,
             "janaza_name": self.janaza_name,
+            "kind": self.kind,
+            "event": ({"kind": self.rec.kind, "title": self.rec.title, "speaker": self.rec.speaker,
+                       "series": self.rec.series, "session_no": self.rec.session_no}
+                      if self.rec and self.rec.kind != "khutba" else None),
             "sessions": self.sessions_dicts(),
         }
 

@@ -149,7 +149,12 @@ def connector_rows(conn, mosque: dict) -> list[dict]:
 
 
 def default_caption(clip: dict, khutba: dict, mosque: dict, verses: list[str]) -> str:
-    parts = [f"{mosque['clip_title']} — {mosque['name']}", f"{khutba['date'] or ''} · {khutba['label']}".strip(" ·")]
+    kind = (khutba.get("kind") or "khutba")
+    if kind != "khutba" and khutba.get("title"):
+        first = f"{'Dars' if kind == 'dars' else 'Conférence'} : {khutba['title']} — {mosque['name']}"
+    else:
+        first = f"{mosque['clip_title']} — {mosque['name']}"
+    parts = [first, f"{khutba['date'] or ''} · {khutba['label']}".strip(" ·")]
     if verses:
         parts.append("Versets : " + ", ".join(verses))
     parts.append("Extrait validé par la mosquée. Sous-titres générés automatiquement puis relus.")

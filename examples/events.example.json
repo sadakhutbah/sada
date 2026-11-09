@@ -1,0 +1,25 @@
+{
+ "events": [
+  {"kind": "dars",
+   "title": "Tafsir de la sourate Al-Kahf",
+   "speaker": "Imam Abdallah",
+   "series": "Tafsir Al-Kahf",
+   "session": 7,
+   "recurrence": {"weekday": "mardi", "after": "isha", "offset_min": 15},
+   "max_min": 90},
+
+  {"kind": "dars",
+   "title": "Fiqh du quotidien",
+   "speaker": "Imam Abdallah",
+   "series": "Fiqh du quotidien",
+   "session": 12,
+   "recurrence": {"weekday": "dimanche", "time": "10:30"}},
+
+  {"kind": "conference",
+   "title": "Les droits des voisins en islam",
+   "speaker": "Cheikh À compléter",
+   "date": "2026-11-21",
+   "time": "18:30",
+   "publish": false}
+ ]
+}

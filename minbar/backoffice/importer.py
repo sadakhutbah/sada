@@ -41,6 +41,19 @@ def _extract_video(rec: str | None, start: float | None, end: float | None, out:
         return None
 
 
+def khutba_label(session: dict) -> str:
+    """Libellé lisible d'une session : « Dars — titre · séance 7 », sinon « Session 1 — 12 h 30 »."""
+    kind = session.get("kind") or "khutba"
+    title = (session.get("title") or "").strip()
+    if kind != "khutba" and title:
+        label = f"{'Dars' if kind == 'dars' else 'Conférence'} — {title}"
+        if session.get("session_no"):
+            label += f" · séance {session['session_no']}"
+        return label
+    planned = session.get("planned") or ""
+    return f"Session {int(session.get('index', 0)) + 1}" + (f" — {planned.replace(':', ' h ')}" if planned else "")
+
+
 def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=print) -> dict:
     dirs = db.mosque_dirs(mosque)
     out = dirs["output"] / run_id
@@ -70,14 +83,16 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
         k = db.one(conn, "SELECT * FROM khutbas WHERE mosque_id = ? AND run_id = ? AND session_index = ?",
                    mosque["id"], run_id, idx)
         if not k:
-            label = f"Session {runs.session_number(idx)}" + (f" — {planned.replace(':', ' h ')}" if planned else "")
+            label = khutba_label(dict(s, index=idx))
+            kind = s.get("kind") or "khutba"
             cur = conn.execute(
                 "INSERT INTO khutbas (mosque_id, run_id, session_index, label, planned, date, start_clock, end_clock, duration_s,"
-                " imam_id, theme, output_dir, recording, start_pos, end_pos, verses_count, imported_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " imam_id, theme, output_dir, recording, start_pos, end_pos, verses_count, kind, title, series, session_no, imported_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (mosque["id"], run_id, idx, label, planned, date, s.get("start_clock"), s.get("end_clock"), duration,
                  mosque.get("default_imam_id"), _theme(o.notes), str(sdir), rec_path, start, end,
-                 n_verses, db.now_iso()))
+                 n_verses, kind, s.get("title") or "", s.get("series") or "", s.get("session_no"),
+                 db.now_iso()))
             k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", cur.lastrowid)
             res["khutbas_new"] += 1
             db.audit(conn, mosque["id"], None, "import.khutba", "khutba", k["id"], run=run_id, session=runs.session_number(idx))

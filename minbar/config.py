@@ -32,6 +32,7 @@ class Config(MachineParams):
     mawaqit_url: str = ""
     mawaqit_cache: str = str(paths.CACHE / "mawaqit.json")
     jumua_times_override: list[str] = field(default_factory=list)  # ex. ["12:30", "13:30"]
+    events_file: str = str(paths.DATA / "events.json")   # programme : dars, conférences
     # --- Horloge simulée ----------------------------------------------------
     sim_start: str | None = None        # "HH:MM" : heure simulée de départ (None = heure réelle)
     sim_speed: float = 1.0              # accélération hors khutba

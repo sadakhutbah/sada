@@ -13,6 +13,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import events as events_mod
 from . import mawaqit, runs
 from .api import make_server
 from .clock import SimClock, parse_hhmm
@@ -38,12 +39,23 @@ class Orchestrator:
         self._setup_logging()
         self.times = self._load_times()
         day = self.clock.now().date()
-        sessions = [parse_hhmm(t, day) for t in self.times]
+        jumua = [parse_hhmm(t, day) for t in self.times]
+        # programme du jour : les dars et conférences s'ajoutent aux khutbas, au même titre
+        self.program, ev_err = events_mod.load(cfg.events_file)
+        if ev_err:
+            log.warning(ev_err)
+        self.instances = events_mod.instances_on(self.program, day, self.prayer_times)
+        sessions = jumua + [i.starts for i in self.instances]
+        kinds = ["khutba"] * len(jumua) + [i.kind for i in self.instances]
+        meta = [{}] * len(jumua) + [i.to_dict() for i in self.instances]
         log.info("Sessions du jour (horloge mosquée) : %s", [s.strftime("%H:%M") for s in sessions])
+        for i in self.instances:
+            log.info("Programme : %s à %s — %s", i.label, i.starts.strftime("%H:%M"), i.speaker or "intervenant à préciser")
         self.renderer = SceneRenderer(cfg)
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())
-        self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position)
+        self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position,
+                               kinds=kinds, meta=meta)
         self.vad = VadMonitor(cfg.camera_url, cfg.vad_aggressiveness, cfg.vad_ratio, log=log.info)
         self.presence = None
         if cfg.presence == "motion":
@@ -67,12 +79,19 @@ class Orchestrator:
             h.setFormatter(fmt)
             root.addHandler(h)
 
+    @property
+    def prayer_times(self) -> dict:
+        """Horaires du jour (« après Isha » etc.) ; vide si Mawaqit est muet."""
+        return mawaqit.prayer_times(self.mawaqit_data or {})
+
     def _load_times(self) -> list[str]:
+        self.mawaqit_data = None
         if self.cfg.jumua_times_override:
             log.info("Horaires imposés par la config : %s", self.cfg.jumua_times_override)
             return list(self.cfg.jumua_times_override)
         try:
             d = mawaqit.get_jumua(self.cfg.mawaqit_url, self.cfg.mawaqit_cache)
+            self.mawaqit_data = d
             log.info("Mawaqit (%s) : jumua=%s — origine : %s", d.get("name"), d["jumua_list"], d.get("origin"))
             if d["jumua_list"]:
                 return d["jumua_list"]
@@ -81,6 +100,23 @@ class Orchestrator:
         log.warning("Repli : horaires par défaut 12:30 / 13:30")
         return ["12:30", "13:30"]
 
+    # --------------------------------------------------------------- événements
+    def _current_event(self):
+        """Dars ou conférence en cours (None pour une khutba)."""
+        s = self.machine.session
+        if s is None:
+            return None
+        for i in self.instances:
+            if i.starts == s:
+                return i
+        return None
+
+    def _next_event(self, now: dt.datetime):
+        """Prochain cours, annoncé sur l'écran de fin et pendant l'entracte."""
+        found = events_mod.next_instances(self.program, now, count=1, days=21,
+                                          times_for=lambda d: self.prayer_times)
+        return found[0] if found else None
+
     # --------------------------------------------------------------- diffusion
     def _sync(self):
         """Aligne l'encodeur sur la machine : scène affichée, micro, flux lancé ou arrêté."""
@@ -88,10 +124,15 @@ class Orchestrator:
         if m.scene is not None:
             now = self.clock.now()
             spec = SCENES[m.scene]
-            key = (m.scene, m.session, m.janaza_name, now.strftime("%H:%M:%S") if spec.ticking else None)
+            ev = self._current_event() if m.scene in ("dars", "entracte", "dars_fin") else None
+            nxt = self._next_event(now) if m.scene in ("dars_fin", "entracte") else None
+            key = (m.scene, m.session, m.janaza_name, getattr(ev, "title", None),
+                   getattr(nxt, "starts", None), now.strftime("%H:%M:%S") if spec.ticking else None)
             if key != self._shown_key:
                 self._shown_key = key
-                enc.show(m.scene, spec.full, self.renderer.content(m.scene, Moment(now, m.session, m.janaza_name)))
+                moment = Moment(now, m.session, m.janaza_name,
+                                event=ev.to_dict() if ev is not None else None, next_event=nxt)
+                enc.show(m.scene, spec.full, self.renderer.content(m.scene, moment))
             if spec.mic != enc.mic_on:
                 enc.mic(spec.mic)
         if m.stream_on and not enc.wanted:
@@ -200,6 +241,7 @@ def main(argv=None):
     ap.add_argument("--terminated-hold", type=float, dest="terminated_hold_s")
     ap.add_argument("--api-port", type=int)
     ap.add_argument("--presence", choices=["off", "motion"], help="détection de présence au minbar")
+    ap.add_argument("--events-file", help="programme JSON des dars et conférences")
     a = ap.parse_args(argv)
     ov = {k: v for k, v in vars(a).items() if k not in ("config", "times") and v is not None}
     if a.times:

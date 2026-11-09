@@ -15,12 +15,15 @@ import datetime as dt
 import functools
 import math
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .paths import FONTS
 from .text import french_date, shaped, is_arabic_char, RAQM
+
+if TYPE_CHECKING:                       # uniquement pour les annotations
+    from .events import EventInstance
 
 SERIF = str(FONTS / "EBGaramond-SemiBold.ttf")
 SANS = str(FONTS / "SourceSans3-Regular.ttf")
@@ -39,6 +42,9 @@ AR_KHUTBA = "خطبة الجمعة"
 AR_JUMUA = "صلاة الجمعة"
 AR_JAZAKUM = "جزاكم الله خيرا"
 AR_JANAZA = "صلاة الجنازة"
+JOURS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+AR_DARS = "درس"
+AR_CONF = "محاضرة"
 
 
 def _hex(c: str, a: int = 255):
@@ -406,6 +412,12 @@ class SceneRenderer:
                                   eyebrow=french_date(m.now), arabic=AR_JUMUA)
 
     def _entracte(self, m: "Moment") -> Image.Image:
+        nxt = m.next_event
+        if nxt is not None and getattr(nxt, "kind", "khutba") != "khutba":
+            remaining = max(0, int((nxt.starts - m.now).total_seconds()))
+            mi, se = divmod(remaining, 60)
+            return self._full_content(f"Prochain cours à {_hm(nxt.starts)}", nxt.title, f"{mi:02d}:{se:02d}",
+                                      "Le live continue : restez connectés.", eyebrow="Entracte")
         if m.planned:
             remaining = max(0, int((m.planned - m.now).total_seconds()))
             mi, se = divmod(remaining, 60)
@@ -425,12 +437,39 @@ class SceneRenderer:
         img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(self.px(10))))
 
     def _khutba(self, m: "Moment") -> Image.Image:
-        """Transparent + bandeau compact en bas à gauche : médaillon, titre, mosquée, titre arabe."""
+        """Bandeau de la khutba : titre du rendez-vous, nom de la mosquée, titre arabe."""
+        return self._banner(self.cfg.title, self.cfg.mosque_name, AR_KHUTBA)
+
+    def _dars(self, m: "Moment") -> Image.Image:
+        """Bandeau d'un dars ou d'une conférence : titre, intervenant, série et séance."""
+        ev = m.event
+        if ev is None:
+            return self._banner("Dars", self.cfg.mosque_name, AR_DARS)
+        bits = [self.cfg.mosque_name] if self.cfg.mosque_name else []
+        if ev.get("speaker"):
+            bits.append(ev["speaker"])
+        no = ev.get("session_no") or ev.get("session")
+        if ev.get("series"):
+            bits.append(ev["series"] + (f" · séance {no}" if no else ""))
+        arabic = AR_CONF if ev.get("kind") == "conference" else AR_DARS
+        return self._banner(ev.get("title") or "Dars", "  ·  ".join(bits), arabic)
+
+    def _dars_fin(self, m: "Moment") -> Image.Image:
+        """Écran de fin d'un dars : remerciement et annonce du prochain cours."""
+        nxt = m.next_event
+        foot = "Merci de votre présence."
+        if nxt:
+            jour = JOURS[nxt.starts.weekday()] if hasattr(nxt, "starts") else ""
+            foot = f"Prochain cours : {jour} {_hm(nxt.starts)} — {nxt.title}"
+        return self._full_content("Dars terminé", "Qu'Allah vous récompense.", "", foot,
+                                  eyebrow="Fin de la diffusion", arabic=AR_DARS)
+
+    def _banner(self, title: str, line2: str, arabic: str) -> Image.Image:
+        """Transparent + bandeau compact en bas à gauche : médaillon, titre, 2e ligne, titre arabe."""
         px = self.px
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
         f_s, f_ar = _font(SANS_SB, px(30)), _font(ARABIC_B, px(44))
-        line2 = self.cfg.mosque_name
         h = px(124)
         x0, y1 = px(56), self.H - px(46)
         y0 = y1 - h
@@ -439,9 +478,8 @@ class SceneRenderer:
         tx = x0 + px(5) + pad + med + px(18)
         sep = px(26)
         max_x1 = self.W - px(56)
-        title = self.cfg.title
         f_t = self._fit(d, title, _font(SERIF, px(46)), SERIF, px(46), max_x1 - px(26) - tx)
-        w_ar = self._width(d, AR_KHUTBA, f_ar)
+        w_ar = self._width(d, arabic, f_ar)
         line2 = self._ellipsize(d, line2, f_s, max_x1 - px(26) - tx)
         w_text = max(self._width(d, title, f_t), self._width(d, line2, f_s))
         x1 = int(tx + w_text + sep + px(1) + sep + w_ar + px(26))
@@ -460,7 +498,7 @@ class SceneRenderer:
         sx = tx + w_text + sep
         if sx + sep + w_ar < x1:
             d.line([(sx, y0 + px(22)), (sx, y1 - px(22))], fill=GOLD_SOFT, width=max(1, px(1)))
-            self._text(d, (x1 - px(26), y0 + h / 2 + px(4)), AR_KHUTBA, f_ar, GOLD, anchor="rm")
+            self._text(d, (x1 - px(26), y0 + h / 2 + px(4)), arabic, f_ar, GOLD, anchor="rm")
         return img
 
     def _ellipsize(self, d, text: str, font, max_w: float) -> str:
@@ -498,10 +536,13 @@ class SceneRenderer:
 
 @dataclass(frozen=True)
 class Moment:
-    """Ce que montrent les scènes : l'heure, la session prévue, le nom du défunt (Janaza, avec l'accord de la famille)."""
+    """Ce que montrent les scènes : l'heure, la session prévue, le nom du défunt (Janaza, avec l'accord de
+    la famille), et pour un dars le cours en cours (`event`) ou le prochain (`next_event`)."""
     now: dt.datetime
     planned: Optional[dt.datetime] = None
     janaza_name: Optional[str] = None
+    event: Optional[dict] = None        # dars / conférence en cours : title, speaker, series, session_no, kind
+    next_event: Optional["EventInstance"] = None   # prochaine occurrence, pour l'écran de fin et l'entracte
 
 
 @dataclass(frozen=True)
@@ -519,4 +560,6 @@ SCENES = {
     "entracte": Scene(full=True, mic=False, draw=SceneRenderer._entracte, ticking=True),
     "termine": Scene(full=True, mic=False, draw=SceneRenderer._termine),
     "janaza": Scene(full=False, mic=True, draw=SceneRenderer._janaza),
+    "dars": Scene(full=False, mic=True, draw=SceneRenderer._dars),
+    "dars_fin": Scene(full=True, mic=False, draw=SceneRenderer._dars_fin),
 }

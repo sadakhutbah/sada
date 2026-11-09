@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS khutbas (
     recording TEXT, start_pos REAL, end_pos REAL,
     video_path TEXT,
     verses_count INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'khutba',
+    title TEXT NOT NULL DEFAULT '',
+    series TEXT NOT NULL DEFAULT '',
+    session_no INTEGER,
     imported_at TEXT NOT NULL,
     UNIQUE (mosque_id, run_id, session_index)
 );
@@ -144,7 +148,14 @@ CREATE INDEX IF NOT EXISTS audit_mosque ON audit (mosque_id, id);
 CREATE INDEX IF NOT EXISTS clips_mosque ON clips (mosque_id, status);
 CREATE INDEX IF NOT EXISTS khutbas_mosque ON khutbas (mosque_id, date);
 """
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# colonnes ajoutées après coup : (table, colonne, déclaration) — appliquées sur les bases existantes
+ADDED_COLUMNS = [
+    ("khutbas", "kind", "TEXT NOT NULL DEFAULT 'khutba'"),
+    ("khutbas", "title", "TEXT NOT NULL DEFAULT ''"),
+    ("khutbas", "series", "TEXT NOT NULL DEFAULT ''"),
+    ("khutbas", "session_no", "INTEGER"),
+]
 
 
 def now_iso() -> str:
@@ -162,10 +173,19 @@ def connect(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def _migrate(conn) -> None:
+    """Ajoute les colonnes manquantes (bases créées par une version antérieure)."""
+    for table, col, decl in ADDED_COLUMNS:
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+
 def init(path: str | Path) -> None:
     conn = connect(path)
     try:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
         conn.close()

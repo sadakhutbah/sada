@@ -47,6 +47,29 @@ Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug v
 - **Connecteurs** : seul « Dossier local » publie en V1 (copie du clip + fiche JSON dans `data/published/<mosquée>/<date>/`).
   Facebook, YouTube et Instagram sont présents mais désactivés : aucun appel externe.
 
+## Programme : dars et conférences
+
+Outre les khutbas du vendredi (horaires Mawaqit), l'orchestrateur suit un programme de dars et de
+conférences dans `data/events.json` (modèle : `examples/events.example.json`, à copier).
+
+```json
+{"kind": "dars", "title": "Tafsir de la sourate Al-Kahf", "speaker": "Imam Abdallah",
+ "series": "Tafsir Al-Kahf", "session": 7,
+ "recurrence": {"weekday": "mardi", "after": "isha", "offset_min": 15}}
+```
+
+- `date` + `time` pour un événement unique ; `recurrence` pour un cours hebdomadaire, à l'heure
+  absolue (`time`) ou après une prière (`after` = dhuhr, asr, maghrib, isha + `offset_min`), recalculée
+  chaque jour avec les horaires Mawaqit.
+- `publish: false` garde une entrée de côté (brouillon, annonce non confirmée).
+- Démarrage sur les mêmes signaux que la khutba, mais plus souple : fenêtre de 90 min (au lieu de 45),
+  silence d'arrêt de 3 min, grâce de 90 s, durée maximale de 2 h.
+- Écrans dédiés : bandeau « Dars : titre · intervenant · série · séance N » sur la caméra, compte à
+  rebours « Prochain cours à … » entre deux sessions, écran de fin avec le prochain cours annoncé.
+  L'API de contrôle expose `kind` et `event`, et les boutons `Dars` / `Fin dars`.
+- Un fichier illisible n'empêche pas la diffusion : l'erreur est journalisée et les khutbas restent
+  programmées.
+
 ## Présence au minbar
 
 Le démarrage automatique exige deux signaux : la voix (`vad`, webrtcvad) et, si elle est activée, la

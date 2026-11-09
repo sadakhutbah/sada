@@ -64,6 +64,17 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
         raise
 
 
+def prayer_times(d: dict) -> dict:
+    """Horaires du jour depuis Mawaqit : {"fajr","dhuhr","asr","maghrib","isha"} (chaînes « HH:MM »).
+
+    Mawaqit publie `times` = [fajr, dhuhr, asr, maghrib, isha] ; un tableau plus court donne
+    seulement ce qui est présent, sans rien inventer.
+    """
+    names = ("fajr", "dhuhr", "asr", "maghrib", "isha")
+    raw = d.get("times") or []
+    return {n: t for n, t in zip(names, raw) if t}
+
+
 def _finish(d: dict) -> dict:
     d["jumua_list"] = [t for t in (d.get("jumua"), d.get("jumua2"), d.get("jumua3")) if t]
     return d
