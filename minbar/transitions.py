@@ -11,7 +11,7 @@ Chorégraphie (sobre) :
   0,00 → 0,45 s  l'ancien contenu s'efface (fondu)
   0,00 → 0,80 s  le fond se lève ou s'efface (fondu enchaîné caméra <-> écran plein), s'il change
   0,35 → 1,05 s  le nouveau contenu entre : fondu + glissement de 18 px vers le haut (écrans pleins)
-                 ou de 36 px depuis la gauche (bandeau khutba, mention janaza), décélération douce
+                 ou de 36 px depuis la gauche (bandeau khutba, dars), décélération douce
   0,00 → 0,80 s  le micro monte ou descend (fondu sonore)
 
 Ce module est pur (aucune E/S) : le calcul des valeurs est testable sans ffmpeg.

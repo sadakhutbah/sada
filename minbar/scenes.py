@@ -2,7 +2,8 @@
 
 Le flux est composé ainsi : caméra + fond commun des écrans pleins + contenu de la scène (encoder.py).
  - écrans pleins (avant, priere, entracte, termine) : le fond masque la caméra, le contenu est le bloc de textes ;
- - khutba : bandeau en bas à gauche ; janaza : mention discrète. Le micro n'est ouvert que sur ces deux scènes.
+ - khutba : bandeau en bas à gauche ; janaza : écran plein sobre (la prière s'entend, l'image est
+   remplacée). Le micro n'est ouvert que sur ces deux scènes.
 
 Charte : vert profond (dérivé de cfg.dark_green), or mat en accent, texte ivoire ; titres en
 EB Garamond, textes courants en Source Sans 3, arabe en Amiri (polices OFL dans assets/fonts).
@@ -503,25 +504,18 @@ class SceneRenderer:
         return text.rstrip() + "…"
 
     def _janaza(self, m: "Moment") -> Image.Image:
-        """Sobre : caméra minbar, pas de bandeau ; seule une petite mention discrète (nom du défunt si saisi)."""
-        px = self.px
-        img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
-        d = ImageDraw.Draw(img)
-        f_l, f_ar = _font(SANS_SB, px(24)), _font(ARABIC, px(28))
-        label = self._ellipsize(d, "Salat al-Janaza" + (f"  ·  {m.janaza_name}" if m.janaza_name else ""), f_l, self.W * 0.55)
-        w_l, w_ar = self._width(d, label, f_l), self._width(d, AR_JANAZA, f_ar)
-        gap = px(18)
-        x0, y1, h = px(56), self.H - px(46), px(50)
-        y0 = y1 - h
-        x1 = int(x0 + px(20) + w_l + gap + px(1) + gap + w_ar + px(20))
-        r = px(6)
-        d.rounded_rectangle([x0, y0, x1, y1], r, fill=(8, 14, 11, 165))
-        cy = y0 + h / 2
-        self._text(d, (x0 + px(20), cy), label, f_l, IVORY, anchor="lm")
-        sx = x0 + px(20) + w_l + gap
-        d.line([(sx, y0 + px(14)), (sx, y1 - px(14))], fill=GOLD_SOFT, width=max(1, px(1)))
-        self._text(d, (x1 - px(20), cy + px(3)), AR_JANAZA, f_ar, IVORY_DIM, anchor="rm")
-        return img
+        """Écran plein dédié à la prière funéraire : sobre, sans caméra ni bandeau.
+
+        Le nom du défunt n'apparaît que s'il a été saisi (accord de la famille) ; sinon la carte
+        reste générique. Le micro reste ouvert : la prière s'entend, l'image est remplacée.
+        """
+        name = m.janaza_name
+        return self._full_content(
+            name or "Prière funéraire",
+            "" if name else "La prière n'est pas diffusée.",
+            "",
+            "Le direct reprendra après la prière, in sha Allah.",
+            eyebrow="Salat al-Janaza", arabic=AR_JANAZA)
 
     def content(self, scene: str, m: "Moment") -> Image.Image:
         """Calque de contenu de la scène ; l'encodeur le pose sur le fond commun si la scène est un écran plein."""
@@ -554,7 +548,7 @@ SCENES = {
     "priere": Scene(full=True, mic=False, draw=SceneRenderer._priere, label="Prière"),
     "entracte": Scene(full=True, mic=False, draw=SceneRenderer._entracte, label="Entracte", ticking=True),
     "termine": Scene(full=True, mic=False, draw=SceneRenderer._termine, label="Terminé"),
-    "janaza": Scene(full=False, mic=True, draw=SceneRenderer._janaza, label="Janaza"),
+    "janaza": Scene(full=True, mic=True, draw=SceneRenderer._janaza, label="Janaza"),
     "dars": Scene(full=False, mic=True, draw=SceneRenderer._dars, label="Dars"),
     "dars_fin": Scene(full=True, mic=False, draw=SceneRenderer._dars_fin, label="Fin dars"),
 }

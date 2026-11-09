@@ -31,7 +31,7 @@ class State(str, Enum):
     PRIERE = "PRIÈRE"      # écran « Prière en cours », caméra et micro coupés
     ENTRACTE = "ENTRACTE"  # compte à rebours vers la prochaine khutba
     TERMINE = "TERMINÉ"    # écran de fin, avant arrêt du stream
-    JANAZA = "JANAZA"      # mode manuel : caméra minbar sans bandeau
+    JANAZA = "JANAZA"      # mode manuel : écran plein dédié, sans caméra ni bandeau
     DARS = "DARS"          # dars ou conférence : caméra + bandeau de l'événement
     DARS_FIN = "DARS_FIN"  # écran de fin d'un dars (prochain cours), avant arrêt du stream
     FIN = "FIN"            # stream arrêté
