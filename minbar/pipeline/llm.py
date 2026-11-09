@@ -107,15 +107,19 @@ def settings(url: str | None = None, model: str | None = None, key: str | None =
     url = (url or _OVERRIDE.get("url") or os.environ.get("MINBAR_LLM_URL") or cfg.get("url")
            or DEFAULT_URL).rstrip("/")
     model = model or _OVERRIDE.get("model") or os.environ.get("MINBAR_LLM_MODEL") or cfg.get("model") or DEFAULT_MODEL
+    # Le format enregistré ne vaut que pour l'adresse enregistrée : si l'adresse change (réglage du
+    # back-office, variable d'environnement, argument), le format est de nouveau déduit de l'adresse.
+    cfg_proto = (cfg.get("protocol") or "").strip().lower() if (cfg.get("url") or "").rstrip("/") == url else ""
     proto = (protocol or _OVERRIDE.get("protocol") or os.environ.get("MINBAR_LLM_PROTOCOL")
-             or cfg.get("protocol") or "").strip().lower() or _guess_protocol(url)
+             or cfg_proto or "").strip().lower() or _guess_protocol(url)
     return Settings(url=url, model=model,
                     key=key if key is not None else (os.environ.get("MINBAR_LLM_API_KEY") or cfg.get("key", "")),
                     protocol=proto)
 
 
 def _guess_protocol(url: str) -> str:
-    low = url.lower()
+    """Déduit le format d'API de l'adresse : « /messages » ou un hôte anthropic parle le format Anthropic."""
+    low = (url or "").lower().rstrip("/")
     return "anthropic" if "anthropic" in low or low.endswith("/messages") else "openai"
 
 

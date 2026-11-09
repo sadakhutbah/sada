@@ -76,11 +76,12 @@ class LocalFolder(Connector):
     enabled_by_default = True
 
     def defaults(self, mosque):
-        return {"path": db.mosque_dirs(mosque)["publish"]}
+        """Réglage enregistré (les Réglages le préremplissent), sinon data/published/<mosquée>."""
+        return {"path": db.local_folder_default(mosque)}
 
     def publish(self, item: Item, settings: dict) -> Result:
         k, c, m = item.khutba, item.clip, item.mosque
-        dest = Path(settings.get("path") or self.defaults(m)["path"]) / (k["date"] or "sans-date")
+        dest = Path(settings.get("path") or db.mosque_dirs(m)["publish"]) / (k["date"] or "sans-date")
         dest.mkdir(parents=True, exist_ok=True)
         base = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{m['slug']}_{k['run_id']}_s{runs.session_number(k['session_index'])}_clip{c['idx']}_{c['kind']}_v{c['version']}")
         src = Path(c["file_path"])

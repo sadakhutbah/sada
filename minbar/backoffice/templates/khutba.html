@@ -20,11 +20,12 @@
     </div>
     <div class="card">
       <h2>Versets détectés</h2>
-      <p class="help">Traduction de Muhammad Hamidullah, jamais générée. Les passages « à vérifier » sont ambigus.</p>
+      <p class="help">Traduction de Muhammad Hamidullah, jamais générée. Les passages « à vérifier » sont ambigus.
+        « via la traduction » : verset reconnu sur les mots français entendus, jamais sur la récitation arabe — à relire.</p>
       {% for v in verses %}
         <div class="verse">
-          <span class="vref {{ 'amb' if v.ambiguous }}">{{ v.ref }}{% if v.surah_name %} · {{ v.surah_name }}{% endif %}</span>
-          <span class="muted small"> · <a href="#" data-seek="{{ v.start }}">{{ v.start|mmss }}</a>{% if v.ambiguous %} · à vérifier{% endif %}</span>
+          <span class="vref {{ 'amb' if v.ambiguous }}{{ ' fr' if v.via == 'francais' }}">{{ v.ref }}{% if v.surah_name %} · {{ v.surah_name }}{% endif %}</span>
+          <span class="muted small"> · <a href="#" data-seek="{{ v.start }}">{{ v.start|mmss }}</a>{% if v.ambiguous %} · à vérifier{% endif %}{% if v.via == "francais" %} · via la traduction{% endif %}</span>
           {% if v.verse_fr %}<div class="fr">{{ v.verse_fr }}</div>{% endif %}
         </div>
       {% else %}<p class="muted">Aucun verset détecté.</p>{% endfor %}

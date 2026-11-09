@@ -116,26 +116,49 @@ def _h(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def ua_tag(ua: str | None) -> str:
+    """Empreinte courte du navigateur : une session volée depuis un autre navigateur est refusée.
+
+    Volontairement tolérante (pas la version complète du user agent, qui change à chaque mise à jour) :
+    on retient la famille et le système.
+    """
+    ua = ua or ""
+    fam = next((f for f in ("Firefox", "Edg", "Chrome", "Safari", "OPR") if f in ua), "autre")
+    sys_ = next((f for f in ("Windows", "Android", "iPhone", "iPad", "Mac OS", "Linux") if f in ua), "")
+    return _h(f"{fam}|{sys_}")[:16]
+
+
 def open_session(conn, user_id: int, ip: str | None, ua: str | None) -> str:
     """Crée une session ; renvoie le jeton (seul son empreinte SHA-256 est stockée)."""
     token = secrets.token_urlsafe(32)
     t = time.time()
     conn.execute("INSERT INTO auth_sessions (token_hash, user_id, csrf, created_at, expires_at, last_seen_at, ip, user_agent) "
-                 "VALUES (?,?,?,?,?,?,?,?)", (_h(token), user_id, secrets.token_urlsafe(24), t, t + SESSION_TTL, t, ip, (ua or "")[:200]))
+                 "VALUES (?,?,?,?,?,?,?,?)", (_h(token), user_id, secrets.token_urlsafe(24), t, t + SESSION_TTL, t, ip,
+                                              ua_tag(ua)))
     conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (db.now_iso(), user_id))
     conn.execute("DELETE FROM auth_sessions WHERE expires_at < ? OR last_seen_at < ?", (t, t - IDLE_TTL))
     return token
 
 
-def load_session(conn, token: str | None) -> tuple[dict, dict] | None:
-    """-> (session, utilisateur) si la session est valide, sinon None."""
+def load_session(conn, token: str | None, ua: str | None = None, ip: str | None = None) -> tuple[dict, dict] | None:
+    """-> (session, utilisateur) si la session est valide, sinon None.
+
+    Rejetée si expirée, inactive trop longtemps, ou présentée par un autre navigateur que celui de
+    l'ouverture (empreinte ua_tag) : un jeton recopié ailleurs ne sert donc à rien.
+    """
     if not token:
         return None
     s = db.one(conn, "SELECT * FROM auth_sessions WHERE token_hash = ?", _h(token))
     t = time.time()
-    if not s or s["expires_at"] < t or s["last_seen_at"] < t - IDLE_TTL:
-        if s:
-            conn.execute("DELETE FROM auth_sessions WHERE id = ?", (s["id"],))
+    if not s:
+        return None
+    if (s["user_agent"] or "autre") != ua_tag(ua):
+        # Jeton présenté par un autre navigateur : on NE détruit PAS la session (ce serait offrir au
+        # voleur un déni de service sur le compte), on journalise pour que le Maître voie la tentative.
+        db.audit(conn, None, s["user_id"], "session.navigateur_inattendu", "session", s["id"], ip=ip)
+        return None
+    if s["expires_at"] < t or s["last_seen_at"] < t - IDLE_TTL:
+        conn.execute("DELETE FROM auth_sessions WHERE id = ?", (s["id"],))
         return None
     u = db.one(conn, "SELECT * FROM users WHERE id = ? AND active = 1", s["user_id"])
     if not u:

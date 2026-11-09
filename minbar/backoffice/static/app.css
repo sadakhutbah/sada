@@ -116,6 +116,7 @@ video{width:100%;background:#000;border-radius:var(--r);display:block}
 .seg.quran{background:linear-gradient(90deg,var(--paper-2),transparent 70%);margin:0 -10px;padding:10px}
 .vref{display:inline-block;font-weight:700;color:var(--deep);font-size:.85rem}
 .vref.amb{color:var(--warn)}
+.vref.fr{color:var(--leaf-2)}
 .edited{font-size:.75rem;color:var(--warn);font-weight:700;margin-left:6px}
 details.fix summary{cursor:pointer;color:var(--deep);font-size:.85rem;font-weight:600;list-style:none;display:inline-block;margin-top:4px}
 details.fix summary::-webkit-details-marker{display:none}
@@ -163,3 +164,17 @@ details.fiche .small{color:#A9BBA9;margin:8px 0 0}
   table.resp td{display:block;border:0;padding:2px 0}
   .hide-m{display:none}
 }
+
+/* ---- réglages : aperçu du logo et sélecteur de dossiers ---- */
+.logo-preview{display:flex;align-items:center;gap:12px;margin:6px 0 16px}
+.logo-preview img{width:56px;height:56px;border-radius:50%;border:2px solid var(--leaf);object-fit:cover;background:#fff}
+.folder-field{margin:0 0 14px}
+.dirpicker:not([hidden]){position:fixed;inset:0;background:rgba(15,42,25,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.dirpicker-box{background:var(--white);border-radius:var(--r);padding:18px;width:min(680px,100%);max-height:86vh;display:flex;flex-direction:column;gap:10px}
+.dirpicker-path{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.85rem;word-break:break-all}
+.dirpicker-list{list-style:none;margin:0;padding:0;overflow:auto;max-height:44vh;border:1px solid var(--line);border-radius:10px}
+.dirpicker-list li{border-bottom:1px solid var(--line)}
+.dirpicker-list li:last-child{border-bottom:0}
+.dirpicker-item{display:block;width:100%;text-align:left;padding:9px 12px;text-decoration:none;color:var(--ink);background:none;border:0;cursor:pointer;font:inherit}
+.dirpicker-item:hover{background:var(--paper-2)}
+body.no-scroll{overflow:hidden}

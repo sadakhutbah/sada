@@ -19,10 +19,15 @@ from rapidfuzz import fuzz, process
 
 from ..text import arabic_ratio
 from .arabic import normalize
+from .verses_fr import FrenchIndex, content_words
 
 WIN = 5          # mots par fenêtre
 MIN_VERSE_WORDS = 3
 THRESH = 86.0
+# Détection par la traduction française : seuil plus bas qu'en arabe (Whisper reformule), mots pleins seulement,
+# et confiance plafonnée à « trad » — un verset reconnu en français seul est proposé, jamais tenu pour acquis.
+THRESH_FR = 68.0
+MIN_FR_WORDS = 4
 
 
 @dataclass
@@ -38,8 +43,9 @@ class Match:
     verse_fr: str
     coverage: float = 0.0   # part des mots du verset retrouvés (approx.)
     ref: str = ""
-    confidence: str = "sûr"      # sûr | court | ambigu (formule dans plusieurs versets) | faible (fragment)
+    confidence: str = "sûr"      # sûr | court | ambigu (formule dans plusieurs versets) | faible (fragment) | trad (via le français)
     candidates: list = field(default_factory=list)
+    via: str = "arabe"           # arabe | francais (détection par la traduction)
 
     def __post_init__(self):
         self.ref = f"{self.surah}:{self.ayah}"
@@ -48,6 +54,7 @@ class Match:
 class VerseIndex:
     def __init__(self, verses: list[dict], win: int = WIN):
         self.verses, self.win = verses, win
+        self.fr = FrenchIndex(verses)
         self.keys: list[str] = []
         self.owner: list[int] = []
         self.key_owners: dict[str, set] = {}
@@ -76,8 +83,24 @@ class VerseIndex:
         return out
 
 
-def detect(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_s: float = 25.0) -> list[Match]:
-    """segments : [{start, end, text}] -> liste de Match triée par temps."""
+def detect(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_s: float = 25.0,
+           thresh_fr: float = THRESH_FR) -> list[Match]:
+    """segments : [{start, end, text}] -> liste de Match triée par temps.
+
+    Deux passes : l'arabe (transcription de la récitation) puis le français (traduction/transcription
+    française du sens). Une même prise de parole est attribuée à une seule piste, pour ne pas compter
+    deux fois le même passage.
+    """
+    matches = _detect_ar(segments, index, thresh, gap_s)
+    taken = [(m.start, m.end) for m in matches]
+    fr = [m for m in _detect_fr(segments, index, thresh_fr, gap_s)
+          if not any(m.start < e and s < m.end for s, e in taken)]
+    matches = sorted(matches + fr, key=lambda m: (m.start, -m.score))
+    return matches
+
+
+def _detect_ar(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_s: float = 25.0) -> list[Match]:
+    """Passage arabe : fenêtres de mots normalisés comparées aux fenêtres des versets."""
     wins, meta = [], []
     for seg in segments:
         if arabic_ratio(seg["text"]) < 0.3:
@@ -136,6 +159,55 @@ def detect(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_
     return matches
 
 
+def _detect_fr(segments: list[dict], index: VerseIndex, thresh: float = THRESH_FR, gap_s: float = 25.0) -> list[Match]:
+    """Passage français : fenêtres glissantes sur le texte continu, comparées aux traductions des versets.
+
+    Whisper découpe l'oral n'importe où : on recoud donc plusieurs segments voisins (les frontières de
+    phrase tombent rarement sur le mot clé) et on garde, par verset, la meilleure fenêtre, avec les
+    segments qu'elle couvre.
+    """
+    fr_ = index.fr
+    if not len(fr_):
+        return []
+    usable = [i for i, seg in enumerate(segments) if arabic_ratio(seg["text"]) < 0.3]
+    if not usable:
+        return []
+    n = fr_.win
+    wins, spans = [], []              # spans : (premier segment, dernier segment)
+    i = 0
+    while i < len(usable):
+        j, words = i, []
+        while j < len(usable) and len(words) < 3 * n:
+            words += content_words(segments[usable[j]]["text"])
+            j += 1
+        if len(words) >= n:
+            step = 2 if len(words) > 3 * n else 1      # hybride : fin, puis pas double sur les longs passages
+            for k in range(0, len(words) - n + 1, step):
+                wins.append(" ".join(words[k:k + n])); spans.append((usable[i], usable[j - 1]))
+        i = j
+    if not wins:
+        return []
+    hits = fr_.search(wins, thresh)
+    best: dict[int, tuple] = {}
+    for (a, b), h in zip(spans, hits):
+        if not h:
+            continue
+        sc, vi, key = h
+        if sc > best.get(vi, (0.0,))[0]:
+            best[vi] = (sc, a, b)
+    matches: list[Match] = []
+    for vi, (sc, a, b) in best.items():
+        v = index.verses[vi]
+        covered = segments[a:b + 1]
+        m = Match(v["surah"], v["ayah"], v["surah_name"], sc,
+                  min(s["start"] for s in covered), max(s["end"] for s in covered),
+                  " ".join(s["text"].strip() for s in covered), v["text"], v["fr"], 0.0, via="francais")
+        m.confidence = "trad"
+        matches.append(m)
+    matches.sort(key=lambda m: (m.start, -m.score))
+    return matches
+
+
 def to_dicts(ms: list[Match]) -> list[dict]:
     return [asdict(m) for m in ms]
 
@@ -153,7 +225,8 @@ FORMULAS = {
     "صلي الله عليه وسلم": "que la paix et les bénédictions d'Allah soient sur lui.",
 }
 FORM_NORM = {normalize(k): v for k, v in FORMULAS.items()}
-FIRM = ("sûr", "court")
+# « trad » = reconnu par la traduction française seule : proposé, jamais tenu pour une référence sûre.
+FIRM = ("sûr", "court", "trad")
 FORMULA_MATCH = 85
 
 

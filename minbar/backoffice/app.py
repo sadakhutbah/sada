@@ -20,7 +20,7 @@ from markupsafe import Markup
 from .. import text
 from ..pipeline import llm, verses
 from ..pipeline.output import SessionOutput
-from . import auth, content, db, importer, live, publish
+from . import auth, branding, content, db, dirs as dirs_mod, importer, live, publish
 
 HERE = Path(__file__).resolve().parent
 PRE_COOKIE = "minbar_pre"
@@ -44,6 +44,7 @@ class Ctx:
     def __init__(self, request: Request, conn, session: dict, user: dict, mosque: dict):
         self.request, self.conn, self.session, self.user, self.mosque = request, conn, session, user, mosque
         self.ip = request.client.host if request.client else None
+        self.files: dict = {}
 
     def can(self, perm: str) -> bool:
         return auth.can(self.user, perm)
@@ -57,9 +58,11 @@ class Ctx:
         self.conn.execute("UPDATE auth_sessions SET flash = ? WHERE id = ?", (json.dumps([kind, msg]), self.session["id"]))
 
     async def form(self) -> dict:
+        """Champs texte du formulaire ; jeton CSRF vérifié. `self.files` garde les fichiers envoyés."""
         f = await self.request.form()
         if not auth.check_csrf(self.session, f.get("csrf")):
             raise Forbidden()
+        self.files = {k: v for k, v in f.items() if not isinstance(v, str)}
         return {k: (v if isinstance(v, str) else "") for k, v in f.items()}
 
 
@@ -71,8 +74,20 @@ def get_conn(request: Request):
         conn.close()
 
 
+def _sec(request) -> bool:
+    """Requête servie en HTTPS (directement ou via un proxy qui pose X-Forwarded-Proto)."""
+    fwd = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    return request.url.scheme == "https" or fwd == "https"
+
+
+def get_any_mosque(conn=Depends(get_conn)) -> dict | None:
+    """Mosquée de l'instance (une par machine en V1) : sert au logo de la page de connexion."""
+    return db.one(conn, "SELECT * FROM mosques ORDER BY id LIMIT 1")
+
+
 def get_ctx(request: Request, conn=Depends(get_conn)) -> Ctx:
-    res = auth.load_session(conn, request.cookies.get(auth.COOKIE))
+    res = auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
+                            request.client.host if request.client else None)
     if not res:
         raise LoginRequired()
     s, u = res
@@ -208,7 +223,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     tpl = Jinja2Templates(directory=str(HERE / "templates"))
     tpl.env.filters.update(local=f_local, mmss=f_mmss, date_fr=f_date, markdown=f_markdown, details=f_details)
-    tpl.env.globals.update(STATUS=content.STATUS_LABELS, STATUS_TABS=content.STATUS_TABS, LIVE_COMMANDS=live.COMMANDS, ROLES=auth.ROLE_LABELS, AUDIT=AUDIT_LABELS, MASK=db.MASK)
+    tpl.env.globals.update(STATUS=content.STATUS_LABELS, STATUS_TABS=content.STATUS_TABS, LIVE_COMMANDS=live.COMMANDS, ROLES=auth.ROLE_LABELS, AUDIT=AUDIT_LABELS, MASK=db.MASK, LOGO=branding.url)
 
     def render(ctx: Ctx | None, name: str, status_code: int = 200, **kw) -> HTMLResponse:
         flash = None
@@ -223,6 +238,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                 "csrf": ctx.session["csrf"] if ctx else "", "flash": flash, "path": request.url.path}
         return tpl.TemplateResponse(request, name, {**base, **kw}, status_code=status_code)
 
+    SECTIONS = ("identite", "image", "live", "dossiers", "modele", "connecteurs", "acces")
+
+    def section(s: str) -> str:
+        """Onglet cible après un enregistrement : inconnu -> première section."""
+        return f"/admin/mosquee?section={s}" if s in SECTIONS else "/admin/mosquee?section=identite"
+
     def back(url: str) -> RedirectResponse:
         return RedirectResponse(url, status_code=303)
 
@@ -233,6 +254,10 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         resp.headers["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self'; "
                                                    "script-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
         resp.headers["X-Content-Type-Options"] = "nosniff"
+        if _sec(request):
+            # uniquement derrière HTTPS (proxy ou serveur central) : un HSTS sur du HTTP local bloquerait
+            # l'accès des autres postes du réseau local à cette machine
+            resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Referrer-Policy"] = "same-origin"
         if not request.url.path.startswith(("/static", "/media")):
@@ -288,16 +313,18 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ---------------------------------------------------------- connexion
     @app.get("/connexion")
-    def login_page(request: Request, conn=Depends(get_conn), suite: str = "/"):
-        if auth.load_session(conn, request.cookies.get(auth.COOKIE)):
+    def login_page(request: Request, conn=Depends(get_conn), suite: str = "/", any_mosque=Depends(get_any_mosque)):
+        if auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
+                             request.client.host if request.client else None):
             return back("/")
         pre = request.cookies.get(PRE_COOKIE) or secrets.token_urlsafe(16)
-        resp = tpl.TemplateResponse(request, "login.html", {"pre": pre, "suite": suite, "error": None, "user": None, "ctx": None, "path": ""})
+        resp = tpl.TemplateResponse(request, "login.html", {"pre": pre, "suite": suite, "error": None, "user": None, "ctx": None, "path": "",
+                                                 "mosque": any_mosque, "csrf": ""})
         resp.set_cookie(PRE_COOKIE, pre, httponly=True, samesite="strict", secure=_secure(request), max_age=3600)
         return resp
 
     def _secure(request: Request) -> bool:
-        return app.state.secure or request.url.scheme == "https"
+        return app.state.secure or _sec(request)
 
     @app.post("/connexion")
     async def login(request: Request, conn=Depends(get_conn)):
@@ -311,7 +338,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
         def fail(msg, code=400):
             return tpl.TemplateResponse(request, "login.html", {"pre": pre or secrets.token_urlsafe(16), "suite": suite, "error": msg,
-                                                                "username": username, "user": None, "ctx": None, "path": ""}, status_code=code)
+                                                                "username": username, "user": None, "ctx": None, "path": "", "mosque": None, "csrf": ""}, status_code=code)
         if not pre or not secrets.compare_digest(pre, str(f.get("pre", ""))):
             return fail("Session de connexion expirée : rechargez la page.", 403)
         lim = app.state.limiter
@@ -623,6 +650,58 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             ctx.flash(str(e), "err")
         return back("/admin/utilisateurs")
 
+    # ---------------------------------------------------------- choix des dossiers (machine locale)
+    @app.get("/api/dossiers")
+    def api_dirs(path: str = "", ctx: Ctx = Depends(get_ctx)):
+        """Arborescence de la machine qui héberge l'application, pour le bouton « Parcourir »."""
+        ctx.require("admin")
+        try:
+            return {"roots": dirs_mod.roots(), **dirs_mod.listing(path or None)}
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    # ---------------------------------------------------------- logo de l'interface
+    @app.get("/logo/{slug}")
+    def logo_file(slug: str, conn=Depends(get_conn)):
+        m = db.one(conn, "SELECT * FROM mosques WHERE slug = ?", slug)
+        if not m or not (m.get("logo_path") or "").strip():
+            raise NotFound()
+        f = branding.path_for(m)
+        if not f.exists():
+            raise NotFound()
+        ext = f.suffix.lower()
+        return FileResponse(f, media_type=branding.EXT.get(ext, "application/octet-stream"),
+                            headers={"Cache-Control": "private, max-age=300"})
+
+    @app.post("/admin/logo")
+    async def logo_save(ctx: Ctx = Depends(get_ctx)):
+        ctx.require("admin")
+        f = await ctx.form()   # jeton CSRF vérifié ; le fichier est gardé en mémoire (2 Mo max)
+        up = ctx.files.get("logo")
+        if up is None or not getattr(up, "filename", ""):
+            ctx.flash("Aucun fichier choisi.", "err")
+            return back(section("image"))
+        content_bytes = await up.read()
+        try:
+            rel = branding.save(ctx.mosque, up.filename, content_bytes)
+        except ValueError as e:
+            ctx.flash(str(e)[0].upper() + str(e)[1:] + ".", "err")
+            return back(section("image"))
+        db.update_mosque(ctx.conn, ctx.mosque["id"], logo_path=rel)
+        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.logo", "mosque", ctx.mosque["id"], ip=ctx.ip, fichier=rel)
+        ctx.flash("Logo enregistré : il apparaît dans la barre et comme icône de l'onglet.")
+        return back(section("image"))
+
+    @app.post("/admin/logo/supprimer")
+    async def logo_clear(ctx: Ctx = Depends(get_ctx)):
+        await ctx.form()
+        ctx.require("admin")
+        branding.clear(ctx.mosque)
+        db.update_mosque(ctx.conn, ctx.mosque["id"], logo_path="")
+        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.logo.retire", "mosque", ctx.mosque["id"], ip=ctx.ip)
+        ctx.flash("Logo retiré : emblème neutre repris.")
+        return back(section("image"))
+
     @app.get("/admin/mosquee")
     def mosque_page(ctx: Ctx = Depends(get_ctx)):
         ctx.require("admin")
@@ -639,47 +718,51 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         proto = (f.get("llm_protocol") or "").strip()
         if url and not re.match(r"^https?://", url):
             ctx.flash("L'adresse du modèle doit commencer par http:// ou https://", "err")
-            return back("/admin/mosquee#modele")
+            return back(section("modele"))
         if proto not in ("", "openai", "anthropic"):
             ctx.flash("Format d'API inconnu.", "err")
-            return back("/admin/mosquee#modele")
+            return back(section("modele"))
         llm.save_config(enabled=f.get("llm_enabled") == "1", url=url, model=model, protocol=proto)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "modele.configure", "mosque", ctx.mosque["id"], ip=ctx.ip,
                  actif=f.get("llm_enabled") == "1", url=url, modele=model, protocole=proto, fichier=str(llm.config_path()))
         ctx.flash("Modèle de langage enregistré. Le pipeline l'applique au prochain lancement (les variables "
                   "d'environnement et les options de ligne de commande restent prioritaires).")
-        return back("/admin/mosquee#modele")
+        return back(section("modele"))
 
     @app.post("/admin/modele/tester")
     async def llm_test(ctx: Ctx = Depends(get_ctx)):
         ctx.require("admin")
         ok, msg = llm.probe()
         ctx.flash(msg, "" if ok else "err")
-        return back("/admin/mosquee#modele")
+        return back(section("modele"))
 
     @app.post("/admin/mosquee")
     async def mosque_save(ctx: Ctx = Depends(get_ctx)):
         f = await ctx.form()
         ctx.require("admin")
-        vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS}
+        sect = "live" if "orchestrator_url" in f or "orchestrator_token" in f else (
+            "dossiers" if any(k in f for k in ("state_dir", "output_dir", "publish_dir")) else "identite")
+        vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS if k != "logo_path" and k in f}
+        current = {k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"}
+        vals = {**current, **vals}          # un formulaire partiel ne vide pas les autres réglages
         if not vals["name"]:
             ctx.flash("Le nom est obligatoire.", "err")
-            return back("/admin/mosquee")
+            return back(section(sect))
         if vals["orchestrator_url"] and not re.match(r"^https?://", vals["orchestrator_url"]):
             ctx.flash("L'adresse de l'orchestrateur doit commencer par http:// ou https://", "err")
-            return back("/admin/mosquee")
+            return back(section(sect))
         if vals["orchestrator_token"] == db.MASK:
             vals["orchestrator_token"] = ctx.mosque["orchestrator_token"]
-        di = auth.imam_id(ctx.conn, ctx.mosque["id"], f.get("default_imam_id"))
+        di = auth.imam_id(ctx.conn, ctx.mosque["id"], f.get("default_imam_id", ctx.mosque["default_imam_id"]))
         try:
             db.update_mosque(ctx.conn, ctx.mosque["id"], **vals, default_imam_id=di, auto_import=1 if f.get("auto_import") == "1" else 0)
         except ValueError as e:
             ctx.flash(f"{str(e)[0].upper()}{str(e)[1:]}.", "err")
-            return back("/admin/mosquee")
+            return back(section(sect))
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "mosquee.configuree", "mosquee", ctx.mosque["id"], ip=ctx.ip,
-                 champs=[k for k in vals if k != "orchestrator_token" and str(vals[k]) != str(ctx.mosque[k])])
+                 champs=[k for k in vals if k != "orchestrator_token" and str(vals[k]) != str(ctx.mosque.get(k))])
         ctx.flash("Configuration enregistrée.")
-        return back("/admin/mosquee")
+        return back(section(sect))
 
     @app.post("/admin/connecteurs/{key}")
     async def connector_save(key: str, ctx: Ctx = Depends(get_ctx)):
@@ -689,7 +772,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         publish.save_connector(ctx.conn, ctx.mosque["id"], key, f.get("enabled") == "1", f, ctx.user, ctx.ip)
         ctx.flash(f"Connecteur « {publish.CONNECTORS[key].label} » enregistré.")
-        return back("/admin/mosquee#connecteurs")
+        return back(section("connecteurs"))
 
     @app.get("/sante")
     def health():

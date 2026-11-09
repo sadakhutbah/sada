@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 DEFAULT_DB = paths.BACKOFFICE_DB
 # réglages modifiables d'une mosquée (Réglages → Mosquée, `python -m minbar.backoffice mosque`)
 MOSQUE_SETTINGS = ("name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token", "state_dir", "output_dir",
-                   "publish_dir", "clip_title")
+                   "publish_dir", "clip_title", "logo_path")
 MASK = "••••••"                  # valeur affichée à la place d'un secret enregistré ; renvoyée telle quelle = inchangé
 
 SCHEMA = """
@@ -155,6 +155,8 @@ ADDED_COLUMNS = [
     ("khutbas", "title", "TEXT NOT NULL DEFAULT ''"),
     ("khutbas", "series", "TEXT NOT NULL DEFAULT ''"),
     ("khutbas", "session_no", "INTEGER"),
+    # logo propre au back-office (favicon + barre) : fichier sous data/backoffice/logos/ ; vide = emblème neutre
+    ("mosques", "logo_path", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 
@@ -213,8 +215,13 @@ def mosque_dirs(m: dict) -> dict:
     return {
         "state": Path(m.get("state_dir") or paths.STATE),
         "output": Path(m.get("output_dir") or paths.OUTPUT),
-        "publish": Path(m.get("publish_dir") or paths.PUBLISHED / m["slug"]),
+        "publish": Path(m.get("publish_dir") or local_folder_default(m)),
     }
+
+
+def local_folder_default(m: dict) -> Path:
+    """Dossier par défaut de la connexion « Dossier local » : data/published/<mosquée>."""
+    return paths.PUBLISHED / m["slug"]
 
 
 DEFAULT_TZ = "Europe/Paris"

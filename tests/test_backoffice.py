@@ -71,17 +71,22 @@ def env(tmp_path):
     conn.close()
 
 
-def client(env, username=None) -> TestClient:
-    c = TestClient(env["app"], follow_redirects=False)
+def client(env, username=None, headers=None) -> TestClient:
+    c = TestClient(env["app"], follow_redirects=False, headers=headers or {})
     if username:
         login(c, username)
     return c
 
 
-def login(c: TestClient, username: str, password: str = PW):
+def login(c: TestClient, username: str, password: str = PW, expect_ok: bool | None = None):
     page = c.get("/connexion")
     pre = re.search(r'name="pre" value="([^"]+)"', page.text).group(1)
-    return c.post("/connexion", data={"username": username, "password": password, "pre": pre, "suite": "/"})
+    r = c.post("/connexion", data={"username": username, "password": password, "pre": pre, "suite": "/"})
+    c.login_cookie = r.headers.get("set-cookie", "")
+    c.last_login = r
+    if expect_ok if expect_ok is not None else password == PW:
+        assert r.status_code == 303, f"connexion refusée : {r.status_code} {getattr(r, 'text', '')[:300]}"
+    return r
 
 
 def csrf(c: TestClient, url: str = "/compte") -> str:
@@ -114,7 +119,7 @@ def test_mots_de_passe_haches_argon2(env):
 def test_connexion_cookie_et_deconnexion(env):
     c = client(env)
     assert login(c, "admin", "mauvais-mot-de-passe").status_code == 401
-    assert login(c, "inconnu", PW).status_code == 401
+    assert login(c, "inconnu", PW, expect_ok=False).status_code == 401
     r = login(c, "admin")
     assert r.status_code == 303
     cookie = r.headers["set-cookie"]
@@ -129,7 +134,7 @@ def test_connexion_cookie_et_deconnexion(env):
 
 def test_compte_desactive_refuse(env):
     env["conn"].execute("UPDATE users SET active = 0 WHERE username = 'imam2'")
-    assert login(client(env), "imam2").status_code == 401
+    assert login(client(env), "imam2", expect_ok=False).status_code == 401
 
 
 def test_csrf_obligatoire(env):
@@ -146,7 +151,7 @@ def test_limitation_des_essais(env):
     c = client(env)
     for _ in range(5):
         assert login(c, "admin", "mauvais-mot-de-passe").status_code == 401
-    assert login(c, "admin").status_code == 429                 # même le bon mot de passe est bloqué
+    assert login(c, "admin", expect_ok=False).status_code == 429   # même le bon mot de passe est bloqué
 
 
 def test_journal_des_connexions(env):
@@ -286,20 +291,20 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
     for var in ("MINBAR_LLM_ENABLED", "MINBAR_LLM_URL", "MINBAR_LLM_MODEL", "MINBAR_LLM_PROTOCOL"):
         monkeypatch.delenv(var, raising=False)
     c = client(env, "admin")
-    assert "Modèle de langage" in c.get("/admin/mosquee").text
+    assert "Modèle de langage" in c.get("/admin/mosquee?section=modele").text
 
-    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_enabled": "1",
+    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee?section=modele"), "llm_enabled": "1",
                                       "llm_url": "http://127.0.0.1:9/v1", "llm_model": "petit", "llm_protocol": "openai"})
     assert r.status_code == 303
     assert json.loads(cfg.read_text()) == {"enabled": True, "url": "http://127.0.0.1:9/v1",
                                            "model": "petit", "protocol": "openai"}
     assert llm.enabled() and llm.label() == "openai · petit"      # le pipeline lirait ceci
 
-    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_url": "", "llm_model": "", "llm_protocol": ""})
+    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee?section=modele"), "llm_url": "", "llm_model": "", "llm_protocol": ""})
     assert r.status_code == 303
     assert json.loads(cfg.read_text())["enabled"] is False and llm.enabled() is False
 
-    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee"), "llm_enabled": "1", "llm_url": "file:///etc/passwd"})
+    r = c.post("/admin/modele", data={"csrf": csrf(c, "/admin/mosquee?section=modele"), "llm_enabled": "1", "llm_url": "file:///etc/passwd"})
     assert r.status_code == 303
     assert json.loads(cfg.read_text())["enabled"] is False         # refusée : le fichier n'a pas bougé
 

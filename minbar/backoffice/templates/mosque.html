@@ -1,32 +1,91 @@
 {% extends "base.html" %}
 {% block title %}Réglages{% endblock %}
 {% block main %}
-<p class="small"><b>Mosquée</b> · <a href="/admin/utilisateurs">Comptes</a></p>
-<h1>Réglages de la mosquée</h1>
-<div class="grid g2">
+{% set tab = request.query_params.get("section", "identite") %}
+{% if tab not in ["identite", "image", "live", "dossiers", "modele", "connecteurs", "acces"] %}{% set tab = "identite" %}{% endif %}
+<h1>Réglages</h1>
+<nav class="tabs">
+  {% for key, label in [("identite", "Mosquée"), ("image", "Logo"), ("live", "Live"), ("dossiers", "Dossiers"), ("modele", "Modèle"), ("connecteurs", "Publication"), ("acces", "Accès")] %}
+  <a href="/admin/mosquee?section={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+
+{% if tab == "identite" %}
+<form method="post" action="/admin/mosquee" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>La mosquée</h2>
+  <p class="help">Ces informations apparaissent sur les clips et les fiches publiées.</p>
+  <label for="name">Nom</label><input type="text" id="name" name="name" value="{{ mosque.name }}" required>
+  <div class="row">
+    <div class="grow"><label for="timezone">Fuseau horaire</label><input type="text" id="timezone" name="timezone" value="{{ mosque.timezone }}" placeholder="Europe/Paris"></div>
+    <div class="grow"><label for="mawaqit_url">Page Mawaqit</label><input type="url" id="mawaqit_url" name="mawaqit_url" value="{{ mosque.mawaqit_url }}" placeholder="https://mawaqit.net/fr/…"></div>
+  </div>
+  <label for="clip_title">Titre affiché sur les clips</label><input type="text" id="clip_title" name="clip_title" value="{{ mosque.clip_title }}">
+  <label for="default_imam_id">Imam par défaut des nouvelles khutbas</label>
+  <select id="default_imam_id" name="default_imam_id"><option value="">— aucun —</option>
+    {% for i in imams %}<option value="{{ i.id }}" {{ "selected" if i.id == mosque.default_imam_id }}>{{ i.display_name }}</option>{% endfor %}</select>
+  <label class="check"><input type="checkbox" name="auto_import" value="1" {{ "checked" if mosque.auto_import }}> Importer automatiquement les nouveaux runs</label>
+  <p><button class="btn">Enregistrer</button></p>
+</form>
+
+{% elif tab == "image" %}
 <section class="card">
-  <form method="post" action="/admin/mosquee"><input type="hidden" name="csrf" value="{{ csrf }}">
-    <label for="name">Nom</label><input type="text" id="name" name="name" value="{{ mosque.name }}" required>
-    <label for="timezone">Fuseau horaire</label><input type="text" id="timezone" name="timezone" value="{{ mosque.timezone }}">
-    <label for="mawaqit_url">Page Mawaqit</label><input type="url" id="mawaqit_url" name="mawaqit_url" value="{{ mosque.mawaqit_url }}" placeholder="https://mawaqit.net/fr/...">
-    <label for="clip_title">Titre affiché sur les clips</label><input type="text" id="clip_title" name="clip_title" value="{{ mosque.clip_title }}">
-    <label for="default_imam_id">Imam par défaut des nouvelles khutbas</label>
-    <select id="default_imam_id" name="default_imam_id"><option value="">— aucun —</option>
-      {% for i in imams %}<option value="{{ i.id }}" {{ "selected" if i.id == mosque.default_imam_id }}>{{ i.display_name }}</option>{% endfor %}</select>
-    <h3>Orchestrateur du live</h3>
-    <label for="orchestrator_url">Adresse de l'API</label><input type="url" id="orchestrator_url" name="orchestrator_url" value="{{ mosque.orchestrator_url }}">
-    <label for="orchestrator_token">Jeton (si l'API en exige un)</label>
-    <input type="password" id="orchestrator_token" name="orchestrator_token" value="{{ MASK if mosque.orchestrator_token }}" autocomplete="off">
-    <h3>Dossiers du pipeline</h3>
-    <label for="state_dir">États des runs</label><input type="text" id="state_dir" name="state_dir" value="{{ mosque.state_dir }}" placeholder="{{ dirs.state }}">
-    <label for="output_dir">Sorties (transcriptions, clips)</label><input type="text" id="output_dir" name="output_dir" value="{{ mosque.output_dir }}" placeholder="{{ dirs.output }}">
-    <label for="publish_dir">Dossier de publication locale</label><input type="text" id="publish_dir" name="publish_dir" value="{{ mosque.publish_dir }}" placeholder="{{ dirs.publish }}">
-    <div class="help">Laisser vide pour les dossiers par défaut du dépôt (indiqués en gris).</div>
-    <label class="check"><input type="checkbox" name="auto_import" value="1" {{ "checked" if mosque.auto_import }}> Importer automatiquement les nouveaux runs</label>
-    <p><button class="btn">Enregistrer</button></p>
+  <h2>Logo de l'interface</h2>
+  <p class="help">Ce logo apparaît en haut du back-office et comme icône de l'onglet du navigateur.
+    Ce n'est pas le logo des vidéos (réglage du pipeline) : ici, uniquement l'interface.</p>
+  <div class="logo-preview">
+    <img src="{{ LOGO(mosque) }}" alt="Logo actuel">
+    <div class="small muted">{{ "Logo personnalisé" if mosque.logo_path else "Emblème neutre (aucun logo enregistré)" }}</div>
+  </div>
+  <form method="post" action="/admin/logo" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="logo">Nouvelle image (png, jpg, webp ou svg — 2 Mo maximum, carrée de préférence)</label>
+    <input type="file" id="logo" name="logo" accept=".png,.jpg,.jpeg,.webp,.svg,image/*" required>
+    <p><button class="btn">Envoyer</button></p>
   </form>
+  {% if mosque.logo_path %}
+  <form method="post" action="/admin/logo/supprimer"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn sm ghost">Retirer le logo</button>
+    <span class="small muted">L'emblème neutre reprend sa place.</span>
+  </form>
+  {% endif %}
 </section>
-<section class="card" id="modele">
+
+{% elif tab == "live" %}
+<form method="post" action="/admin/mosquee" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Orchestrateur du live</h2>
+  <p class="help">Le programme qui pilote OBS et les enregistrements, sur cette machine ou une autre.</p>
+  <label for="orchestrator_url">Adresse de l'API</label><input type="url" id="orchestrator_url" name="orchestrator_url" value="{{ mosque.orchestrator_url }}">
+  <label for="orchestrator_token">Jeton (si l'API en exige un)</label>
+  <input type="password" id="orchestrator_token" name="orchestrator_token" value="{{ MASK if mosque.orchestrator_token }}" autocomplete="off">
+  <p><button class="btn">Enregistrer</button></p>
+</form>
+
+{% elif tab == "dossiers" %}
+<form method="post" action="/admin/mosquee" class="card"><input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Dossiers sur cette machine</h2>
+  <p class="help">Choisissez avec le bouton <b>Parcourir</b> : la fenêtre montre les dossiers réels de la machine
+    qui héberge l'application, aucun chemin à taper. Un champ laissé vide garde le dossier par défaut du programme.</p>
+
+  {% for key, title, desc in [
+      ("state_dir", "États des runs", "fichiers de suivi des lives"),
+      ("output_dir", "Sorties du pipeline", "transcriptions, clips"),
+      ("publish_dir", "Dossier de publication", "clips publiés en local")] %}
+  <div class="folder-field">
+    <label for="{{ key }}">{{ title }} <span class="muted small">— {{ desc }}</span></label>
+    <div class="row">
+      <input type="text" id="{{ key }}" name="{{ key }}" value="{{ mosque[key] }}" placeholder="{{ dirs.get(key.replace('_dir', ''), '') }}" data-dir-input>
+      <button type="button" class="btn sm ghost" data-dir-browse="{{ key }}">Parcourir…</button>
+    </div>
+    <div class="small muted" data-dir-state="{{ key }}">
+      {% set def = dirs.get(key.replace("_dir", "")) %}
+      {% if mosque[key] %}défini manuellement{% elif def %}par défaut : <span class="mono">{{ def }}</span>{% else %}par défaut : dossier du programme{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  <p><button class="btn">Enregistrer</button></p>
+</form>
+
+{% elif tab == "modele" %}
+<section class="card">
   <h2>Modèle de langage</h2>
   <p class="help">Résumé et traduction du pipeline. Un serveur compatible OpenAI ou Anthropic, en local
     (Ollama, llama.cpp, LM Studio, vLLM) ou distant. Réglage de cette machine, partagé par tous les
@@ -54,7 +113,9 @@
     <button class="btn sm ghost">Tester la connexion</button>
   </form>
 </section>
-<section class="card" id="connecteurs">
+
+{% elif tab == "connecteurs" %}
+<section class="card">
   <h2>Connecteurs de publication</h2>
   <p class="help">Les identifiants restent sur cette machine. En V1, Facebook, YouTube et Instagram restent désactivés : aucune publication réelle, aucun appel externe.</p>
   {% for x in connectors %}
@@ -63,12 +124,39 @@
     <div class="small">{{ x.description }}</div>
     {% if not x.available %}<div class="small muted">{{ x.why }}</div>{% endif %}
     <form method="post" action="/admin/connecteurs/{{ x.key }}"><input type="hidden" name="csrf" value="{{ csrf }}">
-      {% for f in x.fields %}<label>{{ f.label }}</label><input type="{{ 'password' if f.secret and f.value else 'text' }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" autocomplete="off">{% endfor %}
+      {% for f in x.fields %}
+      <label>{{ f.label }}</label>
+      <div class="row">
+        <input type="{{ 'password' if f.secret and f.value else 'text' }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" autocomplete="off"{% if x.key == "local" %} data-dir-input{% endif %}>
+        {% if x.key == "local" and f.name == "path" %}<button type="button" class="btn sm ghost" data-dir-browse="{{ f.name }}">Parcourir…</button>{% endif %}
+      </div>
+      {% endfor %}
       <label class="check"><input type="checkbox" name="enabled" value="1" {{ "checked" if x.enabled }}> Activé</label>
       <button class="btn sm ghost">Enregistrer</button>
     </form>
   </div>
   {% endfor %}
 </section>
+
+{% elif tab == "acces" %}
+<section class="card">
+  <h2>Comptes et accès</h2>
+  <p>Les comptes, leurs rôles et leurs mots de passe se gèrent sur leur propre page.</p>
+  <p><a class="btn sm" href="/admin/utilisateurs">Gérer les comptes</a></p>
+</section>
+{% endif %}
+
+<div class="dirpicker" id="dirpicker" hidden>
+  <div class="dirpicker-box" role="dialog" aria-modal="true" aria-labelledby="dirpicker-title">
+    <div class="spread">
+      <h3 id="dirpicker-title" style="margin:0">Choisir un dossier</h3>
+      <button type="button" class="btn sm ghost" data-dir-close>Fermer</button>
+    </div>
+    <div class="dirpicker-path"><button type="button" class="btn sm ghost" data-dir-up>↑ Parent</button> <span class="mono" data-dir-path></span></div>
+    <div class="tabs" data-dir-roots></div>
+    <ul class="dirpicker-list" data-dir-list></ul>
+    <p class="small muted" data-dir-note></p>
+    <p><button type="button" class="btn" data-dir-choose>Choisir ce dossier</button></p>
+  </div>
 </div>
 {% endblock %}

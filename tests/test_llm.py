@@ -49,7 +49,9 @@ def test_format_openai(serveur):
 
 
 def test_format_anthropic(serveur):
-    d = llm.ask_json("résume", 5, lambda m: None, url=f"{serveur}/messages", model="claude-local", key="secret")
+    # le format est explicitement choisi : le déduire ici serait circulaire dans le test
+    d = llm.ask_json("résume", 5, lambda m: None, url=f"{serveur}/messages", model="claude-local", key="secret",
+                     protocol="anthropic")
     assert d == {"theme": "la patience", "points": ["b"]}
     seen = _Handler.seen
     assert seen["path"] == "/v1/messages"
@@ -61,8 +63,20 @@ def test_format_anthropic(serveur):
 def test_protocole_deduit_de_l_url():
     assert llm.settings(url="http://127.0.0.1:11434/v1").protocol == "openai"
     assert llm.settings(url="https://api.anthropic.com/v1").protocol == "anthropic"
+    assert llm.settings(url="https://api.anthropic.com/v1/").protocol == "anthropic"   # barre finale tolérée
+    assert llm.settings(url="http://127.0.0.1:8000/v1/messages").protocol == "anthropic"
     assert llm.settings(url="http://127.0.0.1:8000/v1", protocol="anthropic").protocol == "anthropic"
     assert llm.settings(url="http://127.0.0.1:11434/v1", protocol="claude-cli").label() == "claude -p"
+
+
+def test_format_enregistre_ne_s_applique_qu_a_son_adresse(tmp_path, monkeypatch):
+    """Le format gardé en mémoire (back-office) ne doit pas contaminer une autre adresse."""
+    cfg = tmp_path / "llm.json"
+    cfg.write_text(json.dumps({"enabled": True, "url": "http://127.0.0.1:11434/v1", "model": "m", "protocol": "openai"}))
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
+    monkeypatch.delenv("MINBAR_LLM_PROTOCOL", raising=False)
+    assert llm.settings().protocol == "openai"                                   # même adresse : réglage respecté
+    assert llm.settings(url="https://api.anthropic.com/v1").protocol == "anthropic"  # autre adresse : déduit
 
 
 def test_environnement_prime_sur_le_defaut(monkeypatch):
