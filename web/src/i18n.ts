@@ -29,7 +29,7 @@ const fr = {
   },
   clips: {
     title: "File de validation des clips",
-    intro: "Chaque clip est découpé automatiquement puis relu : validation, rejet motivé ou régénération.",
+    intro: "Aucun clip n'est publié sans validation humaine. Regardez le clip, corrigez si besoin, puis validez ou rejetez.",
     sermon: "Khutba", kind: "Type", status: "Statut", duration: "Durée", why: "Raison",
     all: "Tous", clip: "Clip", kinds: { verset: "verset", conclusion: "conclusion" },
   },
@@ -78,7 +78,7 @@ const en: typeof fr = {
   },
   clips: {
     title: "Clip review queue",
-    intro: "Each clip is cut automatically then reviewed: approve, reject with a reason, or regenerate.",
+    intro: "No clip is published without human review. Watch it, fix it if needed, then approve or reject.",
     sermon: "Sermon", kind: "Kind", status: "Status", duration: "Length", why: "Reason",
     all: "All", clip: "Clip", kinds: { verset: "verse", conclusion: "conclusion" },
   },

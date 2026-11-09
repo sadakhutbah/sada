@@ -8,7 +8,7 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
 
 export function Kicker({ children, sombre = false }: { children: ReactNode; sombre?: boolean }) {
   return (
-    <p className={`m-0 mb-2 text-[0.75rem] font-semibold uppercase tracking-[0.14em] ${sombre ? "text-leaf" : "text-green"}`}>
+    <p className={`m-0 mb-2 text-[0.75rem] font-semibold uppercase leading-none tracking-[0.12em] ${sombre ? "text-leaf" : "text-green"}`}>
       {children}
     </p>
   );

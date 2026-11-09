@@ -39,7 +39,7 @@ export default function App() {
         end={to === "/"}
         className={({ isActive }) =>
           `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[0.95rem] font-semibold whitespace-nowrap no-underline transition-colors ${
-            isActive ? "bg-leaf/15 text-white" : "text-night-link hover:bg-white/10 hover:text-white"
+            isActive ? "bg-leaf/15 text-white" : "text-night-link hover:bg-leaf/20 hover:text-white"
           }`
         }
       >
@@ -116,7 +116,7 @@ export default function App() {
           <Route path="*" element={<p className="py-16 text-center text-muted">404</p>} />
         </Routes>
       </main>
-      <footer className="pb-10 text-center text-[0.85rem] text-muted">
+      <footer className="p-6 text-center text-[0.8rem] text-muted">
         {t("app.name")} · {t("footer")} · {session.mosque.name}
       </footer>
     </div>

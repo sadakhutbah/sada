@@ -65,7 +65,7 @@ export default function Dashboard() {
         </details>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
         {[
           { k: "dashboard.pending", n: d.counts.pending, to: "/clips" },
           // « Prêts à publier » n'apparaît qu'à qui peut publier, comme dans les gabarits.
@@ -81,7 +81,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[1.7fr_1fr]">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-4">
         <Card>
           <Title>{t("dashboard.recent")}</Title>
           {d.recent.length === 0 ? <p className="text-muted">{t("common.empty")}</p> : (
