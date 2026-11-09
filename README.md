@@ -70,6 +70,23 @@ conférences dans `data/events.json` (modèle : `examples/events.example.json`, 
 - Un fichier illisible n'empêche pas la diffusion : l'erreur est journalisée et les khutbas restent
   programmées.
 
+## Notifications à l'imam
+
+L'orchestrateur prévient l'imam par un message court — rappel avant la session, début du direct,
+fin du direct — vers une destination privée. Rien n'est publié, et sans destination configurée les
+messages restent dans le journal (`notification (à blanc) : …`).
+
+```bash
+export MINBAR_NOTIFY_URL="https://discord.com/api/webhooks/…"   # webhook générique {"text": …}
+# ou
+export MINBAR_TELEGRAM_TOKEN="…" MINBAR_TELEGRAM_CHAT="…"        # bot Telegram
+```
+
+Le jeton Telegram et l'URL du webhook se gardent hors du dépôt (variables d'environnement ou
+fichier de configuration local). Un échec d'envoi est journalisé et n'interrompt jamais le direct.
+Les messages existent aussi en champs de configuration : `notify_url`, `telegram_token`, `telegram_chat`
+(ou les options `--notify-url`, `--telegram-token`, `--telegram-chat`).
+
 ## Présence au minbar
 
 Le démarrage automatique exige deux signaux : la voix (`vad`, webrtcvad) et, si elle est activée, la

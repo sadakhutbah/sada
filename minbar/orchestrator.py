@@ -14,13 +14,13 @@ import time
 from pathlib import Path
 
 from . import events as events_mod
-from . import mawaqit, runs
+from . import mawaqit, notify, runs
 from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
 from .encoder import Encoder
 from .scenes import SCENES, Moment, SceneRenderer
-from .state import Machine, Signals
+from .state import Machine, Signals, State
 from .presence import MotionGate, PresenceMonitor
 from .vad import VadMonitor
 
@@ -56,6 +56,12 @@ class Orchestrator:
         self.encoder.prepare(self.renderer.background())
         self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position,
                                kinds=kinds, meta=meta)
+        self.notifier = notify.from_config(cfg, log=log.info)
+        self._notified_state = None
+        if self.notifier.enabled:
+            log.info("Notifications à l'imam : %s", self.notifier.destination)
+        else:
+            log.info("Notifications à l'imam : aucune destination configurée (messages dans le journal)")
         self.vad = VadMonitor(cfg.camera_url, cfg.vad_aggressiveness, cfg.vad_ratio, log=log.info)
         self.presence = None
         if cfg.presence == "motion":
@@ -135,6 +141,12 @@ class Orchestrator:
                 enc.show(m.scene, spec.full, self.renderer.content(m.scene, moment))
             if spec.mic != enc.mic_on:
                 enc.mic(spec.mic)
+        if m.state != self._notified_state:
+            self._notified_state = m.state
+            # un rappel ne concerne qu'une session encore à venir (une session déjà passée est sautée)
+            if m.state in notify.NOTIFY_STATES and (m.state is not State.ARME
+                                                    or (m.session is not None and m.session > self.clock.now())):
+                self.notifier.notify_state(m.state, m)
         if m.stream_on and not enc.wanted:
             enc.start()
         elif not m.stream_on and enc.wanted:
@@ -242,6 +254,10 @@ def main(argv=None):
     ap.add_argument("--api-port", type=int)
     ap.add_argument("--presence", choices=["off", "motion"], help="détection de présence au minbar")
     ap.add_argument("--events-file", help="programme JSON des dars et conférences")
+    ap.add_argument("--notify-url", default=os.environ.get("MINBAR_NOTIFY_URL"),
+                    help="webhook qui reçoit les messages destinés à l'imam")
+    ap.add_argument("--telegram-token", default=os.environ.get("MINBAR_TELEGRAM_TOKEN"))
+    ap.add_argument("--telegram-chat", default=os.environ.get("MINBAR_TELEGRAM_CHAT"))
     a = ap.parse_args(argv)
     ov = {k: v for k, v in vars(a).items() if k not in ("config", "times") and v is not None}
     if a.times:

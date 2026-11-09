@@ -55,6 +55,10 @@ class Config(MachineParams):
     terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
     title: str = "Khutba du vendredi"
     dark_green: str = "#1E7A3C"
+    # --- Notifications à l'imam (webhook ou Telegram ; rien n'est publié) ---
+    notify_url: str = ""                # webhook générique (Discord, Slack, n8n…) qui reçoit {"text": ...}
+    telegram_token: str = ""            # bot Telegram : jeton et conversation, à garder hors du dépôt
+    telegram_chat: str = ""
     # --- API ----------------------------------------------------------------
     api_host: str = "127.0.0.1"
     api_port: int = 8088
