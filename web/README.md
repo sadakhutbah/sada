@@ -1,7 +1,13 @@
 # Front React du back-office
 
 Vite + React 19 + TypeScript + React Router 7 + `react-i18next` (français par défaut, anglais,
-arabe prévu avec `dir="rtl"`).
+arabe prévu avec `dir="rtl"`) + **Tailwind CSS 4**.
+
+La charte est reprise du back-office en gabarits, à l'identique : papier `#faf9f4`, encre verte,
+feuille `#8dc63f`, rouge direct `#d7372c`, Instrument Serif pour les titres, Source Sans 3 pour le texte,
+Amiri pour l'arabe. Les jetons sont déclarés une fois dans `src/styles.css` (`@theme`) :
+on écrit `bg-paper`, `text-deeper`, `border-line`, `font-serif`, jamais une couleur en dur.
+Les composants communs (carte, pastille, sélecteur segmenté, champ, bouton) sont dans `src/ui.tsx`.
 
 ## Développement
 
