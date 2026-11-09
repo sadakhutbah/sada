@@ -223,7 +223,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     tpl = Jinja2Templates(directory=str(HERE / "templates"))
     tpl.env.filters.update(local=f_local, mmss=f_mmss, date_fr=f_date, markdown=f_markdown, details=f_details)
-    tpl.env.globals.update(STATUS=content.STATUS_LABELS, STATUS_TABS=content.STATUS_TABS, LIVE_COMMANDS=live.COMMANDS, ROLES=auth.ROLE_LABELS, AUDIT=AUDIT_LABELS, MASK=db.MASK, LOGO=branding.url)
+    tpl.env.globals.update(STATUS=content.STATUS_LABELS, STATUS_TABS=content.STATUS_TABS, LIVE_COMMANDS=live.COMMANDS, ROLES=auth.ROLE_LABELS, AUDIT=AUDIT_LABELS, MASK=db.MASK, LOGO=branding.url, SHORT=dirs_mod.label)
 
     def render(ctx: Ctx | None, name: str, status_code: int = 200, **kw) -> HTMLResponse:
         flash = None

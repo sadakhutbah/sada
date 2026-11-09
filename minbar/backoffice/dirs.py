@@ -85,6 +85,18 @@ def listing(path: str | None) -> dict:
     }
 
 
+def label(path) -> str:
+    """Chemin lisible sans révéler l'emplacement de la machine : relatif au programme si possible."""
+    if not path:
+        return ""
+    p = Path(path).expanduser()
+    try:
+        rel = p.resolve().relative_to(paths.ROOT)
+        return str(rel)
+    except (ValueError, OSError):
+        return p.name or str(p)
+
+
 def check(path: str, create_if_missing: bool = False) -> tuple[bool, str]:
     """Vérifie qu'un dossier choisi convient ; le crée s'il manque et que c'est demandé."""
     p = Path(path).expanduser()

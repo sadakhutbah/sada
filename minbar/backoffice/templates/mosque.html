@@ -72,12 +72,12 @@
   <div class="folder-field">
     <label for="{{ key }}">{{ title }} <span class="muted small">— {{ desc }}</span></label>
     <div class="row">
-      <input type="text" id="{{ key }}" name="{{ key }}" value="{{ mosque[key] }}" placeholder="{{ dirs.get(key.replace('_dir', ''), '') }}" data-dir-input>
+      <input type="text" id="{{ key }}" name="{{ key }}" value="{{ mosque[key] }}" placeholder="dossier par défaut du programme" data-dir-input>
       <button type="button" class="btn sm ghost" data-dir-browse="{{ key }}">Parcourir…</button>
     </div>
     <div class="small muted" data-dir-state="{{ key }}">
       {% set def = dirs.get(key.replace("_dir", "")) %}
-      {% if mosque[key] %}défini manuellement{% elif def %}par défaut : <span class="mono">{{ def }}</span>{% else %}par défaut : dossier du programme{% endif %}
+      {% if mosque[key] %}défini manuellement{% elif def %}par défaut : <span class="mono">{{ SHORT(def) }}</span>{% else %}par défaut : dossier du programme{% endif %}
     </div>
   </div>
   {% endfor %}
@@ -89,7 +89,7 @@
   <h2>Modèle de langage</h2>
   <p class="help">Résumé et traduction du pipeline. Un serveur compatible OpenAI ou Anthropic, en local
     (Ollama, llama.cpp, LM Studio, vLLM) ou distant. Réglage de cette machine, partagé par tous les
-    lancements du pipeline : <span class="mono">{{ llm_file }}</span>.</p>
+    lancements du pipeline : <span class="mono">{{ SHORT(llm_file) }}</span>.</p>
   <form method="post" action="/admin/modele"><input type="hidden" name="csrf" value="{{ csrf }}">
     <label class="check"><input type="checkbox" name="llm_enabled" value="1" {{ "checked" if llm_on }}> Activer le modèle
       (décoché : résumé extractif et traductions fixes, aucun appel)</label>

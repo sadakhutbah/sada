@@ -85,3 +85,23 @@ def test_dossier_choisi_enregistre_et_valide(env):
     f.write_text("x")
     ok, why = dirs.check(str(f))
     assert not ok and "fichier" in why
+
+
+def test_aucun_chemin_de_la_machine_dans_la_page(env):
+    """Un placeholder ou une note « par défaut » ne doit jamais exposer l'emplacement réel du serveur."""
+    import re
+    from pathlib import Path as _P
+
+    from minbar import paths
+
+    c = client(env, "admin")
+    for sect in ("dossiers", "connecteurs", "modele"):
+        page = c.get(f"/admin/mosquee?section={sect}").text
+        # ni placeholder, ni note « par défaut », ni aide ne révèlent l'emplacement du serveur
+        for ph in re.findall(r'placeholder="([^"]*)"', page):
+            assert "/" not in ph or not ph.startswith("/"), ph
+            assert "home" not in ph and "Users" not in ph and "mnt" not in ph, ph
+        for note in re.findall(r'data-dir-state="[^"]*">(.*?)</div>', page, re.S):
+            assert str(paths.ROOT) not in note and str(_P.home()) not in note, note
+        if sect == "modele":                       # l'aide du modèle ne nomme plus le fichier par son chemin
+            assert str(paths.ROOT) not in page and str(_P.home()) not in page

@@ -135,6 +135,17 @@ class Instagram(_Disabled):
 CONNECTORS: dict[str, Connector] = {c.key: c for c in (LocalFolder(), FacebookPage(), YouTube(), Instagram())}
 
 
+def _short(value):
+    """Un exemple de chemin ne doit pas révéler l'emplacement réel du serveur."""
+    if not isinstance(value, str) and value is not None:
+        value = str(value)                      # db.local_folder_default rend un chemin
+    if value and value.startswith("/"):
+        from . import dirs
+
+        return dirs.label(value)
+    return value
+
+
 def connector_rows(conn, mosque: dict) -> list[dict]:
     rows = {r["key"]: r for r in db.all_(conn, "SELECT * FROM connectors WHERE mosque_id = ?", mosque["id"])}
     out = []
@@ -146,7 +157,7 @@ def connector_rows(conn, mosque: dict) -> list[dict]:
         out.append({"key": key, "label": c.label, "description": c.description, "available": ok, "why": why,
                     "enabled": bool(r["enabled"]) if r else c.enabled_by_default,
                     "fields": [{"name": f, "label": c.labels.get(f, f), "value": shown[f], "secret": f in c.secret,
-                                "placeholder": c.defaults(mosque).get(f, "")} for f in c.fields]})
+                                "placeholder": _short(c.defaults(mosque).get(f, ""))} for f in c.fields]})
     return out
 
 
