@@ -461,24 +461,25 @@ export default function Settings() {
     screens: (
       <div className="grid gap-2.5">
         {/* Un écran à la fois : les sous-onglets évitent une page qui n'en finit pas. */}
-        <div className="grid gap-1.5">
-          <div className="flex items-start gap-2">
-            <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.screensHint")}</p>
-            <button type="button" className="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line text-[0.8rem] font-semibold text-deep" aria-expanded={aideScreens} aria-controls="aide-ecrans" aria-label={t("settings.screensHelpAria")} onClick={() => setAideScreens(!aideScreens)}>?</button>
+        {/* L'aide existe mais se déplie d'elle-même, sans bouton rond posé à côté du texte. */}
+        <details className="group max-w-[80ch] rounded-[10px] border border-line bg-paper px-3.5 py-2.5" open={aideScreens}
+          onToggle={(e) => setAideScreens((e.currentTarget as HTMLDetailsElement).open)}>
+          <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+            <p className="m-0 text-[0.9rem] text-muted">{t("settings.screensHint")}</p>
+            <span className="ml-auto shrink-0 text-[0.82rem] font-semibold text-deep underline decoration-line decoration-1 underline-offset-4 group-open:hidden">
+              {t("settings.screensHelpOpen")}
+            </span>
+            <span className="ml-auto hidden shrink-0 text-[0.82rem] font-semibold text-deep underline decoration-line decoration-1 underline-offset-4 group-open:inline">
+              {t("settings.screensHelpClose")}
+            </span>
+          </summary>
+          <div className="mt-3 grid gap-2.5 border-t border-line pt-3 text-[0.88rem] leading-[1.6] text-ink">
+            <p className="m-0">{t("settings.screensHelpWhat")}</p>
+            <p className="m-0 text-muted">{t("settings.screensHelpEmpty")}</p>
+            <p className="m-0 text-muted">{t("settings.screensHelpWhen")}</p>
+            <p className="m-0 border-l-2 border-leaf pl-3 text-deep">{t("settings.screensHelpSteps")}</p>
           </div>
-          {aideScreens && (
-            <div id="aide-ecrans" className="grid max-w-[80ch] gap-1.5 rounded-[6px] border border-line bg-paper-2 px-3 py-2.5 text-[0.88rem]">
-              <p className="m-0">{t("settings.screensHelpWhat")}</p>
-              <p className="m-0">{t("settings.screensHelpEmpty")}</p>
-              <p className="m-0">{t("settings.screensHelpWhen")}</p>
-              <ol className="m-0 list-decimal pl-5">
-                <li>{t("settings.screensHelpStep1")}</li>
-                <li>{t("settings.screensHelpStep2")}</li>
-                <li>{t("settings.screensHelpStep3")}</li>
-              </ol>
-            </div>
-          )}
-        </div>
+        </details>
         <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
           valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_262px]">
