@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
-import { Btn, Card, Field, Table, Title, inputClass, tdClass } from "../ui";
+import { Btn, Card, Field, Table, Tabs, Title, inputClass, tdClass } from "../ui";
 
 type FieldDef = { name: string; label: string; value: string; secret: boolean; placeholder: string };
 type Feedback = { ok: boolean; text: string } | null;
@@ -127,6 +127,7 @@ export default function Publications() {
   const { t } = useTranslation();
   const [d, setD] = useState<any>(null);
   const [open, setOpen] = useState("");
+  const [vue, setVue] = useState("connectors");
 
   const load = () => api.publications().then(setD).catch(() => setD({ connectors: [], publications: [], ready: [] }));
   useEffect(() => { load(); }, []);
@@ -134,7 +135,13 @@ export default function Publications() {
   return (
     <div className="grid gap-4">
       <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("publications.title")}</h1>
-      <Card>
+      {/* Three tabs rather than three stacked cards: one thing at a time on screen. */}
+      <Tabs items={[
+        { cle: "connectors", label: t("publications.tabConnectors"), compte: d?.connectors?.filter((c: any) => c.available).length },
+        { cle: "notifications", label: t("publications.tabNotifications") },
+        { cle: "history", label: t("publications.tabHistory"), compte: d?.publications?.length },
+      ]} valeur={vue} onChange={(c) => setVue(c)} />
+      {vue === "connectors" && <Card>
         <Title>{t("publications.connectorsTitle")}</Title>
         {!d ? <p className="text-muted">{t("common.loading")}</p> : d.connectors.length === 0 ? (
           <p className="text-muted">{t("common.empty")}</p>
@@ -164,11 +171,16 @@ export default function Publications() {
           </div>
         )}
         {d && !d.can_configure && <p className="mb-0 mt-3 text-[0.9rem] text-muted">{t("publications.adminOnly")}</p>}
-      </Card>
+      </Card>}
 
-      {d?.notifications && <Notifications key={`${d.notifications.mode}${d.notifications.active}`} n={d.notifications} onSaved={load} />}
+      {vue === "notifications" && d?.notifications &&
+        <Notifications key={`${d.notifications.mode}${d.notifications.active}`} n={d.notifications} onSaved={load} />}
 
-      <Card>
+      {vue === "notifications" && d && !d.notifications && <Card>
+        <p className="m-0 text-muted">{t("publications.notificationsAdminOnly")}</p>
+      </Card>}
+
+      {vue === "history" && <Card>
         <Title>{t("publications.history")}</Title>
         {!d ? <p className="text-muted">{t("common.loading")}</p> : (d.publications ?? []).length === 0 ? (
           <p className="text-muted">{t("publications.noHistory")}</p>
@@ -185,7 +197,7 @@ export default function Publications() {
             ))}
           </Table>
         )}
-      </Card>
+      </Card>}
     </div>
   );
 }

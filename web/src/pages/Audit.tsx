@@ -4,7 +4,7 @@ import { api } from "../api";
 import { auditActionKey } from "../i18n";
 import { Btn, Card, Field, inputClass } from "../ui";
 
-const TAILLE = 12;   // one page fits on screen with its pagination, without scrolling
+const TAILLE = 8;   // one page fits on screen with its pagination, without scrolling
 
 /** Back-office log, page by page: filter by action, plain labels, pagination.
  *  The server counts the filtered total: the front end does not guess the last page. */

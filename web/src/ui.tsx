@@ -39,6 +39,7 @@ export function Btn({
   }[variante];
   return (
     <button
+      type="button"          /* default inside a form; callers pass type="submit" where needed */
       className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-[9px] border px-4 py-2.5 font-semibold ${styles} disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
       {...reste}
     >
@@ -77,6 +78,7 @@ export function Tabs({
       {items.map((it) => (
         <button
           key={it.cle}
+          type="button"          /* a tab never submits the form around it */
           onClick={() => onChange(it.cle)}
           disabled={it.eteint}
           className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[0.93rem] font-semibold ${
@@ -115,6 +117,7 @@ export function Segmented({
       {items.map((it) => (
         <button
           key={it.cle}
+          type="button"          /* a tab never submits the form around it */
           onClick={() => onChange(it.cle)}
           disabled={it.eteint}
           className={`inline-flex min-h-8 items-center gap-1.5 rounded-[7px] border-0 px-3.5 py-1 text-[0.88rem] font-semibold ${

@@ -112,6 +112,7 @@ export default function Settings() {
   const [f, setF] = useState<Record<string, string>>({});
   const [initial, setInitial] = useState("");
   const [onglet, setOnglet] = useState("mosque");
+  const [sousOnglet, setSousOnglet] = useState("connexion");
   const [enCours, setEnCours] = useState(false);
   const [msg, setMsg] = useState<Message>(null);
   const [parcourir, setParcourir] = useState<string | null>(null);
@@ -206,14 +207,17 @@ export default function Settings() {
 
   const contenu: Record<string, React.ReactNode> = {
     mosque: (
-      <div className="grid max-w-[520px] gap-3.5">
-        <Field label={t("settings.name")}><input className={inputClass} value={f.name} onChange={maj("name")} required /></Field>
-        <Field label={t("settings.timezone")} aide={t("settings.timezoneHelp")}>
-          <input className={inputClass} value={f.timezone} onChange={maj("timezone")} list="fuseaux" placeholder="Europe/Paris" />
-          <datalist id="fuseaux">{fuseaux.map((z) => <option key={z} value={z} />)}</datalist>
-        </Field>
+      <div className="grid gap-3.5">
+        {/* Two fields per line on a wide screen: the tab fits without scrolling. */}
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label={t("settings.name")}><input className={inputClass} value={f.name} onChange={maj("name")} required /></Field>
+          <Field label={t("settings.timezone")} aide={t("settings.timezoneHelp")}>
+            <input className={inputClass} value={f.timezone} onChange={maj("timezone")} list="fuseaux" placeholder="Europe/Paris" />
+            <datalist id="fuseaux">{fuseaux.map((z) => <option key={z} value={z} />)}</datalist>
+          </Field>
+        </div>
         <Field label={t("settings.clipTitle")} aide={t("settings.clipTitleHelp")}>
-          <input className={inputClass} value={f.clip_title} onChange={maj("clip_title")} />
+          <input className={`${inputClass} max-w-[420px]`} value={f.clip_title} onChange={maj("clip_title")} />
         </Field>
         <Field label={t("settings.mawaqit")} aide={t("settings.mawaqitHelp")}>
           <input className={inputClass} value={f.mawaqit_url} onChange={maj("mawaqit_url")} placeholder="https://mawaqit.net/fr/…" inputMode="url" />
@@ -234,7 +238,12 @@ export default function Settings() {
       </div>
     ),
     live: (
-      <div className="grid max-w-[560px] gap-3.5">
+      <div className="grid max-w-[720px] gap-3.5">
+        {/* Two sub-tabs: the connection to the live program, then where the stream goes. */}
+        <Tabs items={[{ cle: "connexion", label: t("settings.liveConnection") },
+                       { cle: "destinations", label: t("settings.destTitle") }]}
+          valeur={sousOnglet} onChange={(c) => { setSousOnglet(c); setMsg(null); }} />
+        {sousOnglet === "connexion" && <div className="grid max-w-[520px] gap-3.5">
         <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
           <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8089" inputMode="url" />
         </Field>
@@ -242,37 +251,31 @@ export default function Settings() {
           <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
         </Field>
 
-        <div className="mt-2 border-t border-line pt-3.5">
-          <Title>{t("settings.destTitle")}</Title>
+        </div>}
+        {sousOnglet === "destinations" && <div>
           <p className="mt-0 mb-3 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.destHint")}</p>
           {cibles.length === 0 ? (
             <p className="m-0 mb-3 text-[0.9rem] text-muted">{t("settings.destNone")}</p>
           ) : (
-            <ul className="m-0 mb-3 grid list-none gap-3 p-0">
+            <ul className="m-0 mb-3 grid list-none gap-2 p-0">
               {cibles.map((c, i) => (
-                <li key={c.id ?? `n${i}`} className="grid gap-2 rounded-lg border border-line p-3">
-                  <div className="flex flex-wrap items-end gap-2">
-                    <label className="grid flex-1 gap-1 text-[0.85rem] font-semibold">
-                      {t("settings.destLabel")}
-                      <input className={`${inputClass} text-[0.9rem] font-normal`} value={c.label}
-                        placeholder={t("settings.destLabelPlaceholder")} maxLength={60}
-                        onChange={(e) => majCible(i, "label", e.target.value)} />
-                    </label>
-                    <label className="flex items-center gap-2 pb-2 text-[0.9rem] font-semibold">
-                      <input type="checkbox" checked={c.enabled} onChange={(e) => majCible(i, "enabled", e.target.checked)} />
-                      {t("settings.destEnabled")}
-                    </label>
-                    <Btn type="button" variante="dangerGhost" className="min-h-9 px-3 py-1.5 text-[0.9rem]"
-                      onClick={() => { setCibles((x) => x.filter((_, j) => j !== i)); setMsg(null); }}>
-                      {t("settings.destRemove")}
-                    </Btn>
-                  </div>
-                  <label className="grid gap-1 text-[0.85rem] font-semibold">
-                    {t("settings.destUrl")}
-                    <input className={`${inputClass} font-mono text-[0.85rem] font-normal`} value={c.url}
-                      placeholder={t("settings.destExample")} spellCheck={false} autoComplete="off"
-                      onChange={(e) => majCible(i, "url", e.target.value)} />
+                /* One line per destination: name, address, active, remove. Nothing stacked. */
+                <li key={c.id ?? `n${i}`}
+                  className="grid gap-2 rounded-lg border border-line bg-white p-2 sm:grid-cols-[minmax(6.5rem,9rem)_1fr_auto_auto] sm:items-center">
+                  <input className={`${inputClass} min-h-9 text-[0.9rem]`} value={c.label}
+                    aria-label={t("settings.destLabel")} placeholder={t("settings.destLabelPlaceholder")}
+                    maxLength={60} onChange={(e) => majCible(i, "label", e.target.value)} />
+                  <input className={`${inputClass} min-h-9 font-mono text-[0.8rem]`} value={c.url}
+                    aria-label={t("settings.destUrl")} placeholder={t("settings.destExample")}
+                    spellCheck={false} autoComplete="off" onChange={(e) => majCible(i, "url", e.target.value)} />
+                  <label className="flex items-center gap-1.5 whitespace-nowrap text-[0.88rem] font-semibold">
+                    <input type="checkbox" checked={c.enabled} onChange={(e) => majCible(i, "enabled", e.target.checked)} />
+                    {t("settings.destEnabled")}
                   </label>
+                  <Btn type="button" variante="dangerGhost" className="min-h-9 px-3 py-1.5 text-[0.88rem]"
+                    onClick={() => { setCibles((x) => x.filter((_, j) => j !== i)); setMsg(null); }}>
+                    {t("settings.destRemove")}
+                  </Btn>
                 </li>
               ))}
             </ul>
@@ -282,21 +285,21 @@ export default function Settings() {
             onClick={() => { setCibles((x) => [...x, { label: "", url: "", enabled: true }]); setMsg(null); }}>
             {t("settings.destAdd")}
           </Btn>
-        </div>
+        </div>}
       </div>
     ),
     folders: (
       <div>
-        <Title>{t("settings.foldersTitle")}</Title>
         {/* The introduction describes the three fields: it goes before, not under the first one. */}
-        <p className="mt-0 mb-4 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.foldersHint")}</p>
-        <div className="grid gap-4">
+        <p className="mt-0 mb-3 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.foldersHint")}</p>
+        <div className="grid gap-2.5">
           {dossiers.map((ch) => (
-            <div key={ch.cle}>
+            /* One folder per line: the path, and its two buttons beside it. */
+            <div key={ch.cle} className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
               <Field label={`${ch.label} — ${ch.quoi}`}>
                 <Chemin valeur={f[ch.cle]} defaut={ch.defaut} />
               </Field>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="flex gap-2 sm:pb-0.5">
                 <Btn type="button" variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.9rem]" onClick={() => setParcourir(ch.cle)}>
                   {t("common.browse")}
                 </Btn>
@@ -311,22 +314,24 @@ export default function Settings() {
       </div>
     ),
     model: (
-      <div className="grid max-w-[520px] gap-3.5">
-        <Title>{t("settings.modelTitle")}</Title>
-        <p className="m-0 text-[0.9rem] text-muted">{t("settings.modelHint")}</p>
+      <div className="grid gap-3">
+        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.modelHint")}</p>
         <label className="flex items-center gap-2 text-[0.95rem] font-semibold">
           <input type="checkbox" checked={f.enabled === "1"}
             onChange={(e) => { setF((x) => ({ ...x, enabled: e.target.checked ? "1" : "0" })); setMsg(null); }} />
           {t("settings.modelEnabled")}
         </label>
-        <Field label={t("settings.modelUrl")}>
-          <input className={inputClass} value={f.url} onChange={maj("url")} placeholder={d.model.effective?.url} inputMode="url" />
-        </Field>
-        <Field label={t("settings.modelName")}>
-          <input className={inputClass} value={f.model} onChange={maj("model")} placeholder={d.model.effective?.model} />
-        </Field>
+        {/* Three fields on two lines rather than one column: the tab fits on a laptop screen. */}
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label={t("settings.modelUrl")}>
+            <input className={inputClass} value={f.url} onChange={maj("url")} placeholder={d.model.effective?.url} inputMode="url" />
+          </Field>
+          <Field label={t("settings.modelName")}>
+            <input className={inputClass} value={f.model} onChange={maj("model")} placeholder={d.model.effective?.model} />
+          </Field>
+        </div>
         <Field label={t("settings.modelProtocol")} aide={d.model.has_key ? t("settings.modelKeyKept") : undefined}>
-          <select className={inputClass} value={f.protocol} onChange={maj("protocol")}>
+          <select className={`${inputClass} max-w-[260px]`} value={f.protocol} onChange={maj("protocol")}>
             <option value="">{t("settings.modelAuto")}</option>
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic</option>
