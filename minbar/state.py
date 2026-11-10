@@ -81,8 +81,8 @@ class SessionParams:
     ended_hold_s: float                 # end screen, before the stream stops
 
 
-KHUTBA_TIMING = SessionParams(window_after_min=45.0, max_s=3600.0, silence_stop_s=60.0,
-                              grace_s=30.0, ended_hold_s=45.0)
+KHUTBA_TIMING = SessionParams(window_after_min=45.0, max_s=3600.0, silence_stop_s=180.0,
+                              grace_s=45.0, ended_hold_s=45.0)
 DARS_TIMING = SessionParams(window_after_min=90.0, max_s=7200.0, silence_stop_s=180.0,
                             grace_s=90.0, ended_hold_s=45.0)
 
@@ -98,8 +98,13 @@ class MachineParams:
     min_session_s: float = 120.0        # no stop before this duration, whatever the session
     # face at the minbar: the imam turns his back during the prayer (0 = signal ignored)
     face_absence_s: float = 45.0        # no frontal face for this long ...
-    face_silence_ratio: float = 0.5     # ... AND at least this share of the silence threshold
+    face_silence_ratio: float = 0.5     # ... AND at least this share of FACE_SILENCE_REF_S
+    face_silence_ref_s: float = 60.0    # fixed reference, independent of the (longer) khutba threshold: in a
+                                        # noisy room the face is the only signal, so it must not inherit 3 min
     face_return_s: float = 3.0          # face back within this delay: the grace is cancelled
+    # khutba cut by mistake: if the voice comes back during the prayer, the SAME session resumes
+    prayer_resume_s: float = 20.0       # sustained voice during the prayer (0 = never resume)
+    prayer_resume_window_min: float = 10.0   # ... only this long after the prayer screen appeared
     # per session type: a khutba is bounded by the prayer that follows it, a dars is not
     khutba: SessionParams = field(default_factory=lambda: replace(KHUTBA_TIMING))
     dars: SessionParams = field(default_factory=lambda: replace(DARS_TIMING))
@@ -167,6 +172,7 @@ class Machine:
         self.janaza_name: Optional[str] = None   # janaza record: name of the deceased and note (family consent)
         self.janaza_info: Optional[str] = None
         self.paused_from: Optional[State] = None
+        self.cut: tuple[Optional[SessionRec], State] | tuple[None, None] = (None, None)  # session cut by the prayer
         self.last_reason = ""
 
     # ------------------------------------------------------------------ helpers
@@ -200,6 +206,9 @@ class Machine:
             self.paused_from = None
         if old == State.JANAZA and self.paused_from is None:
             self.janaza_name = self.janaza_info = None
+        if (old in (State.KHUTBA, State.DARS) and new == State.PRAYER and self.paused_from is None
+                and reason in ("silence prolongé", "minbar sans visage de face")):
+            self.cut = (self.live, old)      # doubtful end: the session can resume (see PRAYER)
         if self.live and new not in (State.KHUTBA, State.DARS, State.JANAZA) and self.paused_from is None:
             self._close(sig, reason)        # the open session stops as soon as we leave its screen (except pause)
         if new in (State.KHUTBA, State.DARS) and not (self.live and self.live.status == "live"):
@@ -464,7 +473,7 @@ class Machine:
             # we need silence AND a minbar empty of any frontal face
             face_gone = (not dars and sig.face_run is not None and self.p.face_absence_s > 0
                          and sig.face_run >= self.p.face_absence_s
-                         and sig.silence_run >= silence_s * self.p.face_silence_ratio)
+                         and sig.silence_run >= self.p.face_silence_ref_s * self.p.face_silence_ratio)
             if self.grace_until is None:
                 if sig.silence_run >= silence_s and elapsed >= self.p.min_session_s:
                     self.grace_until = sig.t + grace_s
@@ -486,8 +495,28 @@ class Machine:
         if st == State.PRAYER:
             if self.paused_from is not None:
                 return
+            if self._resume_cut_session(sig):
+                return
             if sig.now >= self.entered_now + dt.timedelta(minutes=self.p.prayer_min):
+                self.cut = (None, None)
                 self._go(self._next_session(sig), sig, "fin de la prière (durée prévue)")
+
+    def _resume_cut_session(self, sig: Signals) -> bool:
+        """The prayer was displayed on a mistaken end (short silence): the voice comes back, so the
+        SAME khutba resumes instead of leaving a four-minute session behind."""
+        rec, from_state = self.cut
+        if rec is None or from_state is None or self.p.prayer_resume_s <= 0:
+            return False
+        if sig.voice_run < self.p.prayer_resume_s:
+            return False
+        if sig.t - self.entered_t > self.p.prayer_resume_window_min * 60:
+            return False
+        # reopened before _go, which would otherwise start a fresh session
+        rec.status, rec.end_pos, rec.end_clock, rec.end_reason = "live", None, None, None
+        self.live, self.cut = rec, (None, None)
+        self.log(f"voix reprise pendant la prière ({sig.voice_run:.0f}s) : la session {rec.planned} continue")
+        self._go(from_state, sig, "voix reprise : la khutba continue")
+        return True
 
     # ------------------------------------------------------------------- statut
     def status(self) -> dict:

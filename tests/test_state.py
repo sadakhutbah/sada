@@ -335,3 +335,31 @@ def test_auto_after_janaza_hands_back_the_next_session():
     d.now = at(13, 30, 5)
     d.run(25, voice=True)
     assert m.state == State.KHUTBA and m.records[1].status == "live"
+
+
+def test_pause_de_deux_minutes_ne_coupe_pas_la_khutba_par_defaut():
+    """Défaut de production : 60 s de silence suffisaient à couper une khutba de vingt minutes."""
+    m, _ = mk()                                  # réglages par défaut (seuil 3 min)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(300, voice=True)
+    d.run(120, voice=False)                      # l'imam reprend son souffle
+    assert m.state == State.KHUTBA
+    d.run(110, voice=False)                      # 230 s : grâce comprise, là, oui
+    assert m.state == State.PRAYER
+
+
+def test_voix_revenue_pendant_la_priere_rouvre_la_meme_session():
+    m, logs = mk(khutba={"silence_stop_s": 10, "grace_s": 5}, min_session_s=30,
+                 prayer_min=12, prayer_resume_s=5)
+    d = Drv(m, at(12, 29)); _start_khutba(m, d)
+    d.run(60, voice=True); d.run(20, voice=False)
+    assert m.state == State.PRAYER and m.records[0].status == "done"
+    d.run(10, voice=True)                        # la voix revient : la prière était une fausse fin
+    assert m.state == State.KHUTBA
+    assert len(m.records) == 2                    # deux sessions prévues, aucune ajoutée
+    assert m.records[0].status == "live" and m.records[0].end_pos is None
+    d.run(60, voice=True); d.run(20, voice=False)
+    assert m.state == State.PRAYER
+    d.step(clock=11 * 60, voice=False)
+    assert m.records[0].status == "done"
+    assert any("continue" in l for l in logs)
