@@ -381,6 +381,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
     dur = t1 - t0
     ev: list[str] = []
     cards: list[tuple[float, float]] = []
+    specs: list[tuple[dict, str, float, float]] = []
     words: list[dict] = []
     seen = set()
     segs = [s for s in segments if s["end"] > t0 and s["start"] < t1]
@@ -402,7 +403,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                     # just after, leaving the subtitles to the explanation that follows.
                     cb = min(dur, m["end"] - t0 + 6.0)
                 cards.append((ca, cb))
-                ev += _verse_card(m, fr, ca, cb)
+                specs.append((m, fr, ca, cb))
         elif sub["kind"] == "translation" and sub["fr"]:
             fr = sub["fr"]
             words += interpolate_words(fr, a, max(b, min(a + len(fr) / 17.0, nxt - 0.05, dur)))
@@ -419,6 +420,15 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                         words.append({"w": t, "s": w["s"] - t0, "e": w["e"] - t0})
             else:
                 words += interpolate_words(s["text"].strip(), a, b)
+    # Deux cartes qui se chevauchent se superposeraient illisiblement : la plus ancienne cède
+    # la place juste avant l'apparition de la suivante.
+    cards.clear()
+    for m, fr, ca, cb in specs:
+        if cards and ca < cards[-1][1] - 0.05:
+            pca = cards[-1][0]
+            cards[-1] = (pca, max(pca + 1.0, ca - 0.35))
+        cards.append((ca, cb))
+    ev += [e for (m, fr, _ca, _cb), (a, b) in zip(specs, cards) for e in _verse_card(m, fr, a, b)]
     words.sort(key=lambda w: w["s"])
     if words:
         words[0]["w"] = words[0]["w"][:1].upper() + words[0]["w"][1:]

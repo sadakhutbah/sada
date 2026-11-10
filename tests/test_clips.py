@@ -1,4 +1,5 @@
 """Clip subtitles: French only, short pages, clean verse card."""
+import json
 import re
 
 from minbar.pipeline import clips as C
@@ -109,3 +110,18 @@ def test_le_rappel_garde_sa_carte_jusqu_au_bout(tmp_path):
     events = _events(p)
     card = [e for e in events if ",CardFr," in e]
     assert card and card[0].split(",")[2].strip() == C._ass_time(10.0)   # the card lasts until the end
+
+def test_deux_versets_rapproches_ne_superposent_pas_leurs_cartes(tmp_path):
+    """Deux cartes qui se chevauchent se superposaient a l'ecran : la premiere cede la place."""
+    v2 = dict(VERSE, ref="65:4", start=16.0, end=20.0,
+              heard="ومن يتق الله يجعل له مخرجا", verse_fr="Et quiconque craint Allah, Il lui donnera une issue favorable.")
+    segs = SEGS + [{"start": 16.0, "end": 20.0, "text": "ومن يتق الله يجعل له مخرجا"}]
+    tr = json.loads(json.dumps(TR))
+    tr["verse_fr"]["65:4@16.0"] = "Et quiconque craint Allah, Il lui donnera une issue favorable."
+    p = tmp_path / "deux.ass"
+    C.build_ass(segs, [VERSE, v2], 0.0, 30.0, str(p), tr=tr)
+    spans = sorted((a, b) for a, b in
+                   (re.match(r"Dialogue: \d+,(\d+:\d+:\d+\.\d+),(\d+:\d+:\d+\.\d+),CardLabel,", e).groups()
+                    for e in _events(str(p)) if ",CardLabel," in e))
+    assert len(spans) == 2, spans
+    assert spans[0][1] <= spans[1][0], f"cartes superposees : {spans}"
