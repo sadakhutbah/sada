@@ -25,6 +25,7 @@ from .verses import match_for, recited_arabic, shown
 DEFAULT_TITLE = "Khutba du vendredi"
 
 MIN_S, MAX_S = 30.0, 90.0
+MIN_S_SHORT = 12.0   # a clip may be shorter than MIN_S rather than be padded into the end-of-broadcast tail
 # Short format: a reminder is watched in one go. We start just before the recitation and stop
 # when the immediate explanation has been said — neither the preamble nor the digressions.
 RAPPEL_MAX, RAPPEL_AVANT, RAPPEL_APRES = 45.0, 2.0, 16.0
@@ -72,28 +73,35 @@ def _sub_w(t: str) -> float:
 # --------------------------------------------------------------------------- windows
 
 def select_windows(segments: list[dict], matches: list[dict], duration: float, quotes: list[tuple] | None = None, n: int = 3) -> list[dict]:
-    """1 to n windows: (1) best verse + commentary, (2) striking quote, (3) conclusion (end of the SPEECH)."""
+    """1 to n windows: (1) best verse + commentary, (2) striking quote, (3) conclusion (end of the SPEECH).
+
+    A clip never outlives the speech: it opens on a spoken segment and closes on the last one.
+    The earlier minimum length pushed windows past the last sentence, into the end-of-broadcast
+    tail (black screen + hiss) — a short complete clip beats a long one that ends on noise.
+    """
     cands: list[dict] = []
+    speech_end = duration
     if segments:  # a session ends with the silence that triggered the stop: the conclusion = end of the speech
-        duration = min(duration, segments[-1]["end"] + 1.0)
+        speech_end = min(duration, segments[-1]["end"] + 0.8)
+        duration = speech_end
 
     def snap(t0: float, t1: float) -> tuple[float, float]:
         s = [x for x in segments if x["end"] > t0 - 0.5 and x["start"] < t1 + 0.5]
         if not s:
-            return t0, t1
+            return t0, min(t1, speech_end)
         a, b = max(0.0, s[0]["start"] - 0.2), s[-1]["end"] + 0.3
         if b - a > MAX_S:
             keep = [x for x in s if x["end"] - a <= MAX_S]
             b = keep[-1]["end"] + 0.3 if keep else a + MAX_S
-        return a, min(b, duration)
+        return a, min(b, speech_end)
 
     def add(kind, t0, t1, why):
         a, b = snap(t0, t1)
-        if b - a < MIN_S:
-            b = min(duration, a + MIN_S + 5)
-            a2, b2 = snap(a, b)
-            a, b = a2, max(b2, a + MIN_S)
-        if b - a >= MIN_S - 1 and all(abs(a - c["start"]) > 20 for c in cands):
+        if b - a < MIN_S:  # too short on its own: widen the exploration, never past the last sentence
+            b = min(speech_end, a + MIN_S + 5)
+            a, b = snap(a, b)
+            b = min(b, speech_end)
+        if b - a >= MIN_S_SHORT and all(abs(a - c["start"]) > 20 for c in cands):
             cands.append({"kind": kind, "start": round(a, 2), "end": round(b, 2), "why": why})
 
     vms = shown(matches)
@@ -486,15 +494,24 @@ def crop_filter(crop: dict | None) -> str:
             f"x='max(0,min(iw-ow,iw*{c['x']:.4f}-ow/2))':y='trunc(ih*{c['top']:.4f})'")
 
 
-def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=print, crop: dict | None = None) -> None:
-    """9:16 crop (1080x1920), gradient veil, burned-in subtitles, normalised original audio (no music)."""
+def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=print, crop: dict | None = None,
+                fade_out: float | None = None) -> None:
+    """9:16 crop (1080x1920), gradient veil, burned-in subtitles, normalised original audio (no music).
+
+    Both picture and sound fade out at the end: an extract closes on an image that goes out, not on
+    a hard cut (the last frame used to land on the mosque's end screen with its hiss at full level).
+    fade_out: length of that fade, set by the caller from the silence left after the last word, so
+    the fade eats the tail and not the sentence.
+    """
     a, dur = rec_offset + w["start"], w["end"] - w["start"]
+    fo = fade_out if fade_out else min(1.0, max(0.4, dur / 20))
     with tempfile.TemporaryDirectory() as td:
         grad = gradient_png(str(Path(td) / "grad.png"))
-        fc = (f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p[cam];"
+        fc = (f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p,"
+              f"fade=t=out:st={max(0, dur - fo):.2f}:d={fo:.2f}[cam];"
               f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS},format=yuv420p[v];"
               f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
-              f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - 0.6):.2f}:d=0.6[a]")
+              f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - fo):.2f}:d={fo:.2f}[a]")
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.2f}", "-t", f"{dur:.2f}", "-i", str(Path(src).resolve()),
                "-loop", "1", "-framerate", "25", "-i", grad, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
                "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
@@ -513,5 +530,8 @@ def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx:
     out = outdir / f"clip{idx}_{w.get('kind') or 'extrait'}{v}_A-VALIDER.mp4"
     build_ass(segments, matches, w["start"], w["end"], str(ass), tr=tr, header=header,
               rappel=w.get("kind") == "rappel")
-    render_clip(video, offset, w, ass.name, str(out), log, crop=crop)
+    last = max((s["end"] for s in segments if s["end"] <= w["end"] + 0.05), default=w["start"])
+    tail = w["end"] - last                       # silence left after the last word
+    render_clip(video, offset, w, ass.name, str(out), log, crop=crop,
+                fade_out=min(1.3, max(0.45, tail)))
     return out
