@@ -473,21 +473,20 @@ export default function Settings() {
             <div className="grid gap-1.5">
               <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
                 valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
-              <p className="m-0 max-w-[62ch] text-[0.84rem] leading-[1.5] text-muted">{t("settings.screensHint")}</p>
-              <details className="group grid gap-2 text-[0.84rem]">
-                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[0.84rem] font-semibold text-deep [&::-webkit-details-marker]:hidden">
-                  <span className="grid h-4 w-4 place-items-center rounded-full border border-deep/40 text-[0.66rem] leading-none before:content-['+'] group-open:before:content-['−']" aria-hidden="true"></span>
-                  {t("settings.screensHelpOpen")}
-                </summary>
-                <div className="grid max-w-[62ch] gap-2 rounded-[8px] border border-line bg-paper px-3 py-2.5 leading-[1.6]">
-                  <p className="m-0">{t("settings.screensHelpWhat")}</p>
-                  <p className="m-0 text-muted">{t("settings.screensHelpEmpty")}</p>
-                  <p className="m-0 text-muted">{t("settings.screensHelpWhen")}</p>
-                  <div className="rounded-[6px] bg-paper-2 px-2.5 py-2 text-deep">
-                    <p className="m-0">{t("settings.screensHelpSteps")}</p>
-                  </div>
-                </div>
-              </details>
+              {/* Pas de panneau déplié : une ligne, et l'explication à la demande, au survol ou au focus. */}
+              <div className="flex max-w-[62ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
+                <span>{t("settings.screensHint")}</span>
+                <span className="group relative inline-flex">
+                  <button type="button" aria-describedby="aide-ecrans"
+                    className="cursor-help border-0 bg-transparent p-0 text-[0.84rem] font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
+                    {t("settings.screensHelpOpen")}
+                  </button>
+                  <span id="aide-ecrans" role="tooltip"
+                    className="pointer-events-none invisible absolute top-[calc(100%+8px)] left-0 z-20 w-[46ch] rounded-[8px] border border-line bg-white px-3 py-2.5 text-[0.82rem] leading-[1.6] font-normal text-ink opacity-0 shadow-[0_6px_24px_rgba(15,42,25,.14)] transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                    {t("settings.screensHelpTip")}
+                  </span>
+                </span>
+              </div>
             </div>
             <div className="grid gap-3">
               {CHAMPS_ECRAN.map(({ champ, large }) => (
