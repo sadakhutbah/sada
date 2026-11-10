@@ -314,7 +314,8 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
     d = c.get("/api/v1/dashboard").json()
     assert d["live"]["clock"] == "13:42:10" and d["live"]["state_label"] == "Khutba en direct"
     assert d["live"]["session"] == "Session 1/2 — 13:30"
-    assert [c["key"] for c in d["live_commands"]] == ["extend", "janaza", "stop", "cancel"]
+    assert [c["key"] for c in d["live_commands"]] == [
+        "start", "pause", "resume", "auto", "extend", "skip", "scene", "janaza", "stop", "cancel"]
     for cmd in ("extend", "janaza", "stop", "cancel"):
         assert c.ecrire(f"/live/{cmd}").status_code == 200
     assert orch.calls == [("extend", "5"), ("janaza", None), ("stop", None), ("cancel", None)]

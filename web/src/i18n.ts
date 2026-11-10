@@ -22,6 +22,7 @@ const fr = {
     liveOn: "En direct", liveOff: "Hors ligne", unreachable: "Injoignable", noCommands: "Aucune commande manuelle.",
     janaza: "Déclarer une janaza", janazaName: "Nom du défunt", janazaInfo: "Mention (ex. 67 ans)",
     janazaSend: "Déclarer la janaza", more5: "+5 min", stop: "Arrêter", cancelDay: "Annuler aujourd'hui",
+    sceneChoose: "Choisir une scène", sceneApply: "Afficher",
   },
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
@@ -166,6 +167,7 @@ const en: typeof fr = {
     liveOn: "Live", liveOff: "Off air", unreachable: "Unreachable", noCommands: "No manual command.",
     janaza: "Declare a janaza", janazaName: "Name of the deceased", janazaInfo: "Note (e.g. 67 years old)",
     janazaSend: "Declare the janaza", more5: "+5 min", stop: "Stop", cancelDay: "Cancel today",
+    sceneChoose: "Choose a scene", sceneApply: "Show",
   },
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",

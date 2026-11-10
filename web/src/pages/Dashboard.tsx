@@ -13,15 +13,41 @@ export default function Dashboard() {
   const [d, setD] = useState<any>(null);
   const [erreur, setErreur] = useState(false);
 
+  const [occupe, setOccupe] = useState(false);
+  const [retour, setRetour] = useState<{ ok: boolean; texte: string } | null>(null);
+  const [choixScene, setChoixScene] = useState("");
+  const [nom, setNom] = useState("");
+  const [mention, setMention] = useState("");
+
   useEffect(() => {
     api.dashboard().then(setD).catch(() => setErreur(true));
   }, []);
+
+  /** Envoie une commande au live. Le serveur répond avec l'état relu : la carte se met à jour sans rechargement. */
+  async function envoyer(c: any, corps: Record<string, string> = {}) {
+    if (c.confirm && !window.confirm(c.confirm)) return;
+    setOccupe(true);
+    setRetour(null);
+    try {
+      const r = await api.liveCommande(c.key, corps);
+      setRetour({ ok: true, texte: r.message });
+      setD((prev: any) => ({ ...prev, live: r.live ?? prev.live }));
+      api.dashboard().then(setD).catch(() => {});   // journal des commandes à jour
+    } catch (e: any) {
+      setRetour({ ok: false, texte: e?.message ?? t("common.error") });
+    } finally {
+      setOccupe(false);
+    }
+  }
 
   if (erreur) return <p className="py-16 text-center text-muted">{t("common.error")}</p>;
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
 
   const peutPublier = currentSession()?.user.permissions.includes("publish") ?? false;
   const v = d.live ?? {};
+  const commandes: any[] = d.live_commands ?? [];
+  const scene = commandes.find((c) => c.key === "scene");
+  const janaza = commandes.find((c) => c.key === "janaza");
   const horsService = v.ok === false;
   const etat = horsService
     ? t("dashboard.unreachable")
@@ -41,28 +67,51 @@ export default function Dashboard() {
           {v.session ?? "—"} · <span className="tabular-nums">{horloge(v.clock)}</span>
         </p>
 
-        {/* Commandes du live : mêmes boutons que les gabarits. Pas encore branchées côté React,
-            elles restent visibles, désactivées, plutôt que de disparaître sans explication. */}
-        <div className="mt-4 flex flex-wrap gap-2.5">
-          <Btn variante="leaf" disabled title={t("settings.soon")}>{t("dashboard.more5")}</Btn>
-          <Btn variante="danger" disabled title={t("settings.soon")}>{t("dashboard.stop")}</Btn>
-          <Btn variante="light" disabled title={t("settings.soon")}>{t("dashboard.cancelDay")}</Btn>
+        {/* Commandes du live : la liste vient du serveur (live_commands). Les commandes à choix
+            (prolonger, scène) se déclinent ; la janaza a sa fiche repliable. */}
+        <div className="mt-4 flex flex-wrap items-center gap-2.5">
+          {commandes.filter((c: any) => c.key !== "janaza" && c.key !== "scene").map((c: any) =>
+            c.choices.length > 0 ? (
+              c.choices.map((o: any) => (
+                <Btn key={`${c.key}-${o.value}`} variante={c.style} disabled={occupe}
+                     onClick={() => envoyer(c, { valeur: o.value })}>{o.label}</Btn>
+              ))
+            ) : (
+              <Btn key={c.key} variante={c.style} disabled={occupe} onClick={() => envoyer(c)}>{c.label}</Btn>
+            ))}
         </div>
-        {/* Fiche repliable de la janaza : fermée par défaut, comme les <details class="fiche"> des gabarits. */}
-        <details className="group mt-3 rounded-[10px] border border-white/18 bg-white/5 px-3 py-2.5 [&>summary::-webkit-details-marker]:hidden">
-          <summary className="cursor-pointer list-none text-[0.95rem] font-semibold text-white before:mr-1.5 before:font-normal before:text-leaf before:content-['+'] group-open:before:content-['−']">
-            {t("dashboard.janaza")}
-          </summary>
-          <div className="mt-2.5 grid max-w-[420px] gap-2">
-            <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted"
-                   placeholder={t("dashboard.janazaName")} disabled />
-            <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted"
-                   placeholder={t("dashboard.janazaInfo")} disabled />
-            <Btn variante="leaf" disabled title={t("settings.soon")} className="min-h-9 w-fit px-3 py-1.5 text-[0.9rem]">
-              {t("dashboard.janazaSend")}
-            </Btn>
+        {scene && (
+          <div className="mt-3 flex flex-wrap items-center gap-2.5">
+            <label className="text-[0.92rem] text-night-muted" htmlFor="scene-live">{scene.label}</label>
+            <select id="scene-live" value={choixScene} onChange={(e) => setChoixScene(e.target.value)}
+                    className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white">
+              <option value="" className="text-ink">{t("dashboard.sceneChoose")}</option>
+              {scene.choices.map((o: any) => <option key={o.value} value={o.value} className="text-ink">{o.label}</option>)}
+            </select>
+            <Btn variante="light" disabled={occupe || !choixScene} className="min-h-9 px-3 py-1.5 text-[0.9rem]"
+                 onClick={() => envoyer(scene, { valeur: choixScene })}>{t("dashboard.sceneApply")}</Btn>
           </div>
-        </details>
+        )}
+        {retour && (
+          <p role="status" className={`m-0 mt-3 text-[0.92rem] ${retour.ok ? "text-leaf" : "text-[#ff9b94]"}`}>{retour.texte}</p>
+        )}
+        {janaza && (
+          <details className="group mt-3 rounded-[10px] border border-white/18 bg-white/5 px-3 py-2.5 [&>summary::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer list-none text-[0.95rem] font-semibold text-white before:mr-1.5 before:font-normal before:text-leaf before:content-['+'] group-open:before:content-['−']">
+              {t("dashboard.janaza")}
+            </summary>
+            <div className="mt-2.5 grid max-w-[420px] gap-2">
+              <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted"
+                     placeholder={t("dashboard.janazaName")} value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)} />
+              <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted"
+                     placeholder={t("dashboard.janazaInfo")} value={mention} maxLength={60} onChange={(e) => setMention(e.target.value)} />
+              <Btn variante="leaf" disabled={occupe} className="min-h-9 w-fit px-3 py-1.5 text-[0.9rem]"
+                   onClick={() => envoyer(janaza, { name: nom.trim(), info: mention.trim() })}>
+                {t("dashboard.janazaSend")}
+              </Btn>
+            </div>
+          </details>
+        )}
       </section>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">

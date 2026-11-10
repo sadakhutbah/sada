@@ -170,7 +170,8 @@ def dashboard(ctx: CtxDep):
     return {"counts": {"pending": count_clips(ctx, "a_valider"), "ready": count_clips(ctx, "valide"), "sermons": total},
             "recent": recent, "live": live_status(ctx), "commands": cmds,
             # Les commandes proposées viennent du serveur : le front n'invente pas la liste.
-            "live_commands": [{"key": k, "label": c.label, "style": c.style, "confirm": c.confirm}
+            "live_commands": [{"key": k, "label": c.label, "style": c.style, "confirm": c.confirm,
+                               "choices": [{"value": v, "label": lb} for v, lb in c.choices]}
                               for k, c in live.COMMANDS.items()]}
 
 
@@ -339,9 +340,14 @@ async def live_command(cmd: str, ctx: CtxDep):
         raise NotFound()
     arg = (f.get("name") or "").strip() or None
     info = (f.get("info") or "").strip() or None      # fiche janaza : mention sous le nom
-    label = live.COMMANDS[cmd].label
+    valeur = (f.get("valeur") or "").strip() or None  # minutes (extend) ou scène (scene)
+    if live.COMMANDS[cmd].choices and valeur not in (None, *(v for v, _ in live.COMMANDS[cmd].choices)):
+        raise Invalid("Valeur inconnue pour cette commande.")
+    if cmd == "scene" and not valeur:
+        raise Invalid("Choisissez une scène.")
+    label = live.choice_label(cmd, valeur)
     try:
-        r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info)
+        r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info, valeur)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=label,
                  defunt=arg, mention=info, reponse=r.get("message"), etat=r.get("state"))
         # Après une commande, on veut l'état réel : lecture fraîche, sans cache.
