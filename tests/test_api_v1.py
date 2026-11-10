@@ -149,3 +149,27 @@ def test_commandes_live_exposees_et_validees(env, monkeypatch):
     assert c.post("/api/v1/live/nimporte", json={}, headers=h).status_code == 404
     assert envoyees == [("extend", {"min": "15"}), ("scene", {"name": "priere"})]
     live._caches.clear()
+
+
+def test_le_tableau_de_bord_n_envoie_aucun_texte_d_interface(env):
+    """Contract: command keys and choice values only, plus a danger flag. Labels are the front's job."""
+    from minbar.state import EXTEND_MINUTES, PICKABLE_SCENES
+    c = client(env, "admin")
+    d = c.get("/api/v1/dashboard").json()
+    assert "state_label" not in d["live"] and "sessions" not in d["live"]
+    cmds = d["live_commands"]
+    assert [x["key"] for x in cmds] == [
+        "start", "pause", "resume", "auto", "extend", "skip", "scene", "janaza", "stop", "cancel"]
+    for x in cmds:
+        assert set(x) == {"key", "destructive", "choices"}     # no label, style or confirm sentence
+        assert all(isinstance(v, str) for v in x["choices"])
+    assert {x["key"] for x in cmds if x["destructive"]} == {"stop", "cancel"}
+    assert next(x for x in cmds if x["key"] == "extend")["choices"] == list(EXTEND_MINUTES)
+    assert next(x for x in cmds if x["key"] == "scene")["choices"] == list(PICKABLE_SCENES)
+
+
+def test_le_journal_n_envoie_que_les_cles_d_action(env):
+    c = client(env, "admin")
+    d = c.get("/api/v1/audit").json()
+    assert "labels" not in d
+    assert "connexion" in d["actions"] and all(isinstance(a, str) for a in d["actions"])

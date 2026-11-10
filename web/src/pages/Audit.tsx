@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
+import { auditActionKey } from "../i18n";
 import { Btn, Card, Field, inputClass } from "../ui";
 
 const TAILLE = 12;   // one page fits on screen with its pagination, without scrolling
@@ -11,7 +12,7 @@ export default function Audit() {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const [action, setAction] = useState("");
-  const [d, setD] = useState<{ items: any[]; total: number; labels: Record<string, string> } | null>(null);
+  const [d, setD] = useState<{ items: any[]; total: number; actions: string[] } | null>(null);
   const [erreur, setErreur] = useState(false);
 
   useEffect(() => {
@@ -20,26 +21,28 @@ export default function Audit() {
   }, [page, action]);
 
   const pages = d ? Math.max(1, Math.ceil(d.total / TAILLE)) : 1;
-  const libelles = d?.labels ?? {};
-  /** Readable details: the server attaches a JSON object (uid, type, title…) — only its values are shown. */
+  /** Readable action name: the server sends the stable key, the label lives in i18n. */
+  const nomAction = (cle: string) => t(auditActionKey(cle), { defaultValue: cle });
+  /** Readable details: the server attaches a JSON object (command, value, uid…) — only its values
+   *  are shown, and protocol keys (command, choice) are translated like the rest. */
   const details = (brut?: string | null) => {
     if (!brut || brut === "{}") return "";
     try {
       const o = JSON.parse(brut);
       if (o && typeof o === "object" && !Array.isArray(o)) {
         return Object.entries(o)
-          .filter(([cle]) => cle !== "uid")
-          .map(([, valeur]) => String(valeur))
+          .filter(([cle, valeur]) => cle !== "uid" && valeur !== null && valeur !== "")
+          .map(([cle, valeur]) => {
+            if (cle === "commande") return t(`dashboard.cmd.${valeur}`, { defaultValue: String(valeur) });
+            if (cle === "valeur") return t(`dashboard.choice.${valeur}`, { defaultValue: String(valeur) });
+            return String(valeur);
+          })
           .filter(Boolean)
           .join(" · ");
       }
     } catch { /* free text: displayed as-is */ }
     return brut;
   };
-
-  /** Translated action name: the server's stable key wins, its label is the fallback. */
-  const nomAction = (cle: string) =>
-    t(`audit.action_${cle.replace(/\./g, "_").replace(/-/g, "_")}`, { defaultValue: libelles[cle] ?? cle });
 
   return (
     <div className="grid gap-4">
@@ -63,7 +66,7 @@ export default function Audit() {
             }}
           >
             <option value="">{t("audit.all")}</option>
-            {Object.keys(libelles).map((cle) => (
+            {(d?.actions ?? []).map((cle: string) => (
               <option key={cle} value={cle}>{nomAction(cle)}</option>
             ))}
           </select>

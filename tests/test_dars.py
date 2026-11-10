@@ -3,7 +3,7 @@ import datetime as dt
 
 import pytest
 
-from minbar.state import Machine, MachineParams, SCENE_OF, Signals, State
+from minbar.state import Machine, MachineParams, Signals, State
 
 D = dt.date(2026, 11, 10)                    # Tuesday
 
@@ -56,7 +56,6 @@ def test_dars_demarre_en_scene_dars():
     d.run(300, voice=True)                  # 19:00 passed: entering dars
     assert m.state == State.DARS
     assert m.scene == "dars"
-    assert SCENE_OF[State.DARS] == "dars"
     assert m.rec.kind == "dars" and m.rec.title == "Tafsir Al-Kahf"
     assert m.status()["kind"] == "dars"
     assert m.status()["event"]["session_no"] == 7

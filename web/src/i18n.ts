@@ -24,6 +24,7 @@ const fr = {
     janaza: "Déclarer une janaza", janazaName: "Nom du défunt", janazaInfo: "Mention (ex. 67 ans)",
     janazaSend: "Déclarer la janaza", more5: "+5 min", stop: "Arrêter", cancelDay: "Annuler aujourd'hui",
     sceneChoose: "Choisir une scène", sceneApply: "Afficher",
+    sessionN: "Session {{n}}/{{total}}", noSession: "Aucune session à venir",
     // Labels of the live commands, chosen by their key (the server only sends keys).
     // Engine states, chosen by their value: the server only sends the value.
     state: {
@@ -45,7 +46,6 @@ const fr = {
       stop: "Arrêter le live maintenant ?",
       cancel: "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées.",
     },
-    session: { pending: "à venir", live: "en direct", done: "terminée", skipped: "sautée", janaza: "janaza" },
   },
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
@@ -224,13 +224,18 @@ const fr = {
     action_utilisateur_cree: "Compte créé",
     action_utilisateur_modifie: "Compte modifié",
     action_utilisateur_mot_de_passe: "Mot de passe changé",
+    action_mosquee_creee: "Mosquée créée",
     action_mosquee_configuree: "Configuration modifiée",
+    action_mosquee_logo: "Logo mis à jour",
+    action_mosquee_logo_retire: "Logo retiré",
+    action_modele_configure: "Modèle de langage configuré",
     action_connecteur_configure: "Connecteur configuré",
     action_notifications_configure: "Notifications configurées",
     action_acces_refuse: "Accès refusé",
     action_programme_cree: "Événement ajouté au programme",
     action_programme_modifie: "Événement du programme modifié",
     action_programme_supprime: "Événement retiré du programme",
+    action_session_navigateur_inattendu: "Navigateur inattendu",
     filterHelp: "Le journal se lit page par page ; le filtre s'applique sur toute la mosquée.",
     previous: "Précédent", next: "Suivant", page: "Page {{n}} sur {{total}}",
     objects: { clip: "Clip", khutba: "Khutba", utilisateur: "Compte", mosquee: "Mosquée", mosque: "Mosquée", session: "Session", connecteur: "Connecteur", tous: "Toutes" },
@@ -257,6 +262,7 @@ const en: typeof fr = {
     janaza: "Declare a janaza", janazaName: "Name of the deceased", janazaInfo: "Note (e.g. 67 years old)",
     janazaSend: "Declare the janaza", more5: "+5 min", stop: "Stop", cancelDay: "Cancel today",
     sceneChoose: "Choose a scene", sceneApply: "Show",
+    sessionN: "Session {{n}}/{{total}}", noSession: "No upcoming session",
     state: {
       IDLE: "Idle", "ARMÉ": "Armed (window open)", AVANT: "Starting shortly",
       KHUTBA: "Khutba on air", "PRIÈRE": "Prayer in progress", ENTRACTE: "Intermission",
@@ -276,7 +282,6 @@ const en: typeof fr = {
       stop: "Stop the live now?",
       cancel: "Cancel today's whole live? Upcoming sessions will not be streamed.",
     },
-    session: { pending: "upcoming", live: "on air", done: "done", skipped: "skipped", janaza: "janaza" },
   },
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",
@@ -454,13 +459,18 @@ const en: typeof fr = {
     action_utilisateur_cree: "Account created",
     action_utilisateur_modifie: "Account updated",
     action_utilisateur_mot_de_passe: "Password changed",
+    action_mosquee_creee: "Mosque created",
     action_mosquee_configuree: "Configuration updated",
+    action_mosquee_logo: "Logo updated",
+    action_mosquee_logo_retire: "Logo removed",
+    action_modele_configure: "Language model configured",
     action_connecteur_configure: "Connector configured",
     action_notifications_configure: "Notifications configured",
     action_acces_refuse: "Access denied",
     action_programme_cree: "Event added to the schedule",
     action_programme_modifie: "Schedule event updated",
     action_programme_supprime: "Event removed from the schedule",
+    action_session_navigateur_inattendu: "Unexpected browser",
     filterHelp: "The log reads page by page; the filter covers the whole mosque.",
     previous: "Previous", next: "Next", page: "Page {{n}} of {{total}}",
     objects: { clip: "Clip", khutba: "Sermon", utilisateur: "Account", mosquee: "Mosque", mosque: "Mosque", session: "Session", connecteur: "Connector", tous: "All" },
@@ -471,6 +481,12 @@ export const LANGUAGES = [
   { code: "fr", label: "Français", dir: "ltr" },
   { code: "en", label: "English", dir: "ltr" },
 ];
+
+/** i18n key of an audit action: the server stores “live.commande”, the label lives in
+ *  `audit.action_live_commande`. One rule, used by every screen that shows the log. */
+export function auditActionKey(action: string) {
+  return `audit.action_${action.replace(/\./g, "_").replace(/-/g, "_")}`;
+}
 
 const choisi = typeof localStorage !== "undefined" ? localStorage.getItem("minbar.lang") : null;
 

@@ -5,7 +5,7 @@ from PIL import ImageChops
 
 from minbar.config import Config
 from minbar.events import EventInstance
-from minbar.scenes import SCENE_LABELS, SCENES, Moment, SceneRenderer
+from minbar.scenes import SCENES, Moment, SceneRenderer
 from minbar.state import SCENE_OF
 
 NOW = dt.datetime(2026, 11, 10, 19, 10)
@@ -32,9 +32,8 @@ def test_scenes_dars_declarees():
 
 
 def test_les_tables_de_scenes_s_accordent():
-    """SCENES, SCENE_OF and the labels are three hand-maintained registries: a forgotten name breaks a page."""
-    assert set(SCENES) == {v for v in SCENE_OF.values() if v} == set(SCENE_LABELS)
-    assert all(SCENES[n].label == SCENE_LABELS[n] and SCENE_LABELS[n] for n in SCENES)
+    """A scene referenced by the state machine but missing from the renderer breaks the live."""
+    assert set(SCENES) == {v for v in SCENE_OF.values() if v}
 
 
 def test_calque_de_dars_se_pose_sur_la_camera():

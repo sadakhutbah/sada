@@ -46,13 +46,15 @@ SCENE_OF = {
 }
 STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v}
 WAITING = (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE)
-# back-office display labels (raw states: DARS, DARS_FIN…)
-STATE_LABELS = {
-    State.IDLE: "En veille", State.ARME: "Armé (fenêtre ouverte)", State.AVANT: "Début imminent",
-    State.KHUTBA: "Khutba en direct", State.PRIERE: "Prière en cours", State.ENTRACTE: "Entracte",
-    State.TERMINE: "Terminé", State.JANAZA: "Salat al-Janaza", State.DARS: "Dars en direct",
-    State.DARS_FIN: "Dars terminé", State.FIN: "Live terminé",
-}
+
+# Values of the “extend” command, in minutes: the engine default, the local API buttons and the
+# back-office choices all read this one tuple.
+EXTEND_MINUTES = ("5", "15")
+
+# Scenes that can be picked by hand, in display order. Janaza has its own command, which opens the
+# form for the name of the deceased. Protocol values only: the front end translates them.
+PICKABLE_SCENES = tuple(sc for sc in SCENE_OF.values() if sc and sc != "janaza")
+
 
 
 @dataclass
@@ -337,7 +339,7 @@ class Machine:
 
     def _extend(self, sig, arg):
         try:
-            mins = float(arg or 5)
+            mins = float(arg or EXTEND_MINUTES[0])
         except ValueError:
             return f"durée invalide : {arg} (minutes)"
         base = max(self.extend_until_t, sig.t)
@@ -376,8 +378,10 @@ class Machine:
         self._go(State.JANAZA, sig, "commande janaza")
         return "mode Janaza (écran plein ; exclue du pipeline IA)"
 
-    COMMANDS = {"start": _start, "stop": _stop, "pause": _pause, "resume": _resume, "auto": _auto, "scene": _scene,
-                "extend": _extend, "skip": _skip_cmd, "cancel": _cancel, "janaza": _janaza}
+    # Commands accepted by the engine, in dashboard display order. This is the single list of
+    # commands: the local API and the back-office derive theirs from this dict.
+    COMMANDS = {"start": _start, "pause": _pause, "resume": _resume, "auto": _auto, "extend": _extend,
+                "skip": _skip_cmd, "scene": _scene, "janaza": _janaza, "stop": _stop, "cancel": _cancel}
 
     # --------------------------------------------------------------------- tick
     def tick(self, sig: Signals) -> None:
