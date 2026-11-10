@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import { Btn, Card, Field, Tabs, Title, inputClass } from "../ui";
 
@@ -291,6 +292,20 @@ export default function Settings() {
       </div>
     ),
   };
+
+  // Deux onglets n'ont rien à enregistrer ici : ils renvoient à l'écran qui les porte.
+  contenu.connectors = (
+    <div className="grid gap-2 max-w-[520px] text-[0.95rem]">
+      <p className="m-0 text-muted">{t("settings.connectorsHint")}</p>
+      <Link className="w-fit font-semibold text-deep underline" to="/publications">{t("settings.connectorsGo")}</Link>
+    </div>
+  );
+  contenu.access = (
+    <div className="grid gap-2 max-w-[520px] text-[0.95rem]">
+      <p className="m-0 text-muted">{t("settings.accessHint")}</p>
+      <Link className="w-fit font-semibold text-deep underline" to="/users">{t("settings.accessGo")}</Link>
+    </div>
+  );
 
   // Seuls les onglets qui ont un contenu sont proposés ; les autres sont annoncés éteints.
   const onglets = d.sections.map((s: string) => ({

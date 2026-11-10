@@ -23,9 +23,15 @@ export default function Dashboard() {
     api.dashboard().then(setD).catch(() => setErreur(true));
   }, []);
 
+  /** Libellé d'une commande ou d'un choix : la traduction prime, le libellé du serveur sert de repli.
+   *  Le serveur n'envoie que des clés stables ; aucun texte d'interface ne vient de lui. */
+  const libelle = (c: any) => t(`dashboard.cmd.${c.key}`, { defaultValue: c.label });
+  const libelleChoix = (o: any) => t(`dashboard.choice.${o.value}`, { defaultValue: o.label });
+  const question = (c: any) => t(`dashboard.confirm.${c.key}`, { defaultValue: c.confirm });
+
   /** Envoie une commande au live. Le serveur répond avec l'état relu : la carte se met à jour sans rechargement. */
   async function envoyer(c: any, corps: Record<string, string> = {}) {
-    if (c.confirm && !window.confirm(c.confirm)) return;
+    if (c.confirm && !window.confirm(question(c))) return;
     setOccupe(true);
     setRetour(null);
     try {
@@ -63,9 +69,12 @@ export default function Dashboard() {
           {etat}
         </p>
         {(v.error || v.last_reason) && <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">{v.error ?? v.last_reason}</p>}
-        <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">
-          {v.session ?? "—"} · <span className="tabular-nums">{horloge(v.clock)}</span>
-        </p>
+        {/* Rien à dire sur la session quand l'orchestrateur ne répond pas : le message d'erreur suffit. */}
+        {!horsService && (
+          <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">
+            {v.session ?? "—"} · <span className="tabular-nums">{horloge(v.clock)}</span>
+          </p>
+        )}
 
         {/* Commandes du live : la liste vient du serveur (live_commands). Les commandes à choix
             (prolonger, scène) se déclinent ; la janaza a sa fiche repliable. */}
@@ -74,19 +83,19 @@ export default function Dashboard() {
             c.choices.length > 0 ? (
               c.choices.map((o: any) => (
                 <Btn key={`${c.key}-${o.value}`} variante={c.style} disabled={occupe}
-                     onClick={() => envoyer(c, { valeur: o.value })}>{o.label}</Btn>
+                     onClick={() => envoyer(c, { valeur: o.value })}>{libelleChoix(o)}</Btn>
               ))
             ) : (
-              <Btn key={c.key} variante={c.style} disabled={occupe} onClick={() => envoyer(c)}>{c.label}</Btn>
+              <Btn key={c.key} variante={c.style} disabled={occupe} onClick={() => envoyer(c)}>{libelle(c)}</Btn>
             ))}
         </div>
         {scene && (
           <div className="mt-3 flex flex-wrap items-center gap-2.5">
-            <label className="text-[0.92rem] text-night-muted" htmlFor="scene-live">{scene.label}</label>
+            <label className="text-[0.92rem] text-night-muted" htmlFor="scene-live">{libelle(scene)}</label>
             <select id="scene-live" value={choixScene} onChange={(e) => setChoixScene(e.target.value)}
                     className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white">
               <option value="" className="text-ink">{t("dashboard.sceneChoose")}</option>
-              {scene.choices.map((o: any) => <option key={o.value} value={o.value} className="text-ink">{o.label}</option>)}
+              {scene.choices.map((o: any) => <option key={o.value} value={o.value} className="text-ink">{libelleChoix(o)}</option>)}
             </select>
             <Btn variante="light" disabled={occupe || !choixScene} className="min-h-9 px-3 py-1.5 text-[0.9rem]"
                  onClick={() => envoyer(scene, { valeur: choixScene })}>{t("dashboard.sceneApply")}</Btn>
@@ -156,7 +165,9 @@ export default function Dashboard() {
             <ul className="m-0 grid list-none p-0">
               {d.commands.map((c: any) => (
                 <li key={c.id} className="border-b border-line py-2 last:border-0 last:pb-0">
-                  <span className="block text-[0.95rem] font-semibold">{c.action.replace("live.", "")}</span>
+                  <span className="block text-[0.95rem] font-semibold">
+                    {(() => { const cle = c.action.replace("live.", ""); return t(`dashboard.cmd.${cle}`, { defaultValue: cle }); })()}
+                  </span>
                   <span className="block text-[0.85rem] text-muted">
                     {c.who ?? "—"} · {dateFr(String(c.at ?? "").slice(0, 10), i18n.language)}
                   </span>

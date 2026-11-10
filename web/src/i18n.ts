@@ -23,6 +23,21 @@ const fr = {
     janaza: "Déclarer une janaza", janazaName: "Nom du défunt", janazaInfo: "Mention (ex. 67 ans)",
     janazaSend: "Déclarer la janaza", more5: "+5 min", stop: "Arrêter", cancelDay: "Annuler aujourd'hui",
     sceneChoose: "Choisir une scène", sceneApply: "Afficher",
+    // Libellés des commandes du live, choisis par leur clé (le serveur n'envoie que des clés).
+    cmd: {
+      start: "Démarrer", pause: "Pause", resume: "Reprendre", auto: "Automatique", extend: "Prolonger",
+      skip: "Sauter la session", scene: "Changer de scène", janaza: "Déclarer une janaza",
+      stop: "Arrêter", cancel: "Annuler aujourd'hui",
+    },
+    choice: {
+      "5": "+5 min", "15": "+15 min", avant: "Avant", khutba: "Khutba", priere: "Prière",
+      entracte: "Entracte", termine: "Terminé", dars: "Dars", dars_fin: "Fin du dars",
+    },
+    confirm: {
+      stop: "Arrêter le live maintenant ?",
+      cancel: "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées.",
+    },
+    session: { pending: "à venir", live: "en direct", done: "terminée", skipped: "sautée", janaza: "janaza" },
   },
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
@@ -137,6 +152,10 @@ const fr = {
     byDefault: "par défaut :",
     defaultFolder: "dossier par défaut du programme",
     soon: "Cet onglet arrive avec la suite du passage.",
+    connectorsHint: "Les identifiants des services de publication et les notifications se règlent sur la page Publication.",
+    connectorsGo: "Ouvrir la page Publication",
+    accessHint: "Les comptes, les rôles et les mots de passe se gèrent sur la page Comptes.",
+    accessGo: "Ouvrir la page Comptes",
     mawaqit: "Adresse Mawaqit", mawaqitHelp: "Page de la mosquée sur Mawaqit, pour les horaires de prière (facultatif).",
     timezoneHelp: "Nom officiel du fuseau, par exemple Europe/Paris.",
     clipTitleHelp: "Texte affiché en tête des clips publiés.",
@@ -184,6 +203,20 @@ const en: typeof fr = {
     janaza: "Declare a janaza", janazaName: "Name of the deceased", janazaInfo: "Note (e.g. 67 years old)",
     janazaSend: "Declare the janaza", more5: "+5 min", stop: "Stop", cancelDay: "Cancel today",
     sceneChoose: "Choose a scene", sceneApply: "Show",
+    cmd: {
+      start: "Start", pause: "Pause", resume: "Resume", auto: "Automatic", extend: "Extend",
+      skip: "Skip session", scene: "Change scene", janaza: "Declare a janaza",
+      stop: "Stop", cancel: "Cancel today",
+    },
+    choice: {
+      "5": "+5 min", "15": "+15 min", avant: "Before", khutba: "Khutba", priere: "Prayer",
+      entracte: "Intermission", termine: "Finished", dars: "Dars", dars_fin: "Dars end",
+    },
+    confirm: {
+      stop: "Stop the live now?",
+      cancel: "Cancel today's whole live? Upcoming sessions will not be streamed.",
+    },
+    session: { pending: "upcoming", live: "on air", done: "done", skipped: "skipped", janaza: "janaza" },
   },
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",
@@ -298,6 +331,10 @@ const en: typeof fr = {
     byDefault: "default:",
     defaultFolder: "program's default folder",
     soon: "This tab arrives with the rest of the migration.",
+    connectorsHint: "Publishing credentials and notifications are set on the Publishing page.",
+    connectorsGo: "Open the Publishing page",
+    accessHint: "Accounts, roles and passwords are managed on the Accounts page.",
+    accessGo: "Open the Accounts page",
     mawaqit: "Mawaqit address", mawaqitHelp: "The mosque's page on Mawaqit, for prayer times (optional).",
     timezoneHelp: "Official zone name, for example Europe/Paris.",
     clipTitleHelp: "Text shown at the top of published clips.",
