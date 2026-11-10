@@ -26,7 +26,13 @@ const fr = {
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
     theme: "Thème", open: "Ouvrir",
+    summary: "{{n}} khutba(s) archivée(s)", pendingTotal: "{{n}} clip(s) à valider", pendingCount: "{{n}} à valider",
+    filterAll: "Toutes", noPending: "Aucune khutba n'attend de validation.", empty: "Aucune khutba archivée pour l'instant.",
+    noTheme: "Thème non renseigné", noImam: "Imam non renseigné",
     detail: {
+      hours: "Horaires", length: "Durée", saved: "Enregistré.",
+      seekHelp: "Cliquez une ligne : la vidéo s'y place et démarre.",
+      loadError: "Impossible de charger cette khutba.",
       duration: "durée {{d}}", verseCount: "{{n}} verset(s) détecté(s)", clipCount: "{{n}} clip(s)",
       imamLabel: "Imam", noImam: "non renseigné", speaker: "Intervenant (si pas de compte)",
       noVideo: "Vidéo de la khutba non disponible (enregistrement introuvable).",
@@ -137,7 +143,13 @@ const en: typeof fr = {
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",
     theme: "Theme", open: "Open",
+    summary: "{{n}} archived sermon(s)", pendingTotal: "{{n}} clip(s) to review", pendingCount: "{{n}} to review",
+    filterAll: "All", noPending: "No sermon is waiting for review.", empty: "No archived sermon yet.",
+    noTheme: "No theme set", noImam: "Imam not set",
     detail: {
+      hours: "Time", length: "Length", saved: "Saved.",
+      seekHelp: "Click a line: the video jumps there and plays.",
+      loadError: "Could not load this sermon.",
       duration: "length {{d}}", verseCount: "{{n}} verse(s) detected", clipCount: "{{n}} clip(s)",
       imamLabel: "Imam", noImam: "not set", speaker: "Speaker (no account)",
       noVideo: "Sermon video unavailable (recording not found).",

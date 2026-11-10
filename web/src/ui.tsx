@@ -99,13 +99,14 @@ export function Tabs({
   );
 }
 
-/** Sélecteur segmenté : un seul bloc, pour les sous-onglets d'un même écran. */
+/** Sélecteur segmenté : un seul bloc, pour les sous-onglets d'un même écran.
+ *  `compte` (facultatif) affiche un petit total à côté du libellé. */
 export function Segmented({
   items,
   valeur,
   onChange,
 }: {
-  items: { cle: string; label: string; eteint?: boolean }[];
+  items: { cle: string; label: string; compte?: number; eteint?: boolean }[];
   valeur: string;
   onChange: (cle: string) => void;
 }) {
@@ -125,6 +126,11 @@ export function Segmented({
           }`}
         >
           {it.label}
+          {it.compte !== undefined && (
+            <span className={`rounded-full px-1.5 text-[0.76rem] tabular-nums ${valeur === it.cle ? "bg-paper-2 text-deep" : "bg-white/70 text-muted"}`}>
+              {it.compte}
+            </span>
+          )}
           {it.eteint && <span className="inline-block size-[7px] rounded-full border-[1.5px] border-muted" />}
         </button>
       ))}

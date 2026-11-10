@@ -29,7 +29,7 @@ NAVIGATION = {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*
 def test_les_adresses_du_front_retombent_sur_l_index(env):
     """Le routeur du front gère ses propres adresses : le serveur ne rend plus de page."""
     c = client(env)
-    for url in ("/sermons", "/clips", "/settings", "/sermons/12", "/clips/8"):
+    for url in ("/khutbas", "/clips", "/settings", "/khutbas/12", "/clips/8"):
         r = c.get(url, headers=NAVIGATION)
         assert r.status_code == 200 and 'id="root"' in r.text, url
 
@@ -52,7 +52,7 @@ def test_plus_aucune_page_html_rendue_par_le_serveur(env):
 def test_les_anciennes_adresses_redirigent(env):
     c = client(env, "admin")
     cas = {"/journal": "/audit", "/sante": "/health", "/api/dossiers": "/api/v1/folders",
-           "/admin/utilisateurs": "/users", "/admin/mosquee": "/settings", "/khutbas": "/sermons"}
+           "/admin/utilisateurs": "/users", "/admin/mosquee": "/settings", "/sermons": "/khutbas"}
     for vieux, neuf in cas.items():
         r = c.get(vieux, follow_redirects=False)
         assert r.status_code in (301, 302, 307, 308), (vieux, r.status_code)
@@ -63,7 +63,7 @@ def test_anciennes_adresses_a_parametre(env):
     c = client(env, "admin")
     kid = env["kid"]
     cid = env["conn"].execute("SELECT id FROM clips ORDER BY id LIMIT 1").fetchone()["id"]
-    assert c.get(f"/khutbas/{kid}", follow_redirects=False).headers["location"] == f"/sermons/{kid}"
+    assert c.get(f"/sermons/{kid}", follow_redirects=False).headers["location"] == f"/khutbas/{kid}"
     assert c.post(f"/clips/{cid}/publier", follow_redirects=False).headers["location"] == f"/api/v1/clips/{cid}/publish"
     assert c.post("/admin/connecteurs/local", follow_redirects=False).headers["location"] == "/settings"
 

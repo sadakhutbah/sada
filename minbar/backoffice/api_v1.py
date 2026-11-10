@@ -13,7 +13,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from ..pipeline import llm
+from ..pipeline import llm, verses as verses_mod
 from ..pipeline.output import SessionOutput
 from . import auth, branding, content, db, dirs as dirs_mod, importer, live, publish
 from .app import (PRE_COOKIE, ConnDep, Ctx, CtxDep, Invalid, NotFound, _sec, clip_or_404, count_clips,
@@ -188,7 +188,8 @@ def sermon(ctx: CtxDep, kid: int):
     return {"sermon": k, "segments": segments, "clips": clips, "status_labels": content.STATUS_LABELS,
             "transcript": content.transcript_rows(data),
             "notes": notes.read_text(encoding="utf-8") if notes.exists() else "",
-            "verses": data["verses"], "imam": imam,
+            # Versets détectés : les sûrs/courts et les passages ambigus, signalés « à vérifier ».
+            "verses": verses_mod.for_display(data["verses"]), "imam": imam,
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]) if ctx.can("assign") else [],
             "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists()}
 

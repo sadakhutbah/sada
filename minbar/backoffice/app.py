@@ -294,13 +294,13 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     # Conservées en redirection permanente : un signet ou un lien déjà envoyé continue de fonctionner.
     ANCIENNES = {
         "/connexion": "/login", "/deconnexion": "/", "/compte": "/settings", "/journal": "/audit",
-        "/khutbas": "/sermons", "/publication": "/publications", "/sante": "/health",
+        "/sermons": "/khutbas", "/publication": "/publications", "/sante": "/health",
         "/api/dossiers": "/api/v1/folders", "/admin/utilisateurs": "/users",
         "/admin/mosquee": "/settings", "/admin/modele": "/settings",
         "/admin/modele/tester": "/api/v1/settings/model/test",
     }
     ANCIENS_MOTIFS = (
-        ("/khutbas/{kid}", "/sermons/{kid}"),
+        ("/sermons/{kid}", "/khutbas/{kid}"),
         ("/clips/{cid}/regenerer", "/api/v1/clips/{cid}/regenerate"),
         ("/clips/{cid}/publier", "/api/v1/clips/{cid}/publish"),
         ("/media/khutba/{kid}.mp4", "/media/sermon/{kid}.mp4"),
@@ -326,7 +326,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     # inconnus retombent sur index.html pour que le routeur du front gère ses propres adresses.
     if FRONT.is_dir():
         # Repli explicite sur index.html : le routeur du front gère ses propres adresses
-        # (/sermons/12), le serveur ne doit pas répondre 404 sur ces chemins.
+        # (/khutbas/12), le serveur ne doit pas répondre 404 sur ces chemins.
         app.frontend("/", directory=str(FRONT), fallback="index.html")
     else:
         @app.get("/")
