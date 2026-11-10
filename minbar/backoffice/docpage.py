@@ -59,6 +59,11 @@ _TEMPLATE = """<!doctype html>
   a {{ color: var(--deep); text-decoration: underline; text-decoration-color: var(--line);
        text-underline-offset: 3px; }}
   a:hover {{ text-decoration-color: var(--deep); }}
+  pre {{
+    margin: 0 0 1.4rem; padding: .9rem 1.1rem; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--paper-2); overflow-x: auto; line-height: 1.55;
+  }}
+  pre code {{ border: 0; background: none; padding: 0; font-size: .84rem; }}
   code {{
     font: .88em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--paper-2);
     border: 1px solid var(--line); border-radius: 4px; padding: .06em .32em;
@@ -84,7 +89,7 @@ _TEMPLATE = """<!doctype html>
 <body>
 <div class="banniere">
   <span class="marque">Minbar Live</span><span class="filet"></span>
-  <a href="/">Retour au back-office</a>
+  <a href="/">{retour}</a>
   <span style="margin-left:auto;display:flex;gap:14px;align-items:center">{lien_langue}{lien_texte}</span>
 </div>
 <main>
@@ -146,6 +151,17 @@ def rendre(markdown: str) -> str:
             if not suivant.startswith("#"):
                 blocs.append("<hr>")
             i += 1
+            continue
+
+        # Bloc de code délimité : le contenu est du texte, pas du Markdown
+        if nue.startswith("```"):
+            i += 1
+            code: list[str] = []
+            while i < len(lignes) and not lignes[i].strip().startswith("```"):
+                code.append(lignes[i])
+                i += 1
+            i += 1                                   # la ligne de fermeture
+            blocs.append("<pre><code>" + html.escape("\n".join(code)) + "</code></pre>")
             continue
 
         # Titres
@@ -214,7 +230,9 @@ def rendre(markdown: str) -> str:
         morceaux = []
         while i < len(lignes):
             n = lignes[i].strip()
-            if not n or re.match(r"^(#{1,6}\s|>|\||(\s*)([-*+]|\d+\.)\s)", lignes[i]) or re.fullmatch(r"(-{3,})", n):
+            if (not n or n.startswith("```")
+                    or re.match(r"^(#{1,6}\s|>|\||(\s*)([-*+]|\d+\.)\s)", lignes[i])
+                    or re.fullmatch(r"(-{3,})", n)):
                 break
             morceaux.append(n)
             i += 1
@@ -238,9 +256,12 @@ def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr",
             nom = ligne[2:].strip()
             break
     pied = "Document servi par Minbar Live. Il se met à jour avec l'application."
-    lien = (f'<a href="{html.escape(source, quote=True)}">Version texte</a>' if source else "")
+    retour, texte = (("Back to the back office", "Plain text") if lang == "en"
+                     else ("Retour au back-office", "Version texte"))
+    lien = (f'<a href="{html.escape(source, quote=True)}">{texte}</a>' if source else "")
     lien_langue = (f'<a href="{html.escape(alterne[0], quote=True)}">{html.escape(alterne[1])}</a>'
                    if alterne else "")
     bandeau_avis = f'<p class="avis">{html.escape(avis)}</p>' if avis else ""
     return _TEMPLATE.format(lang=lang, title=html.escape(nom), corps=rendre(markdown),
-                            lien_texte=lien, lien_langue=lien_langue, avis=bandeau_avis, pied=pied)
+                            lien_texte=lien, lien_langue=lien_langue, avis=bandeau_avis,
+                            pied=pied, retour=retour)

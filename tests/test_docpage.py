@@ -63,3 +63,31 @@ def test_le_html_du_document_est_echappe():
 def test_un_filet_avant_un_titre_ne_double_pas_le_filet():
     html = docpage.rendre("Texte.\n\n---\n\n## Section")
     assert "<hr>" not in html
+
+
+def test_une_page_anglaise_a_tous_ses_libelles_en_anglais():
+    """Le bandeau ne doit pas rester en français au-dessus d'un texte anglais."""
+    page = docpage.page("# Title\n\ntext", titre="Title", source="/docs/x.en.md", lang="en")
+    assert "Back to the back office" in page and "Plain text" in page
+    assert 'lang="en"' in page
+    assert "Retour au back-office" not in page
+    assert "Version texte" not in page
+
+
+def test_une_page_francaise_garde_ses_libelles():
+    page = docpage.page("# Titre", titre="Titre", source="/docs/x.md", lang="fr")
+    assert "Retour au back-office" in page and "Version texte" in page
+
+
+def test_un_bloc_de_code_garde_ses_retours_a_la_ligne_et_est_echappe():
+    html = docpage.rendre("```bash\npython -m minbar <db>\n```")
+    assert "<pre><code>" in html and "```" not in html
+    assert "&lt;db&gt;" in html
+    assert "<p>" not in html
+
+
+def test_le_vrai_document_ne_laisse_pas_de_triple_apostrophe():
+    for nom in ("orchestrateur.md", "orchestrateur.en.md", "agent-gabarit-ecrans.md"):
+        html = docpage.rendre((DOCS / nom).read_text(encoding="utf-8"))
+        assert "```" not in html, nom
+        assert "<pre><code>" in html, nom
