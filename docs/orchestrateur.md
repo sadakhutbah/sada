@@ -14,8 +14,8 @@ dont personne ne se souvient.
 | **L'orchestrateur** | le direct lui-même : il ouvre la caméra, encode, pousse vers les plateformes, écoute la voix, coupe, poste la rediffusion | personne : il n'a pas d'écran |
 
 Le back-office est un serveur web. L'orchestrateur est un programme en ligne de commande.
-Ils ne partagent **pas de mémoire**, et depuis la refonte ils ne se partagent plus de base de
-données : l'orchestrateur n'ouvre jamais le fichier SQLite du back-office.
+Ils ne partagent **pas de mémoire**, et pas non plus de base de données : l'orchestrateur n'ouvre
+jamais le fichier SQLite du back-office.
 
 ## 2. Pourquoi l'orchestrateur a besoin de lui parler
 
