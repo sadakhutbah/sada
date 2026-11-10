@@ -89,6 +89,29 @@ def motif_date(q: str) -> tuple[str, str] | None:
     return ("date LIKE ?", f"____-{mois:02d}-%")
 
 
+def analyse_recherche(q: str) -> tuple[str, tuple[str, str] | None]:
+    """Sépare ce qui désigne une date de ce qui désigne du texte.
+
+    « confiance 2026 » cherche le mot dans les khutbas de 2026 : les deux conditions se cumulent.
+    Rend (texte à chercher, condition de date ou None)."""
+    complet = motif_date(q)
+    if complet:
+        return "", complet
+    mots = [m for m in re.split(r"\s+", q.strip()) if m]
+    mois_vu = any(_sans_accent(m).strip(".,") in MOIS for m in mots)
+    dateux, texte = [], []
+    for mot in mots:
+        nu = _sans_accent(mot).strip(".,")
+        dater = (nu in MOIS
+                 or (nu.isdigit() and (len(nu) == 4 or mois_vu))   # un « 6 » n'est un jour que près d'un mois
+                 or bool(re.fullmatch(r"\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?", nu)))
+        (dateux if dater else texte).append(mot)
+    cond = motif_date(" ".join(dateux)) if dateux else None
+    if cond is None:
+        return q.strip(), None      # rien d'exploitable comme date : tout est du texte
+    return " ".join(texte), cond
+
+
 SECTIONS = ("mosque", "logo", "live", "folders", "model", "connectors", "access")
 
 
@@ -242,15 +265,19 @@ def sermons(ctx: CtxDep, q: str = "", pending: int = 0, limit: int = Query(20, g
     pagine. Le total filtré est renvoyé pour que le front sache s'il reste des pages, sans deviner."""
     where, args = imam_filter(ctx)
     if q.strip():
-        motif = f"%{q.strip()}%"
         # Passage, thème et imam se cherchent au texte ; une date se cherche dans ses formats.
-        conditions = [("k.label LIKE ?", motif), ("k.theme LIKE ?", motif),
-                      ("u.display_name LIKE ?", motif), ("k.date LIKE ?", motif)]
-        date = motif_date(q)
+        # Les deux se cumulent : « confiance 2026 » restreint le mot à l'année.
+        texte, date = analyse_recherche(q)
+        blocs = []
+        if texte:
+            motif = f"%{texte}%"
+            blocs.append("(k.label LIKE ? OR k.theme LIKE ? OR u.display_name LIKE ?)")
+            args = (*args, motif, motif, motif)
         if date:
-            conditions.append((f"k.{date[0]}", date[1]))
-        where += " AND (" + " OR ".join(c[0] for c in conditions) + ")"
-        args = (*args, *(c[1] for c in conditions))
+            blocs.append(f"k.{date[0]}")
+            args = (*args, date[1])
+        if blocs:
+            where += " AND " + " AND ".join(blocs)
     if pending:
         where += " AND EXISTS (SELECT 1 FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider')"
     total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "

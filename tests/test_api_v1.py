@@ -138,3 +138,33 @@ def test_recherche_par_date_en_toutes_lettres(env):
         trouve = c.get("/api/v1/sermons", params={"q": saisie, "limit": 200}).json()
         assert jour in {k["date"] for k in trouve["items"]}, saisie
     assert c.get("/api/v1/sermons", params={"q": "novembre 1999"}).json()["total"] == 0
+
+
+@pytest.mark.parametrize("saisie, texte, date_attendue", [
+    ("confiance", "confiance", None),
+    ("confiance 2026", "confiance", ("date LIKE ?", "2026-%")),
+    ("2026 confiance", "confiance", ("date LIKE ?", "2026-%")),
+    ("6 novembre 2026", "", ("date = ?", "2026-11-06")),
+    ("novembre patience", "patience", ("date LIKE ?", "____-11-%")),
+    ("Passage 2", "Passage 2", None),          # « 2 » seul n'est pas une date
+])
+def test_analyse_recherche(saisie, texte, date_attendue):
+    """Un mot et une date dans la même saisie se cumulent au lieu de s'exclure."""
+    from minbar.backoffice.api_v1 import analyse_recherche
+    assert analyse_recherche(saisie) == (texte, date_attendue)
+
+
+def test_recherche_motifiee_par_date(env):
+    """« patience 2024 » ne sort que les khutbas de 2024 : le mot ne s'applique qu'à cette année."""
+    c = client(env, "admin")
+    conn = env["conn"]
+    base = conn.execute("SELECT mosque_id, output_dir, date FROM khutbas LIMIT 1").fetchone()
+    conn.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, theme, date, output_dir, "
+                 "imported_at) VALUES (?, 'essai-date', 0, 'Passage', 'la patience', '2024-03-08', ?, "
+                 "datetime('now'))", (base["mosque_id"], base["output_dir"]))
+    conn.commit()
+    an2024 = c.get("/api/v1/sermons", params={"q": "patience 2024"}).json()
+    assert an2024["total"] == 1 and an2024["items"][0]["date"] == "2024-03-08"
+    an2026 = c.get("/api/v1/sermons", params={"q": "patience 2026"}).json()
+    assert an2026["total"] < c.get("/api/v1/sermons", params={"q": "patience"}).json()["total"]
+    assert all(k["date"].startswith("2026") for k in an2026["items"])
