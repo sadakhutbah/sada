@@ -51,7 +51,7 @@ def test_forme_des_reponses(env):
     assert s["count"] == len(s["items"])
 
     cl = c.get("/api/v1/clips").json()
-    assert cl["status_labels"] and "tabs" in cl
+    assert cl["tabs"] == ["a_valider", "valide", "publie", "rejete"] and "status_labels" not in cl
 
     st = c.get("/api/v1/settings").json()
     assert st["sections"][0] == "mosque"

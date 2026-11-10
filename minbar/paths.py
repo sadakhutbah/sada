@@ -12,3 +12,4 @@ CACHE = DATA / "cache"
 EVENTS = DATA / "events.json"     # programme of dars and conferences, read by both processes
 PUBLISHED = DATA / "published"
 BACKOFFICE_DB = DATA / "backoffice" / "minbar.db"
+INTERNAL_TOKEN = DATA / "internal.token"   # local secret shared by the two processes

@@ -195,14 +195,45 @@ def test_publications_real_status_and_notifications(env, monkeypatch):
     assert r.ecrire("/settings/notifications", {"mode": ""}, "PUT").status_code == 403
 
 
-def test_notifier_reads_backoffice_settings(env):
+def test_endpoint_interne_des_notifications(env, monkeypatch, tmp_path):
+    """The orchestrator gets the settings over HTTP with the local token, never by opening the database."""
+    from minbar.backoffice import internal
+    monkeypatch.setenv("MINBAR_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
+    c = client(env, "admin")
+    c.ecrire("/settings/notifications", {"mode": "telegram", "telegram_token": "tok", "telegram_chat": "42"}, "PUT")
+    url = "/api/v1/internal/notification-settings?port=8088"
+    assert c.get(url).status_code == 403                        # no token, no answer
+    r = c.get(url, headers={internal.HEADER: internal.token()})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["mode"] == "telegram" and d["telegram_token"] == "tok" and d["telegram_chat"] == "42"
+
+
+def test_notifier_reads_backoffice_settings(env, monkeypatch, tmp_path):
     """Without a destination in the orchestrator config, from_config falls back to the on-screen setting."""
     from types import SimpleNamespace
     from minbar import notify
+    from minbar.backoffice import internal
+    monkeypatch.setenv("MINBAR_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
     c = client(env, "admin")
     c.ecrire("/settings/notifications", {"mode": "telegram", "telegram_token": "tok", "telegram_chat": "42"}, "PUT")
-    cfg = SimpleNamespace(notify_url="", telegram_token="", telegram_chat="", api_port=8088)
-    n = notify.from_config(cfg, log=lambda _m: None, db_path=env["conn"].execute("PRAGMA database_list").fetchone()[2])
+    seen = []
+
+    def fetch(url, token):
+        seen.append((url, token))
+        return c.get("/api/v1/internal/notification-settings?port=8088",
+                     headers={internal.HEADER: token}).json()
+
+    cfg = SimpleNamespace(notify_url="", telegram_token="", telegram_chat="", api_port=8088,
+                          backoffice_url="http://127.0.0.1:8090")
+    n = notify.from_config(cfg, log=lambda _m: None, fetch=fetch)
     assert n.enabled and n.destination == "telegram"
+    assert seen and seen[0][0] == "http://127.0.0.1:8090/api/v1/internal/notification-settings?port=8088"
     cfg.notify_url = "https://priority.example"
-    assert notify.from_config(cfg, db_path=None).destination == "webhook"
+    assert notify.from_config(cfg, fetch=fetch).destination == "webhook"     # config wins, no call
+    assert len(seen) == 1
+
+    # back-office unreachable: no destination, the live goes on
+    dead = SimpleNamespace(notify_url="", telegram_token="", telegram_chat="", api_port=8088,
+                           backoffice_url="http://127.0.0.1:9")
+    assert notify.from_config(dead, log=lambda _m: None).enabled is False

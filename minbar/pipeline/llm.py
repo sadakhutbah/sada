@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import paths
+from ..config import pick
 
 DEFAULT_URL = "http://127.0.0.1:11434/v1"
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
@@ -104,17 +105,17 @@ def settings(url: str | None = None, model: str | None = None, key: str | None =
              protocol: str | None = None) -> Settings:
     """Effective settings: argument, process setting, environment, back-office file, default."""
     cfg = config()
-    url = (url or _OVERRIDE.get("url") or os.environ.get("MINBAR_LLM_URL") or cfg.get("url")
-           or DEFAULT_URL).rstrip("/")
-    model = model or _OVERRIDE.get("model") or os.environ.get("MINBAR_LLM_MODEL") or cfg.get("model") or DEFAULT_MODEL
+    # same precedence as the orchestrator configuration (config.pick): argument > process > env > file > default
+    url = pick(url, _OVERRIDE.get("url"), os.environ.get("MINBAR_LLM_URL"), cfg.get("url"), DEFAULT_URL).rstrip("/")
+    model = pick(model, _OVERRIDE.get("model"), os.environ.get("MINBAR_LLM_MODEL"), cfg.get("model"), DEFAULT_MODEL)
     # The saved protocol only holds for the saved address: if the address changes (back-office
     # setting, environment variable, argument), the protocol is deduced again from the address.
     cfg_proto = (cfg.get("protocol") or "").strip().lower() if (cfg.get("url") or "").rstrip("/") == url else ""
-    proto = (protocol or _OVERRIDE.get("protocol") or os.environ.get("MINBAR_LLM_PROTOCOL")
-             or cfg_proto or "").strip().lower() or _guess_protocol(url)
-    return Settings(url=url, model=model,
-                    key=key if key is not None else (os.environ.get("MINBAR_LLM_API_KEY") or cfg.get("key", "")),
-                    protocol=proto)
+    proto = pick(protocol, _OVERRIDE.get("protocol"), os.environ.get("MINBAR_LLM_PROTOCOL"),
+                 cfg_proto, "").strip().lower() or _guess_protocol(url)
+    if key is None:                                  # an empty key given explicitly stays empty
+        key = pick(os.environ.get("MINBAR_LLM_API_KEY"), cfg.get("key"), "")
+    return Settings(url=url, model=model, key=key, protocol=proto)
 
 
 def _guess_protocol(url: str) -> str:

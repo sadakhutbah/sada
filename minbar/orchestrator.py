@@ -20,7 +20,7 @@ from .clock import SimClock, parse_hhmm
 from .config import Config
 from .encoder import Encoder
 from .scenes import SCENES, Moment, SceneRenderer
-from .state import Machine, Signals
+from .state import Machine, SessionParams, Signals
 from .faces import FaceGate, FaceMonitor, yunet_detector
 from .presence import MotionGate, PresenceMonitor
 from .vad import VadMonitor
@@ -243,34 +243,53 @@ class Orchestrator:
         self._save_sessions()
 
 
-def main(argv=None):
+# Command-line aliases: the flag keeps the field name, unless a shorter name is in use.
+CLI_ALIASES = {
+    "jumua_times_override": ("--times",),
+    "mosque_name": ("--mosque-name",),
+    "mosque_name_ar": ("--mosque-name-ar",),
+}
+
+
+def cli_type(template):
+    """Argument type, deduced from the default value of the setting."""
+    if isinstance(template, bool):
+        return lambda v: str(v).strip().lower() in ("1", "true", "yes", "on", "oui")
+    if isinstance(template, int):
+        return int
+    if isinstance(template, float):
+        return float
+    return str
+
+
+def parser() -> argparse.ArgumentParser:
+    """Command line built from Config: one flag per setting, same name as the JSON key.
+
+    Nothing is defaulted here: an absent flag stays None and Config.load applies the one precedence
+    (flag > MINBAR_<FIELD> environment > --config file > default). Per-session timings (khutba, dars)
+    are only read from the JSON file: `{"khutba": {"silence_stop_s": 60}}`.
+    """
+    from dataclasses import MISSING, fields
+
+    from .config import env_name
+
     ap = argparse.ArgumentParser(description="Minbar Live — orchestrateur")
-    ap.add_argument("--config")
-    ap.add_argument("--camera-url")
-    ap.add_argument("--rtmp-url", default=os.environ.get("MINBAR_RTMP_URL"))
-    ap.add_argument("--mawaqit-url", default=os.environ.get("MINBAR_MAWAQIT_URL"))
-    ap.add_argument("--mosque-name", default=os.environ.get("MINBAR_MOSQUE_NAME"), help="nom de la mosquée (habillage)")
-    ap.add_argument("--mosque-name-ar", dest="mosque_name_ar", default=os.environ.get("MINBAR_MOSQUE_NAME_AR"))
-    ap.add_argument("--logo", default=os.environ.get("MINBAR_LOGO"), help="logo de la mosquée (jpg/png)")
-    ap.add_argument("--sim-start", help="HH:MM : heure simulée de départ")
-    ap.add_argument("--sim-speed", type=float)
-    ap.add_argument("--times", help="horaires imposés, ex. 12:30,13:30")
-    ap.add_argument("--silence-stop", type=float, dest="silence_stop_s")
-    ap.add_argument("--grace", type=float, dest="grace_s")
-    ap.add_argument("--terminated-hold", type=float, dest="terminated_hold_s")
-    ap.add_argument("--api-port", type=int)
-    ap.add_argument("--presence", choices=["off", "motion"], help="détection de présence au minbar")
-    ap.add_argument("--face", choices=["off", "yunet"], help="détection de visage de face au minbar")
-    ap.add_argument("--face-absence", type=float, dest="face_absence_s", help="secondes sans visage avant la fin de khutba")
-    ap.add_argument("--events-file", help="programme JSON des dars et conférences")
-    ap.add_argument("--notify-url", default=os.environ.get("MINBAR_NOTIFY_URL"),
-                    help="webhook qui reçoit les messages destinés à l'imam")
-    ap.add_argument("--telegram-token", default=os.environ.get("MINBAR_TELEGRAM_TOKEN"))
-    ap.add_argument("--telegram-chat", default=os.environ.get("MINBAR_TELEGRAM_CHAT"))
-    a = ap.parse_args(argv)
-    ov = {k: v for k, v in vars(a).items() if k not in ("config", "times") and v is not None}
-    if a.times:
-        ov["jumua_times_override"] = a.times.split(",")
+    ap.add_argument("--config", help="fichier JSON de configuration")
+    for f in fields(Config):
+        template = f.default if f.default is not MISSING else (
+            f.default_factory() if f.default_factory is not MISSING else None)
+        if isinstance(template, SessionParams):
+            continue
+        flags = (f"--{f.name.replace('_', '-')}",) + tuple(CLI_ALIASES.get(f.name, ()))
+        ap.add_argument(*flags, dest=f.name, type=cli_type(template), default=None,
+                        metavar=f.name.upper(),
+                        help=f"défaut {template!r} ; env {env_name(f.name)}")
+    return ap
+
+
+def main(argv=None):
+    a = parser().parse_args(argv)
+    ov = {k: v for k, v in vars(a).items() if k != "config" and v is not None}
     Orchestrator(Config.load(a.config, **ov)).run()
 
 

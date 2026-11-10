@@ -10,7 +10,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from .. import paths
+from .. import defaults, paths
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_DB = paths.BACKOFFICE_DB
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS mosques (
     state_dir TEXT NOT NULL DEFAULT '',
     output_dir TEXT NOT NULL DEFAULT '',
     publish_dir TEXT NOT NULL DEFAULT '',
-    clip_title TEXT NOT NULL DEFAULT 'Khutba du vendredi',
+    clip_title TEXT NOT NULL,
     default_imam_id INTEGER,
     auto_import INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
@@ -248,6 +248,7 @@ def update_mosque(conn, mosque_id: int, **vals) -> None:
 
 
 def create_mosque(conn, slug: str, name: str, **fields) -> int:
+    fields.setdefault("clip_title", defaults.CLIP_TITLE)
     cols = ["slug", "name", "created_at"] + list(fields)
     vals = [slug, name, now_iso()] + list(fields.values())
     cur = conn.execute(f"INSERT INTO mosques ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", vals)

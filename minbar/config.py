@@ -1,13 +1,46 @@
-"""Orchestrator configuration (overridable by a JSON file via --config).
+"""Orchestrator configuration: JSON file, environment, command line.
+
+ONE precedence rule for every setting, applied by `Config.load`:
+command line > MINBAR_<FIELD> environment > --config file > default. A setting counts as given
+when it is neither None nor an empty string, so an unset flag never erases the file.
 
 The state-machine settings (schedule, signals) are those of MachineParams."""
 from __future__ import annotations
 import json
-from dataclasses import dataclass, field
+import os
+from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
 
-from . import paths
-from .state import MachineParams
+from . import defaults, paths
+from .state import MachineParams, SessionParams
+
+ENV_PREFIX = "MINBAR_"
+
+
+def pick(*candidates):
+    """First value that is set (neither None nor ""), last candidate as default: the one rule."""
+    for c in candidates[:-1]:
+        if c is not None and c != "":
+            return c
+    return candidates[-1] if candidates else None
+
+
+def env_name(name: str) -> str:
+    """Environment variable of a setting: MINBAR_<FIELD>."""
+    return ENV_PREFIX + name.upper()
+
+
+def convert(raw, template):
+    """Value read as text (environment, command line) turned into the type of the default."""
+    if isinstance(template, bool):
+        return str(raw).strip().lower() in ("1", "true", "yes", "on", "oui")
+    if isinstance(template, int):
+        return int(raw)
+    if isinstance(template, float):
+        return float(raw)
+    if isinstance(template, (list, tuple)):
+        return [x.strip() for x in str(raw).split(",") if x.strip()]
+    return str(raw)
 
 
 @dataclass
@@ -60,7 +93,7 @@ class Config(MachineParams):
     face_fps: float = 5.0               # analysed frames per second
     face_width: int = 320
     face_height: int = 180
-    title: str = "Khutba du vendredi"
+    title: str = defaults.CLIP_TITLE
     dark_green: str = "#1E7A3C"
     # --- Notifications (webhook or Telegram; nothing published) --------------
     notify_url: str = ""                # generic webhook (Discord, Slack, n8n…) that receives {"text": ...}
@@ -70,9 +103,25 @@ class Config(MachineParams):
     api_host: str = "127.0.0.1"
     api_port: int = 8088
     api_token: str = ""                 # if set: X-Token header required
+    # --- Back-office (same machine) ------------------------------------------
+    # Where to ask for the settings an administrator saved in the interface (notifications).
+    backoffice_url: str = "http://127.0.0.1:8090"
 
     @classmethod
     def load(cls, path: str | None = None, **overrides) -> "Config":
+        """Effective configuration, one setting at a time: flag > environment > file > default."""
         data = json.loads(Path(path).read_text()) if path else {}
-        data.update({k: v for k, v in overrides.items() if v is not None})
-        return cls(**data)
+        vals = {}
+        for f in fields(cls):
+            template = f.default if f.default is not MISSING else (
+                f.default_factory() if f.default_factory is not MISSING else None)
+            raw = pick(overrides.get(f.name), os.environ.get(env_name(f.name)), data.get(f.name), None)
+            if raw is None:
+                continue
+            if isinstance(template, SessionParams):       # nested section: {"khutba": {...}}
+                vals[f.name] = raw if isinstance(raw, SessionParams) else replace(template, **raw)
+            elif isinstance(raw, str):
+                vals[f.name] = convert(raw, template)
+            else:
+                vals[f.name] = raw
+        return cls(**vals)

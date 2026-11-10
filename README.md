@@ -103,6 +103,25 @@ Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-
 des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le
 demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
 
+## Configuration : une seule règle de précédence
+
+Chaque réglage peut venir de trois endroits, et l'ordre ne change pas d'un réglage à l'autre :
+
+**ligne de commande > variable `MINBAR_<CHAMP>` > fichier `--config` > défaut.**
+
+- La ligne de commande est construite à partir de la configuration elle-même (`--camera-url` pour
+  `camera_url`, `--api-port` pour `api_port`…). `--help` liste chaque option avec son défaut et le nom
+  de sa variable.
+- Les durées propres à un type de session ne sont pas des options : elles vivent dans deux sections du
+  fichier, `khutba` et `dars` (`window_after_min`, `max_s`, `silence_stop_s`, `grace_s`, `ended_hold_s`).
+- La règle est écrite une fois, `minbar.config.pick` ; le réglage du modèle de langage (`minbar/pipeline/llm.py`)
+  passe par la même fonction.
+
+```yaml
+khutba: {window_after_min: 45, max_s: 3600, silence_stop_s: 60, grace_s: 30, ended_hold_s: 45}
+dars:   {window_after_min: 90, max_s: 7200, silence_stop_s: 180, grace_s: 90, ended_hold_s: 45}
+```
+
 ## Notifications à l'imam
 
 L'orchestrateur prévient l'imam par un message court — rappel avant la session, début du direct,
@@ -119,6 +138,12 @@ Le jeton Telegram et l'URL du webhook se gardent hors du dépôt (variables d'en
 fichier de configuration local). Un échec d'envoi est journalisé et n'interrompt jamais le direct.
 Les messages existent aussi en champs de configuration : `notify_url`, `telegram_token`, `telegram_chat`
 (ou les options `--notify-url`, `--telegram-token`, `--telegram-chat`).
+
+Sans destination dans la configuration de l'orchestrateur, celui-ci demande à la fin de son démarrage
+celles que l'administrateur a enregistrées dans le back-office : un appel HTTP local
+(`/api/v1/internal/notification-settings`), authentifié par un jeton que les deux processus lisent dans
+`data/internal.token`. L'orchestrateur n'ouvre jamais la base du back-office ; si celui-ci ne répond pas,
+les notifications restent à blanc et le direct continue.
 
 ## Présence au minbar
 

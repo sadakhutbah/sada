@@ -18,8 +18,8 @@ from ..pipeline import translate, verses
 from ..pipeline.output import SessionOutput
 from . import db
 
-STATUS_LABELS = {"a_valider": "À valider", "valide": "Validé", "rejete": "Rejeté", "publie": "Publié"}
-STATUS_TABS = {"a_valider": "À valider", "valide": "Validés", "publie": "Publiés", "rejete": "Rejetés"}
+# Clip statuses, in the order of the filter tabs. Protocol keys only: the front end translates them.
+CLIP_STATUSES = ("a_valider", "valide", "publie", "rejete")
 REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"
 
 

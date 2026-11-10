@@ -226,7 +226,7 @@ def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
     # The context accompanies the clip: the khutba theme and what precedes the extract.
     assert d["contexte"]["theme"]
     assert isinstance(d["contexte"]["avant"], list)   # empty if the clip opens the khutba
-    assert d["status_labels"]["a_valider"]
+    assert d["clip"]["status"] == "a_valider" and "status_labels" not in d   # keys, not screen text
     assert len(d["segments"]) >= 1
     assert c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"}).status_code == 200
     assert [a["action"] for a in c.get(f"/api/v1/clips/{cid}").json()["history"]][:1] == ["clip.valide"]
@@ -464,7 +464,7 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
     actions = [h["action"] for h in d["history"]]
     assert "correction.sous-titre" in actions and "clip.valide" in actions
     assert any(h["who"] == "Imam" for h in d["history"])
-    assert d["clip"]["status"] == "valide" and d["status_labels"]["valide"] == "Validé"
+    assert d["clip"]["status"] == "valide" and "status_labels" not in d
 
 
 def test_correction_traduction_et_verset_protege(env):
@@ -490,7 +490,7 @@ def test_rejet_avec_motif(env):
     assert clip["status"] == "rejete" and clip["reject_reason"] == "coupé en plein milieu"
     d = c.get("/api/v1/clips", params={"status": "rejete"}).json()
     assert [i["id"] for i in d["items"]] == [cid]
-    assert d["counts"]["rejete"] == 1 and d["status_labels"]["rejete"] == "Rejeté"
+    assert d["counts"]["rejete"] == 1 and d["tabs"][-1] == "rejete"
 
 
 # ------------------------------------------------------------------ publication

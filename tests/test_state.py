@@ -1,5 +1,7 @@
 import datetime as dt
 from minbar import runs
+from dataclasses import replace
+
 from minbar.state import Machine, MachineParams, Signals, State
 
 D = dt.date(2026, 11, 6)
@@ -9,10 +11,13 @@ def at(h, m, s=0):
     return dt.datetime.combine(D, dt.time(h, m, s))
 
 
-def mk(times=("12:30", "13:30"), **kw):
+def mk(times=("12:30", "13:30"), khutba=None, **kw):
+    """`khutba` overrides the khutba timings (silence_stop_s, grace_s, max_s, ended_hold_s…)."""
     sess = [at(int(t[:2]), int(t[3:])) for t in times]
     logs = []
     p = MachineParams(**kw)
+    if khutba:
+        p.khutba = replace(p.khutba, **khutba)
     return Machine(sess, p, log=logs.append), logs
 
 
@@ -73,7 +78,7 @@ def _start_khutba(m, d):
 
 
 def test_stop_needs_silence_plus_grace_and_resume_cancels():
-    m, _ = mk(silence_stop_s=60, grace_s=30, min_khutba_s=100)
+    m, _ = mk(khutba={"silence_stop_s": 60, "grace_s": 30}, min_session_s=100)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(200, voice=True)
     d.run(61, voice=False)          # 61 s silence -> grace
@@ -87,14 +92,14 @@ def test_stop_needs_silence_plus_grace_and_resume_cancels():
 
 
 def test_no_stop_before_min_duration():
-    m, _ = mk(silence_stop_s=10, grace_s=5, min_khutba_s=300)
+    m, _ = mk(khutba={"silence_stop_s": 10, "grace_s": 5}, min_session_s=300)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(100, voice=False)
     assert m.state == State.KHUTBA
 
 
 def test_two_sessions_full_cycle():
-    m, logs = mk(silence_stop_s=10, grace_s=5, min_khutba_s=30, prayer_min=10, terminated_hold_s=20)
+    m, logs = mk(khutba={"silence_stop_s": 10, "grace_s": 5, "ended_hold_s": 20}, min_session_s=30, prayer_min=10)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(60, voice=True); d.run(30, voice=False)
     assert m.state == State.PRAYER
@@ -116,7 +121,7 @@ def test_two_sessions_full_cycle():
 
 
 def test_second_session_skipped_when_no_signal():
-    m, _ = mk(silence_stop_s=10, grace_s=5, min_khutba_s=30, prayer_min=10)
+    m, _ = mk(khutba={"silence_stop_s": 10, "grace_s": 5}, min_session_s=30, prayer_min=10)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(60, voice=True); d.run(20, voice=False)
     d.step(clock=11 * 60, voice=False)
@@ -151,7 +156,7 @@ def test_scene_command_and_unknown():
 
 
 def test_extend_blocks_stop():
-    m, _ = mk(silence_stop_s=10, grace_s=5, min_khutba_s=30)
+    m, _ = mk(khutba={"silence_stop_s": 10, "grace_s": 5}, min_session_s=30)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(60, voice=True)
     m.command("extend", d.sig(), 5)
@@ -184,7 +189,7 @@ def test_cancel_day():
 
 
 def test_max_duration_guard():
-    m, _ = mk(max_khutba_s=100, silence_stop_s=1e9)
+    m, _ = mk(khutba={"max_s": 100, "silence_stop_s": 1e9})
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(101, voice=True)
     assert m.state == State.PRAYER

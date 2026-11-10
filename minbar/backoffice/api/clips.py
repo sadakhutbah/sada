@@ -42,7 +42,6 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         "caption": publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
         "contexte": {"theme": k["theme"] or "", "avant": avant, "versets": versets},
         "exists": bool(c["file_path"]) and Path(c["file_path"]).exists(),
-        "status_labels": content.STATUS_LABELS,
     }
 
 
@@ -58,8 +57,7 @@ def clips(ctx: CtxDep, status: str = "", limit: int = Query(200, ge=1, le=1000))
     par_statut = {r["status"]: r["n"] for r in db.all_(
         ctx.conn, f"SELECT c.status, COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                   f"WHERE {where} GROUP BY c.status", *args)}
-    return {"items": rows, "count": len(rows), "counts": par_statut,
-            "status_labels": content.STATUS_LABELS, "tabs": content.STATUS_TABS}
+    return {"items": rows, "count": len(rows), "counts": par_statut, "tabs": content.CLIP_STATUSES}
 
 
 @router.get("/clips/{cid}")

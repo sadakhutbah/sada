@@ -13,15 +13,14 @@ export default function Clips() {
   const [statut, setStatut] = useState("");
 
   useEffect(() => {
-    api.clips(statut).then(setData).catch(() => setData({ items: [], status_labels: {}, counts: {} }));
+    api.clips(statut).then(setData).catch(() => setData({ items: [], tabs: [], counts: {} }));
   }, [statut]);
 
-  const libelles = data?.status_labels ?? {};
   const comptes = data?.counts ?? {};
   const total = Object.values(comptes).reduce((a: number, n: any) => a + Number(n), 0);
   const onglets = [
     { cle: "", label: t("clips.all"), compte: total },
-    ...Object.entries(libelles).map(([cle, label]) => ({ cle, label: String(label), compte: Number(comptes[cle] ?? 0) })),
+    ...(data?.tabs ?? []).map((cle: string) => ({ cle, label: t(`clips.statusTabs.${cle}`), compte: Number(comptes[cle] ?? 0) })),
   ];
 
   return (
@@ -58,7 +57,7 @@ export default function Clips() {
                   </p>
                   {c.why && <p className="m-0 text-[0.88rem] text-muted">{c.why}</p>}
                 </div>
-                  <Pill statut={c.status} label={libelles[c.status] ?? c.status} />
+                  <Pill statut={c.status} label={t(`clips.statuses.${c.status}`)} />
                 </Link>
               </li>
             ))}

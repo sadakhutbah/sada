@@ -3,6 +3,8 @@ import datetime as dt
 
 import pytest
 
+from dataclasses import replace
+
 from minbar.state import Machine, MachineParams, Signals, State
 
 D = dt.date(2026, 11, 10)                    # Tuesday
@@ -38,11 +40,15 @@ class Drv:
         return Signals(self.now, self.t, self.voice, self.silence, None)
 
 
-def mk(**params):
+def mk(dars=None, **params):
+    """`dars` overrides the dars timings (max_s, grace_s, silence_stop_s, ended_hold_s…)."""
     logs = []
     meta = [{"kind": "dars", "title": "Tafsir Al-Kahf", "speaker": "Imam Abdallah",
              "series": "Tafsir Al-Kahf", "session_no": 7}]
-    m = Machine([at(19, 0)], MachineParams(**params), log=logs.append, extras=meta)
+    p = MachineParams(**params)
+    if dars:
+        p.dars = replace(p.dars, **dars)
+    m = Machine([at(19, 0)], p, log=logs.append, extras=meta)
     return m, logs
 
 
@@ -76,7 +82,7 @@ def test_fin_par_silence_prolonge_puis_ecran_de_fin():
 
 
 def test_garde_fou_duree_maximale_dars():
-    m, _ = mk(dars_max_s=300.0)
+    m, _ = mk(dars={"max_s": 300.0})
     d = Drv(m, at(18, 59))
     d.run(5)
     d.run(75, voice=True)

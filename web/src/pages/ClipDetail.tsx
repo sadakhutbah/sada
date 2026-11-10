@@ -82,7 +82,6 @@ export default function ClipDetail() {
   }
 
   const c = d.clip;
-  const libelles = d.status_labels ?? {};
   const peutPublier = oui(d.can_publish);
   const ongletActif = onglet === "publication" && !peutPublier ? "decision" : onglet;
 
@@ -94,7 +93,7 @@ export default function ClipDetail() {
           <h1 className="m-0 font-serif text-[1.9rem] font-normal leading-[1.1] text-deeper">
             {t("clips.clip")} {c.idx} · {t(`clips.kinds.${c.kind}`)}
           </h1>
-          <Pill statut={c.status} label={libelles[c.status] ?? c.status} />
+          <Pill statut={c.status} label={t(`clips.statuses.${c.status}`)} />
         </div>
       </header>
 
@@ -224,7 +223,7 @@ function Decision({ c, d, occupe, agir, versPublication }: {
               {c.decided_at ? ` — ${dateFr(String(c.decided_at).slice(0, 10), i18n.language)}` : ""}
             </>
           ) : (
-            d.status_labels?.[c.status] ?? c.status
+            t(`clips.statuses.${c.status}`)
           )}
           {!aValider && c.reject_reason ? <span className="text-muted"> — {c.reject_reason}</span> : null}
         </Ligne>

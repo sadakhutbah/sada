@@ -96,46 +96,43 @@ class Notifier:
         return bool(text) and self.send(text)
 
 
-def from_config(cfg, log: Callable[[str], None] = print, db_path=None) -> Notifier:
+def from_config(cfg, log: Callable[[str], None] = print, fetch: Callable[[str, str], dict] | None = None) -> Notifier:
     """Build the notifier from the configuration (webhook or Telegram, never stored in the repository).
 
-    The orchestrator configuration takes precedence; without a destination, fall back to the one an
-    administrator entered in the back-office (Publications screen), read once at startup.
+    The orchestrator configuration takes precedence; without a destination, ask the back-office for
+    the settings an administrator saved (Publications screen), once at startup.
     """
     n = Notifier(getattr(cfg, "notify_url", ""), getattr(cfg, "telegram_token", ""),
                  getattr(cfg, "telegram_chat", ""), log=log)
     if n.enabled:
         return n
-    row = _backoffice_row(getattr(cfg, "api_port", None), db_path)
+    row = _backoffice_settings(getattr(cfg, "backoffice_url", ""), getattr(cfg, "api_port", None), fetch=fetch)
     return from_settings(row, log=log) if row else n
 
 
-def _backoffice_row(api_port, db_path=None) -> dict | None:
-    """Notification settings of the mosque whose orchestrator listens on this port (or of the only mosque)."""
-    import sqlite3
-    from urllib.parse import urlparse
+def _backoffice_settings(backoffice_url: str, api_port, fetch: Callable[[str, str], dict] | None = None) -> dict | None:
+    """Notification settings saved in the interface, asked over HTTP to the back-office.
 
-    from . import paths
-
-    path = db_path or paths.BACKOFFICE_DB
-    try:
-        if not path or not Path(path).exists():
-            return None
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
-        conn.row_factory = sqlite3.Row
-        try:
-            mosques = conn.execute("SELECT id, orchestrator_url FROM mosques").fetchall()
-            ids = [m["id"] for m in mosques if urlparse(m["orchestrator_url"] or "").port == api_port]
-            if not ids and len(mosques) == 1:
-                ids = [mosques[0]["id"]]
-            if len(ids) != 1:
-                return None
-            r = conn.execute("SELECT * FROM notifications WHERE mosque_id = ?", (ids[0],)).fetchone()
-            return dict(r) if r else None
-        finally:
-            conn.close()
-    except Exception:                                   # missing, locked or older database: the live stream must never be affected
+    Authenticated by the local token (`minbar.backoffice.internal`): the orchestrator never opens the
+    back-office database. Any failure means "no destination": the live stream must never be affected.
+    """
+    if not backoffice_url:
         return None
+    from urllib.parse import urlencode
+
+    from .backoffice.internal import HEADER, token
+
+    url = backoffice_url.rstrip("/") + "/api/v1/internal/notification-settings?" + urlencode({"port": api_port or 0})
+    try:
+        return (fetch or _http_get)(url, token()) or None
+    except Exception:
+        return None
+
+
+def _http_get(url: str, token: str) -> dict:      # pragma: no cover (network)
+    req = urllib.request.Request(url, headers={"X-Internal-Token": token})
+    with urllib.request.urlopen(req, timeout=3) as r:
+        return json.loads(r.read(4096))
 
 
 def from_settings(row: dict | None, log: Callable[[str], None] = print) -> Notifier:

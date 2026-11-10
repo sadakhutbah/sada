@@ -87,7 +87,7 @@ export const api = {
   sermonsMois: () => demande<{ items: { mois: string; n: number }[] }>("/sermons/mois"),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
   clips: (status = "") =>
-    demande<{ items: any[]; status_labels: Record<string, string>; counts: Record<string, number> }>(`/clips${status ? `?status=${status}` : ""}`),
+    demande<{ items: any[]; tabs: string[]; counts: Record<string, number> }>(`/clips${status ? `?status=${status}` : ""}`),
   clip: (id: number) => demande<any>(`/clips/${id}`),
   publications: () => demande<any>("/publications"),
   settings: () => demande<any>("/settings"),

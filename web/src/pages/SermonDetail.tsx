@@ -82,7 +82,6 @@ export default function SermonDetail() {
   }
 
   const k = d.sermon;
-  const libelles = d.status_labels ?? {};
   const clipsAValider = d.clips.filter((c: any) => c.status === "a_valider").length;
   const ongletActif = onglet === "rattachement" && !peutAssigner ? "transcription" : onglet;
   const onglets = [
@@ -172,7 +171,7 @@ export default function SermonDetail() {
                         </span>
                       </span>
                       <span className="flex items-center gap-2.5">
-                        <Pill statut={c.status} label={libelles[c.status] ?? c.status} />
+                        <Pill statut={c.status} label={t(`clips.statuses.${c.status}`)} />
                         <span aria-hidden className="text-[1.2rem] leading-none text-muted group-hover:text-deep">›</span>
                       </span>
                     </Link>

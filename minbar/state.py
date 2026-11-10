@@ -18,7 +18,7 @@ session (the planned session if it is waiting, otherwise a manual session); the 
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from typing import Callable, Optional
 
@@ -68,29 +68,41 @@ class Signals:
 
 
 @dataclass
+class SessionParams:
+    """Timing of one session type: when it may start, and when it ends.
+
+    A khutba is bounded by the prayer that follows it, a dars is not: each type carries its own
+    numbers instead of a set of `if kind == "khutba"` ternaries.
+    """
+    window_after_min: float             # no signal beyond that: session skipped
+    max_s: float                        # no session lasts longer
+    silence_stop_s: float               # prolonged silence => end
+    grace_s: float                      # grace delay before cutting
+    ended_hold_s: float                 # end screen, before the stream stops
+
+
+KHUTBA_TIMING = SessionParams(window_after_min=45.0, max_s=3600.0, silence_stop_s=60.0,
+                              grace_s=30.0, ended_hold_s=45.0)
+DARS_TIMING = SessionParams(window_after_min=90.0, max_s=7200.0, silence_stop_s=180.0,
+                            grace_s=90.0, ended_hold_s=45.0)
+
+
+@dataclass
 class MachineParams:
     # mosque-clock minutes, counted from the session time (T)
     arm_before_min: float = 15.0        # arming: we listen to the voice
     avant_before_min: float = 2.0       # BEFORE scene: stream started
-    window_after_min: float = 45.0      # no signal beyond that: session skipped
     prayer_min: float = 12.0            # assumed duration of the prayer
     # durations in REAL seconds: the signal is in real time
     voice_start_s: float = 20.0         # sustained voice => start of khutba
-    silence_stop_s: float = 60.0        # prolonged silence => end of khutba
-    grace_s: float = 30.0               # grace delay before cutting
-    min_khutba_s: float = 120.0         # no stop before this duration
+    min_session_s: float = 120.0        # no stop before this duration, whatever the session
     # face at the minbar: the imam turns his back during the prayer (0 = signal ignored)
     face_absence_s: float = 45.0        # no frontal face for this long ...
     face_silence_ratio: float = 0.5     # ... AND at least this share of the silence threshold
     face_return_s: float = 3.0          # face back within this delay: the grace is cancelled
-    max_khutba_s: float = 3600.0
-    terminated_hold_s: float = 45.0     # "Terminé" screen before the stream stops
-    # dars and conferences: more flexible than the khutba (no prayer follows)
-    dars_window_after_min: float = 90.0 # a dars can start later than a khutba
-    dars_max_s: float = 7200.0
-    dars_silence_stop_s: float = 180.0
-    dars_grace_s: float = 90.0
-    dars_fin_hold_s: float = 45.0       # "Dars finished" screen before the stream stops
+    # per session type: a khutba is bounded by the prayer that follows it, a dars is not
+    khutba: SessionParams = field(default_factory=lambda: replace(KHUTBA_TIMING))
+    dars: SessionParams = field(default_factory=lambda: replace(DARS_TIMING))
 
 
 @dataclass
@@ -248,9 +260,13 @@ class Machine:
         """Entry state of a session: DARS for a dars / a conference, KHUTBA otherwise."""
         return State.KHUTBA if self.kind == "khutba" else State.DARS
 
+    def timing(self) -> SessionParams:
+        """Timing of the session in progress (or of the next one): the khutba's, otherwise the dars's."""
+        return self.p.khutba if self.kind == "khutba" else self.p.dars
+
     def _window_end(self) -> dt.datetime:
         assert self.session is not None
-        late = self.p.window_after_min if self.kind == "khutba" else self.p.dars_window_after_min
+        late = self.timing().window_after_min
         return self.session + dt.timedelta(minutes=late)
 
     def _next_session(self, sig: Signals) -> State:
@@ -389,11 +405,11 @@ class Machine:
 
         # Terminé -> end: always active (even in override, this is the exit)
         if st == State.ENDED:
-            if sig.t - self.entered_t >= self.p.terminated_hold_s:
+            if sig.t - self.entered_t >= self.p.khutba.ended_hold_s:
                 self._go(State.STOPPED, sig, "écran Terminé affiché, arrêt du stream")
             return
         if st == State.DARS_END:
-            if sig.t - self.entered_t >= self.p.dars_fin_hold_s:
+            if sig.t - self.entered_t >= self.p.dars.ended_hold_s:
                 self._go(State.STOPPED, sig, "écran de fin du dars affiché, arrêt du stream")
             return
         if st == State.JANAZA or self.override:
@@ -434,9 +450,8 @@ class Machine:
 
         if st in (State.KHUTBA, State.DARS):
             dars = st == State.DARS
-            max_s = self.p.dars_max_s if dars else self.p.max_khutba_s
-            silence_s = self.p.dars_silence_stop_s if dars else self.p.silence_stop_s
-            grace_s = self.p.dars_grace_s if dars else self.p.grace_s
+            timing = self.timing()
+            max_s, silence_s, grace_s = timing.max_s, timing.silence_stop_s, timing.grace_s
             end = State.DARS_END if dars else State.PRAYER
             elapsed = sig.t - self.entered_t
             if elapsed >= max_s and sig.t >= self.extend_until_t:
@@ -451,11 +466,11 @@ class Machine:
                          and sig.face_run >= self.p.face_absence_s
                          and sig.silence_run >= silence_s * self.p.face_silence_ratio)
             if self.grace_until is None:
-                if sig.silence_run >= silence_s and elapsed >= self.p.min_khutba_s:
+                if sig.silence_run >= silence_s and elapsed >= self.p.min_session_s:
                     self.grace_until = sig.t + grace_s
                     self.grace_reason = "silence prolongé"
                     self.log(f"silence {sig.silence_run:.0f}s : délai de grâce {grace_s:.0f}s")
-                elif face_gone and elapsed >= self.p.min_khutba_s:
+                elif face_gone and elapsed >= self.p.min_session_s:
                     self.grace_until = sig.t + grace_s
                     self.grace_reason = "minbar sans visage de face"
                     self.log(f"plus de visage de face depuis {sig.face_run:.0f}s : délai de grâce {grace_s:.0f}s")

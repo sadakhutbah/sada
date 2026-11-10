@@ -25,7 +25,8 @@ def test_migration_ajoute_les_colonnes(tmp_path):
     assert "session_no" not in old_schema
     old = sqlite3.connect(path)
     old.executescript(old_schema)
-    old.execute("INSERT INTO mosques (slug, name, created_at) VALUES ('exemple', 'Mosquée Exemple', 'now')")
+    old.execute("INSERT INTO mosques (slug, name, clip_title, created_at) "
+                "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')")
     old.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
                 " VALUES (1, '20261106_220224', 0, 'Khutba du vendredi', '/tmp/x', 'now')")
     old.commit()

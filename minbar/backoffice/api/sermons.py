@@ -74,7 +74,7 @@ def sermon(ctx: CtxDep, kid: int):
     clips = db.all_(ctx.conn, "SELECT * FROM clips WHERE khutba_id = ? ORDER BY idx", kid)
     notes = SessionOutput(k["output_dir"]).notes
     imam = db.one(ctx.conn, "SELECT display_name FROM users WHERE id = ?", k["imam_id"]) if k["imam_id"] else None
-    return {"sermon": k, "segments": segments, "clips": clips, "status_labels": content.STATUS_LABELS,
+    return {"sermon": k, "segments": segments, "clips": clips,
             "transcript": content.transcript_rows(data),
             "notes": notes.read_text(encoding="utf-8") if notes.exists() else "",
             # Detected verses: the certain/short ones and the ambiguous passages, flagged "to check".
