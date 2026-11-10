@@ -18,7 +18,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import events as events_mod
+from .. import events as events_mod, notify
 from ..config import Config
 from ..text import JOURS
 from ..pipeline import llm, verses as verses_mod
@@ -265,17 +265,31 @@ def clip(cid: int, ctx: CtxDep):
 
 @router.get("/publications")
 def publications(ctx: CtxDep):
+    """Real connector status (availability and reason), ready clips and history; notification settings for admins only."""
     ctx.require("publish")
-    etats = db.all_(ctx.conn, "SELECT * FROM connectors WHERE mosque_id = ?", ctx.mosque["id"]) \
-        if _a_table(ctx.conn, "connectors") else []
     ready = db.all_(ctx.conn, "SELECT c.*, k.label sermon, k.date FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                               "WHERE c.mosque_id = ? AND c.status = 'valide' ORDER BY c.decided_at DESC", ctx.mosque["id"])
     pubs = db.all_(ctx.conn, "SELECT p.*, u.display_name who, c.idx, c.kind, k.label sermon, k.date FROM publications p "
                              "JOIN clips c ON c.id = p.clip_id JOIN khutbas k ON k.id = c.khutba_id "
                              "LEFT JOIN users u ON u.id = p.user_id WHERE p.mosque_id = ? ORDER BY p.id DESC LIMIT 100",
                    ctx.mosque["id"]) if _a_table(ctx.conn, "publications") else []
-    return {"connectors": [{"key": k, "label": v.label, "fields": list(v.fields)} for k, v in publish.CONNECTORS.items()],
-            "configured": etats, "ready": ready, "publications": pubs}
+    for p in pubs:                                       # never expose the machine's real path in the UI
+        p["location"] = dirs_mod.label(p["location"]) if p.get("location") else ""
+    rows = publish.connector_rows(ctx.conn, ctx.mosque)
+    for r in rows:                                       # "interface ready" is not real publishing: the screen says so
+        r["implemented"] = not isinstance(publish.CONNECTORS[r["key"]], publish._Disabled)
+    return {"connectors": rows, "ready": ready, "publications": pubs,
+            "can_configure": ctx.can("admin"),
+            "notifications": _notification_settings(ctx) if ctx.can("admin") else None}
+
+
+def _notification_settings(ctx: Ctx) -> dict:
+    """Notification settings for the imam; the webhook and Telegram token (secrets) are masked."""
+    r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
+    n = notify.from_settings(r)
+    return {"mode": r.get("mode", ""), "webhook": db.MASK if r.get("webhook") else "",
+            "telegram_token": db.MASK if r.get("telegram_token") else "", "telegram_chat": r.get("telegram_chat", ""),
+            "active": n.enabled, "destination": n.destination}
 
 
 def _model_view() -> dict:
@@ -561,6 +575,52 @@ async def connector_save(key: str, ctx: CtxDep):
     return _ok(f"Connecteur « {publish.CONNECTORS[key].label} » enregistré.")
 
 
+@router.put("/settings/notifications")
+async def notifications_save(ctx: CtxDep):
+    """Save the notification destination. A secret left empty or masked keeps its stored value."""
+    f = await ctx.body()
+    ctx.require("admin")
+    mode = (f.get("mode") or "").strip()
+    if mode not in ("", "webhook", "telegram"):
+        raise Invalid("Unknown notification channel.")
+    old = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
+
+    def val(name: str, secret: bool) -> str:
+        v = (f.get(name) or "").strip()
+        return old.get(name, "") if secret and v in ("", db.MASK) else v
+
+    webhook, token, chat = val("webhook", True), val("telegram_token", True), val("telegram_chat", False)
+    if webhook and not re.match(r"^https?://", webhook):
+        raise Invalid("The webhook address must start with http:// or https://.")
+    if mode == "webhook" and not webhook:
+        raise Invalid("Enter the webhook address.")
+    if mode == "telegram" and not (token and chat):
+        raise Invalid("Telegram requires the bot token and the chat identifier.")
+    ctx.conn.execute("INSERT INTO notifications (mosque_id, mode, webhook, telegram_token, telegram_chat, updated_at) "
+                     "VALUES (?,?,?,?,?,?) ON CONFLICT (mosque_id) DO UPDATE SET mode = excluded.mode, "
+                     "webhook = excluded.webhook, telegram_token = excluded.telegram_token, "
+                     "telegram_chat = excluded.telegram_chat, updated_at = excluded.updated_at",
+                     (ctx.mosque["id"], mode, webhook, token, chat, db.now_iso()))
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "notifications.configure", "mosque", ctx.mosque["id"], ip=ctx.ip,
+             channel=mode or "none")
+    return _ok("Notifications saved. The orchestrator applies them at its next start.",
+               notifications=_notification_settings(ctx))
+
+
+@router.post("/settings/notifications/test")
+def notifications_test(ctx: CtxDep):
+    """Send a test message to the saved destination (explicit admin action)."""
+    ctx.need_csrf()
+    ctx.require("admin")
+    r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"])
+    n = notify.from_settings(r, log=lambda _m: None)
+    if not n.enabled:
+        return JSONResponse({"ok": False, "message": "No destination saved: nothing was sent."}, status_code=422)
+    if not n.send(f"Notification test - {ctx.mosque['name']} (back-office)."):
+        return JSONResponse({"ok": False, "message": f"Could not send to {n.destination}."}, status_code=422)
+    return {"ok": True, "message": f"Test message sent ({n.destination})."}
+
+
 @router.post("/settings/logo")
 async def logo_save(ctx: CtxDep):
     ctx.require("admin")
@@ -598,7 +658,8 @@ AUDIT_LABELS = {
     "publication.refuse": "Publication refusée", "publication.erreur": "Publication en erreur",
     "utilisateur.cree": "Compte créé", "utilisateur.modifie": "Compte modifié",
     "utilisateur.mot_de_passe": "Mot de passe changé", "mosquee.configuree": "Configuration modifiée",
-    "connecteur.configure": "Connecteur configuré", "acces.refuse": "Accès refusé",
+    "connecteur.configure": "Connecteur configuré", "notifications.configure": "Notifications configurées",
+    "acces.refuse": "Accès refusé",
     "programme.cree": "Événement ajouté au programme", "programme.modifie": "Événement du programme modifié",
     "programme.supprime": "Événement retiré du programme",
 }

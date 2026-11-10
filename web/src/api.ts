@@ -133,5 +133,9 @@ export const api = {
     });
   },
   retirerLogo: () => ecrire<{ ok: boolean; message: string }>("DELETE", "/settings/logo"),
-
+  /** Connector credentials: a secret left empty or masked keeps its stored value server-side. */
+  saveConnector: (key: string, enabled: boolean, values: Record<string, string>) =>
+    ecrire<any>("POST", `/settings/connectors/${key}`, { ...values, enabled: enabled ? "1" : "0" }),
+  saveNotifications: (body: Record<string, string>) => ecrire<any>("PUT", "/settings/notifications", body),
+  testNotifications: () => ecrire<any>("POST", "/settings/notifications/test"),
 };

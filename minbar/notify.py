@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import urllib.request
+from pathlib import Path
 from typing import Callable, Optional
 
 from .state import Machine, State
@@ -95,7 +96,56 @@ class Notifier:
         return bool(text) and self.send(text)
 
 
-def from_config(cfg, log: Callable[[str], None] = print) -> Notifier:
-    """Notifier réglé par la configuration (webhook ou Telegram, jamais dans le dépôt)."""
-    return Notifier(getattr(cfg, "notify_url", ""), getattr(cfg, "telegram_token", ""),
-                    getattr(cfg, "telegram_chat", ""), log=log)
+def from_config(cfg, log: Callable[[str], None] = print, db_path=None) -> Notifier:
+    """Build the notifier from the configuration (webhook or Telegram, never stored in the repository).
+
+    The orchestrator configuration takes precedence; without a destination, fall back to the one an
+    administrator entered in the back-office (Publications screen), read once at startup.
+    """
+    n = Notifier(getattr(cfg, "notify_url", ""), getattr(cfg, "telegram_token", ""),
+                 getattr(cfg, "telegram_chat", ""), log=log)
+    if n.enabled:
+        return n
+    row = _backoffice_row(getattr(cfg, "api_port", None), db_path)
+    return from_settings(row, log=log) if row else n
+
+
+def _backoffice_row(api_port, db_path=None) -> dict | None:
+    """Notification settings of the mosque whose orchestrator listens on this port (or of the only mosque)."""
+    import sqlite3
+    from urllib.parse import urlparse
+
+    from . import paths
+
+    path = db_path or paths.BACKOFFICE_DB
+    try:
+        if not path or not Path(path).exists():
+            return None
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+        conn.row_factory = sqlite3.Row
+        try:
+            mosques = conn.execute("SELECT id, orchestrator_url FROM mosques").fetchall()
+            ids = [m["id"] for m in mosques if urlparse(m["orchestrator_url"] or "").port == api_port]
+            if not ids and len(mosques) == 1:
+                ids = [mosques[0]["id"]]
+            if len(ids) != 1:
+                return None
+            r = conn.execute("SELECT * FROM notifications WHERE mosque_id = ?", (ids[0],)).fetchone()
+            return dict(r) if r else None
+        finally:
+            conn.close()
+    except Exception:                                   # missing, locked or older database: the live stream must never be affected
+        return None
+
+
+def from_settings(row: dict | None, log: Callable[[str], None] = print) -> Notifier:
+    """Build a notifier from the Publications screen settings (back-office `notifications` table).
+
+    Only the chosen channel (`mode`) is used; with no settings the notifier is a no-op ("à blanc").
+    """
+    row = row or {}
+    if row.get("mode") == "webhook":
+        return Notifier(webhook=row.get("webhook", ""), log=log)
+    if row.get("mode") == "telegram":
+        return Notifier(telegram_token=row.get("telegram_token", ""), telegram_chat=row.get("telegram_chat", ""), log=log)
+    return Notifier(log=log)
