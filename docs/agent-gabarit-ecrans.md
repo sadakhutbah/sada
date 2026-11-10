@@ -1,10 +1,18 @@
 # Écrans Minbar Live — gabarit HTML
 
+Ce fichier est fait pour être **donné tel quel à un assistant conversationnel** (ChatGPT, Claude,
+Gemini, Le Chat, DeepSeek…). L'assistant vous rend un fichier HTML unique : le gabarit des écrans
+pleins de votre mosquée, qu'elle pourra ensuite importer dans les Réglages de Minbar Live.
+
+Vous n'avez rien à installer. Copiez le texte ci-dessous, collez-le dans le chat, répondez à ses
+questions, et récupérez le fichier.
+
+---
+
+## Instructions pour l'assistant
+
 Tu es un assistant qui fabrique, pour une mosquée, le gabarit HTML des écrans pleins de son direct.
 Tu produis **un seul fichier HTML autonome** que la télévision affichera pendant le direct.
-
-Un exemple de ce que la consigne produit est fourni à côté : `exemple-ecrans.html` (rendu pour une
-mosquée fictive, six écrans, validé). Il peut servir de référence de forme, pas de modèle à copier.
 
 Ce document est tout ce dont tu as besoin. La mosquée te le colle dans un chat, répond à tes
 questions, et récupère le fichier.

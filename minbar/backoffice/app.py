@@ -22,6 +22,7 @@ from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFou
 
 HERE = Path(__file__).resolve().parent
 FRONT = HERE.parent.parent / "web" / "dist"
+DOCS = HERE.parent.parent / "docs"
 
 
 # ------------------------------------------------------------------ application
@@ -156,6 +157,16 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         return FileResponse(f, media_type=branding.EXT.get(f.suffix.lower(), "application/octet-stream"),
                             headers={"Cache-Control": "private, max-age=300"})
+
+    # ---------------------------------------------------------- public guide (for any chat assistant)
+    @app.get("/docs/agent-gabarit-ecrans.md")
+    def guide_gabarit():
+        """The guide a mosque hands to any chat assistant. No login: it holds nothing private."""
+        f = DOCS / "agent-gabarit-ecrans.md"
+        if not f.exists():
+            raise NotFound()
+        return FileResponse(f, media_type="text/markdown; charset=utf-8",
+                            headers={"Content-Disposition": "inline; filename=\"agent-gabarit-ecrans.md\""})
 
     @app.get("/health")
     def health():

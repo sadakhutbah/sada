@@ -45,6 +45,7 @@ def settings(ctx: CtxDep):
     # "default: data/state" — never a path of the machine.
     defauts = {k: dirs_mod.label(v) for k, v in db.mosque_dirs(ctx.mosque).items()}
     return {"mosque": m, "defaults": defauts, "sections": SECTIONS,
+            "guide": {"url": str(ctx.request.base_url).rstrip("/") + "/docs/agent-gabarit-ecrans.md"},
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
             "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
             "targets": destinations.rows(ctx.conn, ctx.mosque),

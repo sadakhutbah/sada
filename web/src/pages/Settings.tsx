@@ -146,6 +146,7 @@ export default function Settings() {
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
   const [apercu, setApercu] = useState("");
+  const [guide, setGuide] = useState("");
   const fichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
@@ -155,6 +156,7 @@ export default function Settings() {
       const e: Entree = { mode: r.input?.mode === "push" ? "push" : "camera", url: r.input?.url ?? "",
                           push_rtmp: r.input?.push_rtmp ?? "" };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
+      setGuide(typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`);
       setEntree(e); setEntreeInitiale(JSON.stringify(e));
       const st: Stockage = { endpoint: r.storage?.endpoint ?? "", region: r.storage?.region ?? "auto",
         bucket: r.storage?.bucket ?? "", access_key: r.storage?.access_key ?? "",
@@ -473,7 +475,7 @@ export default function Settings() {
             <div className="grid gap-1.5">
               <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
                 valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
-              {/* Pas de panneau déplié : une ligne, et l'explication à la demande, au survol ou au focus. */}
+              {/* Pas de panneau déplié : une ligne, une bulle au survol, et le guide sur son adresse. */}
               <div className="flex max-w-[62ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
                 <span>{t("settings.screensHint")}</span>
                 <span className="group relative inline-flex">
@@ -486,6 +488,21 @@ export default function Settings() {
                     {t("settings.screensHelpTip")}
                   </span>
                 </span>
+              </div>
+              {/* Le guide est un fichier servi par cette instance : on donne son adresse, à coller dans un chat. */}
+              <div className="flex max-w-[62ch] flex-wrap items-center gap-x-2 gap-y-1 rounded-[8px] border border-line bg-paper px-3 py-2">
+                <p className="m-0 text-[0.82rem] text-muted">{t("settings.screensGuide")}</p>
+                {guide && (
+                  <a href={guide} target="_blank" rel="noreferrer"
+                    className="break-all font-mono text-[0.78rem] text-deep underline decoration-line decoration-1 underline-offset-4">
+                    {guide}
+                  </a>
+                )}
+                <button type="button"
+                  className="ml-auto shrink-0 rounded-[6px] border border-line bg-white px-2 py-1 text-[0.78rem] font-semibold text-deep hover:bg-paper-2"
+                  onClick={() => { navigator.clipboard.writeText(guide).then(() => setMsg({ ok: true, texte: t("settings.screensGuideCopied") })).catch(() => setMsg({ ok: false, texte: t("settings.screensGuideCopyFail") })); }}>
+                  {t("settings.screensGuideCopy")}
+                </button>
               </div>
             </div>
             <div className="grid gap-3">
