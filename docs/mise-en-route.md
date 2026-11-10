@@ -163,7 +163,12 @@ puis le compartiment s'il est réglé. **Aller au tableau de bord** termine la v
 Au premier direct :
 
 1. L'orchestrateur démarre et demande ses réglages au back-office : entrée vidéo, destinations,
-   textes des écrans, compartiment.
+   textes des écrans, gabarit d'écrans, compartiment.
+1 bis. Si la mosquée a importé un gabarit, les écrans affichés sont **ce fichier**, rendu par le
+   navigateur fourni avec l'application. Une commande l'installe sur la machine du direct :
+   `python -m minbar.backoffice fetch-engine` (environ 280 Mo, aucun droit administrateur). Sans
+   lui, le moteur dessine ses propres écrans : rien ne s'arrête, le rendu est simplement moins
+   fidèle au fichier.
 2. Si le back-office est fermé, il continue avec sa propre configuration et les notifications restent
    à blanc. Un back-office fermé ne casse jamais un direct.
 3. Les écrans pleins s'affichent avant la khutba, puis l'image part vers toutes les destinations

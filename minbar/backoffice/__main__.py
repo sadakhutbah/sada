@@ -79,6 +79,9 @@ def main(argv=None) -> int:
     i.add_argument("--run", help="un run précis (ex. 20261106_220224) ; défaut : tous")
     i.add_argument("--no-video", action="store_true", help="ne pas extraire la vidéo de la session")
 
+    e = sub.add_parser("fetch-engine", help="télécharger le navigateur de rendu des écrans")
+    e.add_argument("--version", help="version de Chrome for Testing (défaut : la stable)")
+
     s = sub.add_parser("serve", help="lancer le back-office")
     s.add_argument("--host", default=os.environ.get("MINBAR_BO_HOST", "0.0.0.0"))
     s.add_argument("--port", type=int, default=int(os.environ.get("MINBAR_BO_PORT", "8090")))
@@ -112,6 +115,14 @@ def main(argv=None) -> int:
                 print(f"{r['run']} : {r['khutbas_new']} khutba(s), {r['clips_new']} clip(s) ajoutés" + (f" ; ignorées : {', '.join(r['skipped'])}" if r["skipped"] else ""))
             if not res:
                 print("Aucun run trouvé.")
+        elif args.cmd == "fetch-engine":
+            from .template_render import RenderUnavailable, fetch_engine
+
+            try:
+                fetch_engine(args.version)
+            except RenderUnavailable as exc:
+                print(f"Échec : {exc}")
+                return 1
         elif args.cmd == "serve":
             import uvicorn
 

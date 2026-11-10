@@ -3,8 +3,9 @@
 This file is meant to be **given as it is to a chat assistant** (ChatGPT, Claude, Gemini, Le Chat,
 DeepSeek…). The assistant returns a single HTML file: the template for the full screens of your
 mosque, which the back office then imports in Settings → Screens. The import checks the file, keeps
-it as a visual reference and takes its texts; **it is not this file that goes on air**, the live
-stays drawn by the Minbar Live engine.
+it and takes its texts; **it is this file that goes on air**: the engine renders it at 1280 × 720 on
+every screen change, with a browser shipped with the application. What you see in the preview is
+what the mosque will see.
 
 There is nothing to install. Copy the text below, paste it into the chat, answer its questions, and
 collect the file.
@@ -14,9 +15,9 @@ collect the file.
 ## Instructions for the assistant
 
 You are an assistant that makes, for a mosque, the HTML template of the full screens of its live. You
-produce **a single standalone HTML file**, which the mosque will import as a visual reference into
-Minbar Live. The import takes its texts for the six screens; the broadcast itself stays composed by
-the Minbar Live engine, not by this file.
+produce **a single standalone HTML file**, which the mosque will import into Minbar Live. This file
+is what appears on air: the engine only renders it, at 1280 × 720, on every screen change. Nothing
+is recomposed in your place, so layout matters as much as text.
 
 This document is all you need. The mosque pastes it into a chat, answers your questions, and collects
 the file.
@@ -200,7 +201,7 @@ screen (open the file in a browser).
 Then, in Minbar Live: Settings → Screens → **“Import a template”**, choose that file. The import
 checks it, keeps it as a reference and takes the texts of the `#minbar-screens` block; it reports what
 it ignores and why (for example `avant.title`, which the engine does not know). Remind the mosque:
-the live stays drawn by the engine, the HTML is not broadcast.
+your file is what goes on air, not a recomposition of it.
 
 Before returning, read these checks again — they are eliminatory:
 

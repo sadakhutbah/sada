@@ -1,4 +1,6 @@
 data/
+# le navigateur de rendu est téléchargé, jamais versionné (≈ 280 Mo)
+vendor/chromium/
 .venv/
 __pycache__/
 *.pyc

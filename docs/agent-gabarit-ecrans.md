@@ -3,8 +3,9 @@
 Ce fichier est fait pour être **donné tel quel à un assistant conversationnel** (ChatGPT, Claude,
 Gemini, Le Chat, DeepSeek…). L'assistant vous rend un fichier HTML unique : le gabarit des écrans
 pleins de votre mosquée, que le back-office importe ensuite dans Réglages → Écrans. L'import vérifie
-le fichier, le conserve comme référence visuelle et reprend ses textes ; **ce n'est pas ce fichier
-qui part à l'antenne**, le direct reste dessiné par le moteur de Minbar Live.
+le fichier, le conserve et en reprend les textes ; **c'est ce fichier qui part à l'antenne** : le
+moteur le rend à 1280 × 720 à chaque changement d'écran, avec un navigateur fourni avec
+l'application. Ce que vous voyez dans l'aperçu est donc ce que la mosquée verra.
 
 Vous n'avez rien à installer. Copiez le texte ci-dessous, collez-le dans le chat, répondez à ses
 questions, et récupérez le fichier.
@@ -14,9 +15,9 @@ questions, et récupérez le fichier.
 ## Instructions pour l'assistant
 
 Tu es un assistant qui fabrique, pour une mosquée, le gabarit HTML des écrans pleins de son direct.
-Tu produis **un seul fichier HTML autonome**, que la mosquée importera comme référence visuelle dans
-Minbar Live. L'import en reprend les textes pour les six écrans ; la diffusion, elle, reste composée
-par le moteur de Minbar Live, pas par ce fichier.
+Tu produis **un seul fichier HTML autonome**, que la mosquée importera dans Minbar Live. Ce fichier
+est ce qui s'affiche à l'antenne : le moteur ne fait que le rendre, à 1280 × 720, à chaque changement
+d'écran. Rien n'est recomposé à ta place, donc la mise en page compte autant que le texte.
 
 Ce document est tout ce dont tu as besoin. La mosquée te le colle dans un chat, répond à tes
 questions, et récupère le fichier.
@@ -171,9 +172,10 @@ En CSS : `.ecran { display: none } .ecran[data-actif] { display: flex }`. Pour r
 écran pendant la conception, la mosquée n'a qu'à déplacer `data-actif`. Dans l'aperçu du back-office,
 le fichier est montré tel quel : c'est l'écran marqué `data-actif` qui s'affiche.
 
-Ce document sert à la **conception et à la référence** : il montre l'intention visuelle et porte les
-textes. Ce n'est pas lui qui est diffusé. À l'antenne, Minbar Live dessine ses propres écrans avec
-les textes importés — couleurs, police et composition du HTML ne sont pas reprises.
+C'est **ce fichier** qui est diffusé. À chaque changement d'écran, Minbar Live le rend à 1280 × 720
+et c'est cette image qui part à l'antenne : couleurs, police et composition sont les tiennes. Deux
+conséquences à garder en tête — la page doit rester lisible à cette taille exacte, et rien ne doit
+dépendre d'une animation ou d'un script (ils ne sont pas exécutés).
 
 ## 7. Ce que tu dois demander avant d'écrire
 
@@ -200,7 +202,7 @@ vérifier l'écran (ouvrir le fichier dans un navigateur).
 Ensuite, dans Minbar Live : Réglages → Écrans → **« Importer un gabarit »**, choisir ce fichier.
 L'import le vérifie, le conserve comme référence et reprend les textes du bloc `#minbar-screens` ;
 il signale ce qu'il ignore et pourquoi (par exemple `avant.title`, que le moteur ne connaît pas).
-Rappelle-le à la mosquée : le direct reste dessiné par le moteur, le HTML n'est pas diffusé.
+Rappelle-le à la mosquée : c'est ton fichier qui s'affiche à l'antenne, pas une recomposition.
 
 Avant de rendre, relis ces contrôles — ils sont éliminatoires :
 

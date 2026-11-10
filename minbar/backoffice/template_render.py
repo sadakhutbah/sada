@@ -25,11 +25,23 @@ import threading
 from pathlib import Path
 
 FONTS = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
+
+# The browser is shipped with the application, not borrowed from the machine: Playwright downloads
+# its own build for the same reason. A mosque's server installs the package and nothing else.
+EMBEDDED = Path(__file__).resolve().parent.parent.parent / "vendor" / "chromium"
+ENGINE = "chrome-headless-shell"
 WIDTH, HEIGHT = 1280, 720
 
 # `url("../assets/fonts/X.ttf")` in the template, and the same path quoted or bare.
 _FONT_REF = re.compile(r"""url\(\s*['"]?(?:\.\./)?assets/fonts/([A-Za-z0-9_.-]+\.ttf)['"]?\s*\)""")
 
+# Names of the embedded engine, by platform: the shipped directory differs on Windows.
+EMBEDDED_NAMES = ("chrome-headless-shell-linux64/chrome-headless-shell",
+                  "chrome-headless-shell-win64/chrome-headless-shell.exe",
+                  "chrome-headless-shell-mac-x64/chrome-headless-shell",
+                  "chrome-headless-shell-mac-arm64/chrome-headless-shell")
+
+# Last resort: a browser already installed on the machine.
 CHROMIUM_CANDIDATES = ("/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome")
 
 
@@ -59,11 +71,83 @@ def inline_fonts(page: str) -> str:
     return _FONT_REF.sub(replace, page)
 
 
+def embedded_path() -> Path | None:
+    """The engine shipped with the application, if it was downloaded (see ``fetch_engine``)."""
+    for name in EMBEDDED_NAMES:
+        candidate = EMBEDDED / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def browser_path() -> str:
+    shipped = embedded_path()
+    if shipped is not None:
+        return str(shipped)
     for candidate in CHROMIUM_CANDIDATES:
         if Path(candidate).is_file():
             return candidate
-    raise RenderUnavailable("aucun navigateur installé (chromium attendu)")
+    raise RenderUnavailable(
+        "aucun navigateur de rendu : lancez `python -m minbar.backoffice fetch-engine` "
+        "pour télécharger celui fourni avec l'application")
+
+
+ENGINE_VERSION_URL = ("https://googlechromelabs.github.io/chrome-for-testing/"
+                      "last-known-good-versions-with-downloads.json")
+
+
+def _platform() -> str:
+    """The platform name used by the Chrome for Testing downloads."""
+    import platform
+    import sys
+
+    machine = platform.machine().lower()
+    if sys.platform.startswith("win"):
+        return "win64"
+    if sys.platform == "darwin":
+        return "mac-arm64" if machine in ("arm64", "aarch64") else "mac-x64"
+    return "linux64"
+
+
+def fetch_engine(version: str | None = None, keep_zip: bool = False) -> Path:
+    """Downloads the rendering engine shipped with the application, into ``vendor/chromium``.
+
+    Written for an offline parish computer: one command, no package manager, no administrator
+    rights, and the same image as the administrator's browser. The archive is about 130 MB and
+    unpacks to about 280 MB — this is what is traded for not depending on the machine.
+    """
+    import io
+    import urllib.request
+    import zipfile
+
+    with urllib.request.urlopen(ENGINE_VERSION_URL, timeout=60) as r:   # noqa: S310 — fixed host
+        known = json.load(r)
+    if version is None:
+        version = known["channels"]["Stable"]["version"]
+    plateforme = _platform()
+    url = ""
+    for item in known["channels"]["Stable"]["downloads"]["chrome-headless-shell"]:
+        if item["platform"] == plateforme:
+            url = item["url"]
+    if not url:
+        raise RenderUnavailable(f"pas de paquet pour la plateforme {plateforme}")
+    print(f"Rendu : téléchargement de {ENGINE} {version} ({plateforme})…")
+    with urllib.request.urlopen(url, timeout=600) as r:                 # noqa: S310 — fixed host
+        blob = r.read()
+    cible = EMBEDDED
+    if cible.exists():
+        import shutil
+        shutil.rmtree(cible)                    # a previous download is replaced, not merged
+    cible.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+        z.extractall(cible)
+    for name in EMBEDDED_NAMES:                 # the executable bit does not survive a zip
+        candidate = cible / name
+        if candidate.is_file():
+            candidate.chmod(0o755)
+            print(f"Rendu : navigateur installé ({candidate.parent.name}, {version})")
+            return candidate
+    raise RenderUnavailable("archive téléchargée sans exécutable")
 
 
 class _Cdp:

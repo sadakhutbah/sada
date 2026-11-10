@@ -164,7 +164,11 @@ then the bucket if it is set. **Go to the dashboard** ends the visit.
 On the first live:
 
 1. The orchestrator starts and asks the back office for its settings: video input, destinations,
-   screen texts, bucket.
+   screen texts, screen template, bucket.
+1a. If the mosque imported a template, the screens shown are **that file**, rendered by the browser
+   shipped with the application. One command installs it on the broadcast machine:
+   `python -m minbar.backoffice fetch-engine` (about 280 MB, no administrator rights). Without it,
+   the engine draws its own screens: nothing stops, the result is simply less faithful to the file.
 2. If the back office is closed, it carries on with its own configuration and notifications stay
    blank. A closed back office never breaks a live.
 3. The full screens appear before the khutba, then the picture goes to all active destinations at the

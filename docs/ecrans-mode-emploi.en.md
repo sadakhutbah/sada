@@ -93,8 +93,8 @@ its own: “The broadcast starts at {heure}.”
 The six base screens share one design, the Minbar Live one. A mosque that wants **its own look** —
 its colours, its font, its logo, its composition — can have it made by a chat assistant.
 
-The principle: you give the assistant a written instruction, it returns an HTML file, and that file
-becomes the visual reference for your screens — and the source of their texts.
+The principle: you give the assistant a written instruction, it returns an HTML file, and **that
+file is what appears on air**.
 
 1. Settings → Screens: the page shows an **address** (a link ending in
    `agent-gabarit-ecrans.md`). Copy it with the button provided.
@@ -106,19 +106,26 @@ becomes the visual reference for your screens — and the source of their texts.
 4. It returns a file named `ecrans.html`. Retrieve it.
 5. Still in Settings → Screens, click **“Import a template”** and choose that file.
    The back office checks it: if it does not comply, it explains why and changes nothing. If it
-   complies, it keeps it as the mosque's reference, shows it in the preview, and takes the texts of
+   complies, it keeps it, shows it in the preview, and takes the texts of
    the `#minbar-screens` block to fill the fields of the six screens. These texts are saved straight
    away; read them again and correct them if need be, like any other text.
 
 This file remains your property: it contains only text and colours, it runs without internet, and it
 does nothing but display.
 
-What you must know, without ambiguity: **the HTML file is not what goes on air.** Minbar Live goes
-on composing the six screens with its own engine, reusing the imported texts. The imported file
-serves as a visual reference — to recover your intention, compare, and supply the texts — not as a
-broadcast rendering. The colours, the font and the composition of your template are therefore not
-carried over on air. Broadcasting an HTML rendering in place of the engine is another job, which
-does not exist today: do not count on it.
+What you must know, without ambiguity: **this file is what goes on air.** On every screen change,
+Minbar Live renders it at 1280 × 720 and broadcasts that image. Your colours, your font and your
+composition are therefore respected, and the preview on the page shows exactly what the worshippers
+will see.
+
+Two things to know:
+
+- The file is a **still image** as long as the screen does not change. An animated background, a
+  video or a script will not animate; scripts are not executed at all.
+- Rendering uses a browser shipped with the application. The command
+  `python -m minbar.backoffice fetch-engine` installs it on the broadcast machine (about 280 MB).
+  Without it, the screens are drawn by the Minbar Live engine: the live goes on, but your template is
+  not followed pixel for pixel.
 
 ---
 
