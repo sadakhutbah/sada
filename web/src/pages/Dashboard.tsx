@@ -70,7 +70,7 @@ export default function Dashboard() {
           { k: "dashboard.pending", n: d.counts.pending, to: "/clips" },
           // « Prêts à publier » n'apparaît qu'à qui peut publier, comme dans les gabarits.
           ...(peutPublier ? [{ k: "dashboard.ready", n: d.counts.ready, to: "/publications" }] : []),
-          { k: "dashboard.sermons", n: d.counts.sermons, to: "/sermons" },
+          { k: "dashboard.sermons", n: d.counts.sermons, to: "/khutbas" },
         ].map((s) => (
           <Link key={s.k} to={s.to} className="no-underline">
             <Card className="h-full transition-colors hover:border-leaf">
@@ -88,7 +88,7 @@ export default function Dashboard() {
             <ul className="m-0 grid list-none p-0">
               {d.recent.map((k: any) => (
                 <li key={k.id} className="border-b border-line py-2.5 last:border-0 last:pb-0">
-                  <Link to={`/sermons/${k.id}`} className="block no-underline">
+                  <Link to={`/khutbas/${k.id}`} className="block no-underline">
                     <span className="block text-[0.98rem] font-bold text-ink">{dateFr(k.date, i18n.language)}</span>
                     <span className="block text-[0.9rem] text-muted">
                       {k.label}

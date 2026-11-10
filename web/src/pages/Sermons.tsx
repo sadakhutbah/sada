@@ -32,22 +32,22 @@ export default function Sermons() {
               // La ligne entière ouvre la fiche : une liste qui ne mène nulle part ne sert à rien.
               <tr key={k.id} className="cursor-pointer hover:bg-paper-2/60">
                 <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 whitespace-nowrap">
-                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.date}</Link>
+                  <Link to={`/khutbas/${k.id}`} className="block text-inherit no-underline">{k.date}</Link>
                 </td>
                 <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 font-semibold">
-                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.label}</Link>
+                  <Link to={`/khutbas/${k.id}`} className="block text-inherit no-underline">{k.label}</Link>
                 </td>
                 <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 text-muted">
-                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.imam ?? "—"}</Link>
+                  <Link to={`/khutbas/${k.id}`} className="block text-inherit no-underline">{k.imam ?? "—"}</Link>
                 </td>
                 <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">
-                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.theme ?? ""}</Link>
+                  <Link to={`/khutbas/${k.id}`} className="block text-inherit no-underline">{k.theme ?? ""}</Link>
                 </td>
                 <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">
-                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline tabular-nums">{k.clips}</Link>
+                  <Link to={`/khutbas/${k.id}`} className="block text-inherit no-underline tabular-nums">{k.clips}</Link>
                 </td>
                 <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">
-                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline tabular-nums">{k.pending || "—"}</Link>
+                  <Link to={`/khutbas/${k.id}`} className="block text-inherit no-underline tabular-nums">{k.pending || "—"}</Link>
                 </td>
               </tr>
             ))}

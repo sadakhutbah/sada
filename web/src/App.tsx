@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, onUnauthorized, setCsrf, type Session } from "./api";
 import { LANGUAGES, setLanguage } from "./i18n";
@@ -79,7 +79,7 @@ export default function App() {
           </div>
           <nav className="ml-auto flex flex-nowrap items-center gap-0.5">
             {lien("/", "dashboard")}
-            {lien("/sermons", "sermons")}
+            {lien("/khutbas", "sermons")}
             {lien("/clips", "clips", undefined, session.counts?.pending ?? 0)}
             {lien("/publications", "publications", "publish")}
             {lien("/audit", "audit", "journal")}
@@ -111,9 +111,12 @@ export default function App() {
       <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-6 pb-16">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/sermons" element={<Sermons />} />
+          <Route path="/khutbas" element={<Sermons />} />
           <Route path="/clips" element={<Clips />} />
-          <Route path="/sermons/:id" element={<SermonDetail />} />
+          <Route path="/khutbas/:id" element={<SermonDetail />} />
+          {/* Ancienne adresse : les liens déjà partagés continuent de mener à la liste. */}
+          <Route path="/sermons" element={<Navigate to="/khutbas" replace />} />
+          <Route path="/sermons/:id" element={<Navigate to="/khutbas" replace />} />
           <Route path="/clips/:id" element={<ClipDetail />} />
           <Route path="/publications" element={<Publications />} />
           <Route path="/settings" element={<Settings />} />

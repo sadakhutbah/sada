@@ -57,7 +57,7 @@ export default function SermonDetail() {
   return (
     <div className="grid gap-4">
       <div>
-        <Link to="/sermons" className="text-[0.88rem] font-semibold text-green no-underline hover:underline">
+        <Link to="/khutbas" className="text-[0.88rem] font-semibold text-green no-underline hover:underline">
           ← {t("nav.sermons")}
         </Link>
         <Kicker>{k.label}</Kicker>

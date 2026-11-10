@@ -136,7 +136,7 @@ function Fil({ sermon, langue }: { sermon?: any; langue?: string }) {
       {sermon && (
         <>
           {" · "}
-          <Link to={`/sermons/${sermon.id}`} className={lien}>
+          <Link to={`/khutbas/${sermon.id}`} className={lien}>
             {dateFr(sermon.date, langue)} · {sermon.label}
           </Link>
         </>
