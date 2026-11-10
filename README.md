@@ -110,7 +110,7 @@ Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-
 des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le
 demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
 
-## Mise en route : trois écrans
+## Mise en route : quatre écrans
 
 **Mise en route** s'ouvre d'elle-même **au premier login** d'un administrateur, et une seule fois :
 elle est marquée faite qu'on la termine ou qu'on la saute (`mosques.onboarded_at`). Elle n'a pas
@@ -124,7 +124,12 @@ mêmes champs. Elle suit la configuration du direct de bout en bout, un formulai
    flux contient — ou pourquoi rien n'arrive.
 2. **Destinations** — une ligne par réseau, comme dans Réglages → Direct ; les clés déjà saisies
    reviennent masquées.
-3. **Récapitulatif** — l'entrée retenue et le nombre de destinations actives.
+3. **Rediffusions** — **facultatif** : le compartiment S3 / R2 qui recevra les enregistrements, et la
+   case qui active l'envoi. Laissé vide, l'étape se passe toute seule et rien n'est enregistré : les
+   fichiers restent sur la machine, comme par défaut. Le bouton d'écriture y fonctionne comme dans
+   Réglages.
+4. **Récapitulatif** — l'entrée retenue, le nombre de destinations actives, et le compartiment s'il
+   est actif.
 
 En mode poussée, l'encodeur lit la copie RTSP du relais (`rtsp://127.0.0.1:8554/live/<mosquée>`), pas
 l'adresse RTMP : le transport RTSP ne s'applique qu'aux adresses `rtsp://`, ce qui permet aussi de
