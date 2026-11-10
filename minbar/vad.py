@@ -6,6 +6,7 @@ Exposes voice_run / silence_run (real consecutive seconds of voice / of non-voic
 """
 from __future__ import annotations
 import collections
+import shutil
 import subprocess
 import threading
 import time
@@ -14,9 +15,34 @@ import webrtcvad
 
 from . import source
 
+ffmpeg = shutil.which("ffmpeg")
+
 RATE = 16000
 FRAME_MS = 30
 FRAME_BYTES = RATE * FRAME_MS // 1000 * 2
+
+
+def _last_voice_offset(path: str) -> float | None:
+    """Offset (s) of the end of the last speech in a file, measured on its audio track.
+
+    The recording does not run to the end of the file: the stream may stop (or the source loop) while
+    the camera keeps writing. Measured with silencedetect at a fixed threshold, no VAD needed for offline."""
+    if not ffmpeg:
+        return None
+    try:
+        r = subprocess.run([ffmpeg, "-hide_banner", "-nostats", "-i", path, "-af",
+                            "silencedetect=noise=-30dB:d=0.8", "-f", "null", "-"],
+                           capture_output=True, text=True, timeout=600)
+    except Exception:  # noqa: BLE001
+        return None
+    last = None
+    for line in r.stderr.splitlines():
+        if "silence_end:" in line and "silence_duration" in line:
+            try:
+                last = float(line.split("silence_end:")[1].split("|")[0])
+            except ValueError:
+                continue
+    return last
 
 
 class VadMonitor(threading.Thread):
