@@ -24,14 +24,40 @@ HERE = Path(__file__).resolve().parent
 FRONT = HERE.parent.parent / "web" / "dist"
 DOCS = HERE.parent.parent / "docs"
 
-# Ce que l'application sert sous /docs : une seule liste, tenue à jour au même endroit.
-INDEX_DOCS = (
-    ("Mode d'emploi des écrans", "/docs/ecrans-mode-emploi",
-     "ce que sont les six écrans pleins, comment changer leurs textes et ce qui ne marche pas comme on croit"),
-    ("L'orchestrateur et les jetons", "/docs/orchestrateur",
-     "les deux programmes, pourquoi ils se parlent, ce que sont les deux jetons et l'ordre de démarrage"),
-    ("Guide de gabarit d'écrans", "/docs/agent-gabarit-ecrans",
-     "la consigne à donner à un assistant conversationnel pour obtenir un visuel d'écrans à soi"),
+# La table des matières servie sous /docs : un seul endroit à tenir à jour. Le titre et le résumé
+# existent en français et en anglais ; le fichier anglais (``<slug>.en.md``) est facultatif et, s'il
+# manque, la page française est servie avec un avertissement.
+DOCUMENTS = (
+    {"slug": "ecrans-mode-emploi",
+     "titre_fr": "Mode d'emploi des écrans",
+     "titre_en": "Screen manual",
+     "resume_fr": "ce que sont les six écrans pleins, comment changer leurs textes et ce qui ne marche pas comme on croit",
+     "resume_en": "the six full screens, how to change their texts, and what does not work the way one expects"},
+    {"slug": "orchestrateur",
+     "titre_fr": "L'orchestrateur et les jetons",
+     "titre_en": "The orchestrator and the tokens",
+     "resume_fr": "les deux programmes, pourquoi ils se parlent, ce que sont les deux jetons et l'ordre de démarrage",
+     "resume_en": "the two programs, why they talk to each other, what the two tokens are, and the startup order"},
+    {"slug": "agent-gabarit-ecrans",
+     "titre_fr": "Guide de gabarit d'écrans",
+     "titre_en": "Screen template guide",
+     "resume_fr": "la consigne à donner à un assistant conversationnel pour obtenir un visuel d'écrans à soi",
+     "resume_en": "the instruction to give a chat assistant to get a screen mockup of your own"},
+    {"slug": "mise-en-route",
+     "titre_fr": "Mise en route",
+     "titre_en": "Getting started",
+     "resume_fr": "la première installation, les quatre écrans d'accueil, et ce qui se passe au premier direct",
+     "resume_en": "the first installation, the four welcome screens, and what happens on the first live"},
+    {"slug": "connecteurs",
+     "titre_fr": "Connecteurs : Facebook, YouTube, Instagram",
+     "titre_en": "Connectors: Facebook, YouTube, Instagram",
+     "resume_fr": "ce qu'il faut obtenir côté plateforme, où le saisir, et ce que le connecteur ne fait pas",
+     "resume_en": "what to obtain from each platform, where to enter it, and what the connector does not do"},
+    {"slug": "rediffusions",
+     "titre_fr": "Rediffusions et compartiment S3",
+     "titre_en": "Recordings and S3 buckets",
+     "resume_fr": "les clips, le dossier publié, et l'envoi facultatif vers un compartiment S3 ou R2",
+     "resume_en": "clips, the published folder, and the optional upload to an S3 or R2 bucket"},
 )
 
 
@@ -168,71 +194,86 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return FileResponse(f, media_type=branding.EXT.get(f.suffix.lower(), "application/octet-stream"),
                             headers={"Cache-Control": "private, max-age=300"})
 
-    # ---------------------------------------------------------- public guide (for any chat assistant)
-    @app.get("/docs/agent-gabarit-ecrans")
-    def guide_gabarit_page():
-        f = DOCS / "agent-gabarit-ecrans.md"
-        if not f.exists():
-            raise NotFound()
-        return HTMLResponse(docpage.page(f.read_text(encoding="utf-8"),
-                                         titre="Guide de gabarit d'écrans",
-                                         source="/docs/agent-gabarit-ecrans.md"))
-
-    @app.get("/docs/agent-gabarit-ecrans.md")
-    def guide_gabarit():
-        """The guide a mosque hands to any chat assistant. No login: it holds nothing private."""
-        f = DOCS / "agent-gabarit-ecrans.md"
-        if not f.exists():
-            raise NotFound()
-        return FileResponse(f, media_type="text/markdown; charset=utf-8",
-                            headers={"Content-Disposition": "inline; filename=\"agent-gabarit-ecrans.md\""})
-
-    @app.get("/docs/ecrans-mode-emploi")
-    def doc_ecrans():
-        """The human manual, rendered as a page. Reading raw Markdown in a browser is not a manual."""
-        f = DOCS / "ecrans-mode-emploi.md"
-        if not f.exists():
-            raise NotFound()
-        return HTMLResponse(docpage.page(f.read_text(encoding="utf-8"),
-                                         titre="Mode d'emploi des écrans",
-                                         source="/docs/ecrans-mode-emploi.md"))
+    # ---------------------------------------------------------- documentation
+    # Une seule table de matières : les pages, leur version texte et leur traduction sont dérivées.
+    def _doc(slug: str, langue: str) -> tuple[Path, bool]:
+        """Le fichier à servir, et si c'est bien la langue demandée (sinon repli sur le français)."""
+        fr = DOCS / f"{slug}.md"
+        if langue == "en":
+            en = DOCS / f"{slug}.en.md"
+            if en.exists():
+                return en, True
+            return fr, False
+        return fr, True
 
     @app.get("/docs")
-    def docs_index():
-        """One page listing every document the application serves, so nobody has to guess a URL."""
-        lignes = ["# Documentation", "",
-                  "Ces documents sont servis par cette instance : ils décrivent ce qu'elle fait,",
-                  "et se mettent à jour avec elle.", ""]
-        for titre, url, resume in INDEX_DOCS:
+    def docs_index(langue: str = "fr"):
+        """La liste des documents, dans la langue demandée."""
+        en = langue == "en"
+        lignes = ["# Documentation" if not en else "# Documentation", "",
+                  ("These documents are served by this instance: they describe what it does, and they"
+                   " are updated with it.") if en
+                  else ("Ces documents sont servis par cette instance : ils décrivent ce qu'elle fait,"
+                        " et se mettent à jour avec elle."), ""]
+        for d in DOCUMENTS:
+            titre = d["titre_en"] if en else d["titre_fr"]
+            resume = d["resume_en"] if en else d["resume_fr"]
+            url = f"/docs/en/{d['slug']}" if en else f"/docs/{d['slug']}"
             lignes.append(f"- [{titre}]({url}) — {resume}")
-        return HTMLResponse(docpage.page("\n".join(lignes), titre="Documentation", source=None))
+        return HTMLResponse(docpage.page("\n".join(lignes), titre="Documentation", source=None,
+                                         lang="en" if en else "fr",
+                                         alterne=("/docs" if en else "/docs?langue=en",
+                                                  "Français" if en else "English")))
 
-    @app.get("/docs/orchestrateur")
-    def doc_orchestrateur():
-        """How the two processes work together, and what the two tokens are for."""
-        f = DOCS / "orchestrateur.md"
+    # Les adresses en « .md » passent avant, sinon le joker de {slug} les avale.
+    @app.get("/docs/en/{slug}.md")
+    def doc_source_en(slug: str):
+        return _doc_source(slug, "en")
+
+    @app.get("/docs/{slug}.md")
+    def doc_source(slug: str):
+        return _doc_source(slug, "fr")
+
+    @app.get("/docs/en/{slug}")
+    def doc_page_en(slug: str):
+        return _doc_page(slug, "en")
+
+    @app.get("/docs/{slug}")
+    def doc_page(slug: str):
+        return _doc_page(slug, "fr")
+
+    def _doc_page(slug: str, langue: str):
+        """Le document rendu en page. Lire du Markdown dans un navigateur n'est pas lire un mode d'emploi."""
+        d = _document(slug)
+        f, exact = _doc(slug, langue)
         if not f.exists():
             raise NotFound()
-        return HTMLResponse(docpage.page(f.read_text(encoding="utf-8"),
-                                         titre="L'orchestrateur et le jeton interne",
-                                         source="/docs/orchestrateur.md"))
+        avis = None
+        if not exact:
+            avis = ("La version anglaise de ce document n'est pas encore écrite. Le texte affiché est "
+                    "le français." if langue == "en" else None)
+        alterne = (f"/docs/{slug}" if langue == "en" else f"/docs/en/{slug}",
+                   "Français" if langue == "en" else "English")
+        return HTMLResponse(docpage.page(
+            f.read_text(encoding="utf-8"),
+            titre=(d["titre_en"] if langue == "en" else d["titre_fr"]),
+            source=(f"/docs/en/{slug}.md" if langue == "en" and exact else f"/docs/{slug}.md"),
+            lang=langue, alterne=alterne, avis=avis))
 
-    @app.get("/docs/orchestrateur.md")
-    def doc_orchestrateur_source():
-        f = DOCS / "orchestrateur.md"
-        if not f.exists():
+    def _doc_source(slug: str, langue: str):
+        """Le même texte, brut : pour le coller dans un chat quand un lien ne s'ouvre pas."""
+        _document(slug)
+        f, exact = _doc(slug, langue)
+        if not f.exists() or not exact:
             raise NotFound()
         return FileResponse(f, media_type="text/markdown; charset=utf-8",
-                            headers={"Content-Disposition": "inline; filename=\"orchestrateur.md\""})
+                            headers={"Content-Disposition": f'inline; filename="{f.name}"'})
 
-    @app.get("/docs/ecrans-mode-emploi.md")
-    def doc_ecrans_source():
-        """Same text, raw: for pasting into a chat when a link cannot be opened."""
-        f = DOCS / "ecrans-mode-emploi.md"
-        if not f.exists():
-            raise NotFound()
-        return FileResponse(f, media_type="text/markdown; charset=utf-8",
-                            headers={"Content-Disposition": "inline; filename=\"ecrans-mode-emploi.md\""})
+    def _document(slug: str) -> dict:
+        for d in DOCUMENTS:
+            if d["slug"] == slug:
+                return d
+        raise NotFound()
 
     @app.get("/health")
     def health():

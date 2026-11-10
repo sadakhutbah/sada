@@ -123,7 +123,7 @@ function Chemin({ valeur, defaut }: { valeur: string; defaut?: string }) {
 }
 
 export default function Settings() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [d, setD] = useState<any>(null);
   const [f, setF] = useState<Record<string, string>>({});
   const [initial, setInitial] = useState("");
@@ -146,7 +146,7 @@ export default function Settings() {
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
   const [apercu, setApercu] = useState("");
-  const [guide, setGuide] = useState({ agent: "", humain: "", docs: "" });
+  const [guide, setGuide] = useState({ agent: "", humain: "", docs: "", agentEn: "", humainEn: "", docsEn: "" });
   const [adresse, setAdresse] = useState("");
   const [adresseInitiale, setAdresseInitiale] = useState("");
   const fichier = useRef<HTMLInputElement>(null);
@@ -160,7 +160,10 @@ export default function Settings() {
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
       setGuide({ agent: typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`,
                  humain: typeof r.guide?.human === "string" ? r.guide.human : `${window.location.origin}/docs/ecrans-mode-emploi`,
-                 docs: typeof r.guide?.docs === "string" ? r.guide.docs : `${window.location.origin}/docs` });
+                 docs: typeof r.guide?.docs === "string" ? r.guide.docs : `${window.location.origin}/docs`,
+                 agentEn: typeof r.guide?.url_en === "string" ? r.guide.url_en : `${window.location.origin}/docs/en/agent-gabarit-ecrans.md`,
+                 humainEn: typeof r.guide?.human_en === "string" ? r.guide.human_en : `${window.location.origin}/docs/en/ecrans-mode-emploi`,
+                 docsEn: typeof r.guide?.docs_en === "string" ? r.guide.docs_en : `${window.location.origin}/docs?langue=en` });
       const ad = typeof r.guide?.public_url === "string" ? r.guide.public_url : "";
       setAdresse(ad); setAdresseInitiale(ad);
       setEntree(e); setEntreeInitiale(JSON.stringify(e));
@@ -195,6 +198,10 @@ export default function Settings() {
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
   const defauts = d.defaults ?? {};
+  // Les documents existent en deux langues : on ouvre celle de l'interface, pas celle du code.
+  const en = i18n.language === "en";
+  const lienHumain = en && guide.humainEn ? guide.humainEn : guide.humain;
+  const lienAgent = en && guide.agentEn ? guide.agentEn : guide.agent;
   const entreeModifiee = JSON.stringify(entree) !== entreeInitiale;
   const stockageModifie = JSON.stringify(stockage) !== stockageInitial;
   const ecransModifies = JSON.stringify(ecrans) !== ecransInitial;
@@ -497,7 +504,7 @@ export default function Settings() {
               {/* Pas de panneau déplié : le mode d'emploi s'ouvre dans un onglet, la page ne bouge pas. */}
               <div className="flex max-w-[68ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
                 <span>{t("settings.screensHint")}</span>
-                <a href={guide.humain} target="_blank" rel="noreferrer"
+                <a href={lienHumain} target="_blank" rel="noreferrer"
                   className="font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
                   {t("settings.screensHelpOpen")}
                 </a>
@@ -505,15 +512,15 @@ export default function Settings() {
               {/* Le guide pour un assistant est un fichier servi par cette instance : on donne son adresse. */}
               <div className="flex max-w-[68ch] flex-wrap items-center gap-x-2 gap-y-1 rounded-[8px] border border-line bg-paper px-3 py-2">
                 <p className="m-0 text-[0.82rem] text-muted">{t("settings.screensGuide")}</p>
-                {guide.agent && (
-                  <a href={guide.agent} target="_blank" rel="noreferrer"
+                {lienAgent && (
+                  <a href={lienAgent} target="_blank" rel="noreferrer"
                     className="break-all font-mono text-[0.78rem] text-deep underline decoration-line decoration-1 underline-offset-4">
-                    {guide.agent}
+                    {lienAgent}
                   </a>
                 )}
                 <button type="button"
                   className="ml-auto shrink-0 rounded-[6px] border border-line bg-white px-2 py-1 text-[0.78rem] font-semibold text-deep hover:bg-paper-2"
-                  onClick={() => { navigator.clipboard.writeText(guide.agent).then(() => setMsg({ ok: true, texte: t("settings.screensGuideCopied") })).catch(() => setMsg({ ok: false, texte: t("settings.screensGuideCopyFail") })); }}>
+                  onClick={() => { navigator.clipboard.writeText(lienAgent).then(() => setMsg({ ok: true, texte: t("settings.screensGuideCopied") })).catch(() => setMsg({ ok: false, texte: t("settings.screensGuideCopyFail") })); }}>
                   {t("settings.screensGuideCopy")}
                 </button>
               </div>

@@ -73,6 +73,10 @@ _TEMPLATE = """<!doctype html>
             vertical-align: top; }}
   th {{ background: var(--paper-2); font-weight: 650; color: var(--deeper); }}
   tr:last-child td {{ border-bottom: 0; }}
+  .avis {{
+    margin: 0 0 1.4rem; padding: .6rem .9rem; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--paper-2); color: var(--muted); font-size: .88rem;
+  }}
   .pied {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
            color: var(--muted); font-size: .86rem; }}
 </style>
@@ -81,9 +85,10 @@ _TEMPLATE = """<!doctype html>
 <div class="banniere">
   <span class="marque">Minbar Live</span><span class="filet"></span>
   <a href="/">Retour au back-office</a>
-  {lien_texte}
+  <span style="margin-left:auto;display:flex;gap:14px;align-items:center">{lien_langue}{lien_texte}</span>
 </div>
 <main>
+{avis}
 {corps}
 <div class="pied">{pied}</div>
 </main>
@@ -218,11 +223,14 @@ def rendre(markdown: str) -> str:
     return "\n".join(blocs)
 
 
-def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr") -> str:
+def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr",
+         alterne: tuple[str, str] | None = None, avis: str | None = None) -> str:
     """Page complète, prête à servir en ``text/html``.
 
     ``source`` est l'adresse de la version texte du même document ; ``None`` quand il n'en existe
     pas (page d'index) — le lien disparaît alors, plutôt que de pointer vers lui-même.
+    ``alterne`` est (adresse, libellé) de la même page dans l'autre langue. ``avis`` est une phrase
+    affichée au-dessus du texte, pour dire par exemple qu'une traduction n'existe pas encore.
     """
     nom = titre
     for ligne in markdown.splitlines():
@@ -230,7 +238,9 @@ def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr") -> 
             nom = ligne[2:].strip()
             break
     pied = "Document servi par Minbar Live. Il se met à jour avec l'application."
-    lien = (f'<a href="{html.escape(source, quote=True)}" style="margin-left:auto">Version texte</a>'
-            if source else "")
+    lien = (f'<a href="{html.escape(source, quote=True)}">Version texte</a>' if source else "")
+    lien_langue = (f'<a href="{html.escape(alterne[0], quote=True)}">{html.escape(alterne[1])}</a>'
+                   if alterne else "")
+    bandeau_avis = f'<p class="avis">{html.escape(avis)}</p>' if avis else ""
     return _TEMPLATE.format(lang=lang, title=html.escape(nom), corps=rendre(markdown),
-                            lien_texte=lien, pied=pied)
+                            lien_texte=lien, lien_langue=lien_langue, avis=bandeau_avis, pied=pied)
