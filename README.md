@@ -79,8 +79,13 @@ qui traîne.
 | `/docs/ecrans-mode-emploi` | les six écrans pleins : à quoi ils servent, comment changer leurs textes, ce qu'ils ne savent pas faire |
 | `/docs/orchestrateur` | les deux programmes, pourquoi ils se parlent, les deux jetons, l'ordre de démarrage |
 | `/docs/agent-gabarit-ecrans` | la consigne à coller dans un assistant conversationnel pour obtenir un gabarit d'écrans à soi |
+| `/docs/mise-en-route` | la première installation, les quatre écrans d'accueil, le premier direct |
+| `/docs/connecteurs` | Facebook, YouTube, Instagram : ce qu'il faut obtenir, où le saisir, ce qui ne marche pas |
+| `/docs/rediffusions` | les clips, le dossier publié, l'envoi facultatif vers un compartiment S3 ou R2 |
 
-Chaque page existe aussi en version texte (`…​.md`) pour être collée dans un chat. Le rendu Markdown
+Chaque page existe aussi en version texte (`…​.md`) pour être collée dans un chat, et en anglais
+sous `/docs/en/<document>` — la traduction est un fichier `docs/<document>.en.md` ; tant qu'il
+manque, la page française est servie avec un avertissement. Le rendu Markdown
 vit dans `minbar/backoffice/docpage.py`, sans dépendance : il échappe le HTML du document et refuse
 les liens `javascript:`. Les documents sources sont dans `docs/`.
 
