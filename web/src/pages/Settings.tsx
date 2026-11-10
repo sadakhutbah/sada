@@ -138,6 +138,7 @@ export default function Settings() {
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
   const [apercu, setApercu] = useState("");
+  const [aideScreens, setAideScreens] = useState(false);
   const fichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
@@ -460,7 +461,24 @@ export default function Settings() {
     screens: (
       <div className="grid gap-2.5">
         {/* Un écran à la fois : les sous-onglets évitent une page qui n'en finit pas. */}
-        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.screensHint")}</p>
+        <div className="grid gap-1.5">
+          <div className="flex items-start gap-2">
+            <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.screensHint")}</p>
+            <button type="button" className="ml-auto grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line text-[0.8rem] font-semibold text-deep" aria-expanded={aideScreens} aria-controls="aide-ecrans" aria-label={t("settings.screensHelpAria")} onClick={() => setAideScreens(!aideScreens)}>?</button>
+          </div>
+          {aideScreens && (
+            <div id="aide-ecrans" className="grid max-w-[80ch] gap-1.5 rounded-[6px] border border-line bg-paper-2 px-3 py-2.5 text-[0.88rem]">
+              <p className="m-0">{t("settings.screensHelpWhat")}</p>
+              <p className="m-0">{t("settings.screensHelpEmpty")}</p>
+              <p className="m-0">{t("settings.screensHelpWhen")}</p>
+              <ol className="m-0 list-decimal pl-5">
+                <li>{t("settings.screensHelpStep1")}</li>
+                <li>{t("settings.screensHelpStep2")}</li>
+                <li>{t("settings.screensHelpStep3")}</li>
+              </ol>
+            </div>
+          )}
+        </div>
         <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
           valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_262px]">
