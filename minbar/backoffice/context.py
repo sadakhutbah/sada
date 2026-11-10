@@ -63,11 +63,16 @@ class Ctx:
             raise Forbidden()
 
     async def body(self) -> dict:
-        """Request body, after the CSRF token check.
+        """Request body as text values, after the CSRF token check.
 
         JSON for the front; a bare form remains accepted for a client without a header.
         Uploaded files (logo) are kept in `self.files`.
         """
+        corps = await self.raw_body()
+        return {k: (v if isinstance(v, str) else "") for k, v in corps.items()}
+
+    async def raw_body(self) -> dict:
+        """Request body as sent (a list of objects stays a list), after the CSRF token check."""
         self.need_csrf()
         self.files: dict = {}
         ctype = (self.request.headers.get("content-type") or "").lower()
@@ -80,9 +85,7 @@ class Ctx:
                 corps = dict(form)
         except Exception:                       # noqa: BLE001 — empty or unreadable body
             corps = {}
-        if not isinstance(corps, dict):
-            corps = {}
-        return {k: (v if isinstance(v, str) else "") for k, v in corps.items()}
+        return corps if isinstance(corps, dict) else {}
 
 
 def get_conn(request: Request):

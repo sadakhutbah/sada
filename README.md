@@ -112,16 +112,21 @@ demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
 
 ## Diffusion en direct : plusieurs destinations à la fois
 
-Le même flux part vers **toutes** les destinations configurées, en un seul ffmpeg : l'encodeur écrit
-plusieurs sorties (`tee`), et une plateforme qui lâche n'interrompt pas les autres (`onfail=ignore`).
+Les destinations se règlent dans l'interface : **Réglages → Direct**, une ligne par destination (nom,
+adresse RTMP, active ou non). Le même flux part vers **toutes** les destinations actives, en un seul
+ffmpeg : l'encodeur écrit plusieurs sorties (`tee`), et une plateforme qui lâche n'interrompt pas les
+autres (`onfail=ignore`).
 
-```bash
-export MINBAR_RTMP_URLS="rtmps://live-api-s.facebook.com:443/rtmp/<clé-page>,rtmps://a.rtmp.youtube.com/live2/<clé-chaîne>"
-```
-
-Les clés se créent chez la plateforme (Facebook : diffusion en direct de la page ; YouTube : direct
-activé sur la chaîne). Aucune clé n'est écrite dans le dépôt. Instagram ne diffuse pas en direct par
-RTMP : pour ce réseau, seule la publication de Reels après le direct est possible.
+- Une clé de diffusion est le dernier segment de l'adresse. Une fois enregistrée, elle n'est plus
+  réaffichée (masque), et le fait de renvoyer le masque la conserve.
+- L'orchestrateur lit cette liste au lancement du direct, par l'endpoint interne authentifié : il
+  n'ouvre jamais la base du back-office, et une panne de celui-ci laisse jouer la configuration locale.
+- Les clés se créent chez la plateforme (Facebook : diffusion en direct de la page ; YouTube : direct
+  activé sur la chaîne). Aucune n'est écrite dans le dépôt ni dans un fichier de configuration.
+- Repli, pour une démonstration ou une machine sans back-office :
+  `MINBAR_RTMP_URLS="rtmps://…/rtmp/<clé>,rtmps://…/live2/<clé>"` (liste séparée par des virgules).
+- Instagram ne diffuse pas en direct par RTMP : pour ce réseau, seule la publication de Reels après le
+  direct est possible.
 
 ## Configuration : une seule règle de précédence
 

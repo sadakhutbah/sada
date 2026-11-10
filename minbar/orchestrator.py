@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from . import events as events_mod
-from . import mawaqit, notify, runs
+from . import destinations, mawaqit, notify, runs
 from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
@@ -51,6 +51,10 @@ class Orchestrator:
         log.info("Sessions du jour (horloge mosquée) : %s", [s.strftime("%H:%M") for s in sessions])
         for i in self.instances:
             log.info("Programme : %s à %s — %s", i.label, i.starts.strftime("%H:%M"), i.speaker or "intervenant à préciser")
+        # Live destinations come from the back office when an administrator saved some there.
+        remote = destinations.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
+        if remote:
+            cfg.rtmp_urls = remote
         self.renderer = SceneRenderer(cfg)
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())

@@ -137,5 +137,7 @@ export const api = {
   saveConnector: (key: string, enabled: boolean, values: Record<string, string>) =>
     ecrire<any>("POST", `/settings/connectors/${key}`, { ...values, enabled: enabled ? "1" : "0" }),
   saveNotifications: (body: Record<string, string>) => ecrire<any>("PUT", "/settings/notifications", body),
+  destinations: (targets: Array<{ id?: number; label: string; url: string; enabled: boolean }>) =>
+    ecrire<any>("PUT", "/settings/live", { targets }),
   testNotifications: () => ecrire<any>("POST", "/settings/notifications/test"),
 };

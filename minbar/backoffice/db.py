@@ -128,6 +128,15 @@ CREATE TABLE IF NOT EXISTS notifications (
     telegram_chat TEXT NOT NULL DEFAULT '',
     updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS live_targets (
+    id INTEGER PRIMARY KEY,
+    mosque_id INTEGER NOT NULL REFERENCES mosques(id),
+    label TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+);
 CREATE TABLE IF NOT EXISTS publications (
     id INTEGER PRIMARY KEY,
     mosque_id INTEGER NOT NULL REFERENCES mosques(id),
@@ -155,6 +164,7 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE INDEX IF NOT EXISTS audit_mosque ON audit (mosque_id, id);
 CREATE INDEX IF NOT EXISTS clips_mosque ON clips (mosque_id, status);
 CREATE INDEX IF NOT EXISTS khutbas_mosque ON khutbas (mosque_id, date);
+CREATE INDEX IF NOT EXISTS live_targets_mosque ON live_targets (mosque_id);
 """
 # columns added after the fact: (table, column, declaration) — applied to existing databases
 ADDED_COLUMNS = [

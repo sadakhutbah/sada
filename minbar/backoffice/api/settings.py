@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from ... import notify
 from ...pipeline import llm
-from .. import auth, branding, db, dirs as dirs_mod, publish
+from .. import auth, branding, db, destinations, dirs as dirs_mod, publish
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
 
@@ -41,6 +41,7 @@ def settings(ctx: CtxDep):
     return {"mosque": m, "defaults": defauts, "sections": SECTIONS,
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
             "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
+            "targets": destinations.rows(ctx.conn, ctx.mosque),
             "model": _model_view()}
 
 
@@ -98,6 +99,19 @@ async def model_save(ctx: CtxDep):
              actif=enabled, url=url, modele=model, protocole=proto)
     return _ok("Modèle de langage enregistré. Le pipeline l'applique au prochain lancement (les variables "
                "d'environnement restent prioritaires).", label=llm.settings().label())
+
+
+@router.put("/settings/live")
+async def live_save(ctx: CtxDep):
+    """Live destinations: the whole list at once, keys masked as everywhere else."""
+    f = await ctx.raw_body()                  # a list of destinations, not one string per field
+    ctx.require("admin")
+    try:
+        rows = destinations.save(ctx.conn, ctx.mosque, f.get("targets"), ctx.user)
+    except destinations.InvalidTarget as e:
+        raise Invalid(str(e)) from e
+    return _ok("Destinations du direct enregistrées. Elles sont prises au prochain lancement du direct.",
+               targets=rows)
 
 
 @router.post("/settings/model/test")

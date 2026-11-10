@@ -6,6 +6,9 @@ import { Btn, Card, Field, Tabs, Title, inputClass } from "../ui";
 
 type Message = { ok: boolean; texte: string } | null;
 
+/** A live destination as the screen edits it: the key comes back masked, and stays masked. */
+type Cible = { id?: number; label: string; url: string; enabled: boolean };
+
 const CHAMPS_MOSQUEE = [
   "name", "timezone", "clip_title", "mawaqit_url", "orchestrator_url", "orchestrator_token",
   "state_dir", "output_dir", "publish_dir",
@@ -112,19 +115,26 @@ export default function Settings() {
   const [enCours, setEnCours] = useState(false);
   const [msg, setMsg] = useState<Message>(null);
   const [parcourir, setParcourir] = useState<string | null>(null);
+  const [cibles, setCibles] = useState<Cible[]>([]);
+  const [ciblesInitiales, setCiblesInitiales] = useState("");
   const [test, setTest] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
   const fichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
     api.settings().then((r) => {
       const v = depuisServeur(r);
-      setD(r); setF(v); setInitial(JSON.stringify(v));
+      const c: Cible[] = (r.targets ?? []).map((t: any) => ({ id: t.id, label: t.label, url: t.url, enabled: !!t.enabled }));
+      setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
     }).catch(() => setD(null));
   useEffect(() => { charger(); }, []);
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
   const defauts = d.defaults ?? {};
-  const modifie = JSON.stringify(f) !== initial;
+  const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales;
+  const majCible = (i: number, champ: keyof Cible, valeur: string | boolean) => {
+    setCibles((x) => x.map((c, j) => (j === i ? { ...c, [champ]: valeur } : c)));
+    setMsg(null);
+  };
   const maj = (cle: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setF((x) => ({ ...x, [cle]: e.target.value }));
     setMsg(null);
@@ -144,6 +154,7 @@ export default function Settings() {
         for (const k of CHAMPS_MODELE) modele[k] = f[k];
         await api.modele(modele);
       }
+      if (JSON.stringify(cibles) !== ciblesInitiales) await api.destinations(cibles);
       await charger();
       setTest(null);
       setMsg({ ok: true, texte: t("settings.saved") });
@@ -223,13 +234,55 @@ export default function Settings() {
       </div>
     ),
     live: (
-      <div className="grid max-w-[520px] gap-3.5">
+      <div className="grid max-w-[560px] gap-3.5">
         <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
           <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8089" inputMode="url" />
         </Field>
         <Field label={t("settings.token")} aide={t("settings.tokenHelp")}>
           <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
         </Field>
+
+        <div className="mt-2 border-t border-line pt-3.5">
+          <Title>{t("settings.destTitle")}</Title>
+          <p className="mt-0 mb-3 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.destHint")}</p>
+          {cibles.length === 0 ? (
+            <p className="m-0 mb-3 text-[0.9rem] text-muted">{t("settings.destNone")}</p>
+          ) : (
+            <ul className="m-0 mb-3 grid list-none gap-3 p-0">
+              {cibles.map((c, i) => (
+                <li key={c.id ?? `n${i}`} className="grid gap-2 rounded-lg border border-line p-3">
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="grid flex-1 gap-1 text-[0.85rem] font-semibold">
+                      {t("settings.destLabel")}
+                      <input className={`${inputClass} text-[0.9rem] font-normal`} value={c.label}
+                        placeholder={t("settings.destLabelPlaceholder")} maxLength={60}
+                        onChange={(e) => majCible(i, "label", e.target.value)} />
+                    </label>
+                    <label className="flex items-center gap-2 pb-2 text-[0.9rem] font-semibold">
+                      <input type="checkbox" checked={c.enabled} onChange={(e) => majCible(i, "enabled", e.target.checked)} />
+                      {t("settings.destEnabled")}
+                    </label>
+                    <Btn type="button" variante="dangerGhost" className="min-h-9 px-3 py-1.5 text-[0.9rem]"
+                      onClick={() => { setCibles((x) => x.filter((_, j) => j !== i)); setMsg(null); }}>
+                      {t("settings.destRemove")}
+                    </Btn>
+                  </div>
+                  <label className="grid gap-1 text-[0.85rem] font-semibold">
+                    {t("settings.destUrl")}
+                    <input className={`${inputClass} font-mono text-[0.85rem] font-normal`} value={c.url}
+                      placeholder={t("settings.destExample")} spellCheck={false} autoComplete="off"
+                      onChange={(e) => majCible(i, "url", e.target.value)} />
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Btn type="button" variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.9rem]"
+            disabled={cibles.length >= 6}
+            onClick={() => { setCibles((x) => [...x, { label: "", url: "", enabled: true }]); setMsg(null); }}>
+            {t("settings.destAdd")}
+          </Btn>
+        </div>
       </div>
     ),
     folders: (
