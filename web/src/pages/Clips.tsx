@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Card, Pill, Tabs } from "../ui";
-import { dateFr, mmss } from "../format";
+import { dateFr, libelles, liste, mmss } from "../format";
 
 /** Review queue: one entry per clip, like the template back-office items.
  *  Title “Clip n · type vN”, then the context line, then the detection reason.
@@ -31,9 +31,9 @@ export default function Clips() {
     api.clips(statut, TAILLE, 0).then((r) => {
       if (!vivant) return;
       setData(r);
-      setItems(r.items ?? []);
+      setItems(liste<any>(r.items));
       setTotal(r.total ?? 0);
-      debut.current = (r.items ?? []).length;
+      debut.current = liste<any>(r.items).length;
     }).catch(() => {
       if (vivant) setData({ items: [], tabs: [], counts: {}, total: 0 });
     }).finally(() => { if (vivant) setCharge(false); });
@@ -45,17 +45,23 @@ export default function Clips() {
     setCharge(true);
     try {
       const r = await api.clips(statut, TAILLE, debut.current);
-      setItems((l) => [...l, ...(r.items ?? [])]);
+      const recus = liste<any>(r.items);
+      setItems((l) => [...l, ...recus]);
       setTotal(r.total ?? total);
-      debut.current += (r.items ?? []).length;
+      debut.current += recus.length;
     } catch { /* on garde ce qui est affiché */ } finally { setCharge(false); }
   };
 
-  const comptes = data?.counts ?? {};
+  const comptes = (data?.counts && typeof data.counts === "object" ? data.counts : {}) as Record<string, number>;
   const somme = Object.values(comptes).reduce((a: number, n: any) => a + Number(n), 0);
+  const anciens = libelles(data?.tabs);
   const onglets = [
     { cle: "", label: t("clips.all"), compte: somme },
-    ...(data?.tabs ?? []).map((cle: string) => ({ cle, label: t(`clips.statusTabs.${cle}`), compte: Number(comptes[cle] ?? 0) })),
+    ...liste<string>(data?.tabs).map((cle) => ({
+      cle,
+      label: anciens[cle] || t(`clips.statusTabs.${cle}`, { defaultValue: cle }),
+      compte: Number(comptes[cle] ?? 0),
+    })),
   ];
 
   return (

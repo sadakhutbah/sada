@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { auditActionKey } from "../i18n";
+import { liste } from "../format";
 import { Btn, Card, Field, inputClass } from "../ui";
 
 const TAILLE = 8;   // one page fits on screen with its pagination, without scrolling
@@ -66,7 +67,7 @@ export default function Audit() {
             }}
           >
             <option value="">{t("audit.all")}</option>
-            {(d?.actions ?? []).map((cle: string) => (
+            {liste<string>(d?.actions).map((cle: string) => (
               <option key={cle} value={cle}>{nomAction(cle)}</option>
             ))}
           </select>

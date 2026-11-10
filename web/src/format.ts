@@ -1,5 +1,20 @@
 /** Shared formatting: long-form dates and durations, as the template back-office did. */
 
+/** A list, whatever the server sent. An older back-office answers `tabs` with an object
+ *  ({clé: libellé}) where the current one sends an array of keys; a page must not crash
+ *  on that, it must show what it can. */
+export function liste<T = string>(valeur: unknown): T[] {
+  if (Array.isArray(valeur)) return valeur as T[];
+  if (valeur && typeof valeur === "object") return Object.keys(valeur as object) as T[];
+  if (typeof valeur === "string" && valeur) return [valeur] as T[];
+  return [];
+}
+
+/** The labels an older server carries along with its keys, if any. */
+export function libelles(valeur: unknown): Record<string, string> {
+  return valeur && !Array.isArray(valeur) && typeof valeur === "object" ? (valeur as Record<string, string>) : {};
+}
+
 export function dateFr(valeur?: string | null, langue = "fr"): string {
   if (!valeur) return "—";
   const d = new Date(`${valeur}T12:00:00`);

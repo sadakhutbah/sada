@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { liste } from "../format";
 import { Btn, Card, Field, Tabs, Title, inputClass } from "../ui";
 
 type Message = { ok: boolean; texte: string } | null;
@@ -134,7 +135,7 @@ export default function Settings() {
   const charger = () =>
     api.settings().then((r) => {
       const v = depuisServeur(r);
-      const c: Cible[] = (r.targets ?? []).map((t: any) => ({ id: t.id, label: t.label, url: t.url, enabled: !!t.enabled }));
+      const c: Cible[] = liste<any>(r.targets).map((t: any) => ({ id: t.id, label: t.label, url: t.url, enabled: !!t.enabled }));
       const e: Entree = { mode: r.input?.mode === "push" ? "push" : "camera", url: r.input?.url ?? "",
                           push_rtmp: r.input?.push_rtmp ?? "" };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));

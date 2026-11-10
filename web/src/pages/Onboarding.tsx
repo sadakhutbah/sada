@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../api";
+import { liste } from "../format";
 import { Btn, Card, Field, Kicker, Title, inputClass } from "../ui";
 
 /** Mise en route : quatre écrans, un seul formulaire à la fois.
@@ -42,7 +43,7 @@ export default function Onboarding() {
       setMode(e.mode === "push" ? "push" : "camera");
       setAdresse(e.url);
       setObs(e.push_rtmp);
-      setCibles(r.targets ?? []);
+      setCibles(liste<any>(r.targets));
       const s = r.storage ?? {};
       setDepot({ endpoint: s.endpoint ?? "", region: s.region ?? "auto", bucket: s.bucket ?? "",
                  access_key: s.access_key ?? "", secret_key: s.secret_key ?? "",
