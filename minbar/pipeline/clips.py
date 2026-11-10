@@ -495,14 +495,16 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
     the fade eats the tail and not the sentence.
     """
     a, dur = rec_offset + w["start"], w["end"] - w["start"]
-    fo = fade_out if fade_out else min(1.0, max(0.4, dur / 20))
+    tail = fade_out if fade_out else min(1.0, max(0.4, dur / 20))
+    fo_v = min(1.5, max(0.8, tail + 0.25))   # picture: a real fade, it never hides a word
+    fo_a = min(1.5, max(0.45, tail))         # sound: closes over the silence left after the last word
     with tempfile.TemporaryDirectory() as td:
         grad = gradient_png(str(Path(td) / "grad.png"))
-        fc = (f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p,"
-              f"fade=t=out:st={max(0, dur - fo):.2f}:d={fo:.2f}[cam];"
-              f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS},format=yuv420p[v];"
+        fc = (f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p[cam];"
+              f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS},format=yuv420p,"
+              f"fade=t=out:st={max(0, dur - fo_v):.2f}:d={fo_v:.2f}[v];"
               f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
-              f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - fo):.2f}:d={fo:.2f}[a]")
+              f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - fo_a):.2f}:d={fo_a:.2f}[a]")
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.2f}", "-t", f"{dur:.2f}", "-i", str(Path(src).resolve()),
                "-loop", "1", "-framerate", "25", "-i", grad, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
                "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
@@ -522,6 +524,11 @@ def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx:
     build_ass(segments, matches, w["start"], w["end"], str(ass), tr=tr, header=header,
               rappel=w.get("kind") == "rappel")
     last = max((s["end"] for s in segments if s["end"] <= w["end"] + 0.05), default=w["start"])
+    if w["end"] - last > 1.5:
+        # Safety net for windows stored before the rule: never more than a breath past the last word,
+        # otherwise the excerpt drags the mosque's end screen and its hiss into the clip.
+        w = {**w, "end": round(last + 0.8, 2)}
+        last = max(s["end"] for s in segments if s["end"] <= w["end"] + 0.05)
     tail = w["end"] - last                       # silence left after the last word
     render_clip(video, offset, w, ass.name, str(out), log, crop=crop,
                 fade_out=min(1.3, max(0.45, tail)))
