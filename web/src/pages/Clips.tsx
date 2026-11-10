@@ -82,7 +82,7 @@ export default function Clips() {
                   <p className="m-0 text-[1rem] font-bold text-ink">
                     {t("clips.clip")} {c.idx}
                     {" · "}
-                    {t(`clips.kinds.${c.kind}`)} v{c.version}
+                    {String(t(`clips.kinds.${c.kind}`, { defaultValue: c.kind }))} v{c.version}
                   </p>
                   <p className="m-0 text-[0.88rem] text-muted">
                     {dateFr(c.date, i18n.language)} · {c.sermon} ·{" "}
