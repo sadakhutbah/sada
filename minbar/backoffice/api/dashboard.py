@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .. import db, live
-from ..context import CtxDep, Invalid, NotFound, count_clips, imam_filter, live_status
+from ..context import CtxDep, NotFound, count_clips, imam_filter, live_status
 from .common import _ok
 
 router = APIRouter()
@@ -37,11 +37,6 @@ async def live_command(cmd: str, ctx: CtxDep):
     arg = (f.get("name") or "").strip() or None
     info = (f.get("info") or "").strip() or None      # janaza record: note under the name
     valeur = (f.get("valeur") or "").strip() or None  # minutes (extend) or scene (scene)
-    permises = live.choices(cmd)
-    if permises and valeur not in (None, *permises):
-        raise Invalid("Valeur inconnue pour cette commande.")
-    if cmd == "scene" and not valeur:
-        raise Invalid("Choisissez une scène.")
     try:
         r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info, valeur)
         # The audit trail stores protocol keys (command, value), not labels: the log is translated

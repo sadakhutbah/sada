@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..config import Config
+from .. import paths
 from . import auth, branding, content, db, importer, live
 from .api import router as api_router
 from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
@@ -78,7 +78,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     app.state.secure = secure_cookies
     app.state.limiter = auth.RateLimiter()
     app.state.regen_background = regen_background
-    app.state.events_file = str(Config().events_file)
+    app.state.events_file = str(paths.EVENTS)
     # Fonts and emblem: the only files served by the backend (the front has its own build).
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 

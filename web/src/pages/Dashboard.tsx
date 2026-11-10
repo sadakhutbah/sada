@@ -56,17 +56,13 @@ export default function Dashboard() {
   const horsService = v.ok === false;
   const etat = horsService
     ? t("dashboard.unreachable")
-    : (v.state && t(`dashboard.state.${v.state}`, { defaultValue: v.state }))
-      || (v.state === "live" ? t("dashboard.liveOn") : t("dashboard.liveOff"));
-  /** The engine writes its times as “12 h 30”: in other languages, we render them as “12:30”. */
-  const heureLisible = (texte?: string | null) =>
-    texte ? texte.replace(/(\d{1,2})\s*h\s*(\d{2})/g, "$1:$2") : texte;
+    : (v.state && t(`dashboard.state.${v.state}`, { defaultValue: v.state })) || t("dashboard.liveOff");
   /** The current session comes structured ({n, total, planned}): the sentence is built here. */
   const session = v.session as { n?: number | null; total?: number; planned?: string | null } | null;
   const ligneSession = session
-    ? `${session.n ? `${t("dashboard.sessionN", { n: session.n, total: session.total })} — ` : ""}${heureLisible(session.planned) ?? ""}`
+    ? `${session.n ? `${t("dashboard.sessionN", { n: session.n, total: session.total })} — ` : ""}${session.planned ?? ""}`
     : v.has_sessions ? t("dashboard.noSession") : "—";
-  const pastille = horsService || v.state === "off" ? "bg-dot-off" : v.state === "live" ? "bg-live" : "bg-leaf";
+  const pastille = horsService ? "bg-dot-off" : "bg-leaf";
 
   return (
     <div className="grid gap-4">

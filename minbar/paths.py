@@ -9,5 +9,6 @@ STATE = DATA / "state"            # one folder per orchestrator run (sessions.js
 RECORDINGS = DATA / "recordings"
 OUTPUT = DATA / "output"          # pipeline outputs: <run>/session<n>/
 CACHE = DATA / "cache"
+EVENTS = DATA / "events.json"     # programme of dars and conferences, read by both processes
 PUBLISHED = DATA / "published"
 BACKOFFICE_DB = DATA / "backoffice" / "minbar.db"
