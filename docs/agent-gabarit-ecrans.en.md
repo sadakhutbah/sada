@@ -27,10 +27,23 @@ the file.
 
 A file `ecrans.html`, complete, with no external dependency:
 
-- no file alongside, no image to host;
+- no file alongside, no image to host: images are not loaded in the preview;
 - no Google Fonts font, no CDN, no remote script (the live can run offline);
 - all the style in a `<style>` tag;
 - at the end, a single comment `<!-- SLOTS -->` then the `<script>` block that declares the texts.
+
+Fonts: the engine's fonts are served next to the file and are the only ones available offline.
+Declare them exactly like this, with these file names:
+
+```css
+@font-face { font-family: "Garamond";  src: url("../assets/fonts/EBGaramond-SemiBold.ttf") format("truetype"); font-weight: 600; }
+@font-face { font-family: "Montserrat"; src: url("../assets/fonts/Montserrat-Bold.ttf") format("truetype"); font-weight: 700; }
+@font-face { font-family: "SourceSans"; src: url("../assets/fonts/SourceSans3-Regular.ttf") format("truetype"); font-weight: 400; }
+@font-face { font-family: "Amiri";      src: url("../assets/fonts/Amiri-Regular.ttf") format("truetype"); font-weight: 400; }
+```
+
+Without these declarations the preview falls back to the system fonts and no longer resembles the
+live screen: that is the first cause of visible difference, before composition even comes into it.
 
 Dimensions: the screen is **1280 × 720** (16:9). The template must stay right in any 16:9, so reason
 in `vw`/`vh` or in `%`, never in fixed pixels for the layout.
@@ -171,7 +184,8 @@ Ask these questions in one go, then wait for the answers. If the mosque does not
 2. Colours: a dark dominant colour and an accent colour, or “ours” (deep green `#12301F` and matte
    gold `#C8A96A`).
 3. Logo: does the mosque have one? If so, ask it to describe it, or leave an empty circle commented
-   `<!-- LOGO: replace with <img src="logo.png"> -->`.
+   and use an emblem drawn in CSS (circles, a simple arabesque). An image is not loaded in the
+   preview: do not promise a logo that will not show.
 4. One welcome line to show on the before-the-live screen? (name, number, website, time)
 5. Language: French only, or one line in Arabic as well? If Arabic, the text is to be supplied by the
    mosque, you do not write it.

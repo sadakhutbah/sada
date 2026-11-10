@@ -27,10 +27,23 @@ questions, et récupère le fichier.
 
 Un fichier `ecrans.html`, complet, sans dépendance externe :
 
-- aucun fichier à côté, aucune image à héberger ;
+- aucun fichier à côté, aucune image à héberger : les images ne sont pas chargées dans l'aperçu ;
 - aucune police Google Fonts, aucun CDN, aucun script distant (le direct peut tourner hors ligne) ;
 - tout le style dans une balise `<style>`;
 - à la fin, un unique commentaire `<!-- SLOTS -->` puis le bloc `<script>` qui déclare les textes.
+
+Polices : celles du moteur sont servies à côté du fichier, et sont les seules disponibles hors
+ligne. Déclare-les comme ceci, avec ces noms de fichiers exactement :
+
+```css
+@font-face { font-family: "Garamond";  src: url("../assets/fonts/EBGaramond-SemiBold.ttf") format("truetype"); font-weight: 600; }
+@font-face { font-family: "Montserrat"; src: url("../assets/fonts/Montserrat-Bold.ttf") format("truetype"); font-weight: 700; }
+@font-face { font-family: "SourceSans"; src: url("../assets/fonts/SourceSans3-Regular.ttf") format("truetype"); font-weight: 400; }
+@font-face { font-family: "Amiri";      src: url("../assets/fonts/Amiri-Regular.ttf") format("truetype"); font-weight: 400; }
+```
+
+Sans ces déclarations, l'aperçu retombe sur les polices du système et ne ressemble plus au direct :
+c'est la première cause d'écart visuel, avant même la composition.
 
 Dimensions : l'écran est **1280 × 720** (16:9). Le gabarit doit rester juste dans n'importe quel
 16:9, donc raisonner en `vw`/`vh` ou en `%`, jamais en pixels fixes pour la mise en page.
@@ -171,7 +184,8 @@ répond « fais comme tu veux », prends les valeurs par défaut indiquées.
 2. Couleurs : une couleur dominante sombre et une couleur d'accent, ou « les nôtres » (vert profond
    `#12301F` et or matte `#C8A96A`).
 3. Logo : la mosquée en a-t-elle un ? Si oui, demande-lui de le décrire, ou laisse un cercle vide
-   commenté `<!-- LOGO : remplacer par <img src="logo.png"> -->`.
+   commenté, et utilise un emblème dessiné en CSS (cercles, arabesque simple). Une image n'est pas
+   chargée dans l'aperçu : ne promets pas un logo qui ne s'affichera pas.
 4. Une ligne de bienvenue à afficher sur l'écran d'avant-direct ? (nom, numéro, site, horaire)
 5. Langue : français seulement, ou une ligne en arabe en plus ? Si arabe, le texte est à fournir par
    la mosquée, tu ne le rédiges pas.

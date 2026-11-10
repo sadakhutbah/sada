@@ -247,3 +247,20 @@ def test_le_fichier_conserve_n_est_pas_modifie(env, stockage):
     c.get(f"{base}?ecran=dars_fin")
     disque = (env["tmp"] / "screens" / "ma-mosquee" / "ecrans.html").read_text(encoding="utf-8")
     assert 'data-ecran="avant" data-actif' in disque
+
+
+def test_les_polices_du_moteur_sont_servies_a_l_apercu(env, stockage):
+    """Sans elles l'aperçu tombait sur les polices du système : plus rien ne ressemblait au direct."""
+    c = client(env, "admin")
+    for nom in ("EBGaramond-SemiBold.ttf", "Montserrat-Bold.ttf", "SourceSans3-Regular.ttf"):
+        r = c.get(f"/screens/assets/fonts/{nom}")
+        assert r.status_code == 200, nom
+        assert r.headers["content-type"].startswith("font/")
+        assert len(r.content) > 10000
+
+
+def test_une_police_hors_liste_est_refusee(env, stockage):
+    c = client(env, "admin")
+    assert c.get("/screens/assets/fonts/secret.txt").status_code == 404
+    assert c.get("/screens/assets/fonts/..%2F..%2Fpyproject.toml").status_code == 404
+    assert client(env).get("/screens/assets/fonts/Montserrat-Bold.ttf").status_code == 401

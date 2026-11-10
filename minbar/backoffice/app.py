@@ -14,7 +14,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+import re
+
 from .. import paths
+from ..paths import ASSETS
 from . import auth, branding, content, db, docpage, gabarit, importer, live
 from .api import router as api_router
 from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
@@ -220,6 +223,22 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             return HTMLResponse(page, headers={"Cache-Control": "no-store"})
         return FileResponse(f, media_type="text/html; charset=utf-8",
                             headers={"Cache-Control": "no-store"})
+
+    @app.get("/screens/assets/fonts/{nom}")
+    def screens_gabarit_font(nom: str, ctx: CtxDep):
+        """Les polices du moteur, pour que l'aperçu du gabarit ait la même typographie que le direct.
+
+        Un modèle écrit ``../assets/fonts/<fichier>.ttf`` : depuis /screens/<slug>/ c'est cette
+        adresse-là qu'il demande. Sans elle il retombait sur les polices du système, et l'aperçu ne
+        ressemblait plus à ce que la mosquée verra.
+        """
+        ctx.require("admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+\.ttf", nom):
+            raise NotFound()
+        f = ASSETS / "fonts" / nom
+        if not f.is_file():
+            raise NotFound()
+        return FileResponse(f, media_type="font/ttf", headers={"Cache-Control": "private, max-age=86400"})
 
     # ---------------------------------------------------------- documentation
     # Une seule table de matières : les pages, leur version texte et leur traduction sont dérivées.
