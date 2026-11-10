@@ -166,7 +166,7 @@ const fr = {
   },
   settings: {
     title: "Réglages",
-    tabs: { mosque: "Mosquée", logo: "Logo", live: "Live", folders: "Dossiers", model: "Modèle", connectors: "Publication", access: "Accès" },
+    tabs: { mosque: "Mosquée", logo: "Logo", live: "Direct", folders: "Dossiers", model: "Modèle", connectors: "Publication", access: "Accès" },
     name: "Nom de la mosquée", timezone: "Fuseau horaire", clipTitle: "Titre des clips", orchestrator: "Adresse de l'orchestrateur",
     foldersTitle: "Dossiers sur cette machine",
     foldersHint: "Choisissez avec le bouton Parcourir… : la fenêtre montre les dossiers réels de la machine qui héberge l'application, aucun chemin à taper. Un champ laissé vide garde le dossier par défaut du programme.",
