@@ -178,6 +178,24 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                                          titre="Mode d'emploi des écrans",
                                          source="/docs/ecrans-mode-emploi.md"))
 
+    @app.get("/docs/orchestrateur")
+    def doc_orchestrateur():
+        """How the two processes work together, and what the two tokens are for."""
+        f = DOCS / "orchestrateur.md"
+        if not f.exists():
+            raise NotFound()
+        return HTMLResponse(docpage.page(f.read_text(encoding="utf-8"),
+                                         titre="L'orchestrateur et le jeton interne",
+                                         source="/docs/orchestrateur.md"))
+
+    @app.get("/docs/orchestrateur.md")
+    def doc_orchestrateur_source():
+        f = DOCS / "orchestrateur.md"
+        if not f.exists():
+            raise NotFound()
+        return FileResponse(f, media_type="text/markdown; charset=utf-8",
+                            headers={"Content-Disposition": "inline; filename=\"orchestrateur.md\""})
+
     @app.get("/docs/ecrans-mode-emploi.md")
     def doc_ecrans_source():
         """Same text, raw: for pasting into a chat when a link cannot be opened."""

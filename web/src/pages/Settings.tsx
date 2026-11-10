@@ -341,6 +341,13 @@ export default function Settings() {
             <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
           </Field>
         </div>
+        <p className="m-0 text-[0.82rem] leading-[1.5] text-muted">
+          {t("settings.orchDoc")}{" "}
+          <a href="/docs/orchestrateur" target="_blank" rel="noreferrer"
+            className="font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
+            {t("settings.orchDocLink")}
+          </a>
+        </p>
 
         {/* Video input: the same choice as in "Mise en route", editable here afterwards. */}
         <div className="border-t border-line pt-3.5">
@@ -613,7 +620,7 @@ export default function Settings() {
           {avecEnregistrement && (
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <Btn type="submit" disabled={enCours || !modifie}>{enCours ? t("common.saving") : t("settings.save")}</Btn>
-              {modifie && !msg && <span className="text-[0.88rem] text-muted">{t("settings.unsaved")}</span>}
+              {!msg && <span className="text-[0.88rem] text-muted">{modifie ? t("settings.unsaved") : t("settings.allSaved")}</span>}
             </div>
           )}
           {msg && (

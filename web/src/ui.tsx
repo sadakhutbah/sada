@@ -37,10 +37,14 @@ export function Btn({
     dangerGhost: "border-live/50 bg-transparent text-[#b42c23] hover:bg-err-bg",
     light: "border-white/25 bg-white/10 text-white hover:bg-white/18",
   }[variante];
+  // Un bouton inactif se lit comme tel : neutre et plat, pas une couleur d'action délavée.
+  const apparence = reste.disabled
+    ? "cursor-not-allowed border-line bg-paper-2 text-muted"
+    : `cursor-pointer ${styles}`;
   return (
     <button
       type="button"          /* default inside a form; callers pass type="submit" where needed */
-      className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-[9px] border px-4 py-2.5 font-semibold ${styles} disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[9px] border px-4 py-2.5 font-semibold ${apparence} ${className}`}
       {...reste}
     >
       {children}
