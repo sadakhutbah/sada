@@ -127,3 +127,25 @@ def test_filtre_par_mois(env):
     assert trouve["total"] > 0 and all(k["date"].startswith(mois) for k in trouve["items"])
     assert c.get("/api/v1/sermons", params={"mois": "1999-01"}).json()["total"] == 0
     assert c.get("/api/v1/sermons", params={"mois": "n'importe quoi"}).json()["total"] > 0
+
+
+def test_commandes_live_exposees_et_validees(env, monkeypatch):
+    """Le tableau de bord liste toutes les commandes ; une valeur hors liste est refusée avant l'envoi."""
+    from minbar.backoffice import live
+    envoyees = []
+    live._caches.clear()                # le cache du statut est global : on ne laisse rien aux autres tests
+    monkeypatch.setattr(live, "_call", lambda m, meth, chemin, params=None, timeout=3.0:
+                        (envoyees.append((chemin, params)) if meth == "POST" else None)
+                        or {"message": "ok", "state": "KHUTBA"})
+    c = client(env, "admin")
+    cles = {x["key"] for x in c.get("/api/v1/dashboard").json()["live_commands"]}
+    assert {"start", "pause", "resume", "auto", "stop", "extend", "skip", "cancel", "janaza", "scene"} <= cles
+    h = {"X-CSRF": c.get("/api/v1/session").json()["csrf"]}
+    assert c.post("/api/v1/live/extend", json={"valeur": "15"}, headers=h).status_code == 200
+    assert c.post("/api/v1/live/scene", json={"valeur": "priere"}, headers=h).status_code == 200
+    assert c.post("/api/v1/live/scene", json={"valeur": "inconnue"}, headers=h).status_code == 422
+    assert c.post("/api/v1/live/scene", json={}, headers=h).status_code == 422
+    assert c.post("/api/v1/live/extend", json={"valeur": "3"}, headers=h).status_code == 422
+    assert c.post("/api/v1/live/nimporte", json={}, headers=h).status_code == 404
+    assert envoyees == [("extend", {"min": "15"}), ("scene", {"name": "priere"})]
+    live._caches.clear()

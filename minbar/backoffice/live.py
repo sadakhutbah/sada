@@ -22,18 +22,36 @@ class Command:
     style: str                       # classe du bouton
     confirm: str = ""                # question posée avant l'envoi
     params: tuple = ()               # paramètres fixes de la requête
+    param: str = ""                  # name of the variable parameter ("min", "name"), if the command has one
+    choices: tuple = ()              # allowed parameter values: ((value, label), ...)
 
 
-# Commandes de l'orchestrateur (minbar.state.Machine.COMMANDS) proposées sur le tableau de bord.
+# Scenes that can be picked by hand (janaza has its own command, which opens its form).
+# Labels are only used for the audit trail; the front end translates by value.
+SCENES = (("avant", "Before"), ("khutba", "Khutba"), ("priere", "Prayer"), ("entracte", "Intermission"),
+          ("termine", "Finished"), ("dars", "Dars"), ("dars_fin", "Dars end"))
+
+# Orchestrator commands (minbar.state.Machine.COMMANDS) offered on the dashboard, in display order.
 COMMANDS = {
-    "extend": Command("+5 min", "leaf", params=(("min", "5"),)),
-    "janaza": Command("Déclarer une janaza", "light",
-                      "Basculer sur l'écran Salat al-Janaza ?"),
-
+    "start": Command("Start", "leaf", "start"),
+    "pause": Command("Pause", "light"),
+    "resume": Command("Resume", "light"),
+    "auto": Command("Automatic", "light"),
+    "extend": Command("Extend", "leaf", param="min", choices=(("5", "+5 min"), ("15", "+15 min"))),
+    "skip": Command("Skip session", "light", "skip"),
+    "scene": Command("Change scene", "light", param="name", choices=SCENES),
+    "janaza": Command("Janaza", "light", "janaza"),
     "stop": Command("Arrêter", "danger", "Arrêter le live maintenant ?"),
     "cancel": Command("Annuler aujourd'hui", "light",
                       "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées."),
 }
+
+
+def choice_label(cmd: str, valeur: str | None) -> str:
+    """Libellé de la variante choisie (« +15 min »), ou celui de la commande si elle n'a pas de choix."""
+    c = COMMANDS[cmd]
+    return dict(c.choices).get(valeur, c.label) if valeur else c.label
+
 
 SESSION_LABELS = {"pending": "à venir", "live": "en direct", "done": "terminée", "skipped": "sautée", "janaza": "janaza"}
 
@@ -120,17 +138,28 @@ def _rafraichir(mosque: dict, cle: str) -> None:
             _en_cours.discard(cle)
 
 
-def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = None) -> dict:
-    """arg : nom du défunt (janaza) ou minutes (extend) ; info : mention de la fiche janaza.
+def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = None,
+            valeur: str | None = None) -> dict:
+    """arg : nom du défunt (janaza) ; info : mention de la fiche janaza ; valeur : choix d'une commande
+    à paramètre (minutes de extend, nom de la scène de scene).
 
-    Une commande ne passe jamais par le cache du statut : elle part tout de suite."""
+    Une valeur hors de la liste permise est refusée ici, avant tout appel réseau. Une commande ne
+    passe jamais par le cache du statut : elle part tout de suite."""
     if cmd not in COMMANDS:
         raise OrchestratorError("commande inconnue")
-    params = dict(COMMANDS[cmd].params)
-    if arg:
-        params["name"] = arg[:80]
-    if info and arg:                    # une mention seule n'a pas de sens sans nom
-        params["info"] = info[:60]
+    c = COMMANDS[cmd]
+    params = dict(c.params)
+    if c.choices:
+        permises = [v for v, _ in c.choices]
+        valeur = valeur or (permises[0] if cmd == "extend" else None)    # extend : +5 min par défaut
+        if valeur not in permises:
+            raise ValueError(f"valeur invalide pour « {c.label} »")
+        params[c.param] = valeur
+    if cmd == "janaza":
+        if arg:
+            params["name"] = arg[:80]
+        if info and arg:                # une mention seule n'a pas de sens sans nom
+            params["info"] = info[:60]
     return _call(mosque, "POST", cmd, params or None)
 
 
