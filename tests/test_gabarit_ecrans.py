@@ -197,3 +197,53 @@ def test_un_texte_trop_long_est_ignore_et_signale(env, stockage):
     assert any(i["screen"] == "avant" and i["slot"] == "eyebrow" and "160" in i["reason"]
                for i in r.json()["ignored"])
     assert _valeurs(c)["avant"]["eyebrow"]["value"] == ""
+
+
+PAGE_SIX = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>.ecran{display:none}</style></head>
+<body>
+<section class="ecran" data-ecran="avant" data-actif><p>AVANT</p></section>
+<section class="ecran" data-ecran="priere"><p>PRIERE</p></section>
+<section class="ecran" data-ecran="entracte"><p>ENTRACTE</p></section>
+<section class="ecran" data-ecran="termine"><p>TERMINE</p></section>
+<section class="ecran" data-ecran="janaza"><p>JANAZA</p></section>
+<section class="ecran" data-ecran="dars_fin"><p>DARS</p></section>
+<script type="application/json" id="minbar-screens">{bloc}</script>
+</body></html>"""
+
+
+def _page_six() -> bytes:
+    # Dans un <script type="application/json">, le JSON va brut.
+    return PAGE_SIX.replace("{bloc}", json.dumps(_bloc(), ensure_ascii=False)).encode()
+
+
+def test_l_apercu_suit_l_onglet_ouvert(env, stockage):
+    """L'aperçu montrait toujours l'écran mis en avant par le fichier, quel que soit l'onglet."""
+    c = client(env, "admin")
+    url = _envoi(c, _page_six()).json()["gabarit"]["url"]
+    base = url.split("?")[0]
+
+    def actif(ecran: str) -> str:
+        html = c.get(f"{base}?ecran={ecran}").text
+        assert html.count("data-actif") == 1, ecran
+        return html[html.index("data-actif") - 80: html.index("data-actif") + 40]
+
+    assert 'data-ecran="avant" data-actif' in actif("avant")
+    assert 'data-ecran="priere" data-actif' in actif("priere")
+    assert 'data-ecran="janaza" data-actif' in actif("janaza")
+
+
+def test_un_ecran_inconnu_ne_casse_rien(env, stockage):
+    c = client(env, "admin")
+    url = _envoi(c, _page_six()).json()["gabarit"]["url"]
+    base = url.split("?")[0]
+    r = c.get(f"{base}?ecran=jeudi")
+    assert r.status_code == 200 and r.text.count("data-actif") == 1
+
+
+def test_le_fichier_conserve_n_est_pas_modifie(env, stockage):
+    c = client(env, "admin")
+    url = _envoi(c, _page_six()).json()["gabarit"]["url"]
+    base = url.split("?")[0]
+    c.get(f"{base}?ecran=dars_fin")
+    disque = (env["tmp"] / "screens" / "ma-mosquee" / "ecrans.html").read_text(encoding="utf-8")
+    assert 'data-ecran="avant" data-actif' in disque

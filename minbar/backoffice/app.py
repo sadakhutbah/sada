@@ -203,14 +203,21 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     # ------------------------------------------------- imported screen template (reference)
     @app.get("/screens/{slug}/ecrans.html")
-    def screens_gabarit_file(slug: str, ctx: CtxDep):
-        """The mosque's imported template, shown in the settings iframe (same origin, admin only)."""
+    def screens_gabarit_file(slug: str, ctx: CtxDep, ecran: str | None = None):
+        """The mosque's imported template, shown in the settings iframe (same origin, admin only).
+
+        ``ecran`` déplace l'écran mis en avant, pour que l'aperçu suive l'onglet ouvert plutôt que
+        de montrer toujours le même. Le fichier conservé n'est pas modifié.
+        """
         ctx.require("admin")
         if slug != ctx.mosque["slug"]:
             raise NotFound()          # another mosque's reference is not readable by slug
         f = gabarit.path_for(ctx.mosque)
         if not f.is_file():
             raise NotFound()
+        if ecran:
+            page = gabarit.pour_ecran(f.read_text(encoding="utf-8", errors="replace"), ecran)
+            return HTMLResponse(page, headers={"Cache-Control": "no-store"})
         return FileResponse(f, media_type="text/html; charset=utf-8",
                             headers={"Cache-Control": "no-store"})
 

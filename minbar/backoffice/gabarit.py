@@ -8,6 +8,7 @@ mosque's reference and shown in an iframe, same origin only.
 from __future__ import annotations
 
 import datetime as dt
+import re
 import json
 import os
 import re
@@ -52,6 +53,26 @@ def view(mosque: dict) -> dict:
         "size": st.st_size,
         "imported_at": dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc).isoformat(timespec="seconds"),
     }
+
+
+ECRANS = ("avant", "priere", "entracte", "termine", "janaza", "dars_fin")
+
+
+def pour_ecran(page: str, ecran: str) -> str:
+    """La même page, montrant un autre écran que celui que le fichier met en avant.
+
+    Le modèle pose ``data-actif`` sur un seul écran et sa feuille de style n'affiche que celui-là.
+    On déplace l'attribut : le fichier conservé ne bouge pas, l'aperçu suit l'onglet ouvert.
+    """
+    if ecran not in ECRANS:
+        return page
+    sans = re.sub(r"\s+data-actif(?=[\s>])", "", page)
+    motif = re.compile(r"<[a-zA-Z][^>]*data-ecran=\"%s\"[^>]*>" % re.escape(ecran))
+    m = motif.search(sans)
+    if not m:
+        return page                      # écran absent du fichier : on ne devine pas
+    balise = m.group(0)
+    return sans[:m.start()] + balise[:-1] + " data-actif>" + sans[m.end():]
 
 
 def parse(content: bytes, filename: str) -> tuple[dict[str, dict[str, str]], list[dict], list[str]]:

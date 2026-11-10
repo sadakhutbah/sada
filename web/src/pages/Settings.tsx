@@ -598,7 +598,7 @@ export default function Settings() {
             {gabarit.present && (
               <div className="mt-0.5 grid gap-1">
                 {/* Même origine, scripts coupés : le fichier importé est une référence, pas du code exécuté. */}
-                <iframe src={gabarit.url} title={t("settings.screensImportPreview")} sandbox="allow-same-origin"
+                <iframe src={`${gabarit.url}&ecran=${ecranVue}`} title={t("settings.screensImportPreview")} sandbox="allow-same-origin"
                   className="aspect-video w-full rounded-[8px] border border-line bg-paper-2" />
                 <p className="m-0 text-[0.7rem] leading-[1.35] text-muted">{t("settings.screensImportCaption")}</p>
               </div>
