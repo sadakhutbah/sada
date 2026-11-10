@@ -104,3 +104,37 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
     assert a["total"] <= tout["total"]
     assert all(int(k["pending"]) > 0 for k in a["items"])
     assert a["pending"] == a["total"]
+
+
+@pytest.mark.parametrize("saisie, attendu", [
+    ("2026", ("date LIKE ?", "2026-%")),
+    ("2026-11", ("date LIKE ?", "2026-11-%")),
+    ("2026-11-06", ("date = ?", "2026-11-06")),
+    ("06/11", ("date LIKE ?", "____-11-06")),
+    ("6/11/2026", ("date = ?", "2026-11-06")),
+    ("novembre", ("date LIKE ?", "____-11-%")),
+    ("fevrier 2025", ("date LIKE ?", "2025-02-%")),
+    ("6 novembre 2026", ("date = ?", "2026-11-06")),
+    ("nov 2026", ("date LIKE ?", "2026-11-%")),
+    ("Novembre 2026", ("date LIKE ?", "2026-11-%")),
+    ("patience", None),          # du texte, pas une date
+    ("11", None),                # un nombre seul n'est pas une date
+    ("", None),
+])
+def test_motif_date(saisie, attendu):
+    """La recherche d'une date doit accepter ce qu'un humain tape, pas le format de la base."""
+    from minbar.backoffice.api_v1 import motif_date
+    assert motif_date(saisie) == attendu
+
+
+def test_recherche_par_date_en_toutes_lettres(env):
+    """« novembre 2026 » ou « 06/11 » doivent trouver les khutbas du jour, comme « 2026-11-06 »."""
+    c = client(env, "admin")
+    jour = c.get("/api/v1/sermons", params={"limit": 200}).json()["items"][0]["date"]
+    assert jour, "le jeu d'essai doit dater ses khutbas"
+    annee, mois, jour_ = jour.split("-")
+    for saisie in (jour, f"{jour_}/{mois}/{annee}", f"{int(jour_)}/{int(mois)}", f"{annee}-{mois}",
+                   annee, f"{mois}/{annee}"):
+        trouve = c.get("/api/v1/sermons", params={"q": saisie, "limit": 200}).json()
+        assert jour in {k["date"] for k in trouve["items"]}, saisie
+    assert c.get("/api/v1/sermons", params={"q": "novembre 1999"}).json()["total"] == 0

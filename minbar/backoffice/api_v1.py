@@ -22,6 +22,73 @@ from .app import (PRE_COOKIE, ConnDep, Ctx, CtxDep, Invalid, NotFound, _sec, cli
 router = APIRouter(prefix="/api/v1", tags=["api"], include_in_schema=False)
 
 PERMISSIONS = tuple(auth.PERMS)
+
+# Ce qu'un humain tape pour une date ne ressemble jamais au format stocké (AAAA-MM-JJ) :
+# « novembre », « nov 2026 », « 6 novembre », « 06/11/2026 », « 2026-11 ». On traduit.
+MOIS = {
+    "janvier": 1, "janv": 1, "jan": 1, "fevrier": 2, "fevr": 2, "fev": 2, "mars": 3,
+    "avril": 4, "avr": 4, "mai": 5, "juin": 6, "juillet": 7, "juil": 7, "aout": 8,
+    "septembre": 9, "sept": 9, "octobre": 10, "oct": 10, "novembre": 11, "nov": 11,
+    "decembre": 12, "dec": 12,
+}
+
+
+def _sans_accent(texte: str) -> str:
+    """« février » doit se chercher aussi bien tapé « fevrier »."""
+    import unicodedata
+    return unicodedata.normalize("NFD", texte).encode("ascii", "ignore").decode().lower()
+
+
+def motif_date(q: str) -> tuple[str, str] | None:
+    """Traduit une recherche de date en condition SQL sur la colonne `date`.
+
+    Rend (fragment, paramètre) ou None si la saisie n'est pas une date. Les formats acceptés :
+    2026, 2026-11, 2026-11-06, 06/11, 6/11/2026, novembre, nov 2026, 6 novembre 2026.
+    """
+    s = _sans_accent(q).strip().strip(".")
+    if not s:
+        return None
+    m = re.fullmatch(r"(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?", s)
+    if m:
+        an, mo, jo = m.groups()
+        if jo:
+            return ("date = ?", f"{an}-{int(mo):02d}-{int(jo):02d}")
+        if mo:
+            return ("date LIKE ?", f"{an}-{int(mo):02d}-%")
+        return ("date LIKE ?", f"{an}-%")
+    m = re.fullmatch(r"(\d{1,2})[/-](\d{4})", s)
+    if m:
+        mo, an = m.groups()
+        return ("date LIKE ?", f"{an}-{int(mo):02d}-%")
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", s)
+    if m:
+        jo, mo, an = m.groups()
+        if an:
+            an = an if len(an) == 4 else f"20{an}"
+            return ("date = ?", f"{an}-{int(mo):02d}-{int(jo):02d}")
+        return ("date LIKE ?", f"____-{int(mo):02d}-{int(jo):02d}")
+    jour = mois = annee = None
+    for mot in (w for w in re.split(r"[\s.,]+", s) if w):
+        if mot.isdigit():
+            if len(mot) == 4:
+                annee = mot
+            else:
+                jour = int(mot)
+        elif mot in MOIS:
+            mois = MOIS[mot]
+        else:
+            return None   # un mot inconnu : ce n'est pas une date, c'est du texte
+    if mois is None:
+        return None
+    if jour and annee:
+        return ("date = ?", f"{annee}-{mois:02d}-{jour:02d}")
+    if jour:
+        return ("date LIKE ?", f"____-{mois:02d}-{jour:02d}")
+    if annee:
+        return ("date LIKE ?", f"{annee}-{mois:02d}-%")
+    return ("date LIKE ?", f"____-{mois:02d}-%")
+
+
 SECTIONS = ("mosque", "logo", "live", "folders", "model", "connectors", "access")
 
 
@@ -176,8 +243,14 @@ def sermons(ctx: CtxDep, q: str = "", pending: int = 0, limit: int = Query(20, g
     where, args = imam_filter(ctx)
     if q.strip():
         motif = f"%{q.strip()}%"
-        where += " AND (k.label LIKE ? OR k.theme LIKE ? OR u.display_name LIKE ? OR k.date LIKE ?)"
-        args = (*args, motif, motif, motif, motif)
+        # Passage, thème et imam se cherchent au texte ; une date se cherche dans ses formats.
+        conditions = [("k.label LIKE ?", motif), ("k.theme LIKE ?", motif),
+                      ("u.display_name LIKE ?", motif), ("k.date LIKE ?", motif)]
+        date = motif_date(q)
+        if date:
+            conditions.append((f"k.{date[0]}", date[1]))
+        where += " AND (" + " OR ".join(c[0] for c in conditions) + ")"
+        args = (*args, *(c[1] for c in conditions))
     if pending:
         where += " AND EXISTS (SELECT 1 FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider')"
     total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "
