@@ -15,6 +15,7 @@ dependencies = [
   "pyzmq",
   "arabic-reshaper",
   "python-bidi",
+  "tzdata; platform_system == 'Windows'",
   "pytest",
   # back-office
   "fastapi[standard]",

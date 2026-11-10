@@ -86,8 +86,22 @@ def local_folder_default(m: dict) -> Path:
 DEFAULT_TZ = "Europe/Paris"
 
 
-def timezone(mosque: dict) -> ZoneInfo:
-    return ZoneInfo(mosque.get("timezone") or DEFAULT_TZ)
+def timezone(mosque: dict) -> dt.tzinfo:
+    """Mosque time zone; on Windows the tz database comes from the tzdata package.
+
+    A bare Windows install has no zoneinfo data at all: rather than crash every preview with
+    ZoneInfoNotFoundError, fall back to the fixed default offset (the tzdata dependency is declared,
+    so this only covers a machine where it is missing)."""
+    key = mosque.get("timezone") or DEFAULT_TZ
+    try:
+        return ZoneInfo(key)
+    except ZoneInfoNotFoundError:
+        if key != DEFAULT_TZ:
+            try:
+                return ZoneInfo(DEFAULT_TZ)
+            except ZoneInfoNotFoundError:
+                pass
+        return dt.timezone(dt.timedelta(hours=1))  # Europe/Paris en hiver
 
 
 def update_mosque(conn, mosque_id: int, **vals) -> None:

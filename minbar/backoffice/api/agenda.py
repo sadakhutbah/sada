@@ -102,7 +102,7 @@ def _agenda_item(raw: dict, idx: int, today: dt.date) -> dict:
 
 def _agenda_today(ctx: Ctx) -> dt.date:
     try:
-        return dt.datetime.now(ZoneInfo(ctx.mosque.get("timezone") or "Europe/Paris")).date()
+        return dt.datetime.now(db.timezone(ctx.mosque)).date()
     except Exception:                                  # noqa: BLE001 — unknown timezone: machine time
         return dt.date.today()
 
