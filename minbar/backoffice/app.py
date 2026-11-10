@@ -24,6 +24,16 @@ HERE = Path(__file__).resolve().parent
 FRONT = HERE.parent.parent / "web" / "dist"
 DOCS = HERE.parent.parent / "docs"
 
+# Ce que l'application sert sous /docs : une seule liste, tenue à jour au même endroit.
+INDEX_DOCS = (
+    ("Mode d'emploi des écrans", "/docs/ecrans-mode-emploi",
+     "ce que sont les six écrans pleins, comment changer leurs textes et ce qui ne marche pas comme on croit"),
+    ("L'orchestrateur et les jetons", "/docs/orchestrateur",
+     "les deux programmes, pourquoi ils se parlent, ce que sont les deux jetons et l'ordre de démarrage"),
+    ("Guide de gabarit d'écrans", "/docs/agent-gabarit-ecrans",
+     "la consigne à donner à un assistant conversationnel pour obtenir un visuel d'écrans à soi"),
+)
+
 
 # ------------------------------------------------------------------ application
 
@@ -159,6 +169,15 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                             headers={"Cache-Control": "private, max-age=300"})
 
     # ---------------------------------------------------------- public guide (for any chat assistant)
+    @app.get("/docs/agent-gabarit-ecrans")
+    def guide_gabarit_page():
+        f = DOCS / "agent-gabarit-ecrans.md"
+        if not f.exists():
+            raise NotFound()
+        return HTMLResponse(docpage.page(f.read_text(encoding="utf-8"),
+                                         titre="Guide de gabarit d'écrans",
+                                         source="/docs/agent-gabarit-ecrans.md"))
+
     @app.get("/docs/agent-gabarit-ecrans.md")
     def guide_gabarit():
         """The guide a mosque hands to any chat assistant. No login: it holds nothing private."""
@@ -177,6 +196,16 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return HTMLResponse(docpage.page(f.read_text(encoding="utf-8"),
                                          titre="Mode d'emploi des écrans",
                                          source="/docs/ecrans-mode-emploi.md"))
+
+    @app.get("/docs")
+    def docs_index():
+        """One page listing every document the application serves, so nobody has to guess a URL."""
+        lignes = ["# Documentation", "",
+                  "Ces documents sont servis par cette instance : ils décrivent ce qu'elle fait,",
+                  "et se mettent à jour avec elle.", ""]
+        for titre, url, resume in INDEX_DOCS:
+            lignes.append(f"- [{titre}]({url}) — {resume}")
+        return HTMLResponse(docpage.page("\n".join(lignes), titre="Documentation", source=None))
 
     @app.get("/docs/orchestrateur")
     def doc_orchestrateur():

@@ -81,7 +81,7 @@ _TEMPLATE = """<!doctype html>
 <div class="banniere">
   <span class="marque">Minbar Live</span><span class="filet"></span>
   <a href="/">Retour au back-office</a>
-  <a href="{source}" style="margin-left:auto">Version texte</a>
+  {lien_texte}
 </div>
 <main>
 {corps}
@@ -218,13 +218,19 @@ def rendre(markdown: str) -> str:
     return "\n".join(blocs)
 
 
-def page(markdown: str, *, titre: str, source: str, lang: str = "fr") -> str:
-    """Page complète, prête à servir en ``text/html``."""
+def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr") -> str:
+    """Page complète, prête à servir en ``text/html``.
+
+    ``source`` est l'adresse de la version texte du même document ; ``None`` quand il n'en existe
+    pas (page d'index) — le lien disparaît alors, plutôt que de pointer vers lui-même.
+    """
     nom = titre
     for ligne in markdown.splitlines():
         if ligne.startswith("# "):
             nom = ligne[2:].strip()
             break
     pied = "Document servi par Minbar Live. Il se met à jour avec l'application."
+    lien = (f'<a href="{html.escape(source, quote=True)}" style="margin-left:auto">Version texte</a>'
+            if source else "")
     return _TEMPLATE.format(lang=lang, title=html.escape(nom), corps=rendre(markdown),
-                            source=html.escape(source, quote=True), pied=pied)
+                            lien_texte=lien, pied=pied)

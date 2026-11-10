@@ -10,6 +10,11 @@ from minbar.backoffice import docpage
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 
 
+def test_une_page_sans_version_texte_n_affiche_pas_le_lien():
+    html = docpage.page("# Titre", titre="x", source=None)
+    assert "Version texte" not in html
+
+
 def test_le_modele_du_back_office_rend_une_page_complete():
     html = docpage.page("# Titre\n\nUn paragraphe.", titre="x", source="/docs/x.md")
     assert html.startswith("<!doctype html>")

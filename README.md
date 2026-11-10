@@ -67,6 +67,23 @@ Les gabarits acceptent des variables remplacées au moment du rendu : `{heure}` 
 `{date}`, `{jour}`, `{cours}`, `{titre}`, `{mosquee}`. Un écran dont la variable n'existe pas à ce
 moment-là n'affiche pas la ligne, au lieu d'une phrase tronquée.
 
+## Documentation servie par l'application
+
+Trois documents s'adressent à l'administrateur, pas au développeur. Ils sont servis par l'instance
+elle-même (`/docs` les liste) et se mettent à jour avec elle : pas de PDF à retrouver, pas de version
+qui traîne.
+
+| Adresse | Contenu |
+| --- | --- |
+| `/docs` | la liste des documents |
+| `/docs/ecrans-mode-emploi` | les six écrans pleins : à quoi ils servent, comment changer leurs textes, ce qu'ils ne savent pas faire |
+| `/docs/orchestrateur` | les deux programmes, pourquoi ils se parlent, les deux jetons, l'ordre de démarrage |
+| `/docs/agent-gabarit-ecrans` | la consigne à coller dans un assistant conversationnel pour obtenir un gabarit d'écrans à soi |
+
+Chaque page existe aussi en version texte (`…​.md`) pour être collée dans un chat. Le rendu Markdown
+vit dans `minbar/backoffice/docpage.py`, sans dépendance : il échappe le HTML du document et refuse
+les liens `javascript:`. Les documents sources sont dans `docs/`.
+
 ## Programme : dars et conférences
 
 Outre les khutbas du vendredi (horaires Mawaqit), l'orchestrateur suit un programme de dars et de
