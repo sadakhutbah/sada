@@ -244,12 +244,18 @@ def users(ctx: CtxDep):
 
 
 @router.get("/audit")
-def audit(ctx: CtxDep, action: str = "", limit: int = Query(100, ge=1, le=500)):
+def audit(ctx: CtxDep, action: str = "", limit: int = Query(25, ge=1, le=200), offset: int = Query(0, ge=0)):
+    """Journal, page par page : le journal d'une mosquée ne tient pas sur un écran."""
     ctx.require("journal")
+    filtre = "(mosque_id = ? AND (? = '' OR action LIKE ? || '%'))"
     rows = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
-                             "WHERE a.mosque_id = ? AND (? = '' OR a.action LIKE ? || '%') ORDER BY a.id DESC LIMIT ?",
-                   ctx.mosque["id"], action, action, limit)
-    return {"items": rows, "count": len(rows), "labels": AUDIT_LABELS}
+                             "WHERE a.mosque_id = ? AND (? = '' OR a.action LIKE ? || '%') "
+                             "ORDER BY a.id DESC LIMIT ? OFFSET ?",
+                   ctx.mosque["id"], action, action, limit, offset)
+    total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM audit WHERE {filtre}",
+                    ctx.mosque["id"], action, action) or {"n": 0})["n"]
+    return {"items": rows, "count": len(rows), "total": total, "offset": offset, "limit": limit,
+            "labels": AUDIT_LABELS}
 
 
 @router.get("/folders")

@@ -93,7 +93,13 @@ const fr = {
     readonly: "Lecture seule pour l'instant : les formulaires d'écriture arrivent avec la suite du passage React.",
   },
   users: { title: "Comptes", user: "Identifiant", name: "Nom affiché", role: "Rôle", active: "Actif", last: "Dernière connexion" },
-  audit: { title: "Journal", when: "Quand", who: "Qui", action: "Action", object: "Objet", ip: "Adresse" },
+  audit: {
+    title: "Journal", when: "Quand", who: "Qui", action: "Action", object: "Objet", ip: "Adresse",
+    count: "{{n}} entrées", filtered: "filtré", filter: "Filtrer par action", all: "Toutes les actions",
+    filterHelp: "Le journal se lit page par page ; le filtre s'applique sur toute la mosquée.",
+    previous: "Précédent", next: "Suivant", page: "Page {{n}} sur {{total}}",
+    objects: { clip: "Clip", khutba: "Khutba", utilisateur: "Compte", mosquee: "Mosquée", mosque: "Mosquée", session: "Session", connecteur: "Connecteur", tous: "Toutes" },
+  },
 };
 
 const en: typeof fr = {
@@ -185,7 +191,13 @@ const en: typeof fr = {
     readonly: "Read-only for now: the write forms arrive with the rest of the React migration.",
   },
   users: { title: "Users", user: "Username", name: "Display name", role: "Role", active: "Active", last: "Last sign-in" },
-  audit: { title: "Log", when: "When", who: "Who", action: "Action", object: "Object", ip: "Address" },
+  audit: {
+    title: "Log", when: "When", who: "Who", action: "Action", object: "Object", ip: "Address",
+    count: "{{n}} entries", filtered: "filtered", filter: "Filter by action", all: "All actions",
+    filterHelp: "The log reads page by page; the filter covers the whole mosque.",
+    previous: "Previous", next: "Next", page: "Page {{n}} of {{total}}",
+    objects: { clip: "Clip", khutba: "Sermon", utilisateur: "Account", mosquee: "Mosque", mosque: "Mosque", session: "Session", connecteur: "Connector", tous: "All" },
+  },
 };
 
 export const LANGUAGES = [

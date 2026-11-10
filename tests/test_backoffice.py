@@ -197,6 +197,24 @@ def test_matrice_des_droits(env, role, url, code):
     assert client(env, role).get(f"/api/v1{url}").status_code == code
 
 
+def test_le_journal_se_lit_page_par_page(env):
+    """Journal paginé : le total filtré vient du serveur, la page suivante ne répète pas la précédente."""
+    from minbar.backoffice import db as _db
+    c = client(env, "admin")
+    for i in range(40):
+        _db.audit(env["conn"], env["mid"], None, "live.commande", commande=f"cmd{i}")
+    d = c.get("/api/v1/audit?limit=10").json()
+    assert d["total"] >= 40 and d["count"] == 10 and d["offset"] == 0
+    assert d["labels"]["live.commande"] == "Commande live"
+    page2 = c.get("/api/v1/audit?limit=10&offset=10").json()
+    assert page2["total"] == d["total"]
+    assert not ({a["id"] for a in page2["items"]} & {a["id"] for a in d["items"]})
+    filtre = c.get("/api/v1/audit?action=live.commande&limit=5").json()
+    assert filtre["total"] == 40 and all(a["action"] == "live.commande" for a in filtre["items"])
+    # l'imam n'a pas le journal : la page ne lui est pas proposée
+    assert client(env, "imam").get("/api/v1/audit").status_code == 403
+
+
 def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
     """Écran de lecture : la vidéo se sert, la fiche porte les segments et l'historique en clair."""
     c = client(env, "admin")

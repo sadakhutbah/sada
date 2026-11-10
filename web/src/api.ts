@@ -62,7 +62,9 @@ export const api = {
   publications: () => demande<any>("/publications"),
   settings: () => demande<any>("/settings"),
   users: () => demande<any>("/users"),
-  audit: () => demande<{ items: any[] }>("/audit"),
+  audit: (page = 0, taille = 25, action = "") =>
+    demande<{ items: any[]; total: number; labels: Record<string, string> }>(
+      `/audit?limit=${taille}&offset=${page * taille}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
   folders: (path = "") => demande<any>(`/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
 
   // Écritures
