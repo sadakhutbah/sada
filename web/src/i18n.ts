@@ -31,6 +31,7 @@ const fr = {
     noTheme: "Thème non renseigné", noImam: "Imam non renseigné",
     search: "Rechercher un passage, un thème, un imam, une date…", searchSummary: "{{n}} résultat(s) pour « {{q}} »",
     searchEmpty: "Rien ne correspond à « {{q}} ».", shown: "{{n}} sur {{total}} affichées", loadMore: "Afficher les {{n}} suivantes",
+    showAll: "Tout afficher", clearSearch: "Effacer la recherche",
     detail: {
       hours: "Horaires", length: "Durée", saved: "Enregistré.",
       seekHelp: "Cliquez une ligne : la vidéo s'y place et démarre.",
@@ -150,6 +151,7 @@ const en: typeof fr = {
     noTheme: "No theme set", noImam: "Imam not set",
     search: "Search a passage, a theme, an imam, a date…", searchSummary: "{{n}} result(s) for “{{q}}”",
     searchEmpty: "Nothing matches “{{q}}”.", shown: "{{n}} of {{total}} shown", loadMore: "Show the next {{n}}",
+    showAll: "Show all", clearSearch: "Clear search",
     detail: {
       hours: "Time", length: "Length", saved: "Saved.",
       seekHelp: "Click a line: the video jumps there and plays.",

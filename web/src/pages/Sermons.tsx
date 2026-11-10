@@ -7,7 +7,9 @@ import { Btn, Pill, Segmented, inputClass } from "../ui";
 /** Liste des khutbas : regroupées par mois, une ligne lisible par khutba (date, passage, imam, thème).
  *  Seul ce qui demande une action ressort : les clips à valider. Toute la ligne ouvre la fiche.
  *  La recherche, le filtre et les pages sont faits par le serveur : une mosquée accumule des années
- *  de khutbas, la page ne doit pas charger l'archive entière pour en afficher vingt. */
+ *  de khutbas, la page ne doit pas charger l'archive entière pour en afficher vingt.
+ *  Mise en page : un en-tête (titre + compte), une seule barre d'outils (recherche + filtre),
+ *  puis une seule surface continue où les mois sont des intercalaires — pas une carte par mois. */
 
 const TAILLE = 20; // khutbas par page
 
@@ -65,37 +67,9 @@ export default function Sermons() {
       .finally(() => setCharge(false));
   };
 
-  const entete = (
-    <div>
-      <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("sermons.title")}</h1>
-      {items && (
-        <p className="mt-1.5 mb-0 text-[0.95rem] text-muted">
-          {recherche ? t("sermons.searchSummary", { n: total, q: recherche }) : t("sermons.summary", { n: total })}
-          {enAttente > 0 && (
-            <>
-              {" · "}
-              <span className="font-semibold text-warn">{t("sermons.pendingTotal", { n: enAttente })}</span>
-            </>
-          )}
-        </p>
-      )}
-    </div>
-  );
-
-  if (!items) {
-    return (
-      <div className="grid gap-6">
-        <header className="grid gap-3">{entete}</header>
-        <div className="grid gap-2" aria-label={t("common.loading")}>
-          {[0, 1, 2].map((i) => <div key={i} className="h-[74px] animate-pulse rounded-[10px] bg-paper-2" />)}
-        </div>
-      </div>
-    );
-  }
-
   // Regroupement par mois, dans l'ordre reçu du serveur.
   const groupes = new Map<string, any[]>();
-  for (const k of items) {
+  for (const k of items ?? []) {
     const cle = String(k.date ?? "").slice(0, 7);
     groupes.set(cle, [...(groupes.get(cle) ?? []), k]);
   }
@@ -104,66 +78,146 @@ export default function Sermons() {
     return d ? majuscule(new Intl.DateTimeFormat(i18n.language, { month: "long", year: "numeric" }).format(d)) : "—";
   };
 
-  return (
-    <div className="grid gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        {entete}
-        <Segmented
-          valeur={filtre}
-          onChange={setFiltre}
-          items={[
-            { cle: "toutes", label: t("sermons.filterAll"), compte: enAttente ? total : undefined },
-            { cle: "a_valider", label: t("sermons.pending"), compte: enAttente, eteint: enAttente === 0 },
-          ]}
-        />
-      </header>
+  const filtreActif = Boolean(recherche) || filtre !== "toutes";
 
-      {/* Recherche : passage, thème, imam ou date. */}
-      <div className="relative">
-        <input
-          type="search"
-          className={`${inputClass} w-full py-2.5 pl-10`}
-          placeholder={t("sermons.search")}
-          value={saisie}
-          onChange={(e) => setSaisie(e.target.value)}
-          aria-label={t("sermons.search")}
-        />
-        <span aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted">⌕</span>
+  return (
+    <div className="grid gap-5">
+      {/* En-tête : le titre, puis ce qu'on regarde en un chiffre. Une seule ligne de lecture. */}
+      <div className="grid gap-4">
+        <header className="grid gap-1">
+          <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("sermons.title")}</h1>
+          {/* Hauteur réservée : le titre ne saute pas quand le compte disparaît pendant un chargement. */}
+          <p className="m-0 min-h-[1.45rem] text-[0.95rem] text-muted">
+            {items ? (
+              <>
+                {/* Les onglets portent déjà le compte « à valider » : le rappeler ici serait redondant. */}
+                {recherche ? t("sermons.searchSummary", { n: total, q: recherche }) : t("sermons.summary", { n: total })}
+                {filtre === "a_valider" && <span className="text-warn"> · {t("sermons.pendingTotal", { n: total })}</span>}
+              </>
+            ) : (
+              <span aria-hidden className="block h-[0.75rem] w-40 animate-pulse rounded-full bg-paper-2/70" />
+            )}
+          </p>
+        </header>
+
+        {/* Barre d'outils : chercher et filtrer sont le même geste, donc la même ligne. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5">
+          <div className="relative min-w-[16rem] flex-1">
+            <svg
+              aria-hidden
+              viewBox="0 0 20 20"
+              className="pointer-events-none absolute top-1/2 left-3.5 size-[1.05rem] -translate-y-1/2 text-muted"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            >
+              <circle cx="8.8" cy="8.8" r="5.3" />
+              <path d="m12.9 12.9 3.4 3.4" strokeLinecap="round" />
+            </svg>
+            <input
+              type="search"
+              className={`${inputClass} h-11 w-full pr-11 pl-10 placeholder:text-muted/80 [&::-webkit-search-cancel-button]:appearance-none`}
+              placeholder={t("sermons.search")}
+              value={saisie}
+              onChange={(e) => setSaisie(e.target.value)}
+              aria-label={t("sermons.search")}
+            />
+            {saisie && (
+              <button
+                type="button"
+                onClick={() => setSaisie("")}
+                aria-label={t("sermons.clearSearch")}
+                className="absolute top-1/2 right-2.5 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-full border-0 bg-paper-2 text-muted transition-colors hover:bg-line hover:text-ink"
+              >
+                <span aria-hidden className="text-[0.95rem] leading-none">×</span>
+              </button>
+            )}
+          </div>
+
+          <div className="shrink-0 [&>div]:mb-0">
+            <Segmented
+              valeur={filtre}
+              onChange={setFiltre}
+              items={[
+                { cle: "toutes", label: t("sermons.filterAll"), compte: enAttente ? total : undefined },
+                { cle: "a_valider", label: t("sermons.pending"), compte: enAttente, eteint: enAttente === 0 },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
-      {items.length === 0 ? (
-        <div className="rounded-[10px] border border-dashed border-line bg-white/60 px-6 py-14 text-center">
-          <p className="m-0 text-muted">
+      {!items ? (
+        /* Chargement : la même silhouette que les lignes, pour que rien ne saute à l'arrivée. */
+        <div className="grid gap-2" aria-busy="true" aria-label={t("common.loading")}>
+          <div className="h-3 w-28 animate-pulse rounded-full bg-paper-2" />
+          <div className="divide-y divide-line overflow-hidden rounded-[10px] border border-line bg-white">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3.5 sm:px-5">
+                <div className="grid w-[2.6rem] shrink-0 justify-items-center gap-1.5 border-r border-line pr-3">
+                  <div className="h-1.5 w-6 animate-pulse rounded bg-paper-2" />
+                  <div className="h-4 w-5 animate-pulse rounded bg-paper-2" />
+                  <div className="h-1.5 w-6 animate-pulse rounded bg-paper-2" />
+                </div>
+                <div className="grid flex-1 gap-2">
+                  <div className="h-3 w-[45%] animate-pulse rounded bg-paper-2" />
+                  <div className="h-2.5 w-[65%] animate-pulse rounded bg-paper-2/70" />
+                </div>
+                <div className="hidden h-5 w-16 animate-pulse rounded-full bg-paper-2 sm:block" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-[10px] border border-dashed border-line bg-white/60 px-6 py-16 text-center">
+          <p className="mx-auto max-w-[54ch] text-[1.02rem] leading-relaxed text-muted">
             {recherche ? t("sermons.searchEmpty", { q: recherche })
               : filtre === "a_valider" ? t("sermons.noPending") : t("sermons.empty")}
           </p>
+          {filtreActif && (
+            <Btn variante="ghost" className="mt-4" onClick={() => { setSaisie(""); setFiltre("toutes"); }}>
+              {t("sermons.showAll")}
+            </Btn>
+          )}
         </div>
       ) : (
-        [...groupes.entries()].map(([cle, lignes]) => (
-          <section key={cle} className="grid gap-2">
-            <h2 className="m-0 flex items-baseline gap-2 text-[0.78rem] font-semibold uppercase tracking-[0.12em] text-green">
-              {titreMois(cle)}
-              <span className="font-normal tracking-normal text-muted tabular-nums">{lignes.length}</span>
-            </h2>
-            <ul className="m-0 list-none divide-y divide-line overflow-hidden rounded-[10px] border border-line bg-white p-0">
-              {lignes.map((k) => (
-                <li key={k.id}>
-                  <LigneKhutba k={k} langue={i18n.language} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
+        /* Une seule surface : les mois sont des intercalaires, pas des cartes empilées. */
+        <div className="overflow-hidden rounded-[10px] border border-line bg-white">
+          {[...groupes.entries()].map(([cle, lignes], i) => (
+            <section key={cle}>
+              <h2
+                className={`m-0 flex items-baseline gap-2.5 bg-paper-2/55 px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-green sm:px-5 ${
+                  i > 0 ? "border-t border-line" : ""
+                }`}
+              >
+                <span>{titreMois(cle)}</span>
+                <span className="ml-auto font-normal tracking-normal tabular-nums text-muted">{lignes.length}</span>
+              </h2>
+              <ul className="m-0 list-none divide-y divide-line/80 p-0">
+                {lignes.map((k) => (
+                  <li key={k.id}>
+                    <LigneKhutba k={k} langue={i18n.language} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
 
       {/* La suite ne se devine pas : le serveur a dit combien il en reste. */}
-      {items.length < total && (
+      {items && items.length > 0 && items.length < total && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-[0.85rem] text-muted tabular-nums">
+          <span className="text-[0.85rem] tabular-nums text-muted">
             {t("sermons.shown", { n: items.length, total })}
           </span>
           <Btn variante="ghost" disabled={charge} onClick={plus}>
             {charge ? t("common.loading") : t("sermons.loadMore", { n: Math.min(TAILLE, total - items.length) })}
+            {!charge && (
+              <svg aria-hidden viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M8 3v9.5m0 0L4.2 8.8M8 12.5l3.8-3.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
           </Btn>
         </div>
       )}
@@ -171,42 +225,51 @@ export default function Sermons() {
   );
 }
 
-/** Une khutba : pavé de date, puis passage · imam et thème ; à droite ce qui attend une action. */
+/** Une khutba : la date en marge, détachée par un filet ; passage · imam, puis le thème ;
+ *  à droite ce qui attend une action (clips à valider), sinon le nombre de clips. */
 function LigneKhutba({ k, langue }: { k: any; langue: string }) {
   const { t } = useTranslation();
   const d = jour(k.date);
   const fmt = (o: Intl.DateTimeFormatOptions) => (d ? new Intl.DateTimeFormat(langue, o).format(d).replace(".", "") : "");
   const pending = Number(k.pending) || 0;
+  const clips = Number(k.clips) || 0;
 
   return (
     <Link
       to={`/khutbas/${k.id}`}
-      className="group grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-4 px-4 py-3.5 text-inherit no-underline transition-colors hover:bg-paper-2/60 sm:px-5"
+      className="group grid grid-cols-[2.9rem_minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 text-inherit no-underline transition-colors hover:bg-paper-2/50 focus-visible:bg-paper-2/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-leaf sm:gap-x-5 sm:px-5"
     >
-      <span className="grid justify-items-center rounded-[8px] border border-line bg-paper py-1.5 leading-none">
-        <span className="text-[0.64rem] font-semibold uppercase tracking-[0.1em] text-muted">{fmt({ weekday: "short" })}</span>
-        <span className="mt-1 font-serif text-[1.65rem] leading-none text-deeper">{d ? d.getDate() : "—"}</span>
-        <span className="mt-1 text-[0.64rem] font-semibold uppercase tracking-[0.1em] text-muted">{fmt({ month: "short" })}</span>
+      <span className="flex h-full flex-col items-center justify-center gap-0.5 border-r border-line/80 pr-3 group-hover:border-green/40">
+        <span className="text-[0.6rem] font-semibold uppercase leading-none tracking-[0.12em] text-muted">{fmt({ weekday: "short" })}</span>
+        <span className="mt-1 font-serif text-[1.5rem] leading-none tabular-nums text-deeper">{d ? d.getDate() : "—"}</span>
+        <span className="mt-1 text-[0.6rem] font-semibold uppercase leading-none tracking-[0.12em] text-muted">{fmt({ month: "short" })}</span>
       </span>
 
       <span className="min-w-0">
-        <span className="flex flex-wrap items-baseline gap-x-2">
-          <span className="font-semibold text-deep">{k.label}</span>
-          <span className="text-[0.88rem] text-muted">· {k.imam || t("sermons.noImam")}</span>
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span className="font-semibold leading-snug text-deep transition-colors group-hover:text-green">{k.label}</span>
+          <span className="min-w-0 truncate text-[0.85rem] text-muted">· {k.imam || t("sermons.noImam")}</span>
         </span>
-        <span className={`mt-0.5 block truncate text-[0.93rem] ${k.theme ? "text-ink" : "italic text-muted"}`}>
+        <span className={`mt-0.5 block truncate text-[0.92rem] leading-snug ${k.theme ? "text-ink/85" : "italic text-muted"}`}>
           {k.theme || t("sermons.noTheme")}
         </span>
       </span>
 
-      <span className="flex items-center gap-3">
+      <span className="flex shrink-0 items-center justify-self-end gap-3">
         {pending > 0 && <Pill statut="a_valider" label={t("sermons.pendingCount", { n: pending })} />}
-        <span className="hidden text-[0.85rem] tabular-nums text-muted sm:inline">
-          {t("sermons.detail.clipCount", { n: Number(k.clips) || 0 })}
+        <span className="hidden whitespace-nowrap text-[0.82rem] tabular-nums text-muted sm:inline">
+          {t("sermons.detail.clipCount", { n: clips })}
         </span>
-        <span aria-hidden className="text-[1.2rem] leading-none text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-deep">
-          ›
-        </span>
+        <svg
+          aria-hidden
+          viewBox="0 0 16 16"
+          className="size-4 text-muted/70 transition-transform group-hover:translate-x-0.5 group-hover:text-deep"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+        >
+          <path d="M6 3.5 10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </span>
     </Link>
   );
