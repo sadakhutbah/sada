@@ -23,95 +23,6 @@ router = APIRouter(prefix="/api/v1", tags=["api"], include_in_schema=False)
 
 PERMISSIONS = tuple(auth.PERMS)
 
-# Ce qu'un humain tape pour une date ne ressemble jamais au format stocké (AAAA-MM-JJ) :
-# « novembre », « nov 2026 », « 6 novembre », « 06/11/2026 », « 2026-11 ». On traduit.
-MOIS = {
-    "janvier": 1, "janv": 1, "jan": 1, "fevrier": 2, "fevr": 2, "fev": 2, "mars": 3,
-    "avril": 4, "avr": 4, "mai": 5, "juin": 6, "juillet": 7, "juil": 7, "aout": 8,
-    "septembre": 9, "sept": 9, "octobre": 10, "oct": 10, "novembre": 11, "nov": 11,
-    "decembre": 12, "dec": 12,
-}
-
-
-def _sans_accent(texte: str) -> str:
-    """« février » doit se chercher aussi bien tapé « fevrier »."""
-    import unicodedata
-    return unicodedata.normalize("NFD", texte).encode("ascii", "ignore").decode().lower()
-
-
-def motif_date(q: str) -> tuple[str, str] | None:
-    """Traduit une recherche de date en condition SQL sur la colonne `date`.
-
-    Rend (fragment, paramètre) ou None si la saisie n'est pas une date. Les formats acceptés :
-    2026, 2026-11, 2026-11-06, 06/11, 6/11/2026, novembre, nov 2026, 6 novembre 2026.
-    """
-    s = _sans_accent(q).strip().strip(".")
-    if not s:
-        return None
-    m = re.fullmatch(r"(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?", s)
-    if m:
-        an, mo, jo = m.groups()
-        if jo:
-            return ("date = ?", f"{an}-{int(mo):02d}-{int(jo):02d}")
-        if mo:
-            return ("date LIKE ?", f"{an}-{int(mo):02d}-%")
-        return ("date LIKE ?", f"{an}-%")
-    m = re.fullmatch(r"(\d{1,2})[/-](\d{4})", s)
-    if m:
-        mo, an = m.groups()
-        return ("date LIKE ?", f"{an}-{int(mo):02d}-%")
-    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", s)
-    if m:
-        jo, mo, an = m.groups()
-        if an:
-            an = an if len(an) == 4 else f"20{an}"
-            return ("date = ?", f"{an}-{int(mo):02d}-{int(jo):02d}")
-        return ("date LIKE ?", f"____-{int(mo):02d}-{int(jo):02d}")
-    jour = mois = annee = None
-    for mot in (w for w in re.split(r"[\s.,]+", s) if w):
-        if mot.isdigit():
-            if len(mot) == 4:
-                annee = mot
-            else:
-                jour = int(mot)
-        elif mot in MOIS:
-            mois = MOIS[mot]
-        else:
-            return None   # un mot inconnu : ce n'est pas une date, c'est du texte
-    if mois is None:
-        return None
-    if jour and annee:
-        return ("date = ?", f"{annee}-{mois:02d}-{jour:02d}")
-    if jour:
-        return ("date LIKE ?", f"____-{mois:02d}-{jour:02d}")
-    if annee:
-        return ("date LIKE ?", f"{annee}-{mois:02d}-%")
-    return ("date LIKE ?", f"____-{mois:02d}-%")
-
-
-def analyse_recherche(q: str) -> tuple[str, tuple[str, str] | None]:
-    """Sépare ce qui désigne une date de ce qui désigne du texte.
-
-    « confiance 2026 » cherche le mot dans les khutbas de 2026 : les deux conditions se cumulent.
-    Rend (texte à chercher, condition de date ou None)."""
-    complet = motif_date(q)
-    if complet:
-        return "", complet
-    mots = [m for m in re.split(r"\s+", q.strip()) if m]
-    mois_vu = any(_sans_accent(m).strip(".,") in MOIS for m in mots)
-    dateux, texte = [], []
-    for mot in mots:
-        nu = _sans_accent(mot).strip(".,")
-        dater = (nu in MOIS
-                 or (nu.isdigit() and (len(nu) == 4 or mois_vu))   # un « 6 » n'est un jour que près d'un mois
-                 or bool(re.fullmatch(r"\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?", nu)))
-        (dateux if dater else texte).append(mot)
-    cond = motif_date(" ".join(dateux)) if dateux else None
-    if cond is None:
-        return q.strip(), None      # rien d'exploitable comme date : tout est du texte
-    return " ".join(texte), cond
-
-
 SECTIONS = ("mosque", "logo", "live", "folders", "model", "connectors", "access")
 
 
@@ -255,29 +166,37 @@ def dashboard(ctx: CtxDep):
                               for k, c in live.COMMANDS.items()]}
 
 
+@router.get("/sermons/mois")
+def sermon_months(ctx: CtxDep):
+    """Les mois qui contiennent des khutbas, du plus récent au plus ancien, avec leur compte.
+
+    Le sélecteur de période se construit sur ce que la mosquée a réellement : pas de mois vide,
+    pas de calendrier à parcourir, et aucune saisie de date à deviner."""
+    where, args = imam_filter(ctx)
+    items = db.all_(ctx.conn, f"SELECT substr(k.date, 1, 7) mois, COUNT(*) n FROM khutbas k "
+                              f"LEFT JOIN users u ON u.id = k.imam_id "
+                              f"WHERE {where} AND k.date IS NOT NULL AND k.date != '' "
+                              f"GROUP BY mois ORDER BY mois DESC", *args)
+    return {"items": items}
+
+
 @router.get("/sermons")
-def sermons(ctx: CtxDep, q: str = "", pending: int = 0, limit: int = Query(20, ge=1, le=200),
-            offset: int = Query(0, ge=0)):
+def sermons(ctx: CtxDep, q: str = "", mois: str = "", pending: int = 0,
+            limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)):
     """Khutbas, de la plus récente à la plus ancienne.
 
-    Une mosquée accumule des années de khutbas : la liste se cherche (`q` sur le passage, le thème,
-    l'imam et la date), se filtre (`pending` : seulement celles qui attendent une validation) et se
-    pagine. Le total filtré est renvoyé pour que le front sache s'il reste des pages, sans deviner."""
+    Une mosquée accumule des années de khutbas : la liste se cherche (`q` sur le passage, le thème
+    et l'imam), se restreint à un mois (`mois` au format AAAA-MM, choisi dans la liste des mois
+    existants), se filtre (`pending` : seulement celles qui attendent une validation) et se pagine.
+    Le total filtré est renvoyé pour que le front sache s'il reste des pages, sans deviner."""
     where, args = imam_filter(ctx)
     if q.strip():
-        # Passage, thème et imam se cherchent au texte ; une date se cherche dans ses formats.
-        # Les deux se cumulent : « confiance 2026 » restreint le mot à l'année.
-        texte, date = analyse_recherche(q)
-        blocs = []
-        if texte:
-            motif = f"%{texte}%"
-            blocs.append("(k.label LIKE ? OR k.theme LIKE ? OR u.display_name LIKE ?)")
-            args = (*args, motif, motif, motif)
-        if date:
-            blocs.append(f"k.{date[0]}")
-            args = (*args, date[1])
-        if blocs:
-            where += " AND " + " AND ".join(blocs)
+        motif = f"%{q.strip()}%"
+        where += " AND (k.label LIKE ? OR k.theme LIKE ? OR u.display_name LIKE ?)"
+        args = (*args, motif, motif, motif)
+    if mois and re.fullmatch(r"\d{4}-\d{2}", mois):
+        where += " AND substr(k.date, 1, 7) = ?"
+        args = (*args, mois)
     if pending:
         where += " AND EXISTS (SELECT 1 FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider')"
     total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "

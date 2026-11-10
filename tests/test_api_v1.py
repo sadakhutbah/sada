@@ -93,10 +93,10 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
     assert p1["total"] == p2["total"] == tout["total"] and len(p1["items"]) == len(p2["items"]) == 2
     assert {k["id"] for k in p1["items"]}.isdisjoint({k["id"] for k in p2["items"]})
 
-    # Recherche : thème, date, et rien du tout.
+    # Recherche : le texte porte sur le passage, le thème et l'imam — les dates ont leur sélecteur.
     r = c.get("/api/v1/sermons", params={"q": "patience"}).json()
     assert r["total"] >= 2 and all("patience" in (k["theme"] or "").lower() for k in r["items"])
-    assert c.get("/api/v1/sermons", params={"q": "2024-02"}).json()["total"] == 1
+    assert c.get("/api/v1/sermons", params={"q": "Passage 3"}).json()["total"] == 1
     assert c.get("/api/v1/sermons", params={"q": "introuvable"}).json()["total"] == 0
 
     # Filtre « à valider » : ne renvoie que des khutbas qui ont au moins un clip en attente.
@@ -106,65 +106,24 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
     assert a["pending"] == a["total"]
 
 
-@pytest.mark.parametrize("saisie, attendu", [
-    ("2026", ("date LIKE ?", "2026-%")),
-    ("2026-11", ("date LIKE ?", "2026-11-%")),
-    ("2026-11-06", ("date = ?", "2026-11-06")),
-    ("06/11", ("date LIKE ?", "____-11-06")),
-    ("6/11/2026", ("date = ?", "2026-11-06")),
-    ("novembre", ("date LIKE ?", "____-11-%")),
-    ("fevrier 2025", ("date LIKE ?", "2025-02-%")),
-    ("6 novembre 2026", ("date = ?", "2026-11-06")),
-    ("nov 2026", ("date LIKE ?", "2026-11-%")),
-    ("Novembre 2026", ("date LIKE ?", "2026-11-%")),
-    ("patience", None),          # du texte, pas une date
-    ("11", None),                # un nombre seul n'est pas une date
-    ("", None),
-])
-def test_motif_date(saisie, attendu):
-    """La recherche d'une date doit accepter ce qu'un humain tape, pas le format de la base."""
-    from minbar.backoffice.api_v1 import motif_date
-    assert motif_date(saisie) == attendu
-
-
-def test_recherche_par_date_en_toutes_lettres(env):
-    """« novembre 2026 » ou « 06/11 » doivent trouver les khutbas du jour, comme « 2026-11-06 »."""
+def test_mois_de_la_liste(env):
+    """Le sélecteur de période s'adosse aux mois réellement présents, avec leur compte."""
     c = client(env, "admin")
-    jour = c.get("/api/v1/sermons", params={"limit": 200}).json()["items"][0]["date"]
-    assert jour, "le jeu d'essai doit dater ses khutbas"
-    annee, mois, jour_ = jour.split("-")
-    for saisie in (jour, f"{jour_}/{mois}/{annee}", f"{int(jour_)}/{int(mois)}", f"{annee}-{mois}",
-                   annee, f"{mois}/{annee}"):
-        trouve = c.get("/api/v1/sermons", params={"q": saisie, "limit": 200}).json()
-        assert jour in {k["date"] for k in trouve["items"]}, saisie
-    assert c.get("/api/v1/sermons", params={"q": "novembre 1999"}).json()["total"] == 0
+    tout = c.get("/api/v1/sermons", params={"limit": 200}).json()["items"]
+    attendus = {}
+    for k in tout:
+        if k["date"]:
+            attendus[k["date"][:7]] = attendus.get(k["date"][:7], 0) + 1
+    r = c.get("/api/v1/sermons/mois").json()["items"]
+    assert r and {m["mois"]: m["n"] for m in r} == attendus
+    assert [m["mois"] for m in r] == sorted(attendus, reverse=True)   # du plus récent au plus ancien
 
 
-@pytest.mark.parametrize("saisie, texte, date_attendue", [
-    ("confiance", "confiance", None),
-    ("confiance 2026", "confiance", ("date LIKE ?", "2026-%")),
-    ("2026 confiance", "confiance", ("date LIKE ?", "2026-%")),
-    ("6 novembre 2026", "", ("date = ?", "2026-11-06")),
-    ("novembre patience", "patience", ("date LIKE ?", "____-11-%")),
-    ("Passage 2", "Passage 2", None),          # « 2 » seul n'est pas une date
-])
-def test_analyse_recherche(saisie, texte, date_attendue):
-    """Un mot et une date dans la même saisie se cumulent au lieu de s'exclure."""
-    from minbar.backoffice.api_v1 import analyse_recherche
-    assert analyse_recherche(saisie) == (texte, date_attendue)
-
-
-def test_recherche_motifiee_par_date(env):
-    """« patience 2024 » ne sort que les khutbas de 2024 : le mot ne s'applique qu'à cette année."""
+def test_filtre_par_mois(env):
+    """Choisir un mois ne renvoie que ce mois-là, et la recherche texte se cumule avec."""
     c = client(env, "admin")
-    conn = env["conn"]
-    base = conn.execute("SELECT mosque_id, output_dir, date FROM khutbas LIMIT 1").fetchone()
-    conn.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, theme, date, output_dir, "
-                 "imported_at) VALUES (?, 'essai-date', 0, 'Passage', 'la patience', '2024-03-08', ?, "
-                 "datetime('now'))", (base["mosque_id"], base["output_dir"]))
-    conn.commit()
-    an2024 = c.get("/api/v1/sermons", params={"q": "patience 2024"}).json()
-    assert an2024["total"] == 1 and an2024["items"][0]["date"] == "2024-03-08"
-    an2026 = c.get("/api/v1/sermons", params={"q": "patience 2026"}).json()
-    assert an2026["total"] < c.get("/api/v1/sermons", params={"q": "patience"}).json()["total"]
-    assert all(k["date"].startswith("2026") for k in an2026["items"])
+    mois = c.get("/api/v1/sermons/mois").json()["items"][0]["mois"]
+    trouve = c.get("/api/v1/sermons", params={"mois": mois, "limit": 200}).json()
+    assert trouve["total"] > 0 and all(k["date"].startswith(mois) for k in trouve["items"])
+    assert c.get("/api/v1/sermons", params={"mois": "1999-01"}).json()["total"] == 0
+    assert c.get("/api/v1/sermons", params={"mois": "n'importe quoi"}).json()["total"] > 0

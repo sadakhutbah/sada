@@ -29,9 +29,10 @@ const fr = {
     summary: "{{n}} khutba(s) archivée(s)", pendingTotal: "{{n}} khutba(s) à valider", pendingCount: "{{n}} à valider",
     filterAll: "Toutes", noPending: "Aucune khutba n'attend de validation.", empty: "Aucune khutba archivée pour l'instant.",
     noTheme: "Thème non renseigné", noImam: "Imam non renseigné",
-    search: "Passage, thème, imam — ou une date : novembre, 2026, 06/11…", searchSummary: "{{n}} résultat(s) pour « {{q}} »",
+    search: "Rechercher un passage, un thème, un imam…", searchSummary: "{{n}} résultat(s) pour « {{q}} »",
     searchEmpty: "Rien ne correspond à « {{q}} ».", shown: "{{n}} sur {{total}} affichées", loadMore: "Afficher les {{n}} suivantes",
     showAll: "Tout afficher", clearSearch: "Effacer la recherche",
+    month: "Période", allMonths: "Tous les mois", emptyMonth: "Aucune khutba sur ce mois.",
     detail: {
       hours: "Horaires", length: "Durée", saved: "Enregistré.",
       seekHelp: "Cliquez une ligne : la vidéo s'y place et démarre.",
@@ -149,9 +150,10 @@ const en: typeof fr = {
     summary: "{{n}} archived sermon(s)", pendingTotal: "{{n}} sermon(s) to review", pendingCount: "{{n}} to review",
     filterAll: "All", noPending: "No sermon is waiting for review.", empty: "No archived sermon yet.",
     noTheme: "No theme set", noImam: "Imam not set",
-    search: "Passage, theme, imam — or a date: November, 2026, 06/11…", searchSummary: "{{n}} result(s) for “{{q}}”",
+    search: "Search a passage, a theme, an imam…", searchSummary: "{{n}} result(s) for “{{q}}”",
     searchEmpty: "Nothing matches “{{q}}”.", shown: "{{n}} of {{total}} shown", loadMore: "Show the next {{n}}",
     showAll: "Show all", clearSearch: "Clear search",
+    month: "Period", allMonths: "All months", emptyMonth: "No sermon this month.",
     detail: {
       hours: "Time", length: "Length", saved: "Saved.",
       seekHelp: "Click a line: the video jumps there and plays.",

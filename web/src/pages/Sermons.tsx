@@ -27,10 +27,17 @@ export default function Sermons() {
   const [saisie, setSaisie] = useState("");
   const [recherche, setRecherche] = useState("");   // version retardée de la saisie
   const [filtre, setFiltre] = useState("toutes");
+  const [mois, setMois] = useState("");              // AAAA-MM, choisi dans les mois existants
+  const [moisDispos, setMoisDispos] = useState<{ mois: string; n: number }[]>([]);
   const [items, setItems] = useState<any[] | null>(null);
   const [total, setTotal] = useState(0);
   const [enAttente, setEnAttente] = useState(0);
   const [charge, setCharge] = useState(false);
+
+  // Les mois proposés sont ceux qui contiennent réellement des khutbas, avec leur compte.
+  useEffect(() => {
+    api.sermonsMois().then((r) => setMoisDispos(r.items)).catch(() => setMoisDispos([]));
+  }, []);
 
   // On n'interroge pas le serveur à chaque lettre.
   useEffect(() => {
@@ -43,7 +50,7 @@ export default function Sermons() {
     let vivant = true;
     setCharge(true);
     setItems(null);
-    api.sermons({ q: recherche, pending: filtre === "a_valider", limit: TAILLE })
+    api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE })
       .then((r) => {
         if (!vivant) return;
         setItems(r.items);
@@ -53,12 +60,12 @@ export default function Sermons() {
       .catch(() => vivant && setItems([]))
       .finally(() => vivant && setCharge(false));
     return () => { vivant = false; };
-  }, [recherche, filtre]);
+  }, [recherche, mois, filtre]);
 
   /** Page suivante : les khutbas s'ajoutent à la suite, elles ne remplacent pas. */
   const plus = () => {
     setCharge(true);
-    api.sermons({ q: recherche, pending: filtre === "a_valider", limit: TAILLE, offset: items?.length ?? 0 })
+    api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE, offset: items?.length ?? 0 })
       .then((r) => {
         setItems((v) => [...(v ?? []), ...r.items]);
         setTotal(r.total);
@@ -78,7 +85,7 @@ export default function Sermons() {
     return d ? majuscule(new Intl.DateTimeFormat(i18n.language, { month: "long", year: "numeric" }).format(d)) : "—";
   };
 
-  const filtreActif = Boolean(recherche) || filtre !== "toutes";
+  const filtreActif = Boolean(recherche) || Boolean(mois) || filtre !== "toutes";
 
   return (
     <div className="grid gap-5">
@@ -134,6 +141,21 @@ export default function Sermons() {
             )}
           </div>
 
+          {/* Période : les mois où la mosquée a réellement prêché, pas un calendrier vide. */}
+          <div className="w-[11.5rem] shrink-0">
+            <select
+              className={`${inputClass} h-11 w-full cursor-pointer text-[0.92rem]`}
+              value={mois}
+              onChange={(e) => setMois(e.target.value)}
+              aria-label={t("sermons.month")}
+            >
+              <option value="">{t("sermons.allMonths")}</option>
+              {moisDispos.map((m) => (
+                <option key={m.mois} value={m.mois}>{titreMois(m.mois)}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="shrink-0 [&>div]:mb-0">
             <Segmented
               valeur={filtre}
@@ -172,10 +194,11 @@ export default function Sermons() {
         <div className="rounded-[10px] border border-dashed border-line bg-white/60 px-6 py-16 text-center">
           <p className="mx-auto max-w-[54ch] text-[1.02rem] leading-relaxed text-muted">
             {recherche ? t("sermons.searchEmpty", { q: recherche })
-              : filtre === "a_valider" ? t("sermons.noPending") : t("sermons.empty")}
+              : filtre === "a_valider" ? t("sermons.noPending")
+                : mois ? t("sermons.emptyMonth") : t("sermons.empty")}
           </p>
           {filtreActif && (
-            <Btn variante="ghost" className="mt-4" onClick={() => { setSaisie(""); setFiltre("toutes"); }}>
+            <Btn variante="ghost" className="mt-4" onClick={() => { setSaisie(""); setMois(""); setFiltre("toutes"); }}>
               {t("sermons.showAll")}
             </Btn>
           )}

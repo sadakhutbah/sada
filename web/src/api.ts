@@ -55,9 +55,10 @@ export const api = {
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
   dashboard: () => demande<any>("/dashboard"),
   /** Recherche, filtre et pages sont faits par le serveur : la liste grandit avec les années. */
-  sermons: (opts: { q?: string; pending?: boolean; limit?: number; offset?: number } = {}) => {
+  sermons: (opts: { q?: string; mois?: string; pending?: boolean; limit?: number; offset?: number } = {}) => {
     const p = new URLSearchParams();
     if (opts.q) p.set("q", opts.q);
+    if (opts.mois) p.set("mois", opts.mois);
     if (opts.pending) p.set("pending", "1");
     if (opts.limit) p.set("limit", String(opts.limit));
     if (opts.offset) p.set("offset", String(opts.offset));
@@ -65,6 +66,8 @@ export const api = {
     return demande<{ items: any[]; total: number; count: number; offset: number; pending: number }>(
       `/sermons${qs ? `?${qs}` : ""}`);
   },
+  /** Les mois qui contiennent des khutbas : le sélecteur de période s'y adosse. */
+  sermonsMois: () => demande<{ items: { mois: string; n: number }[] }>("/sermons/mois"),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
   clips: (status = "") =>
     demande<{ items: any[]; status_labels: Record<string, string>; counts: Record<string, number> }>(`/clips${status ? `?status=${status}` : ""}`),
