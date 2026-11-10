@@ -8,13 +8,13 @@ from fastapi.responses import JSONResponse
 
 from ... import notify
 from ...pipeline import llm
-from .. import auth, branding, db, destinations, dirs as dirs_mod, live_input, publish
+from .. import auth, branding, db, destinations, dirs as dirs_mod, live_input, publish, storage
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
 
 router = APIRouter()
 
-SECTIONS = ("mosque", "logo", "live", "folders", "model", "connectors", "access")
+SECTIONS = ("mosque", "logo", "live", "replays", "folders", "model", "connectors", "access")
 
 
 def _host(ctx) -> str:
@@ -48,6 +48,7 @@ def settings(ctx: CtxDep):
             "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
             "targets": destinations.rows(ctx.conn, ctx.mosque),
             "input": live_input.view(ctx.conn, ctx.mosque, _host(ctx)),
+            "storage": storage.view(ctx.conn, ctx.mosque["id"]),
             "model": _model_view()}
 
 
@@ -144,6 +145,42 @@ async def onboarding_done(ctx: CtxDep):
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "demarrage.termine" if done else "demarrage.rouvert",
              "mosque", ctx.mosque["id"], ip=ctx.ip)
     return _ok("Mise en route enregistrée.", needs_onboarding=not done)
+
+
+@router.put("/settings/storage")
+async def storage_save(ctx: CtxDep):
+    """Replays bucket: where the recordings are sent after the live."""
+    f = await ctx.body()
+    ctx.require("admin")
+    try:
+        v = storage.save(ctx.conn, ctx.mosque["id"], f)
+    except storage.InvalidStorage as e:
+        raise Invalid(" ".join(e.erreurs.values())) from e
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "rediffusion.configure", "mosque",
+             ctx.mosque["id"], ip=ctx.ip, compartiment=v["bucket"], dossier=v["prefix"], actif=v["enabled"])
+    return _ok("Compartiment des rediffusions enregistré. Le moteur l'utilise dès le prochain direct.",
+               storage=v)
+
+
+@router.post("/settings/storage/test")
+async def storage_test(ctx: CtxDep):
+    """Writes then removes a tiny object: says whether the bucket really accepts uploads."""
+    f = await ctx.body()
+    ctx.require("admin")
+    secret = str(f.get("secret_key", ""))
+    if secret in ("", db.MASK):
+        target_secret = storage.effective(ctx.conn, ctx.mosque["id"]) or {}
+        f = dict(f, secret_key=target_secret.get("secret_key", ""))
+    try:
+        propre = storage.check(f.get("endpoint", ""), f.get("bucket", ""), f.get("region", ""),
+                               f.get("prefix", ""), f.get("access_key", ""))
+    except storage.InvalidStorage as e:
+        raise Invalid(" ".join(e.erreurs.values())) from e
+    if not f.get("secret_key"):
+        raise Invalid("Clé secrète requise.")
+    propre.update(secret_key=f["secret_key"], bucket=propre["bucket"])
+    ok, detail = storage.probe(propre)
+    return {"ok": ok, "detail": detail, "bucket": propre["bucket"], "prefix": propre["prefix"]}
 
 
 @router.post("/settings/input/test")

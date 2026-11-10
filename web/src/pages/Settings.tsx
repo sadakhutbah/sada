@@ -8,6 +8,8 @@ type Message = { ok: boolean; texte: string } | null;
 
 /** A live destination as the screen edits it: the key comes back masked, and stays masked. */
 type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string };
+type Stockage = { endpoint: string; region: string; bucket: string; access_key: string;
+                  secret_key: string; prefix: string; enabled: boolean };
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
 
 const CHAMPS_MOSQUEE = [
@@ -122,6 +124,10 @@ export default function Settings() {
   const [entree, setEntree] = useState<Entree>({ mode: "camera", url: "", push_rtmp: "" });
   const [entreeInitiale, setEntreeInitiale] = useState("");
   const [essai, setEssai] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [stockage, setStockage] = useState<Stockage>({ endpoint: "", region: "auto", bucket: "", access_key: "",
+    secret_key: "", prefix: "rediffusions/", enabled: true });
+  const [stockageInitial, setStockageInitial] = useState("");
+  const [essaiStockage, setEssaiStockage] = useState<{ ok: boolean; detail: string } | null>(null);
   const [test, setTest] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
   const fichier = useRef<HTMLInputElement>(null);
 
@@ -133,13 +139,20 @@ export default function Settings() {
                           push_rtmp: r.input?.push_rtmp ?? "" };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
       setEntree(e); setEntreeInitiale(JSON.stringify(e));
+      const st: Stockage = { endpoint: r.storage?.endpoint ?? "", region: r.storage?.region ?? "auto",
+        bucket: r.storage?.bucket ?? "", access_key: r.storage?.access_key ?? "",
+        secret_key: r.storage?.secret_key ?? "", prefix: r.storage?.prefix ?? "rediffusions/",
+        enabled: !!r.storage?.enabled };
+      setStockage(st); setStockageInitial(JSON.stringify(st));
     }).catch(() => setD(null));
   useEffect(() => { charger(); }, []);
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
   const defauts = d.defaults ?? {};
   const entreeModifiee = JSON.stringify(entree) !== entreeInitiale;
-  const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales || entreeModifiee;
+  const stockageModifie = JSON.stringify(stockage) !== stockageInitial;
+  const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales
+    || entreeModifiee || stockageModifie;
   const majCible = (i: number, champ: keyof Cible, valeur: string | boolean) => {
     setCibles((x) => x.map((c, j) => (j === i ? { ...c, [champ]: valeur } : c)));
     setMsg(null);
@@ -165,6 +178,10 @@ export default function Settings() {
       }
       if (JSON.stringify(cibles) !== ciblesInitiales) await api.destinations(cibles);
       if (entreeModifiee) await api.saveInput(entree.mode, entree.url);
+      if (stockageModifie) {
+        await api.stockage({ ...stockage, enabled: stockage.enabled ? "1" : "0" });
+        setEssaiStockage(null);
+      }
       await charger();
       setTest(null);
       setMsg({ ok: true, texte: t("settings.saved") });
@@ -172,6 +189,16 @@ export default function Settings() {
       setMsg({ ok: false, texte: err.message });
     } finally {
       setEnCours(false);
+    }
+  };
+
+  const testerStockage = async () => {
+    setEssaiStockage(null);
+    try {
+      const r = await api.testStockage({ ...stockage, enabled: stockage.enabled ? "1" : "0" });
+      setEssaiStockage({ ok: r.ok, detail: r.detail });
+    } catch (err: any) {
+      setEssaiStockage({ ok: false, detail: err.message });
     }
   };
 
@@ -396,6 +423,59 @@ export default function Settings() {
             <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#8a2219]" : "text-muted"}`}>{test.texte}</span>
           )}
         </div>
+      </div>
+    ),
+    replays: (
+      <div className="grid gap-1.5">
+        {/* Where the recordings go after the live: one line per field, the folder beside its switch. */}
+        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.replayHint")}</p>
+        <Field label={t("settings.replayEndpoint")}>
+          <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.endpoint} spellCheck={false}
+            placeholder="https://<compte>.r2.cloudflarestorage.com"
+            onChange={(e) => { setStockage((s) => ({ ...s, endpoint: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
+        </Field>
+        <div className="grid gap-2.5 sm:grid-cols-[1fr_9rem]">
+          <Field label={t("settings.replayBucket")}>
+            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.bucket} spellCheck={false}
+              placeholder="minbar-rediffusions"
+              onChange={(e) => { setStockage((s) => ({ ...s, bucket: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
+          </Field>
+          <Field label={t("settings.replayRegion")}>
+            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.region} spellCheck={false}
+              placeholder="auto"
+              onChange={(e) => { setStockage((s) => ({ ...s, region: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
+          </Field>
+        </div>
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          <Field label={t("settings.replayAccessKey")}>
+            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.access_key}
+              autoComplete="off" spellCheck={false}
+              onChange={(e) => { setStockage((s) => ({ ...s, access_key: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
+          </Field>
+          <Field label={t("settings.replaySecretKey")} aide={stockage.secret_key === "••••••" ? t("settings.replayKeyKept") : undefined}>
+            <input className={inputClass} type="password" autoComplete="off" value={stockage.secret_key}
+              onChange={(e) => { setStockage((s) => ({ ...s, secret_key: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
+          </Field>
+        </div>
+        <div className="grid items-end gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <Field label={t("settings.replayPrefix")}>
+            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.prefix} spellCheck={false}
+              placeholder="rediffusions/"
+              onChange={(e) => { setStockage((s) => ({ ...s, prefix: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
+          </Field>
+          <label className="flex items-center gap-1.5 pb-2.5 text-[0.9rem] font-semibold whitespace-nowrap">
+            <input type="checkbox" checked={stockage.enabled}
+              onChange={(e) => { setStockage((s) => ({ ...s, enabled: e.target.checked })); setMsg(null); }} />
+            {t("settings.replayEnabled")}
+          </label>
+          <Btn type="button" variante="ghost" className="mb-0.5 whitespace-nowrap" disabled={stockageModifie} onClick={testerStockage}
+            title={stockageModifie ? t("settings.replaySaveFirst") : undefined}>
+            {t("settings.replayTest")}
+          </Btn>
+        </div>
+        {essaiStockage && (
+          <span role="status" className={`text-[0.88rem] ${essaiStockage.ok ? "text-green" : "text-[#8a2219]"}`}>{essaiStockage.detail}</span>
+        )}
       </div>
     ),
   };

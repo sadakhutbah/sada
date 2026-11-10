@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from . import events as events_mod
-from . import destinations, mawaqit, notify, runs, source
+from . import destinations, mawaqit, notify, runs, source, upload
 from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
@@ -59,6 +59,9 @@ class Orchestrator:
         entree = source.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
         if entree:
             cfg.camera_url = entree
+        # Replays: after the live, the recordings are sent to the bucket saved in the interface.
+        self.uploader = upload.Uploader(
+            upload.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info), log=log.info)
         self.renderer = SceneRenderer(cfg)
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())
@@ -153,7 +156,15 @@ class Orchestrator:
         elif not m.stream_on and enc.wanted:
             enc.stop()
             log.info("Stream arrêté. Enregistrements : %s", [r for r, _ in enc.recordings])
+            self._envoyer_rediffusions()
         self._save_sessions()
+
+    def _envoyer_rediffusions(self):
+        """Les fichiers du direct partent en tâche de fond : le moteur n'attend pas le réseau."""
+        fichiers = [f for paire in self.encoder.recordings for f in paire if f]
+        fil = self.uploader.envoyer(fichiers)
+        if fil:
+            log.info("Rediffusion : %d fichier(s) en envoi", len(fichiers))
 
     def _save_sessions(self):
         recs = self.encoder.recordings
@@ -246,6 +257,7 @@ class Orchestrator:
             self.faces.stop()
         if self.encoder.wanted:
             self.encoder.stop()
+        self._envoyer_rediffusions()
         if self.api:
             self.api.shutdown()
         self._save_sessions()

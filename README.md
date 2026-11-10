@@ -148,6 +148,27 @@ autres (`onfail=ignore`).
 - Instagram ne diffuse pas en direct par RTMP : pour ce réseau, seule la publication de Reels après le
   direct est possible.
 
+## Rediffusions : envoi vers un compartiment S3 ou R2
+
+Une fois le direct arrêté, les enregistrements partent dans un compartiment compatible S3 (Cloudflare
+R2, MinIO, Backblaze, AWS). Réglages → **Rediffusions** : service (adresse du service, vide pour AWS),
+compartiment, région, clé d'accès, clé secrète, dossier, case « Envoyer les rediffusions ». Le bouton
+**Tester l'écriture** dépose puis retire un objet minuscule : il dit si le compartiment accepte vraiment
+les fichiers, avant le premier direct. Il faut enregistrer avant de tester.
+
+- L'envoi se fait **après** le direct, en tâche de fond, après l'arrêt de l'encodeur : le moteur n'attend
+  jamais le réseau, et un service lent ne retarde pas la fin de séance.
+- Chaque fichier est **découpé** au-delà de 8 Mo (envoi multiple, reprise par morceau) ; le type de
+  contenu est posé (`video/x-matroska`, `video/mp4`).
+- Un index local (`data/uploads.json`) retient ce qui est déjà parti, avec sa taille et sa date : un
+  redémarrage ne renvoie pas deux fois le même fichier, un fichier plus récent si. Les enregistrements
+  **restent sur la machine** — Minbar ne supprime rien.
+- Les clés ne sont jamais écrites dans le dépôt ; la clé secrète ne revient pas en clair (masque,
+  renvoyer le masque = inchangé) et l'audit `rediffusion.configure` ne la contient pas. Le moteur les
+  reçoit par l'endpoint interne authentifié (`/internal/storage`), comme les destinations.
+- R2 : la région vaut `auto`, et l'adresse est celle du service
+  (`https://<compte>.r2.cloudflarestorage.com`), sans chemin.
+
 ## Configuration : une seule règle de précédence
 
 Chaque réglage peut venir de trois endroits, et l'ordre ne change pas d'un réglage à l'autre :

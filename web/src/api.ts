@@ -142,6 +142,10 @@ export const api = {
     ecrire<any>("PUT", "/settings/live", { targets }),
   /** Video input: a camera address, or "a computer pushes its picture" (the relay's address is built server-side). */
   saveInput: (mode: string, url: string) => ecrire<any>("PUT", "/settings/input", { mode, url }),
+  /** Replays bucket (S3 / R2): the secret comes back masked, sending the mask keeps it. */
+  stockage: (v: Record<string, any>) => ecrire<any>("PUT", "/settings/storage", v),
+  testStockage: (v: Record<string, any>) =>
+    ecrire<{ ok: boolean; detail: string }>("POST", "/settings/storage/test", v),
   /** The wizard is offered once: completing or skipping it records the choice. */
   onboardingDone: (done = true) => ecrire<any>("PUT", "/settings/onboarding", { done }),
   testInput: (mode: string, url: string) =>

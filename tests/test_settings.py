@@ -8,7 +8,7 @@ from test_backoffice import client, env  # noqa: E402,F401  (conftest provides t
 
 def test_les_sections_sont_annoncees(env):
     d = client(env, "admin").get("/api/v1/settings").json()
-    assert list(d["sections"]) == ["mosque", "logo", "live", "folders", "model", "connectors", "access"]
+    assert list(d["sections"]) == ["mosque", "logo", "live", "replays", "folders", "model", "connectors", "access"]
     assert d["mosque"]["name"] == "Mosquée Exemple" and d["mosque"]["slug"] == "ma-mosquee"
     assert d["imams"] and d["model"]["label"]
 

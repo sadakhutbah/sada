@@ -143,6 +143,17 @@ CREATE TABLE IF NOT EXISTS live_input (
     url TEXT NOT NULL DEFAULT '',
     updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS storage (
+    mosque_id INTEGER PRIMARY KEY REFERENCES mosques(id),
+    endpoint TEXT NOT NULL DEFAULT '',
+    region TEXT NOT NULL DEFAULT 'auto',
+    bucket TEXT NOT NULL DEFAULT '',
+    access_key TEXT NOT NULL DEFAULT '',
+    secret_key TEXT NOT NULL DEFAULT '',
+    prefix TEXT NOT NULL DEFAULT 'rediffusions/',
+    enabled INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT
+);
 CREATE TABLE IF NOT EXISTS publications (
     id INTEGER PRIMARY KEY,
     mosque_id INTEGER NOT NULL REFERENCES mosques(id),

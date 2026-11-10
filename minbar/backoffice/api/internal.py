@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from .. import db, destinations, internal, live_input
+from .. import db, destinations, internal, live_input, storage
 from ..context import ConnDep
 
 router = APIRouter()
@@ -51,6 +51,17 @@ def live_targets(request: Request, conn: ConnDep, port: int = 0):
     if mid is None:
         return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
     return {"mosque_id": mid, "urls": destinations.effective(conn, mid)}
+
+
+@router.get("/internal/storage")
+def storage_target(request: Request, conn: ConnDep, port: int = 0):
+    """Bucket, keys and folder the engine needs to send the replays; null when nothing is configured."""
+    if not internal.check(request.headers.get(internal.HEADER)):
+        return _refuse()
+    mid = _mosque_id(conn, port)
+    if mid is None:
+        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+    return {"mosque_id": mid, "target": storage.effective(conn, mid)}
 
 
 @router.get("/internal/live-input")
