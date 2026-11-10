@@ -7,6 +7,7 @@ import { Btn, Card, Field, Tabs, Title, inputClass } from "../ui";
 type Message = { ok: boolean; texte: string } | null;
 
 /** A live destination as the screen edits it: the key comes back masked, and stays masked. */
+type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string };
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
 
 const CHAMPS_MOSQUEE = [
@@ -118,6 +119,9 @@ export default function Settings() {
   const [parcourir, setParcourir] = useState<string | null>(null);
   const [cibles, setCibles] = useState<Cible[]>([]);
   const [ciblesInitiales, setCiblesInitiales] = useState("");
+  const [entree, setEntree] = useState<Entree>({ mode: "camera", url: "", push_rtmp: "" });
+  const [entreeInitiale, setEntreeInitiale] = useState("");
+  const [essai, setEssai] = useState<{ ok: boolean; detail: string } | null>(null);
   const [test, setTest] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
   const fichier = useRef<HTMLInputElement>(null);
 
@@ -125,13 +129,17 @@ export default function Settings() {
     api.settings().then((r) => {
       const v = depuisServeur(r);
       const c: Cible[] = (r.targets ?? []).map((t: any) => ({ id: t.id, label: t.label, url: t.url, enabled: !!t.enabled }));
+      const e: Entree = { mode: r.input?.mode === "push" ? "push" : "camera", url: r.input?.url ?? "",
+                          push_rtmp: r.input?.push_rtmp ?? "" };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
+      setEntree(e); setEntreeInitiale(JSON.stringify(e));
     }).catch(() => setD(null));
   useEffect(() => { charger(); }, []);
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
   const defauts = d.defaults ?? {};
-  const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales;
+  const entreeModifiee = JSON.stringify(entree) !== entreeInitiale;
+  const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales || entreeModifiee;
   const majCible = (i: number, champ: keyof Cible, valeur: string | boolean) => {
     setCibles((x) => x.map((c, j) => (j === i ? { ...c, [champ]: valeur } : c)));
     setMsg(null);
@@ -156,6 +164,7 @@ export default function Settings() {
         await api.modele(modele);
       }
       if (JSON.stringify(cibles) !== ciblesInitiales) await api.destinations(cibles);
+      if (entreeModifiee) await api.saveInput(entree.mode, entree.url);
       await charger();
       setTest(null);
       setMsg({ ok: true, texte: t("settings.saved") });
@@ -163,6 +172,16 @@ export default function Settings() {
       setMsg({ ok: false, texte: err.message });
     } finally {
       setEnCours(false);
+    }
+  };
+
+  const testerEntree = async () => {
+    setEssai(null);
+    try {
+      const r = await api.testInput(entree.mode, entree.url);
+      setEssai({ ok: r.ok, detail: r.detail });
+    } catch (err: any) {
+      setEssai({ ok: false, detail: err.message });
     }
   };
 
@@ -244,12 +263,42 @@ export default function Settings() {
                        { cle: "destinations", label: t("settings.destTitle") }]}
           valeur={sousOnglet} onChange={(c) => { setSousOnglet(c); setMsg(null); }} />
         {sousOnglet === "connexion" && <div className="grid max-w-[520px] gap-3.5">
-        <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
-          <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8089" inputMode="url" />
-        </Field>
-        <Field label={t("settings.token")} aide={t("settings.tokenHelp")}>
-          <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
-        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
+            <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8088" />
+          </Field>
+          <Field label={t("settings.token")} aide={t("settings.tokenHelp")}>
+            <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
+          </Field>
+        </div>
+
+        {/* Video input: the same choice as in "Mise en route", editable here afterwards. */}
+        <div className="border-t border-line pt-3.5">
+          <p className="m-0 mb-2 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-green">{t("settings.inputKicker")}</p>
+          <Tabs items={[{ cle: "camera", label: t("onboarding.cameraTitle") },
+                        { cle: "push", label: t("onboarding.pushTitle") }]}
+            valeur={entree.mode}
+            onChange={(m) => { setEntree((e) => ({ ...e, mode: m === "push" ? "push" : "camera" })); setEssai(null); setMsg(null); }} />
+          <div className="mt-3 grid gap-1.5">
+            {entree.mode === "camera" ? (
+              <Field label={t("onboarding.cameraUrl")} aide={t("onboarding.cameraUrlHelp")}>
+                <div className="flex gap-2">
+                  <input className={`${inputClass} font-mono text-[0.85rem]`} value={entree.url} spellCheck={false}
+                    placeholder="rtsp://…" onChange={(e) => { setEntree((x) => ({ ...x, url: e.target.value })); setEssai(null); setMsg(null); }} />
+                  <Btn variante="ghost" onClick={testerEntree}>{t("onboarding.test")}</Btn>
+                </div>
+              </Field>
+            ) : (
+              <Field label={t("onboarding.pushServer")} aide={t("onboarding.pushNote")}>
+                <div className="flex gap-2">
+                  <input className={`${inputClass} font-mono text-[0.85rem]`} value={entree.push_rtmp} readOnly />
+                  <Btn variante="ghost" onClick={testerEntree}>{t("onboarding.test")}</Btn>
+                </div>
+              </Field>
+            )}
+            {essai && <span className={`text-[0.86rem] ${essai.ok ? "text-green" : "text-muted"}`}>{essai.detail}</span>}
+          </div>
+        </div>
 
         </div>}
         {sousOnglet === "destinations" && <div>

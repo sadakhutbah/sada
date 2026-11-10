@@ -112,8 +112,10 @@ demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
 
 ## Mise en route : trois écrans
 
-**Mise en route** (menu, réservé aux administrateurs) suit la configuration du direct de bout en bout,
-un formulaire par écran :
+**Mise en route** s'ouvre d'elle-même **au premier login** d'un administrateur, et une seule fois :
+elle est marquée faite qu'on la termine ou qu'on la saute (`mosques.onboarded_at`). Elle n'a pas
+d'entrée de menu — tout ce qu'elle règle se retrouve ensuite dans Réglages → Direct, qui porte les
+mêmes champs. Elle suit la configuration du direct de bout en bout, un formulaire par écran :
 
 1. **Entrée vidéo** — d'où vient l'image. Soit une caméra qui publie déjà en RTSP (son adresse est
    saisie telle quelle), soit une poussée depuis un ordinateur : OBS envoie son image au relais

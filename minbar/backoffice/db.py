@@ -180,6 +180,8 @@ ADDED_COLUMNS = [
     ("khutbas", "session_no", "INTEGER"),
     # logo specific to the back-office (favicon + bar): file under data/backoffice/logos/; empty = neutral emblem
     ("mosques", "logo_path", "TEXT NOT NULL DEFAULT ''"),
+    # date the "Mise en route" was completed or skipped: the wizard is offered once, on the first login
+    ("mosques", "onboarded_at", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 

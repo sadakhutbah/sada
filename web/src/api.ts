@@ -1,7 +1,8 @@
 /** JSON API client of the back-office. One rule: no session = back to sign-in. */
 export type Session = {
   user: { id: number; name: string; role: string; role_label: string; permissions: string[] };
-  mosque: { id: number; slug: string; name: string; timezone: string; logo: string; clip_title: string };
+  mosque: { id: number; slug: string; name: string; timezone: string; logo: string; clip_title: string;
+            needs_onboarding?: boolean };
   csrf: string;
   counts: { pending: number };
 };
@@ -141,6 +142,8 @@ export const api = {
     ecrire<any>("PUT", "/settings/live", { targets }),
   /** Video input: a camera address, or "a computer pushes its picture" (the relay's address is built server-side). */
   saveInput: (mode: string, url: string) => ecrire<any>("PUT", "/settings/input", { mode, url }),
+  /** The wizard is offered once: completing or skipping it records the choice. */
+  onboardingDone: (done = true) => ecrire<any>("PUT", "/settings/onboarding", { done }),
   testInput: (mode: string, url: string) =>
     ecrire<{ ok: boolean; detail: string; url: string }>("POST", "/settings/input/test", { mode, url }),
   testNotifications: () => ecrire<any>("POST", "/settings/notifications/test"),

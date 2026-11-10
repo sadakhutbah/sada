@@ -133,6 +133,19 @@ async def input_save(ctx: CtxDep):
                **{"input": live_input.view(ctx.conn, ctx.mosque, _host(ctx))})
 
 
+@router.put("/settings/onboarding")
+async def onboarding_done(ctx: CtxDep):
+    """The three-step wizard was completed or skipped: it is not offered again."""
+    f = await ctx.body()
+    ctx.require("admin")
+    done = str(f.get("done", "1")).strip().lower() not in ("0", "false", "off", "non")
+    ctx.conn.execute("UPDATE mosques SET onboarded_at = ? WHERE id = ?",
+                     (db.now_iso() if done else "", ctx.mosque["id"]))
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "demarrage.termine" if done else "demarrage.rouvert",
+             "mosque", ctx.mosque["id"], ip=ctx.ip)
+    return _ok("Mise en route enregistrée.", needs_onboarding=not done)
+
+
 @router.post("/settings/input/test")
 async def input_test(ctx: CtxDep):
     """Checks the input right now: what the picture looks like, or why nothing arrives."""

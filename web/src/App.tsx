@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, onUnauthorized, setCsrf, type Session } from "./api";
 import { LANGUAGES, setLanguage } from "./i18n";
@@ -23,6 +23,8 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const [session, setSession] = useState<Session | null>(null);
   const [pret, setPret] = useState(false);
+  const navigate = useNavigate();
+  const [demarragePropose, setDemarragePropose] = useState(false);
 
   useEffect(() => {
     api.session()
@@ -31,6 +33,15 @@ export default function App() {
       .finally(() => setPret(true));
     onUnauthorized(() => { sessionCourante = null; setSession(null); });
   }, []);
+
+  // First login: the three-step wizard is opened once, then everything lives in Settings.
+  useEffect(() => {
+    if (!session || demarragePropose) return;
+    if (session.mosque?.needs_onboarding && session.user.permissions.includes("admin")) {
+      setDemarragePropose(true);
+      navigate("/demarrage", { replace: true });
+    }
+  }, [session, demarragePropose, navigate]);
 
   if (!pret) return <p className="px-4 py-16 text-center text-muted">{t("common.loading")}</p>;
   if (!session) return <Login onLogin={(s) => { sessionCourante = s; setCsrf(s.csrf); setSession(s); }} />;
@@ -86,7 +97,6 @@ export default function App() {
             {lien("/clips", "clips", undefined, session.counts?.pending ?? 0)}
             {lien("/publications", "publications", "publish")}
             {lien("/audit", "audit", "journal")}
-            {lien("/demarrage", "onboarding", "admin")}
             {lien("/settings", "settings", "admin")}
           </nav>
           <div className="flex shrink-0 items-center gap-2.5 border-l border-white/15 pl-3">

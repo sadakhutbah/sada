@@ -65,6 +65,12 @@ export default function Onboarding() {
     } finally { setEnvoi(false); }
   };
 
+  /** Terminée ou passée : le back-office ne la repropose plus, tout reste dans Réglages. */
+  const terminer = async () => {
+    try { await api.onboardingDone(); } catch { /* sans importance : on sort quand même */ }
+    nav("/");
+  };
+
   const copier = async () => {
     try { await navigator.clipboard.writeText(obs); setCopie(true); setTimeout(() => setCopie(false), 2000); } catch { /* clipboard refusé */ }
   };
@@ -157,7 +163,7 @@ export default function Onboarding() {
       <p className="m-0 mb-4 font-mono text-[0.85rem] text-muted">
         {t("onboarding.summary", { entree: mode === "push" ? obs : adresse, n: cibles.filter((c) => c.enabled).length })}
       </p>
-      <Btn variante="leaf" onClick={() => nav("/")}>{t("onboarding.finish")}</Btn>
+      <Btn variante="leaf" onClick={terminer}>{t("onboarding.finish")}</Btn>
     </Card>
   );
 
@@ -182,7 +188,7 @@ export default function Onboarding() {
         <div className="flex items-center gap-2">
           {etape > 0 && <Btn variante="ghost" onClick={() => { setEtape(etape - 1); setErreur(""); }}>← {t("onboarding.back")}</Btn>}
           <Btn onClick={suivant} disabled={envoi}>{envoi ? t("common.saving") : t("onboarding.next")}</Btn>
-          <button type="button" onClick={() => nav("/")} className="ml-2 cursor-pointer border-0 bg-transparent text-[0.88rem] text-muted underline underline-offset-4">
+          <button type="button" onClick={terminer} className="ml-2 cursor-pointer border-0 bg-transparent text-[0.88rem] text-muted underline underline-offset-4">
             {t("onboarding.skip")}
           </button>
         </div>

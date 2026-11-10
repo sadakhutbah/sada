@@ -18,7 +18,9 @@ def _user(ctx: Ctx) -> dict:
 def _mosque(ctx: Ctx) -> dict:
     m = ctx.mosque
     return {"id": m["id"], "slug": m["slug"], "name": m["name"], "timezone": m.get("timezone") or "",
-            "logo": branding.url(m), "clip_title": m.get("clip_title") or ""}
+            "logo": branding.url(m), "clip_title": m.get("clip_title") or "",
+            # first login, or a mosque whose live was never set up: offer the three-step wizard once
+            "needs_onboarding": not (m.get("onboarded_at") or "").strip()}
 
 
 def _ok(message: str, **extra) -> dict:

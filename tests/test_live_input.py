@@ -141,6 +141,19 @@ def test_sonde_refuse_de_verifier_une_poussee():
     assert ok is False and "OBS" in detail
 
 
+def test_la_mise_en_route_n_est_proposee_qu_une_fois(env):
+    """First login only: once completed or skipped, everything stays in Settings."""
+    from minbar.backoffice import internal
+    c = client(env, "admin")
+    assert c.get("/api/v1/session").json()["mosque"]["needs_onboarding"] is True
+    r = c.ecrire("/settings/onboarding", {}, methode="PUT")
+    assert r.status_code == 200 and r.json()["needs_onboarding"] is False
+    assert c.get("/api/v1/session").json()["mosque"]["needs_onboarding"] is False
+    assert c.ecrire("/settings/onboarding", {"done": "0"}, methode="PUT").json()["needs_onboarding"] is True
+    assert client(env, "responsable").ecrire("/settings/onboarding", {}, methode="PUT").status_code == 403
+    assert internal.token()          # le jeton interne n'a pas bougé
+
+
 def test_bouton_tester(env):
     c = client(env, "admin")
     r = c.ecrire("/settings/input/test", {"mode": "camera", "url": "rtsp://127.0.0.1:1/rien"}, methode="POST")
