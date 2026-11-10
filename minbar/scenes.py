@@ -528,8 +528,18 @@ class SceneRenderer:
                                   eyebrow=t["eyebrow"], arabic=AR_JANAZA)
 
     def content(self, scene: str, m: "Moment") -> Image.Image:
-        """Content layer of the scene; the encoder lays it over the shared background if the scene is a full screen."""
-        return SCENES[scene].draw(self, m)
+        """Content layer of the scene; the encoder lays it over the shared background if the scene is a full screen.
+
+        A full screen is returned already composited on its background: the transition then reveals an opaque
+        image by cross-fading the content layers alone. Driving the background's own opacity through the encoder
+        left the camera visible again as soon as the stream had left the first full screen of the day.
+        """
+        layer = SCENES[scene].draw(self, m)
+        if not SCENES[scene].full:
+            return layer
+        img = self.background()
+        img.alpha_composite(layer)
+        return img
 
 
 @dataclass(frozen=True)
