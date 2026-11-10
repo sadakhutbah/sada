@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from .. import paths
-from . import auth, branding, content, db, docpage, importer, live
+from . import auth, branding, content, db, docpage, gabarit, importer, live
 from .api import router as api_router
 from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
                       clip_or_404, khutba_or_404, live_status)
@@ -123,15 +123,22 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     @app.middleware("http")
     async def headers(request: Request, call_next):
         resp = await call_next(request)
-        resp.headers["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
-                                                   "script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
-                                                   "form-action 'self'; base-uri 'none'")
+        csp = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
+               "script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
+               "form-action 'self'; base-uri 'none'")
+        if request.url.path.startswith("/screens/"):
+            # The imported gabarit is shown in an iframe of the settings page: same origin only.
+            # Everywhere else stays unframeable (frame-ancestors 'none' / X-Frame-Options DENY).
+            csp = csp.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+            resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+        else:
+            resp.headers["X-Frame-Options"] = "DENY"
+        resp.headers["Content-Security-Policy"] = csp
         resp.headers["X-Content-Type-Options"] = "nosniff"
         if _sec(request):
             # only behind HTTPS (proxy or central server): an HSTS on local HTTP would block
             # access to this machine from the other computers on the local network
             resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Referrer-Policy"] = "same-origin"
         # Front files carry a fingerprint in their name: they are kept in the cache.
         # Everything else (API, index.html) must never be served from a cache.
@@ -194,6 +201,19 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return FileResponse(f, media_type=branding.EXT.get(f.suffix.lower(), "application/octet-stream"),
                             headers={"Cache-Control": "private, max-age=300"})
 
+    # ------------------------------------------------- imported screen template (reference)
+    @app.get("/screens/{slug}/ecrans.html")
+    def screens_gabarit_file(slug: str, ctx: CtxDep):
+        """The mosque's imported template, shown in the settings iframe (same origin, admin only)."""
+        ctx.require("admin")
+        if slug != ctx.mosque["slug"]:
+            raise NotFound()          # another mosque's reference is not readable by slug
+        f = gabarit.path_for(ctx.mosque)
+        if not f.is_file():
+            raise NotFound()
+        return FileResponse(f, media_type="text/html; charset=utf-8",
+                            headers={"Cache-Control": "no-store"})
+
     # ---------------------------------------------------------- documentation
     # Une seule table de matières : les pages, leur version texte et leur traduction sont dérivées.
     def _doc(slug: str, langue: str) -> tuple[Path, bool]:
@@ -205,6 +225,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                 return en, True
             return fr, False
         return fr, True
+
 
     @app.get("/docs")
     def docs_index(langue: str = "fr"):

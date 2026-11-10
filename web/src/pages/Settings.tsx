@@ -14,6 +14,10 @@ type Stockage = { endpoint: string; region: string; bucket: string; access_key: 
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
 /** Texts of the slates as the screen edits them: {écran: {champ: texte}}; empty = default. */
 type Ecrans = Record<string, Record<string, string>>;
+/** Imported reference file: presence, same-origin address, size; no machine path. */
+type Gabarit = { present: boolean; url: string; name?: string; size?: number; imported_at?: string };
+/** What the import took, ignored and left empty — shown as one short sentence. */
+type RapportImport = { pris: number; ignores: number; vides: number; liste: string };
 
 const ECRANS = ["avant", "priere", "entracte", "termine", "janaza", "dars_fin"] as const;
 
@@ -146,10 +150,14 @@ export default function Settings() {
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
   const [apercu, setApercu] = useState("");
+  const [gabarit, setGabarit] = useState<Gabarit>({ present: false, url: "" });
+  const [rapport, setRapport] = useState<RapportImport | null>(null);
+  const [importe, setImporte] = useState(false);
   const [guide, setGuide] = useState({ agent: "", humain: "", docs: "", agentEn: "", humainEn: "", docsEn: "" });
   const [adresse, setAdresse] = useState("");
   const [adresseInitiale, setAdresseInitiale] = useState("");
   const fichier = useRef<HTMLInputElement>(null);
+  const gabaritFichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
     api.settings().then((r) => {
@@ -178,6 +186,7 @@ export default function Settings() {
         for (const [champ, v] of Object.entries<any>(champs)) ec[nom][champ] = v?.value ?? "";
       }
       setEcrans(ec); setEcransInitial(JSON.stringify(ec));
+      setGabarit(r.gabarit && typeof r.gabarit.present === "boolean" ? r.gabarit : { present: false, url: "" });
     }).catch(() => setD(null));
   useEffect(() => { charger(); }, []);
 
@@ -298,6 +307,37 @@ export default function Settings() {
       setMsg({ ok: true, texte: t("settings.logoRemoved") });
     } catch (err: any) {
       setMsg({ ok: false, texte: err.message });
+    }
+  };
+
+  /** Import d'un gabarit HTML : le serveur vérifie, conserve la référence et applique les textes.
+   *  On réaffiche ensuite l'état enregistré, pas une copie locale : vides et champs absents restent. */
+  const importerGabarit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fic = e.target.files?.[0];
+    e.target.value = "";
+    if (!fic) return;
+    setImporte(true); setMsg(null); setRapport(null);
+    try {
+      const r = await api.importerGabarit(fic);
+      const ec: Ecrans = {};
+      for (const [nom, champs] of Object.entries<any>(r.screens ?? {})) {
+        ec[nom] = {};
+        for (const [champ, v] of Object.entries<any>(champs)) ec[nom][champ] = v?.value ?? "";
+      }
+      setEcrans(ec); setEcransInitial(JSON.stringify(ec));
+      setD((x: any) => ({ ...x, screens: r.screens ?? x.screens }));
+      setGabarit(r.gabarit ?? { present: false, url: "" });
+      const pris = Object.values<any>(r.taken ?? {}).reduce((n: number, s: any) => n + Object.keys(s).length, 0);
+      const ignores: any[] = r.ignored ?? [];
+      setRapport({
+        pris, ignores: ignores.length, vides: (r.empty ?? []).length,
+        liste: ignores.slice(0, 4).map((i) => [i.screen, i.slot].filter(Boolean).join(".")).join(", ")
+               + (ignores.length > 4 ? "…" : ""),
+      });
+    } catch (err: any) {
+      setMsg({ ok: false, texte: err.message });
+    } finally {
+      setImporte(false);
     }
   };
 
@@ -502,12 +542,21 @@ export default function Settings() {
               <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
                 valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
               {/* Pas de panneau déplié : le mode d'emploi s'ouvre dans un onglet, la page ne bouge pas. */}
-              <div className="flex max-w-[68ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
-                <span>{t("settings.screensHint")}</span>
-                <a href={lienHumain} target="_blank" rel="noreferrer"
-                  className="font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
-                  {t("settings.screensHelpOpen")}
-                </a>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <div className="flex max-w-[68ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
+                  <span>{t("settings.screensHint")}</span>
+                  <a href={lienHumain} target="_blank" rel="noreferrer"
+                    className="font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
+                    {t("settings.screensHelpOpen")}
+                  </a>
+                </div>
+                {/* Discret, à côté du mode d'emploi : le fichier rendu par l'assistant s'importe ici. */}
+                <button type="button" disabled={importe}
+                  className="shrink-0 border-0 bg-transparent p-0 text-[0.78rem] font-semibold leading-[1.5] text-deep underline decoration-line decoration-1 underline-offset-4 hover:text-green disabled:cursor-not-allowed disabled:text-muted disabled:no-underline"
+                  onClick={() => gabaritFichier.current?.click()}>
+                  {importe ? t("settings.screensImporting") : t("settings.screensImport")}
+                </button>
+                <input ref={gabaritFichier} type="file" accept=".html,text/html" className="hidden" onChange={importerGabarit} />
               </div>
               {/* Le guide pour un assistant est un fichier servi par cette instance : on donne son adresse. */}
               <div className="flex max-w-[68ch] flex-wrap items-center gap-x-2 gap-y-1 rounded-[8px] border border-line bg-paper px-3 py-2">
@@ -546,6 +595,26 @@ export default function Settings() {
               ? <img src={apercu} alt="" className="aspect-video w-full rounded-[8px] border border-line object-cover" />
               : <div className="aspect-video w-full rounded-[8px] border border-line bg-paper-2" />}
             <figcaption className="text-[0.76rem] leading-[1.4] text-muted">{t("settings.screensPreview")}</figcaption>
+            {gabarit.present && (
+              <div className="mt-0.5 grid gap-1">
+                {/* Même origine, scripts coupés : le fichier importé est une référence, pas du code exécuté. */}
+                <iframe src={gabarit.url} title={t("settings.screensImportPreview")} sandbox="allow-same-origin"
+                  className="aspect-video w-full rounded-[8px] border border-line bg-paper-2" />
+                <p className="m-0 text-[0.7rem] leading-[1.35] text-muted">{t("settings.screensImportCaption")}</p>
+              </div>
+            )}
+            {rapport && (
+              <div className="grid gap-0.5">
+                <p role="status" className="m-0 text-[0.72rem] leading-[1.4] text-deep">
+                  {t("settings.screensImportDone", { pris: rapport.pris, ignores: rapport.ignores, vides: rapport.vides })}
+                </p>
+                {rapport.ignores > 0 && (
+                  <p className="m-0 text-[0.7rem] leading-[1.35] text-muted">
+                    {t("settings.screensImportIgnored", { liste: rapport.liste })}
+                  </p>
+                )}
+              </div>
+            )}
           </figure>
         </div>
       </div>

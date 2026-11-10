@@ -59,6 +59,34 @@ def save(conn, mosque: dict, payload, user_id=None, ip: str | None = None) -> di
     return view(conn, mosque)
 
 
+def import_gabarit(conn, mosque: dict, filename: str, content: bytes, user_id=None,
+                   ip: str | None = None) -> dict:
+    """Takes the texts of an `ecrans.html` template and keeps the file as the mosque's reference.
+
+    Only non-empty texts the engine knows are applied; an empty value in the file never erases a
+    text already saved (it means "no line in the mock-up", not "clear the setting"). Existing
+    engine-only slots (title_cours, foot_cours...) that the template does not carry are kept.
+    """
+    from . import gabarit
+
+    taken, ignored, empty = gabarit.parse(content, filename)
+    merged = saved(conn, mosque["id"])
+    for screen, slots in taken.items():
+        merged.setdefault(screen, {}).update(slots)
+    f = gabarit.store(mosque, content)
+    try:
+        vue = save(conn, mosque, merged, user_id, ip)
+    except Exception:
+        f.unlink(missing_ok=True)          # never keep a reference the texts were not applied from
+        raise
+    db.audit(conn, mosque["id"], user_id, "ecrans.gabarit", "mosque", mosque["id"], ip=ip,
+             fichier=f"ecrans{gabarit.EXT}",
+             repris=sum(len(v) for v in taken.values()), ignores=len(ignored), vides=len(empty))
+    conn.commit()
+    return {"taken": taken, "ignored": ignored, "empty": empty, "screens": vue,
+            "gabarit": gabarit.view(mosque), "message": gabarit.summary(taken, ignored, empty)}
+
+
 def preview(mosque: dict, payload, screen: str) -> bytes:
     """PNG (1280×720) of the screen as it will look, drawn by the engine's own renderer."""
     try:

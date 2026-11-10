@@ -95,7 +95,7 @@ visuel** — ses couleurs, sa police, son logo, sa composition — peut le faire
 assistant conversationnel.
 
 Le principe : on donne à l'assistant une consigne écrite, il rend un fichier HTML, et ce fichier
-devient votre gabarit d'écrans.
+devient la référence visuelle de vos écrans — et la source de leurs textes.
 
 1. Réglages → Écrans : la page affiche une **adresse** (un lien qui finit par
    `agent-gabarit-ecrans.md`). Copiez-la avec le bouton prévu.
@@ -105,13 +105,21 @@ devient votre gabarit d'écrans.
 3. L'assistant vous posera quelques questions (nom de la mosquée, couleurs, logo, langue, ligne de
    bienvenue). Répondez. Si vous répondez « fais comme tu veux », il prendra des choix neutres.
 4. Il vous rend un fichier nommé `ecrans.html`. Récupérez-le.
+5. Toujours dans Réglages → Écrans, cliquez sur **« Importer un gabarit »** et choisissez ce fichier.
+   Le back-office le vérifie : s'il n'est pas conforme, il explique pourquoi et ne change rien. S'il
+   est conforme, il le conserve comme référence de la mosquée, l'affiche dans l'aperçu, et reprend
+   les textes du bloc `#minbar-screens` pour remplir les champs des six écrans. Ces textes sont
+   enregistrés tout de suite ; relisez-les et corrigez-les au besoin, comme n'importe quel texte.
 
 Ce fichier reste votre propriété : il ne contient que du texte et des couleurs, il tourne sans
 internet, et il ne fait rien d'autre que s'afficher.
 
-Une limite à connaître : ce gabarit est une maquette d'aspect, pas encore branchée au direct. Faire
-apparaître vos textes en direct sur votre propre gabarit est une étape à part — parlez-en avant de
-compter dessus.
+Ce qu'il faut savoir, sans ambiguïté : **ce n'est pas le fichier HTML qui part à l'antenne.** Minbar
+Live continue de composer les six écrans avec son propre moteur, en reprenant les textes importés.
+Le fichier importé sert de référence visuelle — pour retrouver votre intention, comparer, et fournir
+les textes — pas de rendu de diffusion. Les couleurs, la police et la composition de votre gabarit ne
+sont donc pas reprises à l'antenne. Diffuser un rendu HTML à la place du moteur est un autre travail,
+qui n'existe pas aujourd'hui : ne comptez pas dessus.
 
 ---
 
