@@ -1,5 +1,4 @@
 """Back-office and dars: labels, column migration, clip caption."""
-import re
 import sqlite3
 
 from minbar.backoffice import db, publish
@@ -18,13 +17,20 @@ def test_libelle_dars_et_khutba():
 
 
 def test_migration_ajoute_les_colonnes(tmp_path):
+    """Une base créée par l'ancien code (tables présentes, sans `schema_migrations`) est adoptée
+    sans perte de données : les colonnes ajoutées depuis apparaissent avec leurs valeurs par défaut."""
     path = tmp_path / "vieux.db"
-    old_schema = db.SCHEMA
-    for _, col, _ in db.ADDED_COLUMNS:                       # previous schema: removed columns
-        old_schema = re.sub(rf"\n\s*{col} [^\n]*,", "", old_schema, count=1)
-    assert "session_no" not in old_schema
+    # Base au schéma courant, rembobinée à l'état de l'ancien code (colonnes ajoutées retirées).
+    db.init(path)
     old = sqlite3.connect(path)
-    old.executescript(old_schema)
+    old.executescript(
+        "DROP TABLE schema_migrations;"
+        "ALTER TABLE khutbas DROP COLUMN kind;"
+        "ALTER TABLE khutbas DROP COLUMN title;"
+        "ALTER TABLE khutbas DROP COLUMN series;"
+        "ALTER TABLE khutbas DROP COLUMN session_no;"
+        "ALTER TABLE mosques DROP COLUMN logo_path;"
+        "ALTER TABLE mosques DROP COLUMN onboarded_at;")
     old.execute("INSERT INTO mosques (slug, name, clip_title, created_at) "
                 "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')")
     old.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
@@ -39,6 +45,7 @@ def test_migration_ajoute_les_colonnes(tmp_path):
         assert {"kind", "title", "series", "session_no"} <= cols
         row = db.one(conn, "SELECT * FROM khutbas")
         assert row["kind"] == "khutba" and row["title"] == ""
+        assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"   # données conservées
         migrated = {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")}
     finally:
         conn.close()

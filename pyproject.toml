@@ -22,6 +22,7 @@ dependencies = [
   "python-multipart",
   "argon2-cffi",
   "httpx",
+  "sqlalchemy>=2.0",
 ]
 [tool.setuptools]
 packages = ["minbar", "minbar.pipeline", "minbar.backoffice"]
