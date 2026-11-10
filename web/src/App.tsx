@@ -14,6 +14,7 @@ import Publications from "./pages/Publications";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
+import Onboarding from "./pages/Onboarding";
 
 let sessionCourante: Session | null = null;
 export const currentSession = () => sessionCourante;
@@ -85,6 +86,7 @@ export default function App() {
             {lien("/clips", "clips", undefined, session.counts?.pending ?? 0)}
             {lien("/publications", "publications", "publish")}
             {lien("/audit", "audit", "journal")}
+            {lien("/demarrage", "onboarding", "admin")}
             {lien("/settings", "settings", "admin")}
           </nav>
           <div className="flex shrink-0 items-center gap-2.5 border-l border-white/15 pl-3">
@@ -122,6 +124,7 @@ export default function App() {
           <Route path="/sermons/:id" element={<Navigate to="/khutbas" replace />} />
           <Route path="/clips/:id" element={<ClipDetail />} />
           <Route path="/publications" element={<Publications />} />
+          <Route path="/demarrage" element={<Onboarding />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/users" element={<Users />} />
           <Route path="/audit" element={<Audit />} />

@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from .. import db, destinations, internal
+from .. import db, destinations, internal, live_input
 from ..context import ConnDep
 
 router = APIRouter()
@@ -51,3 +51,14 @@ def live_targets(request: Request, conn: ConnDep, port: int = 0):
     if mid is None:
         return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
     return {"mosque_id": mid, "urls": destinations.effective(conn, mid)}
+
+
+@router.get("/internal/live-input")
+def live_input_url(request: Request, conn: ConnDep, port: int = 0):
+    """Address the encoder must read; empty when nothing was configured in the interface."""
+    if not internal.check(request.headers.get(internal.HEADER)):
+        return _refuse()
+    mid = _mosque_id(conn, port)
+    if mid is None:
+        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+    return {"mosque_id": mid, "url": live_input.effective(conn, mid)}

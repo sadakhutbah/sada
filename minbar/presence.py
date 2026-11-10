@@ -16,6 +16,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+from . import source
+
 FRAME_TIMEOUT = 5.0     # no frame for this long: source considered lost
 
 
@@ -96,7 +98,7 @@ class PresenceMonitor(threading.Thread):
     def run(self) -> None:
         while not self.stop_flag.is_set():
             vf = f"fps={self.fps:g},scale={self.gate.width}:{self.gate.height},format=gray"
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp",
+            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", *source.input_options(self.url),
                    "-i", self.url, "-an", "-vf", vf, "-f", "rawvideo", "-pix_fmt", "gray", "-"]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

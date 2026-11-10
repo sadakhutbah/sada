@@ -12,6 +12,8 @@ import time
 
 import webrtcvad
 
+from . import source
+
 RATE = 16000
 FRAME_MS = 30
 FRAME_BYTES = RATE * FRAME_MS // 1000 * 2
@@ -32,7 +34,7 @@ class VadMonitor(threading.Thread):
 
     def run(self):
         while not self.stop_flag.is_set():
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", self.url,
+            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", *source.input_options(self.url), "-i", self.url,
                    "-vn", "-ac", "1", "-ar", str(RATE), "-f", "s16le", "-"]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

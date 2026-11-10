@@ -23,6 +23,8 @@ from pathlib import Path
 
 import numpy as np
 
+from . import source
+
 FRAME_TIMEOUT = 5.0     # no frame for this long: source considered lost
 MODEL = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
 
@@ -114,8 +116,7 @@ class FaceMonitor(threading.Thread):
     def run(self) -> None:
         while not self.stop_flag.is_set():
             vf = f"fps={self.fps:g},scale={self.width}:{self.height},format=bgr24"
-            transport = ["-rtsp_transport", "tcp"] if self.url.startswith("rtsp://") else []
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", *transport,
+            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", *source.input_options(self.url),
                    "-i", self.url, "-an", "-vf", vf, "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

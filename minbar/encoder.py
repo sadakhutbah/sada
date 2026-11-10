@@ -23,7 +23,7 @@ from typing import Optional
 import zmq
 from PIL import Image
 
-from . import transitions as tr
+from . import source, transitions as tr
 
 
 def _zmq_esc(port: int) -> str:
@@ -110,7 +110,7 @@ class Encoder:
             out_clean = vmap + ["-map", "[aclean]", "-c:a:0", "aac", "-b:a:0", "160k", "-ar", "48000", "-f", "matroska", clean]
         return [
             "ffmpeg", "-hide_banner", "-loglevel", "warning", "-nostats", "-progress", "pipe:1",
-            "-rtsp_transport", "tcp", "-i", c.camera_url,
+            *source.input_options(c.camera_url), "-i", c.camera_url,
             "-framerate", str(c.fps), "-i", self.layer_png["fond"],
             *slot, self.layer_png["a"], *slot, self.layer_png["b"],
             "-filter_complex", fg, "-map", "[v]", "-map", "[a]",

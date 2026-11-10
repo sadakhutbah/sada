@@ -110,6 +110,24 @@ Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-
 des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le
 demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
 
+## Mise en route : trois écrans
+
+**Mise en route** (menu, réservé aux administrateurs) suit la configuration du direct de bout en bout,
+un formulaire par écran :
+
+1. **Entrée vidéo** — d'où vient l'image. Soit une caméra qui publie déjà en RTSP (son adresse est
+   saisie telle quelle), soit une poussée depuis un ordinateur : OBS envoie son image au relais
+   (`tools/mediamtx.sh`), qui la republie en RTSP pour l'encodeur. L'écran affiche l'adresse à coller
+   dans OBS (`rtmp://<cette machine>:1935/live/<mosquée>`) et un bouton **Tester** qui dit ce que le
+   flux contient — ou pourquoi rien n'arrive.
+2. **Destinations** — une ligne par réseau, comme dans Réglages → Direct ; les clés déjà saisies
+   reviennent masquées.
+3. **Récapitulatif** — l'entrée retenue et le nombre de destinations actives.
+
+En mode poussée, l'encodeur lit la copie RTSP du relais (`rtsp://127.0.0.1:8554/live/<mosquée>`), pas
+l'adresse RTMP : le transport RTSP ne s'applique qu'aux adresses `rtsp://`, ce qui permet aussi de
+donner directement une entrée RTMP par configuration locale.
+
 ## Diffusion en direct : plusieurs destinations à la fois
 
 Les destinations se règlent dans l'interface : **Réglages → Direct**, une ligne par destination (nom,

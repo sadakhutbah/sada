@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from . import events as events_mod
-from . import destinations, mawaqit, notify, runs
+from . import destinations, mawaqit, notify, runs, source
 from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
@@ -55,6 +55,10 @@ class Orchestrator:
         remote = destinations.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
         if remote:
             cfg.rtmp_urls = remote
+        # Video input (camera or a pushed stream) comes from the back office too, same rule.
+        entree = source.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
+        if entree:
+            cfg.camera_url = entree
         self.renderer = SceneRenderer(cfg)
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())

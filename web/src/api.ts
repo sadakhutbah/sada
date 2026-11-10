@@ -139,5 +139,9 @@ export const api = {
   saveNotifications: (body: Record<string, string>) => ecrire<any>("PUT", "/settings/notifications", body),
   destinations: (targets: Array<{ id?: number; label: string; url: string; enabled: boolean }>) =>
     ecrire<any>("PUT", "/settings/live", { targets }),
+  /** Video input: a camera address, or "a computer pushes its picture" (the relay's address is built server-side). */
+  saveInput: (mode: string, url: string) => ecrire<any>("PUT", "/settings/input", { mode, url }),
+  testInput: (mode: string, url: string) =>
+    ecrire<{ ok: boolean; detail: string; url: string }>("POST", "/settings/input/test", { mode, url }),
   testNotifications: () => ecrire<any>("POST", "/settings/notifications/test"),
 };

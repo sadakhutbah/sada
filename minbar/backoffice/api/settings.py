@@ -8,13 +8,18 @@ from fastapi.responses import JSONResponse
 
 from ... import notify
 from ...pipeline import llm
-from .. import auth, branding, db, destinations, dirs as dirs_mod, publish
+from .. import auth, branding, db, destinations, dirs as dirs_mod, live_input, publish
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
 
 router = APIRouter()
 
 SECTIONS = ("mosque", "logo", "live", "folders", "model", "connectors", "access")
+
+
+def _host(ctx) -> str:
+    """Host the browser reached us on: the address to give OBS, so it works over the network too."""
+    return ctx.request.url.hostname or "127.0.0.1"
 
 
 def _model_view() -> dict:
@@ -42,6 +47,7 @@ def settings(ctx: CtxDep):
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
             "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
             "targets": destinations.rows(ctx.conn, ctx.mosque),
+            "input": live_input.view(ctx.conn, ctx.mosque, _host(ctx)),
             "model": _model_view()}
 
 
@@ -112,6 +118,31 @@ async def live_save(ctx: CtxDep):
         raise Invalid(str(e)) from e
     return _ok("Destinations du direct enregistrées. Elles sont prises au prochain lancement du direct.",
                targets=rows)
+
+
+@router.put("/settings/input")
+async def input_save(ctx: CtxDep):
+    """Video input: a camera address, or "a computer pushes its picture" (relay)."""
+    f = await ctx.body()
+    ctx.require("admin")
+    try:
+        live_input.save(ctx.conn, ctx.mosque, f.get("mode", ""), f.get("url", ""), ctx.user)
+    except live_input.InvalidInput as e:
+        raise Invalid(str(e)) from e
+    return _ok("Entrée vidéo enregistrée. Le moteur la lit au prochain démarrage du direct.",
+               **{"input": live_input.view(ctx.conn, ctx.mosque, _host(ctx))})
+
+
+@router.post("/settings/input/test")
+async def input_test(ctx: CtxDep):
+    """Checks the input right now: what the picture looks like, or why nothing arrives."""
+    f = await ctx.body()
+    ctx.require("admin")
+    mode, url, err = live_input.check(f.get("mode", ""), f.get("url", ""), ctx.mosque)
+    if err:
+        raise Invalid(err)
+    ok, detail = live_input.probe(url)
+    return {"ok": ok, "detail": detail, "url": url}
 
 
 @router.post("/settings/model/test")

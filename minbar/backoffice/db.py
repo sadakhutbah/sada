@@ -137,6 +137,12 @@ CREATE TABLE IF NOT EXISTS live_targets (
     created_at TEXT NOT NULL,
     updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS live_input (
+    mosque_id INTEGER PRIMARY KEY REFERENCES mosques(id),
+    mode TEXT NOT NULL DEFAULT 'camera' CHECK (mode IN ('camera', 'push')),
+    url TEXT NOT NULL DEFAULT '',
+    updated_at TEXT
+);
 CREATE TABLE IF NOT EXISTS publications (
     id INTEGER PRIMARY KEY,
     mosque_id INTEGER NOT NULL REFERENCES mosques(id),
