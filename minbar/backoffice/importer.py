@@ -22,14 +22,28 @@ def _theme(path: Path) -> str:
     return notes.theme_from_markdown(path.read_text(encoding="utf-8")) if path.exists() else ""
 
 
+def _ffmpeg() -> str | None:
+    """ffmpeg from PATH, otherwise the copy shipped next to the app (tools/bin) by the all-in-one install."""
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    bin_ = Path(__file__).resolve().parents[2] / "tools" / "bin"
+    for name in ("ffmpeg.exe", "ffmpeg"):
+        if (bin_ / name).exists():
+            return str(bin_ / name)
+    return None
+
+
 def _extract_video(rec: str | None, start: float | None, end: float | None, out: Path, log) -> str | None:
     """Extracts the session from the live recording (stream copy, no re-encoding) into an MP4 playable on a phone."""
     if out.exists() and out.stat().st_size > 0:
         return str(out)
-    if not rec or start is None or not Path(rec).exists() or not shutil.which("ffmpeg"):
+    ffmpeg = _ffmpeg()
+    if not rec or start is None or not Path(rec).exists() or not ffmpeg:
+        log(f"extraction vidéo impossible ({rec}) : ffmpeg ou enregistrement absent")
         return None
     dur = (end - start) if end else None
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.2f}", "-i", rec]
+    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.2f}", "-i", rec]
     cmd += (["-t", f"{dur:.2f}"] if dur else []) + ["-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
                                                      "-movflags", "+faststart", str(out)]
     try:
