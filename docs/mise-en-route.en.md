@@ -25,7 +25,12 @@ neither the database, nor the accounts, nor the settings: it prepares the machin
 | Python dependencies | reinstalls them with `pip` | — |
 | The screen renderer browser | downloads it (about 280 MB), once | — |
 | The `mediamtx` video relay | — | place it: a binary to put in `tools/bin`, on a live machine |
-| `ffmpeg` | — | install it, on a live machine |
+| `ffmpeg` | — | put it in `tools/bin`, or install it, on a live machine |
+
+Both are looked for in the project's `tools/bin` first, before the PATH: dropping the two
+executables there is enough, without touching system settings. Configuration verified on a Windows
+machine: `mediamtx` 1.21.3 and `ffmpeg` 9.0.2, an RTMP push received, recorded and read back over
+RTSP without loss.
 
 A point with no consequence on this machine (the video relay and ffmpeg only matter on a live
 machine) is reported without stopping the setup. A point that would prevent the application from

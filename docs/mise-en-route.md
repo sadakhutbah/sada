@@ -25,7 +25,12 @@ touche ni à la base, ni aux comptes, ni aux réglages : elle prépare la machin
 | Les dépendances Python | les réinstalle avec `pip` | — |
 | Le navigateur de rendu des écrans | le télécharge (environ 280 Mo), une fois | — |
 | Le relais vidéo `mediamtx` | — | le poser : c'est un binaire à placer dans `tools/bin`, pour un poste de direct |
-| `ffmpeg` | — | l'installer, pour un poste de direct |
+| `ffmpeg` | — | le poser dans `tools/bin` ou l'installer, pour un poste de direct |
+
+Le relais et ffmpeg sont cherchés d'abord dans `tools/bin` du projet, avant le PATH : déposer les
+deux exécutables là suffit, sans toucher aux réglages du système. Configuration éprouvée sur un
+poste Windows : `mediamtx` 1.21.3 et `ffmpeg` 9.0.2, poussée RTMP reçue, enregistrée et relue en
+RTSP sans perte.
 
 Un point sans conséquence sur cette machine (le relais vidéo et ffmpeg ne servent qu'à un poste de
 direct) est signalé sans interrompre la mise en route. Un point qui empêcherait l'application de

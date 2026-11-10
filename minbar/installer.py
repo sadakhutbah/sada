@@ -142,11 +142,15 @@ def _relais_ok() -> Etape:
 
 
 def _ffmpeg_ok() -> Etape:
+    nom = "ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg"
+    dans_le_projet = RAIL_BIN / nom
+    if dans_le_projet.is_file():
+        return Etape("ffmpeg", OK, str(dans_le_projet.relative_to(RAIL_BIN.parent.parent)))
     found = shutil.which("ffmpeg")
     if found:
         return Etape("ffmpeg", OK, found)
-    return Etape("ffmpeg", MANQUE, "introuvable dans le PATH",
-                 "installez ffmpeg (poste de direct uniquement)")
+    return Etape("ffmpeg", MANQUE, "introuvable, ni dans tools/bin ni dans le PATH",
+                 "poste de direct : déposez ffmpeg dans tools/bin, ou installez-le")
 
 
 def examen() -> list[Etape]:
