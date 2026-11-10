@@ -106,3 +106,59 @@ def test_les_connecteurs_sont_decoupes(env):
     from minbar.backoffice import db
     row = next(r for r in c.get("/api/v1/settings").json()["connectors"] if r["key"] == "facebook")
     assert {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
+
+
+def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
+    """L'écran reçoit un masque pour le jeton, et jamais la clé d'API du modèle ni le chemin du logo."""
+    import json
+
+    from minbar.backoffice import db
+    from minbar.pipeline import llm
+
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(env["tmp"] / "llm.json"))
+    c = client(env, "admin")
+    c.ecrire("/settings/mosque", {"orchestrator_token": "tres-secret"}, methode="PATCH")
+    llm.config_path().write_text(json.dumps({"enabled": True, "url": "http://h:1/v1", "key": "cle-api-secrete"}))
+    d = c.get("/api/v1/settings").json()
+    texte = json.dumps(d, ensure_ascii=False)
+    assert d["mosque"]["orchestrator_token"] == db.MASK
+    assert "tres-secret" not in texte and "cle-api-secrete" not in texte
+    assert d["model"]["has_key"] is True and d["mosque"]["has_logo"] is False and "logo_path" not in d["mosque"]
+    # le masque renvoyé tel quel laisse le jeton inchangé
+    c.ecrire("/settings/mosque", {"orchestrator_token": db.MASK, "name": "Autre nom"}, methode="PATCH")
+    m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    assert m["orchestrator_token"] == "tres-secret" and m["name"] == "Autre nom"
+
+
+def test_mawaqit_et_fuseau_enregistres_et_valides(env):
+    from minbar.backoffice import db
+    c = client(env, "admin")
+    assert c.ecrire("/settings/mosque", {"mawaqit_url": "https://mawaqit.net/fr/x", "timezone": "Africa/Casablanca"},
+                    methode="PATCH").status_code == 200
+    d = c.get("/api/v1/settings").json()["mosque"]
+    assert d["mawaqit_url"] == "https://mawaqit.net/fr/x" and d["timezone"] == "Africa/Casablanca"
+    r = c.ecrire("/settings/mosque", {"timezone": "Mars/Olympus"}, methode="PATCH")
+    assert r.status_code == 422 and "fuseau" in r.json()["message"]
+    assert db.one(env["conn"], "SELECT timezone FROM mosques WHERE id = ?", env["mid"])["timezone"] == "Africa/Casablanca"
+
+
+def test_dossier_inutilisable_refuse(env):
+    c = client(env, "admin")
+    f = env["tmp"] / "un-fichier"
+    f.write_text("x")
+    r = c.ecrire("/settings/mosque", {"publish_dir": str(f)}, methode="PATCH")
+    assert r.status_code == 422 and "Dossier refusé" in r.json()["message"]
+    ok = env["tmp"] / "cree" / "ici"
+    assert c.ecrire("/settings/mosque", {"publish_dir": str(ok)}, methode="PATCH").status_code == 200
+    assert ok.is_dir()
+
+
+def test_modele_enregistre_et_relu(env, monkeypatch):
+    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(env["tmp"] / "llm.json"))
+    c = client(env, "admin")
+    r = c.ecrire("/settings/model", {"enabled": "1", "url": "http://127.0.0.1:1/v1", "model": "m", "protocol": "openai"},
+                 methode="PUT")
+    assert r.status_code == 200, r.text
+    m = c.get("/api/v1/settings").json()["model"]
+    assert (m["enabled"], m["url"], m["model"], m["protocol"]) == (True, "http://127.0.0.1:1/v1", "m", "openai")
+    assert c.ecrire("/settings/model", {"protocol": "inconnu"}, methode="PUT").status_code == 422

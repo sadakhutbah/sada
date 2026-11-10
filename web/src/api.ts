@@ -122,4 +122,16 @@ export const api = {
     ecrire<{ ok: boolean; message: string; id: string }>("PUT", `/events/${encodeURIComponent(id)}`, corps),
   supprimerEvenement: (id: string) =>
     ecrire<{ ok: boolean; message: string }>("DELETE", `/events/${encodeURIComponent(id)}`),
+  /** Logo : envoi multipart (le navigateur fixe lui-même l'en-tête Content-Type). */
+  envoyerLogo: (fichier: File) => {
+    const corps = new FormData();
+    corps.append("logo", fichier);
+    return demande<{ ok: boolean; message: string; logo: string }>("/settings/logo", {
+      method: "POST",
+      headers: { "X-CSRF": jeton },
+      body: corps,
+    });
+  },
+  retirerLogo: () => ecrire<{ ok: boolean; message: string }>("DELETE", "/settings/logo"),
+
 };

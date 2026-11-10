@@ -278,18 +278,31 @@ def publications(ctx: CtxDep):
             "configured": etats, "ready": ready, "publications": pubs}
 
 
+def _model_view() -> dict:
+    """Réglage du modèle pour l'écran : jamais la clé d'API, seulement sa présence."""
+    cfg = llm.config()
+    eff = llm.settings()
+    return {"enabled": llm.enabled(), "url": cfg.get("url", ""), "model": cfg.get("model", ""),
+            "protocol": cfg.get("protocol", ""), "has_key": bool(cfg.get("key")),
+            "effective": {"url": eff.url, "model": eff.model, "protocol": eff.protocol},
+            "label": eff.label()}
+
+
 @router.get("/settings")
 def settings(ctx: CtxDep):
     """Tout ce que montre l'écran Réglages : l'interface découpe elle-même en onglets."""
     ctx.require("admin")
     m = _mosque(ctx)
-    m.update({k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS})
+    m.update({k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"})
+    # un secret enregistré ne ressort jamais en clair : le masque renvoyé tel quel signifie « inchangé »
+    m["orchestrator_token"] = db.MASK if m["orchestrator_token"] else ""
+    m["has_logo"] = bool((ctx.mosque.get("logo_path") or "").strip())
     # « par défaut : data/state » — jamais un chemin de la machine.
     defauts = {k: dirs_mod.label(v) for k, v in db.mosque_dirs(ctx.mosque).items()}
     return {"mosque": m, "defaults": defauts, "sections": SECTIONS,
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
             "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
-            "model": {**llm.config(), "label": llm.settings().label(), "enabled": llm.enabled()}}
+            "model": _model_view()}
 
 
 @router.get("/users")
@@ -497,6 +510,11 @@ async def mosque_save(ctx: CtxDep):
         raise Invalid("L'adresse de l'orchestrateur doit commencer par http:// ou https://.")
     if vals["orchestrator_token"] == db.MASK:
         vals["orchestrator_token"] = ctx.mosque["orchestrator_token"]
+    for cle in ("state_dir", "output_dir", "publish_dir"):
+        if vals[cle]:
+            ok, pourquoi = dirs_mod.check(vals[cle], create_if_missing=True)
+            if not ok:
+                raise Invalid(f"Dossier refusé ({pourquoi}).")
     di = auth.imam_id(ctx.conn, ctx.mosque["id"], f.get("default_imam_id", ctx.mosque["default_imam_id"]))
     auto = f.get("auto_import")
     auto_import = (ctx.mosque.get("auto_import") or 0) if auto in ("", None) else (1 if str(auto) in ("1", "true", "on") else 0)
