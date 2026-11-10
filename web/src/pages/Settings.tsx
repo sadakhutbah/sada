@@ -17,6 +17,14 @@ type Ecrans = Record<string, Record<string, string>>;
 
 const ECRANS = ["avant", "priere", "entracte", "termine", "janaza", "dars_fin"] as const;
 
+// Deux par ligne ; le pied de page occupe la largeur, les autres tiennent à deux.
+const CHAMPS_ECRAN = [
+  { champ: "eyebrow", large: false },
+  { champ: "title", large: true },
+  { champ: "sub", large: false },
+  { champ: "foot", large: true },
+] as const;
+
 const CHAMPS_MOSQUEE = [
   "name", "timezone", "clip_title", "mawaqit_url", "orchestrator_url", "orchestrator_token",
   "state_dir", "output_dir", "publish_dir",
@@ -138,7 +146,6 @@ export default function Settings() {
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
   const [apercu, setApercu] = useState("");
-  const [aideScreens, setAideScreens] = useState(false);
   const fichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
@@ -459,53 +466,52 @@ export default function Settings() {
       </div>
     ),
     screens: (
-      <div className="grid gap-2.5">
-        {/* Un écran à la fois : les sous-onglets évitent une page qui n'en finit pas. */}
-        {/* L'aide existe mais se déplie d'elle-même, sans bouton rond posé à côté du texte. */}
-        <details className="group max-w-[80ch] rounded-[10px] border border-line bg-paper px-3.5 py-2.5" open={aideScreens}
-          onToggle={(e) => setAideScreens((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
-            <p className="m-0 text-[0.9rem] text-muted">{t("settings.screensHint")}</p>
-            <span className="ml-auto shrink-0 text-[0.82rem] font-semibold text-deep underline decoration-line decoration-1 underline-offset-4 group-open:hidden">
-              {t("settings.screensHelpOpen")}
-            </span>
-            <span className="ml-auto hidden shrink-0 text-[0.82rem] font-semibold text-deep underline decoration-line decoration-1 underline-offset-4 group-open:inline">
-              {t("settings.screensHelpClose")}
-            </span>
-          </summary>
-          <div className="mt-3 grid gap-3 border-t border-line pt-3 text-[0.88rem] leading-[1.65] text-ink">
-            <p className="m-0">{t("settings.screensHelpWhat")}</p>
-            <p className="m-0 text-muted">{t("settings.screensHelpEmpty")}</p>
-            <p className="m-0 text-muted">{t("settings.screensHelpWhen")}</p>
-            <div className="mt-0.5 rounded-[6px] bg-paper-2 px-3 py-2">
-              <p className="m-0 text-deep">{t("settings.screensHelpSteps")}</p>
+      <div className="grid gap-3">
+        {/* Un seul formulaire, deux colonnes : champs à gauche, aperçu collé à droite. */}
+        <div className="grid items-start gap-x-5 gap-y-3 sm:grid-cols-[minmax(0,1fr)_250px]">
+          <div className="grid min-w-0 gap-3">
+            <div className="grid gap-1.5">
+              <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
+                valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
+              <p className="m-0 max-w-[62ch] text-[0.84rem] leading-[1.5] text-muted">{t("settings.screensHint")}</p>
+              <details className="group grid gap-2 text-[0.84rem]">
+                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[0.84rem] font-semibold text-deep [&::-webkit-details-marker]:hidden">
+                  <span className="grid h-4 w-4 place-items-center rounded-full border border-deep/40 text-[0.66rem] leading-none before:content-['+'] group-open:before:content-['−']" aria-hidden="true"></span>
+                  {t("settings.screensHelpOpen")}
+                </summary>
+                <div className="grid max-w-[62ch] gap-2 rounded-[8px] border border-line bg-paper px-3 py-2.5 leading-[1.6]">
+                  <p className="m-0">{t("settings.screensHelpWhat")}</p>
+                  <p className="m-0 text-muted">{t("settings.screensHelpEmpty")}</p>
+                  <p className="m-0 text-muted">{t("settings.screensHelpWhen")}</p>
+                  <div className="rounded-[6px] bg-paper-2 px-2.5 py-2 text-deep">
+                    <p className="m-0">{t("settings.screensHelpSteps")}</p>
+                  </div>
+                </div>
+              </details>
             </div>
+            <div className="grid gap-3">
+              {CHAMPS_ECRAN.map(({ champ, large }) => (
+                <Field key={champ} label={t(`settings.screenFields.${champ}`)}
+                  className={large ? undefined : "max-w-[22rem]"}>
+                  <input className={inputClass}
+                    placeholder={d.screens[ecranVue]?.[champ]?.default ?? ""}
+                    value={ecrans[ecranVue]?.[champ] ?? ""}
+                    onChange={(e) => {
+                      setEcrans((x) => ({ ...x, [ecranVue]: { ...(x[ecranVue] ?? {}), [champ]: e.target.value } }));
+                      setMsg(null);
+                    }} />
+                </Field>
+              ))}
+            </div>
+            <p className="m-0 max-w-[62ch] text-[0.8rem] leading-[1.5] text-muted">{t("settings.screensVars")}</p>
           </div>
-        </details>
-        <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
-          valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_262px]">
-          {/* Deux colonnes de champs : cinq lignes tiennent sans allonger la page ; le pied de page prend la largeur. */}
-          <div className="grid content-start gap-2 sm:grid-cols-2">
-            {Object.entries<any>(d.screens?.[ecranVue] ?? {}).map(([champ, v]) => (
-              <Field key={champ} label={t(`settings.screenFields.${champ}`)}
-                className={champ === "foot" ? "sm:col-span-2" : ""}>
-                <input className={inputClass} value={ecrans[ecranVue]?.[champ] ?? ""} placeholder={v?.default ?? ""} spellCheck
-                  onChange={(e) => {
-                    setEcrans((x) => ({ ...x, [ecranVue]: { ...(x[ecranVue] ?? {}), [champ]: e.target.value } }));
-                    setMsg(null);
-                  }} />
-              </Field>
-            ))}
-          </div>
-          <figure className="m-0 grid content-start gap-1">
+          <figure className="m-0 grid gap-1.5 sm:sticky sm:top-3">
             {apercu
-              ? <img src={apercu} alt="" className="w-full rounded-[6px] border border-line" />
-              : <div className="aspect-video rounded-[6px] border border-line bg-deeper/5" />}
-            <figcaption className="text-[0.78rem] text-muted">{t("settings.screensPreview")}</figcaption>
+              ? <img src={apercu} alt="" className="aspect-video w-full rounded-[8px] border border-line object-cover" />
+              : <div className="aspect-video w-full rounded-[8px] border border-line bg-paper-2" />}
+            <figcaption className="text-[0.76rem] leading-[1.4] text-muted">{t("settings.screensPreview")}</figcaption>
           </figure>
         </div>
-        <p className="m-0 text-[0.8rem] text-muted">{t("settings.screensVars")}</p>
       </div>
     ),
     replays: (
