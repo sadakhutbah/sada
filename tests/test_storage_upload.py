@@ -57,6 +57,20 @@ def test_masque_renvoye_garde_le_secret(env):
     assert t["secret_key"] == "secret-tres-secret" and t["bucket"] == "autre-bucket"
 
 
+def test_l_envoi_est_une_option_pas_le_defaut(env):
+    """Régler un compartiment ne suffit pas : sans case cochée, rien ne part."""
+    from minbar.backoffice import storage
+    c = client(env, "admin")
+    sans_case = {k: v for k, v in BON.items() if k != "enabled"}
+    v = c.ecrire("/settings/storage", sans_case, methode="PUT").json()["storage"]
+    assert v["enabled"] is False and v["configured"] is True
+    assert storage.effective(env["conn"], env["mid"]) is None
+    # une valeur vide ou fausse n'active pas non plus
+    assert c.ecrire("/settings/storage", {**sans_case, "enabled": ""}, methode="PUT").json()["storage"]["enabled"] is False
+    assert c.ecrire("/settings/storage", {**sans_case, "enabled": "1"}, methode="PUT").json()["storage"]["enabled"] is True
+    assert storage.effective(env["conn"], env["mid"]) is not None
+
+
 def test_compartiment_desactive_n_est_pas_lu_par_le_moteur(env):
     from minbar.backoffice import storage
     c = client(env, "admin")

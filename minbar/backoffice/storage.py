@@ -86,7 +86,8 @@ def save(conn, mosque_id: int, payload: dict) -> dict:
         secret = avant.get("secret_key") or ""
     if not secret:
         raise InvalidStorage({"secret_key": "Clé secrète requise."})
-    actif = str(payload.get("enabled", "1")).strip().lower() not in ("0", "false", "off", "non", "")
+    # Opt-in: without an explicit "on", the replays stay on the machine.
+    actif = str(payload.get("enabled", "0")).strip().lower() in ("1", "true", "on", "oui", "yes")
     conn.execute(
         """INSERT INTO storage (mosque_id, endpoint, region, bucket, access_key, secret_key, prefix, enabled, updated_at)
            VALUES (?,?,?,?,?,?,?,?,?)

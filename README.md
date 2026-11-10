@@ -151,8 +151,10 @@ autres (`onfail=ignore`).
 ## Rediffusions : envoi vers un compartiment S3 ou R2
 
 Une fois le direct arrêté, les enregistrements partent dans un compartiment compatible S3 (Cloudflare
-R2, MinIO, Backblaze, AWS). Réglages → **Rediffusions** : service (adresse du service, vide pour AWS),
-compartiment, région, clé d'accès, clé secrète, dossier, case « Envoyer les rediffusions ». Le bouton
+R2, MinIO, Backblaze, AWS). C'est **une option, pas le fonctionnement par défaut** : renseigner un
+compartiment ne suffit pas, il faut cocher « Envoyer les rediffusions » — sans cette case, les fichiers
+restent uniquement sur la machine et le moteur ne reçoit rien. Réglages → **Rediffusions** : service
+(adresse du service, vide pour AWS), compartiment, région, clé d'accès, clé secrète, dossier, cette case. Le bouton
 **Tester l'écriture** dépose puis retire un objet minuscule : il dit si le compartiment accepte vraiment
 les fichiers, avant le premier direct. Il faut enregistrer avant de tester.
 

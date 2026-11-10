@@ -125,7 +125,7 @@ export default function Settings() {
   const [entreeInitiale, setEntreeInitiale] = useState("");
   const [essai, setEssai] = useState<{ ok: boolean; detail: string } | null>(null);
   const [stockage, setStockage] = useState<Stockage>({ endpoint: "", region: "auto", bucket: "", access_key: "",
-    secret_key: "", prefix: "rediffusions/", enabled: true });
+    secret_key: "", prefix: "rediffusions/", enabled: false });
   const [stockageInitial, setStockageInitial] = useState("");
   const [essaiStockage, setEssaiStockage] = useState<{ ok: boolean; detail: string } | null>(null);
   const [test, setTest] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
