@@ -1,12 +1,54 @@
 # Mettre le direct en route
 
-Ce document s'adresse à l'administrateur de la mosquée. Il décrit la première connexion au
-back-office, la visite de mise en route en quatre écrans, le branchement de la caméra ou d'OBS, les
+Ce document s'adresse à l'administrateur de la mosquée. Il décrit l'installation de l'application,
+la première connexion au back-office, la visite de mise en route en quatre écrans, le branchement de la caméra ou d'OBS, les
 destinations du direct, et ce qui se passe au premier direct.
 
 ---
 
-## 1. Avant de commencer : le compte, la mosquée, le fuseau
+## 1. Installer l'application sur la machine du direct
+
+L'application s'installe en une commande, puis elle vérifie elle-même ce qui manque.
+
+```
+pip install -e .
+python -m minbar.installer
+```
+
+La seconde commande est la seule à retenir. Elle examine la machine, fait ce qui peut l'être seule,
+et s'arrête au premier point qui demande une main humaine en disant exactement quoi faire. Elle ne
+touche ni à la base, ni aux comptes, ni aux réglages : elle prépare la machine, pas la mosquée.
+
+| Ce qu'elle vérifie | Ce qu'elle fait toute seule | Ce qu'elle ne peut pas faire |
+| --- | --- | --- |
+| Python 3.10 ou plus récent | — | installer Python : le message renvoie vers python.org, case « Add to PATH » |
+| Les dépendances Python | les réinstalle avec `pip` | — |
+| Le navigateur de rendu des écrans | le télécharge (environ 280 Mo), une fois | — |
+| Le relais vidéo `mediamtx` | — | le poser : c'est un binaire à placer dans `tools/bin`, pour un poste de direct |
+| `ffmpeg` | — | l'installer, pour un poste de direct |
+
+Un point sans conséquence sur cette machine (le relais vidéo et ffmpeg ne servent qu'à un poste de
+direct) est signalé sans interrompre la mise en route. Un point qui empêcherait l'application de
+tourner arrête tout, et rien n'est annoncé comme fait avant d'avoir été vérifié, en dernier
+ressort par un nouvel examen complet.
+
+Pour savoir où en est une machine, sans rien modifier :
+
+```
+python -m minbar.installer --verifier
+```
+
+Le bilan se lit ligne par ligne : `ok`, `à faire` (avec la commande qui le fait), ou `bloqué`. La
+commande sort en succès si tout est en place, en échec sinon : elle peut servir telle quelle dans
+un script.
+
+Rien n'est gravé : supprimer le dossier `vendor/chromium` revient à ne pas avoir téléchargé le
+navigateur, et la commande le retéléchargera au besoin. Sur un réseau lent ou filtré, le
+téléchargement est la seule étape qui prend du temps ; elle n'est faite qu'une fois.
+
+---
+
+## 2. Avant de commencer : le compte, la mosquée, le fuseau
 
 L'installation a déjà créé la mosquée et votre compte administrateur. Vous devez avoir reçu :
 
@@ -42,7 +84,7 @@ il décale les écrans et le programme d'une heure ou plus.
 Cliquez sur **Enregistrer les réglages** en bas de la page. La page signale les modifications non
 enregistrées ; tant qu'elles ne sont pas enregistrées, l'orchestrateur ne les verra pas.
 
-## 2. La visite en quatre écrans
+## 3. La visite en quatre écrans
 
 À la première connexion d'un administrateur, le back-office ouvre la mise en route. Elle ne réapparaît
 plus une fois terminée ou passée. Quatre écrans, dont un facultatif :
@@ -62,7 +104,7 @@ Le lien **Passer la mise en route** termine la visite immédiatement, sans enreg
 courant. Les mêmes réglages restent accessibles ensuite dans **Réglages → Direct** et **Réglages →
 Rediffusions** ; la visite n'est pas le seul chemin.
 
-## 3. Brancher la caméra
+## 4. Brancher la caméra
 
 Choisissez **Caméra de la mosquée** si la caméra diffuse déjà son image sur le réseau. Le champ
 attend une adresse qui commence par `rtsp://` ou `rtsps://`, sans espace, avec un serveur nommé.
@@ -85,7 +127,7 @@ l'inverse. En cas de doute, recommencez le test avant de conclure.
 Une fois le test satisfaisant, cliquez sur **Continuer** : l'adresse est enregistrée et sera lue au
 prochain démarrage du direct.
 
-## 4. Brancher OBS (poussée depuis un ordinateur)
+## 5. Brancher OBS (poussée depuis un ordinateur)
 
 Choisissez **Poussée depuis un ordinateur** si l'image est fabriquée dans OBS. L'écran affiche une
 adresse à recopier, avec un bouton **Copier** ; elle ressemble à
@@ -108,7 +150,7 @@ En mode poussée, le bouton **Tester** lit la copie du relais, pas l'adresse don
 donc rien montrer tant qu'OBS ne pousse pas : le test échoue avec `Flux injoignable`. Lancez OBS,
 puis recommencez le test pour voir la résolution et le son. Le vrai contrôle reste le premier direct.
 
-## 5. Les destinations du direct
+## 6. Les destinations du direct
 
 L'écran 2 liste les adresses auxquelles le flux est envoyé. Le même flux part vers toutes les
 destinations actives, dans l'ordre de la liste.
@@ -133,7 +175,7 @@ Règles de l'écran :
 Dans la visite, les destinations sont enregistrées en une fois, au clic sur **Continuer**. Elles sont
 lues au prochain démarrage du direct ; rien ne change pendant un direct en cours.
 
-## 6. Les rediffusions, en option
+## 7. Les rediffusions, en option
 
 Le troisième écran propose d'envoyer les enregistrements du direct vers un compartiment de stockage.
 La case est **décochée par défaut** : sans elle, tout reste sur la machine de la mosquée. C'est le
@@ -146,7 +188,7 @@ cliquer sur **Continuer** ; tout se règle plus tard dans **Réglages → Rediff
 
 Le détail des champs et des erreurs est dans le document **Les rediffusions et leur envoi**.
 
-## 7. Vérifier que tout est prêt, puis le premier direct
+## 8. Vérifier que tout est prêt, puis le premier direct
 
 Avant de quitter la mise en route, contrôlez ces quatre points :
 
@@ -181,7 +223,7 @@ Au premier direct :
 Les clips arrivent avec le statut **À valider**. Rien n'est publié sur les réseaux sans un geste
 humain : la publication se fait depuis la fiche du clip, après validation.
 
-## 8. Questions fréquentes
+## 9. Questions fréquentes
 
 **J'ai quitté la mise en route au milieu, que se passe-t-il ?**
 Les écrans déjà quittés sont enregistrés. La visite revient à la prochaine connexion tant qu'elle

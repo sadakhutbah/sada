@@ -6,7 +6,49 @@ the first live.
 
 ---
 
-## 1. Before you start: the account, the mosque, the time zone
+## 1. Installing the application on the live machine
+
+One command installs it, then the application checks for itself what is missing.
+
+```
+pip install -e .
+python -m minbar.installer
+```
+
+The second command is the only one to remember. It inspects the machine, does what it can on its
+own, and stops at the first point that needs a human hand, saying exactly what to do. It touches
+neither the database, nor the accounts, nor the settings: it prepares the machine, not the mosque.
+
+| What it checks | What it does on its own | What it cannot do |
+| --- | --- | --- |
+| Python 3.10 or newer | — | install Python: the message points to python.org, "Add to PATH" box |
+| Python dependencies | reinstalls them with `pip` | — |
+| The screen renderer browser | downloads it (about 280 MB), once | — |
+| The `mediamtx` video relay | — | place it: a binary to put in `tools/bin`, on a live machine |
+| `ffmpeg` | — | install it, on a live machine |
+
+A point with no consequence on this machine (the video relay and ffmpeg only matter on a live
+machine) is reported without stopping the setup. A point that would prevent the application from
+running stops everything, and nothing is announced as done before it has been verified — in the
+last resort by a full fresh check.
+
+To know where a machine stands, changing nothing:
+
+```
+python -m minbar.installer --verifier
+```
+
+The report reads line by line: `ok`, `à faire` (with the command that does it), or `bloqué`. The
+command exits successfully when everything is in place, and fails otherwise: it can be used as is
+in a script.
+
+Nothing is written in stone: deleting the `vendor/chromium` folder is the same as never having
+downloaded the browser, and the command will fetch it again when needed. On a slow or filtered
+network, the download is the only slow step; it happens once.
+
+---
+
+## 2. Before you start: the account, the mosque, the time zone
 
 The installation has already created the mosque and your administrator account. You should have
 received:
@@ -42,7 +84,7 @@ the screens and the schedule by an hour or more.
 Click **Save settings** at the bottom of the page. The page reports unsaved changes; as long as they
 are not saved, the orchestrator will not see them.
 
-## 2. The visit in four screens
+## 3. The visit in four screens
 
 On an administrator's first sign-in, the back office opens the setup. It does not appear again once
 finished or skipped. Four screens, one of them optional:
@@ -62,7 +104,7 @@ The **Skip the setup** link ends the visit immediately, without saving the curre
 settings remain accessible afterwards in **Settings → Live** and **Settings → Replays**; the visit is
 not the only path.
 
-## 3. Connecting the camera
+## 4. Connecting the camera
 
 Choose **Mosque camera** if the camera already streams its picture on the network. The field expects
 an address that starts with `rtsp://` or `rtsps://`, without a space, with a named server.
@@ -85,7 +127,7 @@ opposite. In case of doubt, run the test again before concluding.
 Once the test is satisfactory, click **Continue**: the address is saved and will be read at the next
 start of the live.
 
-## 4. Connecting OBS (push from a computer)
+## 5. Connecting OBS (push from a computer)
 
 Choose **Pushed from a computer** if the picture is made in OBS. The screen shows an address to copy,
 with a **Copy** button; it looks like
@@ -109,7 +151,7 @@ therefore show nothing as long as OBS is not pushing: the test fails with `Flux 
 OBS, then run the test again to see the resolution and the sound. The real check remains the first
 live.
 
-## 5. The live destinations
+## 6. The live destinations
 
 Screen 2 lists the addresses the stream is sent to. The same stream goes to all active destinations,
 in the order of the list.
@@ -134,7 +176,7 @@ Rules of the screen:
 In the visit, the destinations are saved in one go, on the click on **Continue**. They are read at
 the next start of the live; nothing changes during a live in progress.
 
-## 6. Replays, as an option
+## 7. Replays, as an option
 
 The third screen offers to send the recordings of the live to a storage bucket. The box is
 **unticked by default**: without it, everything stays on the mosque's machine. It is the simplest
@@ -147,7 +189,7 @@ everything is set later in **Settings → Replays**.
 
 The detail of the fields and of the errors is in the document **Recordings and S3 buckets**.
 
-## 7. Checking that everything is ready, then the first live
+## 8. Checking that everything is ready, then the first live
 
 Before leaving the setup, check these four points:
 
@@ -181,7 +223,7 @@ On the first live:
 The clips arrive with the status **To review**. Nothing is published on the networks without a human
 action: publication is done from the clip's page, after approval.
 
-## 8. Frequently asked questions
+## 9. Frequently asked questions
 
 **I left the setup halfway, what happens?**
 The screens already left are saved. The visit comes back at the next sign-in as long as it has not

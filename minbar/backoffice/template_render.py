@@ -219,6 +219,27 @@ class _Cdp:
             await self._ws.close()
 
 
+def _stage_fonts(root: Path) -> Path:
+    """Puts the template's fonts where a relative ``../assets/fonts/…`` resolves.
+
+    A symbolic link is the cheap way, but Windows only grants one to an administrator or in
+    developer mode: the copy is the portable answer (fonts are a handful of files, and they are
+    written once per browser, not per screen).
+    """
+    assets = root / "assets"
+    fonts = assets / "fonts"
+    fonts.mkdir(parents=True, exist_ok=True)
+    for source in sorted(FONTS.glob("*.ttf")):
+        target = fonts / source.name
+        if not target.exists():
+            try:
+                target.symlink_to(source)
+            except OSError:
+                import shutil
+                shutil.copyfile(source, target)
+    return assets
+
+
 class TemplateRender:
     """One browser, many screenshots. ``image(page, variables)`` returns PNG bytes."""
 
@@ -263,21 +284,19 @@ class TemplateRender:
         root = Path(self._profile.name) / "site"
         site = root / "screens"
         site.mkdir(parents=True)
-        assets = root / "assets"
-        if not assets.exists():
-            try:
-                assets.symlink_to(FONTS.parent)
-            except OSError:
-                pass
+        self._assets = _stage_fonts(root)
         self._stage = site / "index.html"
         self._stage.write_text("", encoding="utf-8")
-        self._assets = assets
+        # `file://` takes forward slashes on every system, Windows included; the page itself is
+        # written by CDP as UTF-8, so the template's encoding is not left to the platform default.
+        url = self._stage.resolve().as_uri()
         proc = subprocess.Popen(
             [self._browser or browser_path(), "--headless=new", "--disable-gpu", "--no-sandbox",
              "--no-first-run", "--disable-extensions", "--mute-audio", "--hide-scrollbars",
              f"--window-size={WIDTH},{HEIGHT}", "--remote-debugging-port=0",
-             f"--user-data-dir={self._profile.name}", "about:blank"],
+             f"--user-data-dir={self._profile.name}", url],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+
         self._proc = proc
         url = None
         for line in proc.stderr:                   # type: ignore[union-attr]
