@@ -1,7 +1,7 @@
-"""Base SQLite du back-office (stdlib sqlite3, sans ORM).
+"""SQLite database of the back-office (stdlib sqlite3, no ORM).
 
-Toutes les tables métier portent `mosque_id` : c'est la clé de cloisonnement (tenant). Les requêtes de
-l'application filtrent TOUJOURS par la mosquée de l'utilisateur connecté.
+Every business table carries `mosque_id`: that is the partitioning key (tenant). Queries from the
+application ALWAYS filter by the mosque of the logged-in user.
 """
 from __future__ import annotations
 
@@ -14,10 +14,10 @@ from .. import paths
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_DB = paths.BACKOFFICE_DB
-# réglages modifiables d'une mosquée (Réglages → Mosquée, `python -m minbar.backoffice mosque`)
+# settings a mosque can change (Settings → Mosque, `python -m minbar.backoffice mosque`)
 MOSQUE_SETTINGS = ("name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token", "state_dir", "output_dir",
                    "publish_dir", "clip_title", "logo_path")
-MASK = "••••••"                  # valeur affichée à la place d'un secret enregistré ; renvoyée telle quelle = inchangé
+MASK = "••••••"                  # value shown in place of a stored secret; sent back as is = unchanged
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS mosques (
@@ -157,13 +157,13 @@ CREATE INDEX IF NOT EXISTS clips_mosque ON clips (mosque_id, status);
 CREATE INDEX IF NOT EXISTS khutbas_mosque ON khutbas (mosque_id, date);
 """
 SCHEMA_VERSION = 2
-# colonnes ajoutées après coup : (table, colonne, déclaration) — appliquées sur les bases existantes
+# columns added after the fact: (table, column, declaration) — applied to existing databases
 ADDED_COLUMNS = [
     ("khutbas", "kind", "TEXT NOT NULL DEFAULT 'khutba'"),
     ("khutbas", "title", "TEXT NOT NULL DEFAULT ''"),
     ("khutbas", "series", "TEXT NOT NULL DEFAULT ''"),
     ("khutbas", "session_no", "INTEGER"),
-    # logo propre au back-office (favicon + barre) : fichier sous data/backoffice/logos/ ; vide = emblème neutre
+    # logo specific to the back-office (favicon + bar): file under data/backoffice/logos/; empty = neutral emblem
     ("mosques", "logo_path", "TEXT NOT NULL DEFAULT ''"),
 ]
 
@@ -184,7 +184,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
 
 
 def _migrate(conn) -> None:
-    """Ajoute les colonnes manquantes (bases créées par une version antérieure)."""
+    """Adds the missing columns (databases created by an earlier version)."""
     for table, col, decl in ADDED_COLUMNS:
         cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
         if col not in cols:
@@ -216,10 +216,10 @@ def audit(conn, mosque_id, user_id, action: str, object_type: str = "", object_i
                  (mosque_id, user_id, action, object_type, object_id, json.dumps(details, ensure_ascii=False), ip, now_iso()))
 
 
-# ------------------------------------------------------------------ mosquées
+# ------------------------------------------------------------------ mosques
 
 def mosque_dirs(m: dict) -> dict:
-    """Dossiers effectifs d'une mosquée (valeurs vides = dossiers du dépôt, mode A)."""
+    """Effective folders of a mosque (empty values = folders of the repository, mode A)."""
     return {
         "state": Path(m.get("state_dir") or paths.STATE),
         "output": Path(m.get("output_dir") or paths.OUTPUT),
@@ -228,7 +228,7 @@ def mosque_dirs(m: dict) -> dict:
 
 
 def local_folder_default(m: dict) -> Path:
-    """Dossier par défaut de la connexion « Dossier local » : data/published/<mosquée>."""
+    """Default folder of the "Local folder" connection: data/published/<mosque>."""
     return paths.PUBLISHED / m["slug"]
 
 

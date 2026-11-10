@@ -1,7 +1,7 @@
-"""Back-office : authentification, droits, cloisonnement des mosquées, validation des clips, publication.
+"""Back-office: authentication, permissions, mosque isolation, clip validation, publication.
 
-L'interface est le front React : toutes les routes testées ici sont celles de l'API JSON `/api/v1`
-(plus les médias et le direct), exactement ce que le navigateur appelle.
+The interface is the React front end: every route tested here is an `/api/v1` JSON API route
+(plus media and live), exactly what the browser calls.
 """
 import json
 import re
@@ -21,7 +21,7 @@ RUN = "20261106_220224"
 
 
 def make_run(root: Path, run: str = RUN, janaza: bool = False) -> None:
-    """Run de pipeline minimal : 1 session (+ 1 janaza éventuelle), 2 clips."""
+    """Minimal pipeline run: 1 session (+ 1 optional janaza), 2 clips."""
     out = root / "output" / run / "session1"
     (out / "clips").mkdir(parents=True)
     segs = [
@@ -76,7 +76,7 @@ def env(tmp_path):
 
 
 class Client(TestClient):
-    """Client de test qui retient le jeton anti-rejeu de sa session, comme le fait le front."""
+    """Test client that keeps its session's anti-replay token, as the front end does."""
 
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
@@ -85,7 +85,7 @@ class Client(TestClient):
         self.last_login = None
 
     def ecrire(self, chemin: str, corps: dict | None = None, methode: str = "POST"):
-        """Écriture JSON sur l'API, avec le jeton de session en en-tête."""
+        """JSON write on the API, with the session token in a header."""
         return self.request(methode, f"/api/v1{chemin}", json=corps or {}, headers={"X-CSRF": self.csrf})
 
 
@@ -116,7 +116,7 @@ def clip_ids(env):
     return [r["id"] for r in db.all_(env["conn"], "SELECT id FROM clips ORDER BY idx")]
 
 
-# ------------------------------------------------------------------ authentification
+# ------------------------------------------------------------------ authentication
 
 def test_rien_sans_connexion(env):
     c = client(env)
@@ -128,7 +128,7 @@ def test_rien_sans_connexion(env):
     assert c.get(f"/media/clip/{clip_ids(env)[0]}.mp4").status_code == 401
     r = c.post(f"/api/v1/clips/{clip_ids(env)[0]}/decision", json={"decision": "valide"})
     assert r.status_code == 401
-    # le front, lui, se charge sans session : c'est lui qui affiche l'écran de connexion
+    # the front end itself loads without a session: it is what shows the login screen
     assert c.get("/").status_code == 200
 
 
@@ -148,10 +148,10 @@ def test_connexion_cookie_et_deconnexion(env):
     cookie = r.headers["set-cookie"]
     assert "minbar_session=" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
     token = c.cookies.get(auth.COOKIE)
-    assert db.one(env["conn"], "SELECT COUNT(*) n FROM auth_sessions WHERE token_hash = ?", token)["n"] == 0   # jeton non stocké en clair
+    assert db.one(env["conn"], "SELECT COUNT(*) n FROM auth_sessions WHERE token_hash = ?", token)["n"] == 0   # token not stored in clear text
     assert c.get("/api/v1/session").status_code == 200
     assert c.ecrire("/logout").status_code == 200
-    c.cookies.set(auth.COOKIE, token)                        # rejouer l'ancien cookie ne marche plus
+    c.cookies.set(auth.COOKIE, token)                        # replaying the old cookie no longer works
     assert c.get("/api/v1/session").status_code == 401
 
 
@@ -174,7 +174,7 @@ def test_limitation_des_essais(env):
     c = client(env)
     for _ in range(5):
         assert login(c, "admin", "mauvais-mot-de-passe").status_code == 401
-    assert login(c, "admin", expect_ok=False).status_code == 429   # même le bon mot de passe est bloqué
+    assert login(c, "admin", expect_ok=False).status_code == 429   # even the right password is blocked
 
 
 def test_journal_des_connexions(env):
@@ -185,7 +185,7 @@ def test_journal_des_connexions(env):
     assert acts == ["connexion.echec", "connexion"]
 
 
-# ------------------------------------------------------------------ droits
+# ------------------------------------------------------------------ permissions
 
 @pytest.mark.parametrize("role,url,code", [
     ("imam", "/audit", 403), ("imam", "/publications", 403), ("imam", "/settings", 403), ("imam", "/users", 403),
@@ -198,7 +198,7 @@ def test_matrice_des_droits(env, role, url, code):
 
 
 def test_le_journal_se_lit_page_par_page(env):
-    """Journal paginé : le total filtré vient du serveur, la page suivante ne répète pas la précédente."""
+    """Paginated log: the filtered total comes from the server; the next page does not repeat the previous one."""
     from minbar.backoffice import db as _db
     c = client(env, "admin")
     for i in range(40):
@@ -211,21 +211,21 @@ def test_le_journal_se_lit_page_par_page(env):
     assert not ({a["id"] for a in page2["items"]} & {a["id"] for a in d["items"]})
     filtre = c.get("/api/v1/audit?action=live.commande&limit=5").json()
     assert filtre["total"] == 40 and all(a["action"] == "live.commande" for a in filtre["items"])
-    # l'imam n'a pas le journal : la page ne lui est pas proposée
+    # the imam has no access to the log: the page is not offered to him
     assert client(env, "imam").get("/api/v1/audit").status_code == 403
 
 
 def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
-    """Écran de lecture : la vidéo se sert, la fiche porte les segments et l'historique en clair."""
+    """Reading screen: the video is served; the sheet carries the segments and the history in plain text."""
     c = client(env, "admin")
     cid = clip_ids(env)[0]
     d = c.get(f"/api/v1/clips/{cid}").json()
     assert d["exists"] is True and d["clip"]["version"] == 1
     assert d["can_validate"] is True
-    assert d["labels"]["clip.valide"] == "Clip validé"   # l'historique se lit, pas en clés techniques
-    # Le contexte accompagne le clip : le thème de la khutba et ce qui précède l'extrait.
+    assert d["labels"]["clip.valide"] == "Clip validé"   # the history is readable, not in technical keys
+    # The context accompanies the clip: the khutba theme and what precedes the extract.
     assert d["contexte"]["theme"]
-    assert isinstance(d["contexte"]["avant"], list)   # vide si le clip ouvre la khutba
+    assert isinstance(d["contexte"]["avant"], list)   # empty if the clip opens the khutba
     assert d["status_labels"]["a_valider"]
     assert len(d["segments"]) >= 1
     assert c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"}).status_code == 200
@@ -279,7 +279,7 @@ def test_admin_cree_un_imam(env):
     assert login(client(env), "nouvel").status_code == 200
 
 
-# ------------------------------------------------------------------ live (vraie API de l'orchestrateur)
+# ------------------------------------------------------------------ live (real orchestrator API)
 
 class FakeOrch:
     def __init__(self):
@@ -324,19 +324,19 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
 
 
 def test_fiche_janaza_depuis_le_tableau_de_bord(env, orch):
-    """La fiche janaza (nom + mention) part à l'orchestrateur, vide si la famille n'a rien autorisé."""
+    """The janaza sheet (name + note) goes to the orchestrator, empty if the family allowed nothing."""
     c = client(env, "imam")
     r = c.ecrire("/live/janaza", {"name": " Ahmed Benali ", "info": "67 ans"})
     assert r.status_code == 200
     assert orch.calls[-1] == ("janaza", "Ahmed Benali|67 ans")
-    # un nom sans mention, puis une mention seule (ignorée sans nom)
+    # a name without a note, then a note alone (ignored without a name)
     c.ecrire("/live/janaza", {"name": "Karim", "info": ""})
     c.ecrire("/live/janaza", {"name": "", "info": "67 ans"})
     assert orch.calls[-2:] == [("janaza", "Karim"), ("janaza", None)]
 
 
 def test_regeneration_refusee_sans_correction():
-    """Le bouton n'est proposé que sur un clip corrigé ; un POST direct ne doit pas écraser une validation."""
+    """The button is only offered on a corrected clip; a direct POST must not overwrite a validation."""
     from minbar.backoffice import content
     clip = {"id": 1, "mosque_id": 1, "version": 1, "needs_regen": 0, "regen_state": ""}
     with pytest.raises(ValueError, match="aucune correction"):
@@ -344,7 +344,7 @@ def test_regeneration_refusee_sans_correction():
 
 
 def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
-    """Réglages → Modèle de langage : écrit le fichier que le pipeline lit, sans secret côté web."""
+    """Settings → Language model: writes the file the pipeline reads, with no secret on the web side."""
     from minbar.pipeline import llm
     cfg = tmp_path / "llm.json"
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
@@ -358,7 +358,7 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
     assert r.status_code == 200, r.text
     assert json.loads(cfg.read_text()) == {"enabled": True, "url": "http://127.0.0.1:9/v1",
                                            "model": "petit", "protocol": "openai"}
-    assert llm.enabled() and llm.label() == "openai · petit"      # le pipeline lirait ceci
+    assert llm.enabled() and llm.label() == "openai · petit"      # the pipeline would read this
 
     r = c.ecrire("/settings/model", {"url": "", "model": "", "protocol": ""}, methode="PUT")
     assert r.status_code == 200
@@ -366,7 +366,7 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
 
     r = c.ecrire("/settings/model", {"enabled": "1", "url": "file:///etc/passwd"}, methode="PUT")
     assert r.status_code == 422
-    assert json.loads(cfg.read_text())["enabled"] is False         # refusée : le fichier n'a pas bougé
+    assert json.loads(cfg.read_text())["enabled"] is False         # rejected: the file did not move
 
     for who in ("imam", "responsable"):
         ci = client(env, who)
@@ -374,7 +374,7 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
 
 
 def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
-    """Le bouton « Tester » interroge l'adresse enregistrée et rapporte l'échec sans casser l'écran."""
+    """The “Test” button queries the saved address and reports the failure without breaking the screen."""
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(tmp_path / "llm.json"))
     monkeypatch.delenv("MINBAR_LLM_ENABLED", raising=False)
     c = client(env, "admin")
@@ -386,7 +386,7 @@ def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
 
 
 def test_libelle_d_un_dars_et_commandes_proposees():
-    """Le tableau de bord nomme les états du dars et ne propose que des commandes de la machine."""
+    """The dashboard names the dars states and only offers commands from the machine."""
     from minbar.backoffice import live
     from minbar.state import Machine
     assert live.summarize({"state": "DARS", "sessions": []})["state_label"] == "Dars en direct"
@@ -430,7 +430,7 @@ def test_fiche_khutba_par_l_api(env):
     assert "La patience est une lumière." in json.dumps(d["transcript"], ensure_ascii=False)
     assert d["sermon"]["duration_s"] == 20.0
     assert d["notes"].startswith("# Notes") and len(d["clips"]) == 2 and d["has_video"] is False
-    # Le rattachement n'est proposé qu'à qui peut l'écrire (droit « assign »).
+    # Assignment is only offered to those who can write it (the “assign” permission).
     assert client(env, "imam").get(f"/api/v1/sermons/{env['kid']}").json()["imams"] == []
     assert d["imams"]
 
@@ -444,11 +444,11 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
              {"seg": "1", "field": "text", "value": "La patience est une lumière, dit le Prophète ﷺ."})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["needs_regen"] == 1
-    assert db.one(conn, "SELECT needs_regen FROM clips WHERE idx = 2")["needs_regen"] == 0     # segment hors du clip 2
-    # valider est refusé tant que la vidéo n'est pas régénérée
+    assert db.one(conn, "SELECT needs_regen FROM clips WHERE idx = 2")["needs_regen"] == 0     # segment outside clip 2
+    # validating is refused as long as the video has not been regenerated
     c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
-    # régénération : le pipeline reçoit bien la correction (build_ass réel, rendu ffmpeg simulé)
+    # regeneration: the pipeline does receive the correction (real build_ass, simulated ffmpeg render)
     from minbar.pipeline import clips as clipmod
     seen = {}
 
@@ -466,7 +466,7 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
     assert clip["status"] == "valide" and clip["decided_by"] == env["ids"]["imam"]
     acts = [a["action"] for a in db.all_(conn, "SELECT action FROM audit WHERE user_id = ? ORDER BY id", env["ids"]["imam"])]
     assert acts[-3:] == ["correction.sous-titre", "clip.regeneration", "clip.valide"]
-    # la fiche du clip montre qui a fait quoi
+    # the clip sheet shows who did what
     d = c.get(f"/api/v1/clips/{cid}").json()
     actions = [h["action"] for h in d["history"]]
     assert "correction.sous-titre" in actions and "clip.valide" in actions
@@ -478,9 +478,9 @@ def test_correction_traduction_et_verset_protege(env):
     conn = env["conn"]
     k = db.one(conn, "SELECT * FROM khutbas")
     u = db.one(conn, "SELECT * FROM users WHERE username = 'responsable'")
-    with pytest.raises(ValueError):                  # segment 2 = verset : traduction Hamidullah non modifiable
+    with pytest.raises(ValueError):                  # segment 2 = verse: the Hamidullah translation cannot be changed
         content.save_correction(conn, k, 2, "fr", "autre traduction", u)
-    with pytest.raises(ValueError):                  # segment français : pas de champ « traduction »
+    with pytest.raises(ValueError):                  # French segment: no “translation” field
         content.save_correction(conn, k, 0, "fr", "x", u)
     content.save_correction(conn, k, 0, "text", "Chers frères et sœurs, parlons de la patience.", u)
     rows = content.transcript_rows(content.load(conn, k))
@@ -544,7 +544,7 @@ def test_correction_apres_publication_ne_reecrit_pas_l_historique(env, monkeypat
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
     c.ecrire(f"/clips/{cid}/regenerate")
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
-    assert clip["version"] == 2 and clip["status"] == "a_valider" and clip["decided_by"] is None   # v2 repasse en validation
+    assert clip["version"] == 2 and clip["status"] == "a_valider" and clip["decided_by"] is None   # v2 goes back to validation
     r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
     assert r.status_code == 422
     assert db.one(conn, "SELECT status FROM publications ORDER BY id DESC")["status"] == "refuse"
@@ -564,7 +564,7 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
         assert not rows[key]["available"] and "identifiants absents" in rows[key]["why"]
         res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), key, resp, "x")
         assert not res.ok
-    # même avec des identifiants, aucune publication réelle en V1
+    # even with credentials, no real publication in V1
     admin = db.one(conn, "SELECT * FROM users WHERE username = 'admin'")
     publish.save_connector(conn, env["mid"], "facebook", True, {"page_id": "123", "page_token": "secret"}, admin)
     row = next(r for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"])) if r["key"] == "facebook")

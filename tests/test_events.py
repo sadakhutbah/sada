@@ -1,4 +1,4 @@
-"""Programme (événements) : expansion des récurrences, validation, prochaines occurrences."""
+"""Program (events): recurrence expansion, validation, upcoming occurrences."""
 import datetime as dt
 import json
 
@@ -33,17 +33,17 @@ def prog():
 
 def test_recurrence_apres_isha():
     dars = prog()[0]
-    mardi = D(2026, 11, 10)          # un mardi
+    mardi = D(2026, 11, 10)          # a Tuesday
     inst = dars.instance(mardi, TIMES)
     assert inst is not None
     assert inst.starts == dt.datetime(2026, 11, 10, 19, 0)   # isha 18:45 + 15 min
     assert inst.label == "Dars : Tafsir Al-Kahf"
     assert inst.as_event()["session_no"] == 7
-    assert dars.instance(D(2026, 11, 11), TIMES) is None      # mercredi : rien
+    assert dars.instance(D(2026, 11, 11), TIMES) is None      # Wednesday: nothing
 
 
 def test_instance_porte_la_forme_canonique_de_l_evenement():
-    """as_event() alimente la machine : le numéro de séance du fichier arrive tel quel dans sessions.json."""
+    """as_event() feeds the machine: the session number from the file arrives as-is in sessions.json."""
     inst = prog()[0].instance(D(2026, 11, 10), TIMES)
     assert inst is not None
     m = Machine([inst.starts], MachineParams(), extras=[inst.as_event()])
@@ -69,19 +69,19 @@ def test_evenement_unique():
 
 def test_heure_relative_sans_horaire_de_priere():
     dars = prog()[0]
-    assert dars.starts_on(D(2026, 11, 10), {}) is None          # Mawaqit muet : pas d'heure inventée
+    assert dars.starts_on(D(2026, 11, 10), {}) is None          # Mawaqit silent: no invented time
 
 
 def test_non_publies_ignores():
-    today = D(2026, 11, 12)                                      # jeudi
+    today = D(2026, 11, 12)                                      # Thursday
     assert [i.title for i in ev.instances_on(prog(), today, TIMES)] == []
 
 
 def test_instances_triees_et_prochaines():
-    day = D(2026, 11, 10)                                        # mardi
+    day = D(2026, 11, 10)                                        # Tuesday
     inst = ev.instances_on(prog(), day, TIMES)
     assert [i.kind for i in inst] == ["dars"]
-    # depuis le mardi 10 à midi : le dars du soir, puis celui du 17 (la conférence est après)
+    # from Tuesday the 10th at noon: the evening dars, then the one on the 17th (the conference is later)
     nxt = ev.next_instances(prog(), dt.datetime(2026, 11, 10, 12, 0), count=2,
                             times_for=lambda d: TIMES)
     assert [i.title for i in nxt] == ["Tafsir Al-Kahf", "Tafsir Al-Kahf"]

@@ -1,8 +1,8 @@
-"""Traduction française des versets : normalisation et index (détection quand la récitation est transcrite en français).
+"""French translation of the verses: normalisation and index (detection when the recitation is transcribed in French).
 
-Whisper traduit ou transcrit l'arabe en français approximatif (tournures Hamidullah voisines, mots estompés).
-On compare donc des mots pleins (sans accents ni ponctuation, sans mots vides) plutôt qu'une chaîne brute :
-une racine de sens retrouvée suffit, et le score est abaissé volontairement pour rester prudent.
+Whisper translates or transcribes Arabic into approximate French (near-Hamidullah phrasing, blurred words).
+We therefore compare content words (without accents or punctuation, without stop words) rather than a raw string:
+one recovered meaning-bearing root is enough, and the score is deliberately lowered to stay cautious.
 """
 from __future__ import annotations
 
@@ -13,17 +13,17 @@ from rapidfuzz import fuzz, process
 
 WIN_FR = 6
 
-# mots outils : présents partout dans une traduction, ils ne discriminent pas
+# stop words: present everywhere in a translation, they do not discriminate
 STOP = {
     "le", "la", "les", "l", "d", "de", "des", "du", "un", "une", "et", "ou", "a", "au", "aux", "en", "dans", "sur",
     "par", "pour", "que", "qui", "quoi", "qu", "ce", "cette", "ces", "cet", "il", "elle", "ils", "elles", "on",
     "nous", "vous", "je", "tu", "se", "sa", "son", "ses", "leur", "leurs", "est", "sont", "etait", "ete", "ont",
     "avec", "sans", "ne", "pas", "plus", "tout", "tous", "toute", "toutes", "bien", "aussi", "comme", "ainsi",
     "vers", "chez", "y", "en", "puis", "mais", "donc", "si", "alors", "dont", "ou", "duquel",
-    # verbe « dire » : omniprésent dans une khutba qui annonce ses citations, jamais décisif
+    # verb « to say »: ubiquitous in a khutba that announces its quotations, never decisive
     "dit", "dis", "dire", "disent", "declare", "declaree", "raconte", "relate", "mentionne", "rappelle",
 }
-# mots du Coran qui traînent dans TOUS les versets : ils ne doivent pas faire une détection à eux seuls
+# Quran words that linger in ALL the verses: they must not cause a detection on their own
 GENERIC = {
     "allah", "dieu", "seigneur", "certes", "voici", "verite", "gens", "chose", "choses", "jour", "monde",
     "terres", "cieux", "terre", "vie", "mort", "coeur", "coeurs", "homme", "hommes",
@@ -31,7 +31,7 @@ GENERIC = {
 
 
 def norm_fr(text: str) -> str:
-    """Minuscules, sans accents ni ponctuation, mots vides retirés, apostrophes séparées."""
+    """Lowercase, without accents or punctuation, stop words removed, apostrophes split off."""
     t = unicodedata.normalize("NFD", (text or "").lower())
     t = "".join(c for c in t if unicodedata.category(c) != "Mn")
     t = re.sub(r"[’']", " ", t)
@@ -41,12 +41,12 @@ def norm_fr(text: str) -> str:
 
 
 def content_words(text: str) -> list[str]:
-    """Mots significatifs : ni vides, ni mots du Coran omniprésents."""
+    """Meaningful words: neither stop words nor ubiquitous Quran words."""
     return [w for w in norm_fr(text).split() if w not in GENERIC]
 
 
 def fr_ratio(text: str) -> float:
-    """Part de mots pleins dans un texte : très basse pour « la patience est une vertu » sans sujet coranique."""
+    """Share of content words in a text: very low for « patience is a virtue » with no Quranic subject."""
     words = re.findall(r"[a-zA-ZÀ-ÿ']+", text or "")
     if not words:
         return 0.0
@@ -54,7 +54,7 @@ def fr_ratio(text: str) -> float:
 
 
 class FrenchIndex:
-    """Index des traductions françaises : fenêtres de mots pleins de chaque verset."""
+    """Index of the French translations: content-word windows of each verse."""
 
     def __init__(self, verses: list[dict], win: int = WIN_FR):
         self.verses, self.win = verses, win
@@ -64,7 +64,7 @@ class FrenchIndex:
         for vi, v in enumerate(verses):
             words = content_words(v.get("fr") or "")
             if len(words) < 3:
-                continue                     # traduction absente ou trop courte : non exploitable
+                continue                     # translation missing or too short: not usable
             self.usable.add(vi)
             if len(words) <= win:
                 self.keys.append(" ".join(words)); self.owner.append(vi)

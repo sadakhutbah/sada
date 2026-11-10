@@ -1,8 +1,8 @@
-"""Import des runs du pipeline : data/state/<run>/sessions.json + data/output/<run>/session*/ -> khutbas + clips.
+"""Import of the pipeline runs: data/state/<run>/sessions.json + data/output/<run>/session*/ -> khutbas + clips.
 
-Idempotent : une khutba est identifiée par (mosquée, run, session) et un clip par (khutba, numéro) ; relancer
-l'import n'écrase ni les décisions de validation ni les corrections. Les sessions Janaza (exclues du pipeline)
-ne sont jamais importées.
+Idempotent: a khutba is identified by (mosque, run, session) and a clip by (khutba, number); re-running
+the import overwrites neither validation decisions nor corrections. Janaza sessions (excluded from the pipeline)
+are never imported.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _theme(path: Path) -> str:
 
 
 def _extract_video(rec: str | None, start: float | None, end: float | None, out: Path, log) -> str | None:
-    """Extrait la session de l'enregistrement du live (copie des flux, sans réencodage) en MP4 lisible sur téléphone."""
+    """Extracts the session from the live recording (stream copy, no re-encoding) into an MP4 playable on a phone."""
     if out.exists() and out.stat().st_size > 0:
         return str(out)
     if not rec or start is None or not Path(rec).exists() or not shutil.which("ffmpeg"):
@@ -43,7 +43,7 @@ def _extract_video(rec: str | None, start: float | None, end: float | None, out:
 
 
 def khutba_label(session: dict) -> str:
-    """Libellé lisible d'une session : « Dars — titre · séance 7 », sinon « Session 1 — 12 h 30 »."""
+    """Readable label of a session: "Dars — title · session 7", otherwise "Session 1 — 12 h 30"."""
     kind = session.get("kind") or "khutba"
     title = (session.get("title") or "").strip()
     if kind != "khutba" and title:
@@ -97,7 +97,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
             k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", cur.lastrowid)
             res["khutbas_new"] += 1
             db.audit(conn, mosque["id"], None, "import.khutba", "khutba", k["id"], run=run_id, session=runs.session_number(idx))
-        elif k["verses_count"] != n_verses:            # champ dérivé : rafraîchi (aucune donnée humaine touchée)
+        elif k["verses_count"] != n_verses:            # derived field: refreshed (no human data touched)
             conn.execute("UPDATE khutbas SET verses_count = ? WHERE id = ?", (n_verses, k["id"]))
         if extract_video and not (k["video_path"] and Path(k["video_path"]).exists()):
             v = _extract_video(rec_path, start, end, o.video, log)
@@ -120,7 +120,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
 
 
 def scan(conn, mosque: dict, extract_video: bool = True, log=print) -> list[dict]:
-    """Importe tous les runs présents dans le dossier de sortie de la mosquée."""
+    """Imports every run present in the mosque's output folder."""
     out = db.mosque_dirs(mosque)["output"]
     results = []
     for d in sorted(out.glob("*")) if out.is_dir() else []:

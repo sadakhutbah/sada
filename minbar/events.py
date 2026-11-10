@@ -1,6 +1,6 @@
-"""Programme des événements : khutba du vendredi, dars, conférence.
+"""Event programme: Friday khutba, dars, conference.
 
-Le programme vit dans un fichier JSON éditable à la main (`data/events.json`) :
+The programme lives in a JSON file editable by hand (`data/events.json`):
 
 {
   "events": [
@@ -12,11 +12,11 @@ Le programme vit dans un fichier JSON éditable à la main (`data/events.json`) 
   ]
 }
 
-Un événement a soit une `date` + `time` (une fois), soit une `recurrence` hebdomadaire :
-`weekday` (en français), et l'heure — absolue (`time`) ou relative à une prière (`after` = dhuhr, asr,
-maghrib, isha + `offset_min`), recalculée chaque jour avec les horaires Mawaqit.
+An event has either a `date` + `time` (one-off), or a weekly `recurrence`:
+`weekday` (in French), and the time — absolute (`time`) or relative to a prayer (`after` = dhuhr, asr,
+maghrib, isha + `offset_min`), recomputed each day with the Mawaqit times.
 
-Aucune E/S ici hormis la lecture du fichier : tout le calcul est testable.
+No I/O here apart from reading the file: all the computation is testable.
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def parse_hhmm(value: str) -> dt.time:
 
 
 def _as_datetime(day: dt.date, value) -> dt.datetime:
-    """« 20:30 », heure ou datetime -> datetime du jour demandé (datetime : heure conservée)."""
+    """« 20:30 », time or datetime -> datetime of the requested day (datetime: time preserved)."""
     if isinstance(value, dt.datetime):
         return dt.datetime.combine(day, value.time())
     if isinstance(value, dt.time):
@@ -67,7 +67,7 @@ class EventInstance:
     uid: str = ""
 
     def as_event(self) -> dict:
-        """Forme canonique d'un événement : les clés que lisent la machine et les scènes (celles de SessionRec)."""
+        """Canonical form of an event: the keys read by the machine and the scenes (those of SessionRec)."""
         return {"kind": self.kind, "title": self.title, "speaker": self.speaker,
                 "series": self.series, "session_no": self.session}
 
@@ -105,7 +105,7 @@ class Event:
         return self.recurrence is not None and self.recurrence.weekday == day.weekday()
 
     def starts_on(self, day: dt.date, times: Mapping[str, object] | None = None) -> Optional[dt.datetime]:
-        """Heure de début ce jour-là, ou None si elle ne peut pas être calculée (prière absente)."""
+        """Start time on that day, or None if it cannot be computed (prayer missing)."""
         if not self.occurs_on(day):
             return None
         if self.date is not None and self.time is not None:
@@ -185,7 +185,7 @@ def loads(text: str) -> list[Event]:
 
 
 def load(path: str | Path) -> tuple[list[Event], Optional[str]]:
-    """(événements, erreur lisible). Un fichier absent n'est pas une erreur : le programme est vide."""
+    """(events, readable error). A missing file is not an error: the programme is empty."""
     p = Path(path)
     if not p.exists():
         return [], None
@@ -210,7 +210,7 @@ def instances_on(events: Iterable[Event], day: dt.date,
 def next_instances(events: Iterable[Event], after: dt.datetime, count: int = 2,
                    days: int = 21,
                    times_for: Callable[[dt.date], Mapping[str, object] | None] | None = None) -> list[EventInstance]:
-    """Prochains événements après `after` (horaires Mawaqit fournis par `times_for`)."""
+    """Next events after `after` (Mawaqit times supplied by `times_for`)."""
     events = [e for e in events if e.publish]
     found: list[EventInstance] = []
     for k in range(days + 1):

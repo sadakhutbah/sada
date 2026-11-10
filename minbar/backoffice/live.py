@@ -1,7 +1,7 @@
-"""Client de l'API de l'orchestrateur (minbar/api.py) : statut du live et commandes manuelles.
+"""Client of the orchestrator API (minbar/api.py): live status and manual commands.
 
-Mode A : l'orchestrateur tourne sur la même machine (http://127.0.0.1:8088). Mode B : URL + jeton par mosquée
-(tunnel/VPN vers la machine de la mosquée) ; le code ne change pas.
+Mode A: the orchestrator runs on the same machine (http://127.0.0.1:8088). Mode B: URL + token per mosque
+(tunnel/VPN to the mosque's machine); the code does not change.
 """
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ from ..state import STATE_LABELS
 @dataclass(frozen=True)
 class Command:
     label: str
-    style: str                       # classe du bouton
-    confirm: str = ""                # question posée avant l'envoi
-    params: tuple = ()               # paramètres fixes de la requête
+    style: str                       # button class
+    confirm: str = ""                # question asked before sending
+    params: tuple = ()               # fixed parameters of the request
     param: str = ""                  # name of the variable parameter ("min", "name"), if the command has one
     choices: tuple = ()              # allowed parameter values: ((value, label), ...)
 
@@ -48,7 +48,7 @@ COMMANDS = {
 
 
 def choice_label(cmd: str, valeur: str | None) -> str:
-    """Libellé de la variante choisie (« +15 min »), ou celui de la commande si elle n'a pas de choix."""
+    """Label of the chosen variant ("+15 min"), or the command's label if it has no choices."""
     c = COMMANDS[cmd]
     return dict(c.choices).get(valeur, c.label) if valeur else c.label
 
@@ -81,13 +81,13 @@ def status(mosque: dict, timeout: float = 3.0) -> dict:
     return _call(mosque, "GET", "status", timeout=timeout)
 
 
-# --- Statut mis en cache
+# --- Cached status
 #
-# Un orchestrateur éteint ne répond pas : chaque lecture coûte plusieurs secondes d'attente. Le
-# tableau de bord le lisait à chaque affichage, d'où l'impression qu'il ne se chargeait jamais.
-# On garde donc un instantané: la première lecture attend un peu, les suivantes sont immédiates et
-# déclenchent un rafraîchissement en arrière-plan. Une panne se voit au plus un cycle plus tard,
-# ce qui suffit pour un indicateur.
+# A powered-off orchestrator does not answer: each read costs several seconds of waiting. The
+# dashboard read it at every display, hence the impression that it never finished loading.
+# We therefore keep a snapshot: the first read waits a little, the following ones are immediate and
+# trigger a refresh in the background. An outage shows up at most one cycle later,
+# which is enough for an indicator.
 STATUS_TTL = 10.0
 _caches: dict[str, tuple[float, dict]] = {}
 _en_cours: set[str] = set()
@@ -106,9 +106,9 @@ def _lire(mosque: dict, timeout: float = 1.5) -> dict:
 
 
 def status_cached(mosque: dict, ttl: float = STATUS_TTL, forcer: bool = False) -> dict:
-    """Statut de l'orchestrateur, rafraîchi au plus une fois toutes les `ttl` secondes.
+    """Orchestrator status, refreshed at most once every `ttl` seconds.
 
-    `forcer` : lecture immédiate et bloquante (après une commande, on veut la conséquence réelle)."""
+    `forcer`: immediate and blocking read (after a command, we want the real consequence)."""
     cle = _cle(mosque)
     entree = None
     if not forcer:
@@ -118,11 +118,11 @@ def status_cached(mosque: dict, ttl: float = STATUS_TTL, forcer: bool = False) -
                 return entree[1]
             if entree is not None:
                 _en_cours.add(cle)
-        if entree is not None:                  # périmé : on sert l'instantané, on rafraîchit derrière
+        if entree is not None:                  # stale: we serve the snapshot, refresh behind
             threading.Thread(target=_rafraichir, args=(mosque, cle), daemon=True,
                              name="statut-live").start()
             return entree[1]
-    resultat = _lire(mosque)                    # premier appel (ou lecture forcée) : on attend
+    resultat = _lire(mosque)                    # first call (or forced read): we wait
     with _verrou:
         _caches[cle] = (time.monotonic(), resultat)
     return resultat
@@ -140,31 +140,31 @@ def _rafraichir(mosque: dict, cle: str) -> None:
 
 def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = None,
             valeur: str | None = None) -> dict:
-    """arg : nom du défunt (janaza) ; info : mention de la fiche janaza ; valeur : choix d'une commande
-    à paramètre (minutes de extend, nom de la scène de scene).
+    """arg: name of the deceased (janaza); info: note on the janaza record; valeur: choice of a
+    command with a parameter (minutes of extend, scene name of scene).
 
-    Une valeur hors de la liste permise est refusée ici, avant tout appel réseau. Une commande ne
-    passe jamais par le cache du statut : elle part tout de suite."""
+    A value outside the allowed list is refused here, before any network call. A command never
+    goes through the status cache: it leaves immediately."""
     if cmd not in COMMANDS:
         raise OrchestratorError("commande inconnue")
     c = COMMANDS[cmd]
     params = dict(c.params)
     if c.choices:
         permises = [v for v, _ in c.choices]
-        valeur = valeur or (permises[0] if cmd == "extend" else None)    # extend : +5 min par défaut
+        valeur = valeur or (permises[0] if cmd == "extend" else None)    # extend: +5 min by default
         if valeur not in permises:
             raise ValueError(f"valeur invalide pour « {c.label} »")
         params[c.param] = valeur
     if cmd == "janaza":
         if arg:
             params["name"] = arg[:80]
-        if info and arg:                # une mention seule n'a pas de sens sans nom
+        if info and arg:                # a note alone makes no sense without a name
             params["info"] = info[:60]
     return _call(mosque, "POST", cmd, params or None)
 
 
 def summarize(st: dict) -> dict:
-    """Statut brut de l'orchestrateur -> données d'affichage."""
+    """Raw orchestrator status -> display data."""
     sessions = st.get("sessions") or []
     live = next((s for s in sessions if s.get("status") == "live"), None)
     planned = [s for s in sessions if runs.produces_content(s)]

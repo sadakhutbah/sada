@@ -26,7 +26,7 @@ def test_detects_with_whisper_style_errors_and_diacritics():
     segs = [
         seg(0, 5, "Mes frères et sœurs, rappelez-vous"),
         seg(5, 12, "يَا أَيُّهَا الَّذِينَ آمَنُوا اسْتَعِينُوا بِالصَّبْرِ وَالصَّلَاةِ إِنَّ اللَّهَ مَعَ الصَّابِرِينَ"),
-        seg(60, 64, "يا ايها الذين امنو استعينو بالصبر و الصلاه ان الله مع الصابرين"),  # sans diacritiques, fautes
+        seg(60, 64, "يا ايها الذين امنو استعينو بالصبر و الصلاه ان الله مع الصابرين"),  # no diacritics, typos
         seg(100, 104, "وَمَنْ يَتَّقِ اللَّهَ يَجْعَلْ لَهُ مَخْرَجًا"),
     ]
     ms = detect(segs, idx)
@@ -60,7 +60,7 @@ def test_formula_in_several_verses_is_ambiguous_not_firm():
     assert not any(m.confidence == "sûr" for m in ms)
 
 
-# ------------------------------------------------------------------ détection par la traduction française
+# ------------------------------------------------------------------ detection via the French translation
 
 VERSES_FR = VERSES + [
     {"surah": 65, "ayah": 3, "surah_name": "At-Talaq",
@@ -75,7 +75,7 @@ for v in VERSES_FR:
 
 
 def test_texte_francais_transcrit_est_detecte():
-    """Le cas signalé : la récitation transcrite en français (Whisper) ne donnait aucun verset."""
+    """The reported case: the recitation transcribed in French (Whisper) yielded no verse."""
     from minbar.pipeline.verses_fr import FrenchIndex
 
     idx = VerseIndex(VERSES_FR)
@@ -100,7 +100,7 @@ def test_traduction_fidele_en_francais_litteral():
 
 
 def test_pas_de_faux_positif_sur_une_khutba_francaise_ordinaire():
-    """Le piège vu sur le vrai enregistrement : texte religieux voisin mais pas un verset."""
+    """The pitfall seen on the real recording: nearby religious text but not a verse."""
     idx = VerseIndex(VERSES_FR)
     segs = [
         seg(0, 8, "Ne craignez pas l'avenir et ne désespérez jamais de la délivrance, même si toutes les portes vous semblent fermées"),
@@ -111,7 +111,7 @@ def test_pas_de_faux_positif_sur_une_khutba_francaise_ordinaire():
 
 
 def test_citation_francaise_puis_recitation_arabe_sont_deux_occurrences():
-    """Si l'imam traduit puis récite, ce sont deux prises de parole : chacune a son horodatage."""
+    """If the imam translates then recites, these are two utterances: each has its own timestamp."""
     idx = VerseIndex(VERSES_FR)
     v = [x for x in VERSES_FR if x["surah"] == 65 and x["ayah"] == 3][0]
     segs = [seg(0, 8, "quiconque place sa confiance en Allah, Il lui suffit, et Allah a assigné à chaque chose sa mesure"),

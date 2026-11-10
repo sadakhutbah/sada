@@ -1,19 +1,19 @@
-"""Machine à états de la diffusion (pure : aucune E/S, entièrement testable).
+"""Broadcast state machine (pure: no I/O, fully testable).
 
-ARMÉ → AVANT → KHUTBA → PRIÈRE → ENTRACTE → KHUTBA (2) → TERMINÉ  (puis FIN : stream coupé)
+ARMÉ → AVANT → KHUTBA → PRIÈRE → ENTRACTE → KHUTBA (2) → TERMINÉ  (then FIN: stream stopped)
 
-Entrées à chaque tick :
-  now          heure « mosquée » (horloge simulée)            -> fenêtres horaires
-  t            temps monotone réel en secondes                -> durées des signaux
-  voice_run    secondes réelles de voix continue              -> VAD
-  silence_run  secondes réelles de silence continu            -> VAD
-  presence     True/False, ou None si la détection est désactivée
+Inputs at each tick:
+  now          "mosque" time (simulated clock)                -> time windows
+  t            real monotonic time in seconds                 -> signal durations
+  voice_run    real seconds of continuous voice               -> VAD
+  silence_run  real seconds of continuous silence             -> VAD
+  presence     True/False, or None if detection is disabled
 
-L'automatique propose, l'humain dispose : toute commande manuelle de scène suspend
-l'automatique (override) jusqu'à la commande « auto ».
+The automatic proposes, the human disposes: any manual scene command suspends
+the automatic (override) until the "auto" command.
 
-Le stream est diffusé exactement quand l'état a une scène (SCENE_OF). L'état KHUTBA a toujours une session
-ouverte (la session prévue si elle attend, sinon une session manuelle) ; l'état JANAZA, une session janaza.
+The stream is broadcast exactly when the state has a scene (SCENE_OF). The KHUTBA state always has an open
+session (the planned session if it is waiting, otherwise a manual session); the JANAZA state, a janaza session.
 """
 from __future__ import annotations
 
@@ -24,20 +24,20 @@ from typing import Callable, Optional
 
 
 class State(str, Enum):
-    IDLE = "IDLE"          # en attente de la prochaine fenêtre
-    ARME = "ARMÉ"          # T-15 min : on écoute, le stream n'est pas encore lancé
-    AVANT = "AVANT"        # T-2 min : stream lancé, écran « début imminent »
-    KHUTBA = "KHUTBA"      # caméra + son
-    PRIERE = "PRIÈRE"      # écran « Prière en cours », caméra et micro coupés
-    ENTRACTE = "ENTRACTE"  # compte à rebours vers la prochaine khutba
-    TERMINE = "TERMINÉ"    # écran de fin, avant arrêt du stream
-    JANAZA = "JANAZA"      # mode manuel : écran plein dédié, sans caméra ni bandeau
-    DARS = "DARS"          # dars ou conférence : caméra + bandeau de l'événement
-    DARS_FIN = "DARS_FIN"  # écran de fin d'un dars (prochain cours), avant arrêt du stream
-    FIN = "FIN"            # stream arrêté
+    IDLE = "IDLE"          # waiting for the next window
+    ARME = "ARMÉ"          # T-15 min: we listen, the stream is not started yet
+    AVANT = "AVANT"        # T-2 min: stream started, "starting soon" screen
+    KHUTBA = "KHUTBA"      # camera + sound
+    PRIERE = "PRIÈRE"      # "Prayer in progress" screen, camera and mic off
+    ENTRACTE = "ENTRACTE"  # countdown to the next khutba
+    TERMINE = "TERMINÉ"    # end screen, before the stream stops
+    JANAZA = "JANAZA"      # manual mode: dedicated full screen, without camera or banner
+    DARS = "DARS"          # dars or conference: camera + event banner
+    DARS_FIN = "DARS_FIN"  # end screen of a dars (next class), before the stream stops
+    FIN = "FIN"            # stream stopped
 
 
-# scène affichée par état (le visuel, rendu par scenes.py) ; pas de scène = pas de stream
+# scene displayed by state (the visual, rendered by scenes.py); no scene = no stream
 SCENE_OF = {
     State.IDLE: None, State.ARME: None, State.FIN: None,
     State.AVANT: "avant", State.KHUTBA: "khutba", State.PRIERE: "priere",
@@ -46,7 +46,7 @@ SCENE_OF = {
 }
 STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v}
 WAITING = (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE)
-# libellés d'affichage du back-office (états bruts : DARS, DARS_FIN…)
+# back-office display labels (raw states: DARS, DARS_FIN…)
 STATE_LABELS = {
     State.IDLE: "En veille", State.ARME: "Armé (fenêtre ouverte)", State.AVANT: "Début imminent",
     State.KHUTBA: "Khutba en direct", State.PRIERE: "Prière en cours", State.ENTRACTE: "Entracte",
@@ -61,43 +61,43 @@ class Signals:
     t: float
     voice_run: float = 0.0
     silence_run: float = 0.0
-    presence: bool | None = None    # mouvement au minbar ; None = détection désactivée
-    face_run: float | None = None    # secondes sans visage de face au minbar ; None = détection indisponible
+    presence: bool | None = None    # motion at the minbar; None = detection disabled
+    face_run: float | None = None    # seconds without a frontal face at the minbar; None = detection unavailable
 
 
 @dataclass
 class MachineParams:
-    # minutes d'horloge mosquée, comptées depuis l'horaire de la session (T)
-    arm_before_min: float = 15.0        # armement : on écoute la voix
-    avant_before_min: float = 2.0       # scène Avant : stream démarré
-    window_after_min: float = 45.0      # sans signal au-delà : session sautée
-    prayer_min: float = 12.0            # durée supposée de la prière
-    # durées en secondes RÉELLES : le signal est en temps réel
-    voice_start_s: float = 20.0         # voix soutenue => début de khutba
-    silence_stop_s: float = 60.0        # silence prolongé => fin de khutba
-    grace_s: float = 30.0               # délai de grâce avant de couper
-    min_khutba_s: float = 120.0         # pas d'arrêt avant cette durée
-    # visage au minbar : l'imam tourne le dos pendant la prière (0 = signal ignoré)
-    face_absence_s: float = 45.0        # plus de visage de face depuis ce délai ...
-    face_silence_ratio: float = 0.5     # ... ET au moins cette part du seuil de silence
-    face_return_s: float = 3.0          # visage de retour sous ce délai : la grâce s'annule
+    # mosque-clock minutes, counted from the session time (T)
+    arm_before_min: float = 15.0        # arming: we listen to the voice
+    avant_before_min: float = 2.0       # AVANT scene: stream started
+    window_after_min: float = 45.0      # no signal beyond that: session skipped
+    prayer_min: float = 12.0            # assumed duration of the prayer
+    # durations in REAL seconds: the signal is in real time
+    voice_start_s: float = 20.0         # sustained voice => start of khutba
+    silence_stop_s: float = 60.0        # prolonged silence => end of khutba
+    grace_s: float = 30.0               # grace delay before cutting
+    min_khutba_s: float = 120.0         # no stop before this duration
+    # face at the minbar: the imam turns his back during the prayer (0 = signal ignored)
+    face_absence_s: float = 45.0        # no frontal face for this long ...
+    face_silence_ratio: float = 0.5     # ... AND at least this share of the silence threshold
+    face_return_s: float = 3.0          # face back within this delay: the grace is cancelled
     max_khutba_s: float = 3600.0
-    terminated_hold_s: float = 45.0     # écran Terminé avant arrêt du stream
-    # dars et conférences : plus souples que la khutba (aucune prière ne suit)
-    dars_window_after_min: float = 90.0 # un dars peut commencer plus tard qu'une khutba
+    terminated_hold_s: float = 45.0     # "Terminé" screen before the stream stops
+    # dars and conferences: more flexible than the khutba (no prayer follows)
+    dars_window_after_min: float = 90.0 # a dars can start later than a khutba
     dars_max_s: float = 7200.0
     dars_silence_stop_s: float = 180.0
     dars_grace_s: float = 90.0
-    dars_fin_hold_s: float = 45.0       # écran « Dars terminé » avant arrêt du stream
+    dars_fin_hold_s: float = 45.0       # "Dars finished" screen before the stream stops
 
 
 @dataclass
 class SessionRec:
     index: int
-    planned: str                        # « HH:MM » ; « manuel@HH:MM » ou « janaza@HH:MM » hors programme
+    planned: str                        # "HH:MM"; "manuel@HH:MM" or "janaza@HH:MM" outside the programme
     status: str = "pending"             # pending | live | done | skipped | janaza
-    recording: Optional[int] = None     # n° de l'enregistrement qui contient start_pos / end_pos
-    start_pos: Optional[float] = None   # offset (s) dans l'enregistrement
+    recording: Optional[int] = None     # number of the recording that contains start_pos / end_pos
+    start_pos: Optional[float] = None   # offset (s) in the recording
     end_pos: Optional[float] = None
     start_clock: Optional[str] = None
     end_clock: Optional[str] = None
@@ -109,7 +109,7 @@ class SessionRec:
     session_no: Optional[int] = None
 
     def event(self) -> Optional[dict]:
-        """Événement porté par la session (None pour une khutba ordinaire) ; même forme que EventInstance.as_event()."""
+        """Event carried by the session (None for an ordinary khutba); same shape as EventInstance.as_event()."""
         if self.kind == "khutba":
             return None
         return {"kind": self.kind, "title": self.title, "speaker": self.speaker,
@@ -121,11 +121,11 @@ class Machine:
                  log: Callable[[str], None] | None = None,
                  pos_fn: Callable[[], tuple[int, float]] | None = None,
                  extras: list[dict] | None = None):
-        """pos_fn() -> (n° de l'enregistrement, position en s) : où en est l'enregistrement du live.
+        """pos_fn() -> (recording number, position in s): where the live recording stands.
 
-        `extras` suit `sessions` (même ordre avant tri) : événement de chaque session (forme
-        `EventInstance.as_event()`, `{}` pour une khutba ordinaire). Aucune liste parallèle : le type
-        de la session est dans son événement.
+        `extras` follows `sessions` (same order before sorting): event of each session (shape
+        `EventInstance.as_event()`, `{}` for an ordinary khutba). No parallel list: the session
+        type is in its event.
         """
         self.p = params or MachineParams()
         order = sorted(range(len(sessions)), key=lambda i: sessions[i])
@@ -144,13 +144,13 @@ class Machine:
             self.records.append(SessionRec(i, s.strftime("%H:%M"), kind=m.get("kind") or "khutba",
                                            title=m.get("title", ""), speaker=m.get("speaker", ""),
                                            series=m.get("series", ""), session_no=m.get("session_no")))
-        self.live: Optional[SessionRec] = None   # session ouverte (khutba ou janaza)
+        self.live: Optional[SessionRec] = None   # open session (khutba or janaza)
         self.entered_t = 0.0
         self.entered_now: Optional[dt.datetime] = None
         self.grace_until: Optional[float] = None
         self.grace_reason: Optional[str] = None
         self.extend_until_t: float = 0.0
-        self.janaza_name: Optional[str] = None   # fiche janaza : nom du défunt et mention (accord de la famille)
+        self.janaza_name: Optional[str] = None   # janaza record: name of the deceased and note (family consent)
         self.janaza_info: Optional[str] = None
         self.paused_from: Optional[State] = None
         self.last_reason = ""
@@ -166,7 +166,7 @@ class Machine:
 
     @property
     def session(self) -> Optional[dt.datetime]:
-        """Horaire de la session prévue en cours ou à venir."""
+        """Time of the planned session in progress or upcoming."""
         return self.sessions[self.idx] if self.idx < len(self.sessions) else None
 
     @property
@@ -187,25 +187,25 @@ class Machine:
         if old == State.JANAZA and self.paused_from is None:
             self.janaza_name = self.janaza_info = None
         if self.live and new not in (State.KHUTBA, State.DARS, State.JANAZA) and self.paused_from is None:
-            self._close(sig, reason)        # la session ouverte s'arrête dès qu'on quitte son écran (sauf pause)
+            self._close(sig, reason)        # the open session stops as soon as we leave its screen (except pause)
         if new in (State.KHUTBA, State.DARS) and not (self.live and self.live.status == "live"):
             r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
             self._open(r, sig)
-        if new == State.FIN:                # la journée est finie : plus rien à venir
+        if new == State.FIN:                # the day is over: nothing left to come
             for r in self.records:
                 if r.status == "pending":
                     r.status, r.end_reason = "skipped", reason
             self.idx = len(self.sessions)
         if new == State.JANAZA and not (self.live and self.live.status == "janaza"):
-            # la Janaza ne produit AUCUN contenu dérivé (runs.produces_content)
+            # the Janaza produces NO derived content (runs.produces_content)
             r = self._extra("janaza", sig)
             r.status = "janaza"
             self._open(r, sig)
         self.log(f"ÉTAT {old.value} → {new.value}  ({reason})  [horloge {sig.now:%H:%M:%S}]")
 
     def _extra(self, kind: str, sig: Signals) -> SessionRec:
-        """Session hors programme, lancée à la main : c'est une khutba (la Janaza est marquée par son statut)."""
+        """Off-programme session, started by hand: it is a khutba (the Janaza is marked by its status)."""
         r = SessionRec(len(self.records), f"{kind}@{sig.now:%H:%M}")
         self.records.append(r)
         return r
@@ -224,7 +224,7 @@ class Machine:
         if r.status == "live":
             r.status = "done"
         rec, pos = self.pos_fn()
-        # encodeur relancé pendant la session : la fin est dans un autre fichier, on garde le premier jusqu'au bout
+        # encoder restarted during the session: the end is in another file, we keep the first one to the end
         r.end_pos = pos if rec == r.recording else None
         r.end_clock = f"{sig.now:%H:%M:%S}"
         r.end_reason = reason
@@ -239,11 +239,11 @@ class Machine:
 
     @property
     def kind(self) -> str:
-        """Type de la session prévue en cours (khutba, dars, conference)."""
+        """Type of the planned session in progress (khutba, dars, conference)."""
         return self.rec.kind if self.rec else "khutba"
 
     def _entry_state(self) -> State:
-        """État d'entrée d'une session : DARS pour un dars / une conférence, KHUTBA sinon."""
+        """Entry state of a session: DARS for a dars / a conference, KHUTBA otherwise."""
         return State.KHUTBA if self.kind == "khutba" else State.DARS
 
     def _window_end(self) -> dt.datetime:
@@ -252,9 +252,9 @@ class Machine:
         return self.session + dt.timedelta(minutes=late)
 
     def _next_session(self, sig: Signals) -> State:
-        """Passe à la session prévue suivante (en sautant celles dont la fenêtre est close) -> état d'attente.
+        """Move on to the next planned session (skipping those whose window is closed) -> waiting state.
 
-        Une session qui n'a pas eu lieu (prière affichée à la main avant elle) reste la prochaine."""
+        A session that did not happen (prayer displayed by hand before it) remains the next one."""
         if not (self.rec and self.rec.status == "pending"):
             self.idx += 1
         while self.session and sig.now > self._window_end():
@@ -265,14 +265,14 @@ class Machine:
         return State.ENTRACTE if self.stream_on else State.IDLE
 
     def _end_state(self) -> State:
-        """Fin du live : écran Terminé si le stream tourne, sinon directement FIN."""
+        """End of the live: Terminé screen if the stream is running, FIN directly otherwise."""
         return State.TERMINE if self.stream_on else State.FIN
 
     def _voice_ok(self, sig: Signals) -> bool:
         return sig.voice_run >= self.p.voice_start_s
 
     def clock_only(self, now: dt.datetime) -> bool:
-        """Vrai si seule l'horloge peut faire avancer la machine (aucun signal attendu) : l'horloge simulée peut accélérer."""
+        """True if only the clock can move the machine forward (no signal expected): the simulated clock may speed up."""
         s, p = self.session, self.p
         if self.override or s is None:
             return False
@@ -286,7 +286,7 @@ class Machine:
 
     # ----------------------------------------------------------------- commandes
     def command(self, cmd: str, sig: Signals, arg=None) -> str:
-        """Commande manuelle. Renvoie un message de confirmation (ou d'erreur)."""
+        """Manual command. Returns a confirmation message (or an error)."""
         cmd = cmd.lower()
         self.log(f"COMMANDE manuelle : {cmd} {arg if arg is not None else ''}")
         fn = self.COMMANDS.get(cmd)
@@ -307,7 +307,7 @@ class Machine:
     def _pause(self, sig, arg):
         if self.state == State.PRIERE:
             return "déjà en pause"
-        self.paused_from = self.state       # avant _go : la session ouverte reste ouverte pendant la pause
+        self.paused_from = self.state       # before _go: the open session stays open during the pause
         self.override = True
         self._go(State.PRIERE, sig, "commande pause")
         return "pause (écran Prière en cours)"
@@ -322,7 +322,7 @@ class Machine:
     def _auto(self, sig, arg):
         if self.paused_from is not None:
             self._go(self.paused_from, sig, "commande auto (fin de pause)")
-        if self.state == State.JANAZA:           # fin de la janaza : les sessions restantes reprennent en automatique
+        if self.state == State.JANAZA:           # end of the janaza: the remaining sessions resume automatically
             self._go(State.ENTRACTE if self.session else self._end_state(), sig, "commande auto (fin de janaza)")
         self.override = False
         return "automatique repris"
@@ -341,7 +341,7 @@ class Machine:
         except ValueError:
             return f"durée invalide : {arg} (minutes)"
         base = max(self.extend_until_t, sig.t)
-        self.extend_until_t = base + mins * 60  # minutes RÉELLES (khutba jouée en temps réel)
+        self.extend_until_t = base + mins * 60  # REAL minutes (khutba played in real time)
         return f"prolongé de {mins:g} min (pas d'arrêt automatique avant)"
 
     def _skip_cmd(self, sig, arg):
@@ -357,20 +357,20 @@ class Machine:
             if r.status in ("pending", "live"):
                 r.status = "skipped"
                 r.end_reason = "annulé"
-        self.idx = len(self.sessions)       # TERMINÉ d'abord si le stream tourne : plus rien à venir dès maintenant
+        self.idx = len(self.sessions)       # TERMINÉ first if the stream is running: nothing left to come from now on
         self.override = False
         self._go(self._end_state(), sig, "live du jour annulé")
         return "live du jour annulé"
 
     def _janaza(self, sig, arg):
-        """arg = « nom » ou « nom|mention » : la fiche saisie au tableau de bord (champs facultatifs).
+        """arg = "name" or "name|note": the record entered in the dashboard (optional fields).
 
-        Rien n'est nominatif sans le consentement de la famille : un champ vide reste vide.
+        Nothing is named without the family's consent: an empty field stays empty.
         """
         name, _, info = (arg or "").partition("|")
         name, info = name.strip()[:80] or None, info.strip()[:60] or None
         if not name:
-            info = None                     # une mention seule n'a pas de sens sans nom
+            info = None                     # a note alone makes no sense without a name
         self.janaza_name, self.janaza_info = name, info
         self.override = True
         self._go(State.JANAZA, sig, "commande janaza")
@@ -383,7 +383,7 @@ class Machine:
     def tick(self, sig: Signals) -> None:
         st = self.state
 
-        # Terminé -> fin : toujours actif (même en override, c'est la sortie)
+        # Terminé -> end: always active (even in override, this is the exit)
         if st == State.TERMINE:
             if sig.t - self.entered_t >= self.p.terminated_hold_s:
                 self._go(State.FIN, sig, "écran Terminé affiché, arrêt du stream")
@@ -393,7 +393,7 @@ class Machine:
                 self._go(State.FIN, sig, "écran de fin du dars affiché, arrêt du stream")
             return
         if st == State.JANAZA or self.override:
-            return  # Janaza : uniquement manuel
+            return  # Janaza: manual only
 
         s = self.session
         if st in WAITING and s is None:
@@ -441,8 +441,8 @@ class Machine:
             if sig.t < self.extend_until_t:
                 self.grace_until = None
                 return
-            # le silence seul ne conclut rien (une salle pleine n'est jamais muette) :
-            # il faut le silence ET le minbar vide de tout visage de face
+            # silence alone concludes nothing (a full room is never silent):
+            # we need silence AND a minbar empty of any frontal face
             face_gone = (not dars and sig.face_run is not None and self.p.face_absence_s > 0
                          and sig.face_run >= self.p.face_absence_s
                          and sig.silence_run >= silence_s * self.p.face_silence_ratio)

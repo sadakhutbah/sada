@@ -55,7 +55,7 @@ export default function App() {
       </NavLink>
     );
 
-  // Déconnexion : le serveur efface la session, l'écran de connexion reprend la main sans rechargement.
+  // Sign-out: the server clears the session, the login screen takes over without a reload.
   const deconnexion = async (e: React.MouseEvent) => {
     e.preventDefault();
     await api.logout().catch(() => {});
@@ -68,7 +68,7 @@ export default function App() {
     <div className="flex min-h-screen flex-col">
       <header className="bg-night text-night-ink shadow-[0_1px_0_rgba(0,0,0,0.2)]">
         <div className="mx-auto flex max-w-[1100px] flex-nowrap items-center gap-3 px-4 py-2.5">
-          {/* Marque sur deux lignes : le programme, puis la mosquée dessous en petit. */}
+          {/* Brand on two lines: the program, then the mosque below in small text. */}
           <div className="flex shrink-0 items-center gap-2.5">
             {session.mosque.logo && (
               <img src={session.mosque.logo} alt="" className="size-[34px] shrink-0 rounded-full border-2 border-leaf object-cover" />
@@ -117,7 +117,7 @@ export default function App() {
           <Route path="/dars" element={<Dars />} />
           <Route path="/clips" element={<Clips />} />
           <Route path="/khutbas/:id" element={<SermonDetail />} />
-          {/* Ancienne adresse : les liens déjà partagés continuent de mener à la liste. */}
+          {/* Old address: already-shared links keep leading to the list. */}
           <Route path="/sermons" element={<Navigate to="/khutbas" replace />} />
           <Route path="/sermons/:id" element={<Navigate to="/khutbas" replace />} />
           <Route path="/clips/:id" element={<ClipDetail />} />

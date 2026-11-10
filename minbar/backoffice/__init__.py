@@ -1,9 +1,9 @@
-"""Back-office Minbar Live : application web authentifiée (tableau de bord du live, historique des khutbas,
-file de validation des clips, publication).
+"""Minbar Live back-office: authenticated web application (live dashboard, khutba history,
+clip validation queue, publishing).
 
-Conçu multi-mosquées dès la V1 : chaque donnée appartient à une mosquée (tenant), chaque utilisateur à une
-mosquée ; en mode A une seule mosquée tourne sur l'ordinateur de la mosquée, en mode B le même code sert
-plusieurs mosquées depuis un serveur central.
+Multi-mosque from V1: every piece of data belongs to a mosque (tenant), every user to a
+mosque; in mode A a single mosque runs on the mosque's computer, in mode B the same code serves
+several mosques from a central server.
 
     python -m minbar.backoffice create-admin --username admin
     python -m minbar.backoffice serve            # http://0.0.0.0:8090

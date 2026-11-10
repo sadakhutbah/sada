@@ -1,15 +1,15 @@
-"""Encodeur continu : UN seul ffmpeg produit le flux RTMP + l'enregistrement MKV + l'enregistrement PROPRE.
+"""Continuous encoder: ONE single ffmpeg produces the RTMP stream + the MKV recording + the CLEAN recording.
 
-Graphe : [caméra] -> scale/fps -> zmq (commandes vidéo)
-                  -> overlay@fond (écrans pleins : fond commun, opacité pilotée)
-                  -> overlay@ca / overlay@cb (contenu de scène, double tampon : opacité + position pilotées)
-                  -> x264 -> tee (RTMP | live_*.mkv) ;
-         [audio caméra] -> volume@mic (piloté en direct via ZeroMQ) -> asplit -> aac (live) / aac (propre).
-Sortie propre (live_*_clean.mkv) : la vidéo caméra SANS habillage (copie du flux 0:v si clean_copy, sinon x264 crf 18
-depuis la caméra mise à l'échelle) + le même audio. Même processus, même démarrage : les positions temporelles
-de live_*.mkv et live_*_clean.mkv sont alignées (les clips sont taillés dans le propre aux positions du live).
-Changer de scène = écrire le contenu dans le calque inactif puis l'animer (transitions.py) : fondu enchaîné,
-glissement d'entrée, fondu sonore du micro. Le processus ffmpeg n'est jamais relancé : le flux ne s'interrompt pas.
+Graph: [camera] -> scale/fps -> zmq (video commands)
+                  -> overlay@fond (full screens: shared background, driven opacity)
+                  -> overlay@ca / overlay@cb (scene content, double buffer: driven opacity + position)
+                  -> x264 -> tee (RTMP | live_*.mkv);
+         [camera audio] -> volume@mic (driven live via ZeroMQ) -> asplit -> aac (live) / aac (clean).
+Clean output (live_*_clean.mkv): the camera video WITHOUT overlay (copy of stream 0:v if clean_copy, otherwise x264 crf 18
+from the scaled camera) + the same audio. Same process, same start: the time positions
+of live_*.mkv and live_*_clean.mkv are aligned (clips are cut from the clean file at the live positions).
+Changing scene = writing the content into the inactive layer then animating it (transitions.py): crossfade,
+slide-in, audio fade of the mic. The ffmpeg process is never restarted: the stream is not interrupted.
 """
 from __future__ import annotations
 import datetime as dt
@@ -27,13 +27,13 @@ from . import transitions as tr
 
 
 def _zmq_esc(port: int) -> str:
-    return "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + f":{port}"  # « : » échappés deux fois (graphe puis options du filtre)
+    return "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + f":{port}"  # ":" escaped twice (graph then filter options)
 
 
 ZMQ_APORT = 5556                          # audio (azmq)
 ZMQ_ADDR = f"tcp://127.0.0.1:{ZMQ_APORT}"
 ZMQ_ESC = _zmq_esc(ZMQ_APORT)
-# vidéo : un filtre zmq (donc un port) par paramètre animé d'une transition, cf. Encoder._animate
+# video: one zmq filter (hence one port) per animated parameter of a transition, see Encoder._animate
 ZMQ_VPORTS = tuple(range(ZMQ_APORT + 1, ZMQ_APORT + 5))
 ZMQ_VADDRS = [f"tcp://127.0.0.1:{p}" for p in ZMQ_VPORTS]
 
@@ -47,32 +47,32 @@ def write_png_atomic(img: Image.Image, path: str) -> None:
 class Encoder:
     def __init__(self, cfg, run_dir: Path, log=print):
         self.cfg, self.log = cfg, log
-        # calques : fond commun des écrans pleins + deux calques de contenu (double tampon)
+        # layers: shared background of the full screens + two content layers (double buffer)
         self.run_dir = Path(run_dir)
         self.layer_png = {k: str(self.run_dir / f"scene_{k}.png") for k in ("fond", "a", "b")}
-        # valeurs courantes des calques (aussi valeurs initiales du graphe si ffmpeg est relancé)
+        # current layer values (also the graph's initial values if ffmpeg is restarted)
         self.levels: dict[str, float] = {"fond": 1.0, "a_a": 1.0, "x_a": 0.0, "y_a": 0.0,
                                          "a_b": 0.0, "x_b": 0.0, "y_b": 0.0}
-        self.active = "a"                    # calque du contenu affiché
-        self.shown: Optional[tuple] = None   # (clé de scène, calque) : contenu affiché ou en cours d'entrée
-        self.full = True                     # la scène affichée est un écran plein
-        self.vol = 0.0                       # niveau du micro (0..1), cible du dernier fondu
-        self._mx = threading.Lock()          # protège pending / shown
-        self._anim = threading.Lock()        # une seule transition à la fois
+        self.active = "a"                    # layer of the displayed content
+        self.shown: Optional[tuple] = None   # (scene key, layer): content shown or coming in
+        self.full = True                     # the displayed scene is a full screen
+        self.vol = 0.0                       # mic level (0..1), target of the last fade
+        self._mx = threading.Lock()          # protects pending / shown
+        self._anim = threading.Lock()        # one transition at a time
         self._pending = None
         self._ev = threading.Event()
         self._worker: Optional[threading.Thread] = None
         self.proc: subprocess.Popen | None = None
-        self.out_time = 0.0       # position (s) dans l'enregistrement courant, d'après -progress
+        self.out_time = 0.0       # position (s) in the current recording, from -progress
         self.restarts = 0
         self._lock = threading.Lock()
         self.mic_on = False
         self.wanted = False
-        # un enregistrement par lancement de ffmpeg : (live_*.mkv, live_*_clean.mkv ou None)
+        # one recording per ffmpeg launch: (live_*.mkv, live_*_clean.mkv or None)
         self.recordings: list[tuple[str, Optional[str]]] = []
         self._log_file = None
 
-    # ------------------------------------------------------------------ commande
+    # ------------------------------------------------------------------- command
     def new_recording(self) -> tuple[str, Optional[str]]:
         c = self.cfg
         Path(c.record_dir).mkdir(parents=True, exist_ok=True)
@@ -89,7 +89,7 @@ class Encoder:
             f"pad={c.width}:{c.height}:(ow-iw)/2:(oh-ih)/2,fps={c.fps},setsar=1,format=yuv420p"
             + ("[cam];" if not clean or copy else ",split=2[cam][camclean];")
             + "[cam]" + ",".join(f"zmq@z{i}=bind_address={_zmq_esc(p)}" for i, p in enumerate(ZMQ_VPORTS)) + "[camz];"
-            # fond : une seule image, répétée en mémoire (pas de relecture)
+            # background: a single image, repeated in memory (no re-read)
             f"[1:v]format=rgba,loop=loop=-1:size=1,colorchannelmixer@fond=aa={L['fond']}[fond];"
             f"[2:v]format=rgba,fps={c.fps},colorchannelmixer@ca=aa={L['a_a']}[ca];"
             f"[3:v]format=rgba,fps={c.fps},colorchannelmixer@cb=aa={L['a_b']}[cb];"
@@ -100,8 +100,8 @@ class Encoder:
             f"volume@mic=volume={self.vol:g}:eval=frame,azmq=bind_address={ZMQ_ESC}"
             + ("[a]" if not clean else ",asplit=2[a][aclean]")
         )
-        # calques de contenu relus à {fps} i/s : la file d'attente d'ffmpeg (~15 images) borne le délai
-        # entre l'écriture d'un PNG et son apparition à ~0,6 s (à 4 i/s : ~4 s), cf. tr.DELAI_CHARGEMENT
+        # content layers re-read at {fps} fps: ffmpeg's queue (~15 frames) bounds the delay
+        # between writing a PNG and its appearance at ~0.6 s (at 4 fps: ~4 s), see tr.DELAI_CHARGEMENT
         slot = ["-re", "-f", "image2", "-loop", "1", "-framerate", str(c.fps), "-i"]
         out_clean: list[str] = []
         if clean:
@@ -120,7 +120,7 @@ class Encoder:
             "-f", "tee", f"[f=flv:onfail=ignore]{c.rtmp_url}|[f=matroska]{rec}",
         ] + out_clean
 
-    # ----------------------------------------------------------------- cycle de vie
+    # ------------------------------------------------------------------ life cycle
     def start(self):
         with self._lock:
             self.wanted = True
@@ -158,14 +158,14 @@ class Encoder:
                     self.restarts += 1
                     self.log(f"ENCODEUR : ffmpeg arrêté (code {self.proc.returncode}), reprise automatique #{self.restarts}")
                     time.sleep(2.0)
-                    self._spawn()     # le graphe relancé repart de l'état courant (levels, vol)
+                    self._spawn()     # the restarted graph resumes from the current state (levels, vol)
 
     def stop(self):
         with self._lock:
             self.wanted = False
             p = self.proc
         if p and p.poll() is None:
-            p.terminate()  # SIGTERM : ffmpeg finalise proprement le MKV
+            p.terminate()  # SIGTERM: ffmpeg finalises the MKV cleanly
             try:
                 p.wait(timeout=15)
             except subprocess.TimeoutExpired:
@@ -179,35 +179,35 @@ class Encoder:
         return bool(self.proc and self.proc.poll() is None)
 
     def current_recording(self) -> str | None:
-        """Enregistrement en cours d'écriture (None flux coupé)."""
+        """Recording currently being written (None = stream stopped)."""
         return self.recordings[-1][0] if self.wanted and self.recordings else None
 
     def position(self) -> tuple[int, float]:
-        """(n° de l'enregistrement, position en s dans celui-ci). Flux coupé : le prochain enregistrement, à 0 s."""
+        """(recording number, position in s within it). Stream stopped: the next recording, at 0 s."""
         if not self.wanted:
             return len(self.recordings), 0.0
         return len(self.recordings) - 1, self.out_time
 
-    # ------------------------------------------------------------------ habillage
+    # -------------------------------------------------------------------- overlay
     def prepare(self, background) -> None:
-        """Écrit le fond commun des écrans pleins et des calques de contenu vides (avant le démarrage)."""
+        """Writes the shared background of the full screens and empty content layers (before starting)."""
         write_png_atomic(background, self.layer_png["fond"])
         empty = Image.new("RGBA", background.size, (0, 0, 0, 0))
         for k in ("a", "b"):
             write_png_atomic(empty, self.layer_png[k])
 
     def show(self, scene: str, full: bool, content) -> None:
-        """Affiche une scène : contenu (calque transparent) + fond si écran plein (scenes.SCENES).
+        """Displays a scene: content (transparent layer) + background if full screen (scenes.SCENES).
 
-        Même scène qu'à l'écran (ex. compte à rebours de l'entracte) : mise à jour du calque en place.
-        Autre scène : transition animée par le fil « encoder-transitions » (le flux n'est jamais coupé).
-        Encodeur pas encore lancé : état posé directement, sans animation."""
+        Same scene as on screen (e.g. the interlude countdown): the layer is updated in place.
+        Other scene: transition animated by the "encoder-transitions" thread (the stream is never cut).
+        Encoder not started yet: state set directly, without animation."""
         with self._mx:
             if self._pending and self._pending[0] == scene:
                 self._pending = (scene, full, content)
                 return
             if self.shown and self.shown[0] == scene:
-                self._pending = None                     # retour à la scène affichée : rien à animer
+                self._pending = None                     # back to the displayed scene: nothing to animate
                 write_png_atomic(content, self.layer_png[self.shown[1]])
                 return
             if not self.wanted:
@@ -234,19 +234,19 @@ class Encoder:
                 if job:
                     src = self.active
                     dst = "b" if src == "a" else "a"
-                    # le calque inactif est transparent (fin de la transition précédente) : on y prépare la scène
+                    # the inactive layer is transparent (end of the previous transition): we prepare the scene there
                     write_png_atomic(job[2], self.layer_png[dst])
                     self.shown = (job[0], dst)
             while job:
-                time.sleep(tr.DELAI_CHARGEMENT)          # ffmpeg relit le PNG avant qu'on le dévoile
-                with self._mx:                           # scène changée entre-temps (ex. prière -> janaza) :
-                    if not self._pending:                # on prépare directement la plus récente
+                time.sleep(tr.DELAI_CHARGEMENT)          # ffmpeg re-reads the PNG before we reveal it
+                with self._mx:                           # scene changed meanwhile (e.g. prayer -> janaza):
+                    if not self._pending:                # we prepare the most recent one directly
                         break
                     job, self._pending = self._pending, None
                     write_png_atomic(job[2], self.layer_png[dst])
                     self.shown = (job[0], dst)
             target = 1.0 if self.mic_on else 0.0
-            if target != self.vol:                       # fondu sonore, même départ que l'image
+            if target != self.vol:                       # audio fade, same start as the image
                 expr = tr.volume_ramp(self.vol, target)
                 self.vol = target
                 if self.alive():
@@ -259,18 +259,18 @@ class Encoder:
                 self.active, self.full = dst, job[1]
                 self.log(f"TRANSITION -> {job[0]} (calque {dst}, {frames} images)")
 
-    # canal ZeroMQ (port) par paramètre animé : un filtre zmq par canal sur la chaîne caméra
+    # ZeroMQ channel (port) per animated parameter: one zmq filter per channel on the camera chain
     _TARGET = {"fond": "colorchannelmixer@fond aa", "a_a": "colorchannelmixer@ca aa", "a_b": "colorchannelmixer@cb aa",
                "x_a": "overlay@ca x", "y_a": "overlay@ca y", "x_b": "overlay@cb x", "y_b": "overlay@cb y"}
 
     def _animate(self, p: "tr.Plan") -> int:
-        """Joue la transition image par image, calée sur le flux (et non sur l'horloge murale).
+        """Plays the transition frame by frame, paced on the stream (and not on the wall clock).
 
-        Un socket REQ par canal (fond, contenu sortant, contenu entrant, position) : le filtre zmq (REP) traite
-        au plus une requête par image et ne répond qu'en la traitant ; on n'envoie la valeur de l'image n+1
-        qu'après la réponse de l'image n. L'animation avance donc d'un pas par image produite : pas de saccade
-        même si ffmpeg traite les images par rafales (elle s'allonge au pire de quelques images).
-        Retourne le nombre d'images jouées (0 si ffmpeg ne répond pas : l'état final est posé à la relance)."""
+        One REQ socket per channel (background, outgoing content, incoming content, position): the zmq filter (REP)
+        handles at most one request per frame and only replies while handling it; the value of frame n+1 is sent
+        only after the reply to frame n. The animation therefore advances one step per produced frame: no stutter
+        even if ffmpeg processes frames in bursts (at worst it runs a few frames longer).
+        Returns the number of frames played (0 if ffmpeg does not reply: the final state is set on restart)."""
         final = p.values(tr.TOTAL)
         move = f"y_{p.dst}" if p.full else f"x_{p.dst}"
         keys = ([] if p.fond_from == p.fond_to else ["fond"]) + [f"a_{p.src}", f"a_{p.dst}", move]
@@ -317,13 +317,13 @@ class Encoder:
         self.levels.update({k: round(v, 3) for k, v in final.items()})
         return played
 
-    # ------------------------------------------------------------------- audio live
+    # -------------------------------------------------------------------- live audio
     def mic(self, on: bool):
-        """Micro du direct (khutba, janaza) : fondu de tr.AUDIO_DUR, synchronisé sur la transition en attente."""
+        """Live microphone (khutba, janaza): fade of tr.AUDIO_DUR, synchronised with the pending transition."""
         with self._mx:
             self.mic_on = on
             if not self.wanted:
-                self.vol = 1.0 if on else 0.0            # valeur initiale du graphe au démarrage
+                self.vol = 1.0 if on else 0.0            # initial value of the graph at start-up
                 return
             self._ensure_worker()
             self._ev.set()

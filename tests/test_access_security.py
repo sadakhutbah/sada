@@ -1,9 +1,9 @@
-"""Renforts d'authentification : colmatage du rejeu de session, empreinte du navigateur, HSTS, cookies."""
+"""Authentication hardening: session replay patching, browser fingerprint, HSTS, cookies."""
 import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import PW, client, env, login  # noqa: E402,F401  (conftest assure le chemin)
+from test_backoffice import PW, client, env, login  # noqa: E402,F401  (conftest provides the path)
 
 FF = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36"
@@ -30,7 +30,7 @@ def test_jeton_recopie_dans_un_autre_navigateur_ne_sert_a_rien(env):
     autre.cookies.set("minbar_session", token)
     assert autre.get("/api/v1/session").status_code == 401
 
-    # la vraie session n'est pas détruite par la tentative (pas de déni de service offert au voleur)
+    # the real session is not destroyed by the attempt (no denial of service offered to the thief)
     assert c.get("/api/v1/session").status_code == 200
     from minbar.backoffice import db
     traces = db.all_(env["conn"], "SELECT * FROM audit WHERE action = 'session.navigateur_inattendu'")
@@ -38,7 +38,7 @@ def test_jeton_recopie_dans_un_autre_navigateur_ne_sert_a_rien(env):
 
 
 def test_cookie_invalide_n_ouvre_rien_et_le_front_reste_servi(env):
-    """Un cookie invalide ne casse pas l'affichage : le front se charge, l'API répond 401."""
+    """An invalid cookie does not break the display: the front end loads, the API answers 401."""
     from fastapi.testclient import TestClient
 
     c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF})
@@ -55,8 +55,8 @@ def test_cookie_de_session_httponly_samesite(env):
 
 
 def test_cookie_secure_derriere_un_proxy_https(env):
-    """Derrière un proxy HTTPS, cookies Secure et HSTS ; le jar de test refuse d'envoyer un cookie
-    Secure sur une URL http:// (un vrai navigateur, lui, est déjà en https), on le passe donc à la main."""
+    """Behind an HTTPS proxy, Secure cookies and HSTS; the test cookie jar refuses to send a Secure
+    cookie over an http:// URL (a real browser is already on https), so we pass it by hand."""
     from fastapi.testclient import TestClient
 
     c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF, "x-forwarded-proto": "https"})
@@ -67,7 +67,7 @@ def test_cookie_secure_derriere_un_proxy_https(env):
     setc = r.headers.get("set-cookie", "")
     assert "Secure" in setc
     assert r.headers.get("strict-transport-security", "").startswith("max-age=31536000")
-    # le HSTS ne doit pas s'imposer en HTTP local (sinon les autres postes du réseau perdent l'accès)
+    # HSTS must not impose itself on local HTTP (otherwise other machines on the network lose access)
     plain = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF})
     assert "strict-transport-security" not in plain.get("/").headers
 
@@ -78,5 +78,5 @@ def test_entetes_de_securite_par_defaut(env):
         h = c.get(url).headers
         assert "frame-ancestors 'none'" in h["content-security-policy"], url
         assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
-    # la réponse JSON n'est jamais mise en cache
+    # the JSON response is never cached
     assert c.get("/api/v1/login-challenge").headers["cache-control"] == "no-store"

@@ -1,4 +1,4 @@
-"""Écrans dars : bandeau, écran de fin, entracte qui annonce un cours."""
+"""Dars screens: banner, end screen, interval that announces a class."""
 import datetime as dt
 
 from PIL import ImageChops
@@ -19,8 +19,8 @@ def test_dars_bandeau_et_ecran_de_fin():
     r = SceneRenderer(Config())
     bandeau = r.content("dars", Moment(NOW, event=EV))
     assert bandeau.size == (1280, 720) and bandeau.mode == "RGBA"
-    assert bandeau.getchannel("A").getextrema()[1] > 0            # du contenu est dessiné
-    assert bandeau.crop((0, 0, 1280, 400)).getchannel("A").getextrema()[1] == 0   # bas de l'image
+    assert bandeau.getchannel("A").getextrema()[1] > 0            # some content is drawn
+    assert bandeau.crop((0, 0, 1280, 400)).getchannel("A").getextrema()[1] == 0   # bottom of the image
     fin = r.content("dars_fin", Moment(NOW, next_event=NEXT))
     assert fin.size == (1280, 720)
     assert ImageChops.difference(bandeau, fin).getbbox() is not None
@@ -32,18 +32,18 @@ def test_scenes_dars_declarees():
 
 
 def test_les_tables_de_scenes_s_accordent():
-    """SCENES, SCENE_OF et les libellés sont trois registres tenus à la main : un nom oublié casse une page."""
+    """SCENES, SCENE_OF and the labels are three hand-maintained registries: a forgotten name breaks a page."""
     assert set(SCENES) == {v for v in SCENE_OF.values() if v} == set(SCENE_LABELS)
     assert all(SCENES[n].label == SCENE_LABELS[n] and SCENE_LABELS[n] for n in SCENES)
 
 
 def test_calque_de_dars_se_pose_sur_la_camera():
-    """Bandeau partiel (la caméra reste visible) ; l'écran de fin est un écran plein."""
+    """Partial banner (the camera stays visible); the end screen is a full screen."""
     r = SceneRenderer(Config())
     bandeau = r.content("dars", Moment(NOW, event=EV))
-    assert bandeau.getpixel((5, 5))[3] == 0                       # coin transparent
+    assert bandeau.getpixel((5, 5))[3] == 0                       # transparent corner
     plein = r.content("dars_fin", Moment(NOW, next_event=NEXT))
-    assert plein.crop((0, 0, 1280, 360)).getchannel("A").getextrema()[1] > 0   # bloc de textes présent
+    assert plein.crop((0, 0, 1280, 360)).getchannel("A").getextrema()[1] > 0   # text block present
 
 
 def test_entracte_annonce_un_prochain_cours():

@@ -1,7 +1,7 @@
-"""Pipeline post-live : transcription -> versets -> notes -> clips.
+"""Post-live pipeline: transcription -> verses -> notes -> clips.
 
-    python -m minbar.pipeline.run                                        # dernier run de l'orchestrateur
-    python -m minbar.pipeline.run data/state/<run>/sessions.json         # toutes les sessions terminées
+    python -m minbar.pipeline.run                                        # latest orchestrator run
+    python -m minbar.pipeline.run data/state/<run>/sessions.json         # all finished sessions
     python -m minbar.pipeline.run --input video.mkv --start 0 --end 1000 --label test
     python -m minbar.pipeline.run --llm-url http://127.0.0.1:8000/v1 --llm-model mistral-small
 """
@@ -30,10 +30,10 @@ def log(m):
 def process(src: str, start: float, end: float | None, label: str, outdir: Path, *, model: str | None = None,
             retranscribe: bool = False, use_llm: bool = True, nclips: int = 3, clip_video: str | None = None,
             align: bool = False, crop: dict | None = None, header: dict | None = None):
-    """src = enregistrement pour l'audio/la transcription ; clip_video = vidéo propre (sans habillage) pour les clips.
+    """src = recording for the audio/transcription; clip_video = clean video (without overlay) for the clips.
 
-    clip_video est soit alignée sur src (même processus ffmpeg : mêmes positions), soit une autre vidéo de la même
-    khutba (align=True) : le décalage est alors retrouvé par intercorrélation audio.
+    clip_video is either aligned with src (same ffmpeg process: same positions), or another video of the same
+    khutba (align=True): the offset is then recovered by audio cross-correlation.
     """
     o = SessionOutput(outdir)
     o.dir.mkdir(parents=True, exist_ok=True)
@@ -75,7 +75,7 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
 
 
 def _clip_video(clean: str | None) -> str | None:
-    """Enregistrement caméra sans habillage (même processus ffmpeg -> mêmes positions), s'il existe."""
+    """Camera recording without overlay (same ffmpeg process -> same positions), if it exists."""
     if clean and Path(clean).exists() and Path(clean).stat().st_size > 0:
         return clean
     log("pas d'enregistrement propre (live_*_clean.mkv) : clips taillés dans l'enregistrement AVEC habillage")
@@ -83,7 +83,7 @@ def _clip_video(clean: str | None) -> str | None:
 
 
 def apply_llm_options(a) -> None:
-    """Les modules notes/translate lisent l'environnement : les options du CLI le renseignent une fois pour toutes."""
+    """The notes/translate modules read the environment: the CLI options fill it once and for all."""
     for env_name, val in (("MINBAR_LLM_URL", a.llm_url), ("MINBAR_LLM_MODEL", a.llm_model),
                           ("MINBAR_LLM_PROTOCOL", a.llm_protocol)):
         if val:

@@ -1,4 +1,4 @@
-"""Commandes du live : toutes celles de la machine d'état sont exposées, avec des paramètres validés."""
+"""Live commands: all those of the state machine are exposed, with validated parameters."""
 import pytest
 
 from minbar.backoffice import live
@@ -9,7 +9,7 @@ MOSQUE = {"orchestrator_url": "http://127.0.0.1:9"}
 
 @pytest.fixture
 def appels(monkeypatch):
-    """Remplace l'appel HTTP à l'orchestrateur et garde les requêtes émises."""
+    """Replaces the HTTP call to the orchestrator and keeps the requests sent."""
     vus = []
     monkeypatch.setattr(live, "_call", lambda mosque, methode, chemin, params=None, timeout=3.0:
                         vus.append((methode, chemin, params)) or {"ok": True})

@@ -1,4 +1,4 @@
-"""Interface unique : le front React à la racine, et la permanence des anciennes adresses."""
+"""Single interface: the React front end at the root, and old addresses kept working."""
 from __future__ import annotations
 
 import re
@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest assure le chemin)
+from test_backoffice import client, env  # noqa: E402,F401  (conftest provides the path)
 
 
 def test_le_front_est_servi_a_la_racine(env):
@@ -16,18 +16,18 @@ def test_le_front_est_servi_a_la_racine(env):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     assert 'id="root"' in r.text and "Minbar Live" in r.text
-    assert "/src/main.tsx" not in r.text                     # build de production, pas le serveur de dev
+    assert "/src/main.tsx" not in r.text                     # production build, not the dev server
     asset = re.search(r'src="(/assets/index-[^"]+\.js)"', r.text).group(1)
     assert c.get(asset).status_code == 200
 
 
-# Ce qu'envoie un navigateur qui ouvre une adresse à la main : c'est ce qui distingue
-# une navigation d'un appel d'API (le serveur ne renvoie du HTML qu'à la première).
+# What a browser sends when it opens an address by hand: this is what distinguishes
+# a navigation from an API call (the server only returns HTML for the former).
 NAVIGATION = {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
 
 
 def test_les_adresses_du_front_retombent_sur_l_index(env):
-    """Le routeur du front gère ses propres adresses : le serveur ne rend plus de page."""
+    """The front-end router handles its own addresses: the server no longer renders any page."""
     c = client(env)
     for url in ("/khutbas", "/clips", "/settings", "/khutbas/12", "/clips/8"):
         r = c.get(url, headers=NAVIGATION)
@@ -35,14 +35,14 @@ def test_les_adresses_du_front_retombent_sur_l_index(env):
 
 
 def test_une_adresse_api_inconnue_repond_du_json_pas_du_html(env):
-    """Le repli sur l'index ne concerne que la navigation : une erreur d'API reste une erreur JSON."""
+    """The fallback to the index only concerns navigation: an API error remains a JSON error."""
     c = client(env)
     r = c.get("/api/v1/inconnue")
     assert r.status_code == 404 and r.headers["content-type"].startswith("application/json")
 
 
 def test_plus_aucune_page_html_rendue_par_le_serveur(env):
-    """/login et /logout ne sont plus des pages : la connexion passe par l'API, l'écran par le front."""
+    """/login and /logout are no longer pages: login goes through the API, the screen through the front end."""
     c = client(env)
     page = c.get("/login", headers=NAVIGATION).text
     assert 'action="/login"' not in page and 'name="csrf"' not in page

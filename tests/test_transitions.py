@@ -1,4 +1,4 @@
-"""Transitions de scènes : courbes, rendu des scènes, graphe et sorties de l'encodeur."""
+"""Scene transitions: curves, scene rendering, layer graph and encoder outputs."""
 import datetime as dt
 from pathlib import Path
 
@@ -11,17 +11,17 @@ from minbar.scenes import SCENES, Moment, SceneRenderer
 
 
 def test_plan_curves():
-    p = tr.plan("a", old_full=True, new_full=False)          # écran plein -> bandeau khutba
+    p = tr.plan("a", old_full=True, new_full=False)          # full screen -> khutba banner
     v0, vend = p.values(0), p.values(tr.TOTAL)
     assert (p.src, p.dst) == ("a", "b")
     assert v0["a_a"] == 1 and v0["a_b"] == 0 and v0["fond"] == 1 and v0["x_b"] < 0
     assert vend["a_a"] == 0 and vend["a_b"] == 1 and vend["fond"] == 0 and vend["x_b"] == 0 and vend["y_b"] == 0
     mid = p.values(tr.FOND_DUR / 2)
-    assert 0.4 < mid["fond"] < 0.6                            # fondu enchaîné caméra <-> écran plein
+    assert 0.4 < mid["fond"] < 0.6                            # crossfade camera <-> full screen
     steps = [p.values(i / 50)["a_b"] for i in range(int(tr.TOTAL * 50) + 2)]
-    assert all(b >= a for a, b in zip(steps, steps[1:]))      # entrée monotone, sans saut
+    assert all(b >= a for a, b in zip(steps, steps[1:]))      # monotonic entry, without jumps
     assert max(b - a for a, b in zip(steps, steps[1:])) < 0.15
-    q = tr.plan("b", old_full=True, new_full=True)            # écran plein -> écran plein : le fond reste
+    q = tr.plan("b", old_full=True, new_full=True)            # full screen -> full screen: the background stays
     assert all(q.values(t / 10)["fond"] == 1 for t in range(12))
     assert q.values(tr.IN_START)["y_a"] == tr.SLIDE_Y and q.values(tr.TOTAL)["y_a"] == 0
 
@@ -40,7 +40,7 @@ def test_every_scene_renders_and_janaza_shows_the_name():
         assert img.size == (1280, 720) and img.mode == "RGBA" and img.getbbox(), sc
     plain = r.content("janaza", Moment(now))
     named = r.content("janaza", Moment(now, janaza_name="Ahmed"))
-    assert ImageChops.difference(plain, named).getbbox()       # le nom saisi apparaît à l'écran
+    assert ImageChops.difference(plain, named).getbbox()       # the entered name appears on screen
 
 
 def test_encoder_layer_graph(tmp_path):
@@ -52,7 +52,7 @@ def test_encoder_layer_graph(tmp_path):
     cmd = " ".join(enc.ffmpeg_cmd(*enc.new_recording()))
     for f in ("zmq=bind_address", "colorchannelmixer@fond", "overlay@ca", "overlay@cb", "volume@mic=volume=0"):
         assert f in cmd
-    # hors direct : la scène est posée sans animation, et le graphe relancé repart de cet état
+    # off air: the scene is set without animation, and the restarted graph starts from this state
     enc.show("khutba", SCENES["khutba"].full, r.content("khutba", Moment(dt.datetime(2026, 11, 6, 12, 40))))
     enc.mic(True)
     assert enc.shown == ("khutba", "a") and enc.levels["fond"] == 0 and enc.vol == 1

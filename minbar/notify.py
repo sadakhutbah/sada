@@ -1,8 +1,8 @@
-"""Notifications à l'imam : webhook générique ou Telegram.
+"""Notifications to the imam: generic webhook or Telegram.
 
-Rien n'est publié : ces messages partent vers un canal privé choisi par la mosquée (webhook
-Discord/Slack/n8n, ou bot Telegram). Sans destination configurée, les notifications s'affichent
-dans le journal (« à blanc ») et le reste du direct n'est pas affecté.
+Nothing is published: these messages go to a private channel chosen by the mosque (webhook
+Discord/Slack/n8n, or Telegram bot). Without a configured destination, notifications are printed
+in the log ("dry run") and the rest of the live is unaffected.
 """
 from __future__ import annotations
 
@@ -14,21 +14,21 @@ from typing import Callable, Optional
 
 from .state import Machine, State
 
-# états qui méritent un message (les allers-retours ARME/IDLE sont du bruit)
+# states that deserve a message (ARME/IDLE round trips are noise)
 NOTIFY_STATES = {State.ARME, State.KHUTBA, State.DARS, State.FIN}
-# tournure d'un type de session dans une phrase
+# wording of a session type in a sentence
 KIND_NOUNS = {"khutba": "la khutba", "dars": "le dars", "conference": "la conférence"}
 
 
 def should_send(state: State, m: Machine, now: dt.datetime) -> bool:
-    """Faut-il notifier ce passage d'état ? Un rappel ne concerne qu'une session encore à venir."""
+    """Should this state transition be notified? A reminder only concerns a session still to come."""
     if state not in NOTIFY_STATES:
         return False
     return state is not State.ARME or (m.session is not None and m.session > now)
 
 
 def message_for(state: State, m: Machine) -> Optional[str]:
-    """Texte à envoyer à l'imam pour ce changement d'état ; None si rien à dire."""
+    """Text to send to the imam for this state change; None if nothing to say."""
     ref = m.session.strftime("%H:%M") if m.session else "—"
     quoi = KIND_NOUNS.get(m.kind, f"le {m.kind}")
     titre = f" · {m.rec.title}" if m.rec is not None and m.rec.title else ""
@@ -42,7 +42,7 @@ def message_for(state: State, m: Machine) -> Optional[str]:
     return None
 
 
-def _http_post(url: str, payload: dict) -> None:      # pragma: no cover (réseau)
+def _http_post(url: str, payload: dict) -> None:      # pragma: no cover (network)
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=5) as r:
@@ -50,7 +50,7 @@ def _http_post(url: str, payload: dict) -> None:      # pragma: no cover (résea
 
 
 class Notifier:
-    """Envoie un message court à une destination privée. `post` est injectable pour les tests."""
+    """Sends a short message to a private destination. `post` is injectable for tests."""
 
     def __init__(self, webhook: str = "", telegram_token: str = "", telegram_chat: str = "",
                  log: Callable[[str], None] = print, post: Callable[[str, dict], None] | None = None):
@@ -74,7 +74,7 @@ class Notifier:
         return "à blanc"
 
     def send(self, text: str) -> bool:
-        """Envoie le message ; renvoie False si l'envoi a échoué (jamais d'exception vers le direct)."""
+        """Sends the message; returns False if sending failed (never raises into the live)."""
         self.sent.append(text)
         if not self.enabled:
             self.log(f"notification (à blanc) : {text}")
@@ -87,7 +87,7 @@ class Notifier:
                 self.post(url, {"chat_id": self.telegram_chat, "text": text,
                                 "disable_notification": False})
             return True
-        except Exception as exc:                       # réseau, DNS, quota : on ne bloque rien
+        except Exception as exc:                       # network, DNS, quota: we block nothing
             self.log(f"notification non envoyée ({self.destination}) : {exc}")
             return False
 

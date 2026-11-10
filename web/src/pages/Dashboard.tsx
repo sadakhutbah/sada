@@ -6,8 +6,8 @@ import { currentSession } from "../App";
 import { Btn, Card, Kicker, Title } from "../ui";
 import { dateFr, horloge, mmss } from "../format";
 
-/** Tableau de bord : même ordre et mêmes blocs que le back-office en gabarits.
- *  Carte du live, puis les trois compteurs, puis les dernières khutbas et les dernières commandes. */
+/** Dashboard: same order and same blocks as the template back-office.
+ *  Live card, then the three counters, then the latest khutbas and the latest commands. */
 export default function Dashboard() {
   const { t, i18n } = useTranslation();
   const [d, setD] = useState<any>(null);
@@ -23,13 +23,13 @@ export default function Dashboard() {
     api.dashboard().then(setD).catch(() => setErreur(true));
   }, []);
 
-  /** Libellé d'une commande ou d'un choix : la traduction prime, le libellé du serveur sert de repli.
-   *  Le serveur n'envoie que des clés stables ; aucun texte d'interface ne vient de lui. */
+  /** Label of a command or choice: the translation wins, the server label is the fallback.
+   *  The server only sends stable keys; no interface text comes from it. */
   const libelle = (c: any) => t(`dashboard.cmd.${c.key}`, { defaultValue: c.label });
   const libelleChoix = (o: any) => t(`dashboard.choice.${o.value}`, { defaultValue: o.label });
   const question = (c: any) => t(`dashboard.confirm.${c.key}`, { defaultValue: c.confirm });
 
-  /** Envoie une commande au live. Le serveur répond avec l'état relu : la carte se met à jour sans rechargement. */
+  /** Sends a command to the live. The server answers with the re-read state: the card updates without a reload. */
   async function envoyer(c: any, corps: Record<string, string> = {}) {
     if (c.confirm && !window.confirm(question(c))) return;
     setOccupe(true);
@@ -38,7 +38,7 @@ export default function Dashboard() {
       const r = await api.liveCommande(c.key, corps);
       setRetour({ ok: true, texte: r.message });
       setD((prev: any) => ({ ...prev, live: r.live ?? prev.live }));
-      api.dashboard().then(setD).catch(() => {});   // journal des commandes à jour
+      api.dashboard().then(setD).catch(() => {});   // command log up to date
     } catch (e: any) {
       setRetour({ ok: false, texte: e?.message ?? t("common.error") });
     } finally {
@@ -59,6 +59,9 @@ export default function Dashboard() {
     ? t("dashboard.unreachable")
     : (v.state && t(`dashboard.state.${v.state}`, { defaultValue: v.state_label ?? "" }))
       || (v.state === "live" ? t("dashboard.liveOn") : t("dashboard.liveOff"));
+  /** The engine writes its times as “12 h 30”: in other languages, we render them as “12:30”. */
+  const heureLisible = (texte?: string | null) =>
+    texte ? texte.replace(/(\d{1,2})\s*h\s*(\d{2})/g, "$1:$2") : texte;
   const pastille = horsService || v.state === "off" ? "bg-dot-off" : v.state === "live" ? "bg-live" : "bg-leaf";
 
   return (
@@ -69,16 +72,20 @@ export default function Dashboard() {
           <span className={`inline-block size-2.5 shrink-0 rounded-full ${pastille}`} />
           {etat}
         </p>
-        {(v.error || v.last_reason) && <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">{v.error ?? v.last_reason}</p>}
-        {/* Rien à dire sur la session quand l'orchestrateur ne répond pas : le message d'erreur suffit. */}
+        {horsService ? (
+          <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">{t("dashboard.unreachableHint")}</p>
+        ) : (
+          (v.error || v.last_reason) && <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">{v.error ?? v.last_reason}</p>
+        )}
+        {/* Nothing to say about the session when the orchestrator does not answer: the error message is enough. */}
         {!horsService && (
           <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">
-            {v.session ?? "—"} · <span className="tabular-nums">{horloge(v.clock)}</span>
+            {heureLisible(v.session) ?? "—"} · <span className="tabular-nums">{horloge(v.clock)}</span>
           </p>
         )}
 
-        {/* Commandes du live : la liste vient du serveur (live_commands). Les commandes à choix
-            (prolonger, scène) se déclinent ; la janaza a sa fiche repliable. */}
+        {/* Live commands: the list comes from the server (live_commands). Commands with choices
+            (extend, scene) expand; the janaza has its collapsible form. */}
         <div className="mt-4 flex flex-wrap items-center gap-2.5">
           {commandes.filter((c: any) => c.key !== "janaza" && c.key !== "scene").map((c: any) =>
             c.choices.length > 0 ? (
@@ -127,7 +134,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
         {[
           { k: "dashboard.pending", n: d.counts.pending, to: "/clips" },
-          // « Prêts à publier » n'apparaît qu'à qui peut publier, comme dans les gabarits.
+          // “Ready to publish” only appears to those who can publish, as in the templates.
           ...(peutPublier ? [{ k: "dashboard.ready", n: d.counts.ready, to: "/publications" }] : []),
           { k: "dashboard.sermons", n: d.counts.sermons, to: "/khutbas" },
         ].map((s) => (

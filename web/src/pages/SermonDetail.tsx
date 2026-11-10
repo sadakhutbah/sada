@@ -6,10 +6,10 @@ import { currentSession } from "../App";
 import { Btn, Card, Field, Kicker, Pill, Segmented, Title, inputClass } from "../ui";
 import { dateFr, mmss } from "../format";
 
-/** Fiche d'une khutba, même grammaire que la fiche de clip.
- *  Grand écran (≥ 1000 px) : la vidéo et ses clips à gauche, à droite un panneau collant à sous-onglets
- *  (Transcription, Versets, Notes, Rattachement) dont le contenu défile seul. Sous 1000 px, tout s'empile.
- *  Rien n'est inventé côté front : versets, statuts et libellés viennent du serveur. */
+/** Sheet for a khutba, same grammar as the clip sheet.
+ *  Large screen (≥ 1000 px): the video and its clips on the left, on the right a sticky panel with sub-tabs
+ *  (Transcript, Verses, Notes, Assignment) whose content scrolls on its own. Under 1000 px, everything stacks.
+ *  Nothing is invented on the front end: verses, statuses and labels come from the server. */
 
 type Message = { texte: string; ko: boolean } | null;
 
@@ -21,7 +21,7 @@ export default function SermonDetail() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [onglet, setOnglet] = useState("transcription");
   const [message, setMessage] = useState<Message>(null);
-  const [tps, setTps] = useState(0); // position de lecture, pour surligner le passage en cours
+  const [tps, setTps] = useState(0); // playback position, to highlight the current passage
   const video = useRef<HTMLVideoElement | null>(null);
 
   const perms = currentSession()?.user.permissions ?? [];
@@ -36,7 +36,7 @@ export default function SermonDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid]);
 
-  /** Une écriture (correction, rattachement) : message du serveur, puis fiche rechargée. */
+  /** A write (correction, assignment): server message, then the sheet is reloaded. */
   const enregistrer = async (action: () => Promise<any>) => {
     setMessage(null);
     try {
@@ -48,7 +48,7 @@ export default function SermonDetail() {
     }
   };
 
-  /** Amène la vidéo au passage et la lance : c'est ainsi qu'on vérifie une correction à l'oreille. */
+  /** Brings the video to the passage and plays it: this is how a correction is checked by ear. */
   const aller = (secondes: number) => {
     const v = video.current;
     if (!v) return;
@@ -94,7 +94,7 @@ export default function SermonDetail() {
 
   return (
     <div className="grid gap-5">
-      {/* En-tête : le passage et la date, le thème en chapeau, puis les faits en une ligne. */}
+      {/* Header: the passage and the date, the theme as a lead, then the facts in one line. */}
       <header className="grid gap-3">
         <Retour />
         <div>
@@ -118,7 +118,7 @@ export default function SermonDetail() {
       </header>
 
       <div className="grid items-start gap-4 min-[1000px]:grid-cols-[minmax(0,1.2fr)_minmax(380px,1fr)]">
-        {/* Colonne gauche : la vidéo, puis les clips qu'elle a produits. */}
+        {/* Left column: the video, then the clips it produced. */}
         <div className="grid gap-4">
           <div className="overflow-hidden rounded-[10px] bg-night">
             {d.has_video ? (
@@ -136,7 +136,7 @@ export default function SermonDetail() {
                 <p className="m-0 text-[0.95rem] text-night-muted">{t("sermons.detail.noVideo")}</p>
               </div>
             )}
-            {/* Bandeau : où en est la lecture, et de quel passage il s'agit. */}
+            {/* Banner: where playback is, and which passage it is. */}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-white/10 px-3.5 py-2 text-[0.82rem] text-night-muted">
               <span className="tabular-nums">
                 {d.has_video ? `${mmss(tps)} / ${mmss(k.duration_s)}` : mmss(k.duration_s)}
@@ -183,7 +183,7 @@ export default function SermonDetail() {
           </Card>
         </div>
 
-        {/* Colonne droite : un seul sujet à la fois ; le panneau colle et son contenu défile seul. */}
+        {/* Right column: one topic at a time; the panel sticks and its content scrolls on its own. */}
         <Card className="flex flex-col min-[1000px]:sticky min-[1000px]:top-4 min-[1000px]:max-h-[calc(100vh-2rem)]">
           <div>
             <Segmented
@@ -228,7 +228,7 @@ export default function SermonDetail() {
   );
 }
 
-/** Retour à la liste des khutbas. */
+/** Back to the khutba list. */
 function Retour() {
   const { t } = useTranslation();
   return (
@@ -238,7 +238,7 @@ function Retour() {
   );
 }
 
-/** Un fait de l'en-tête : petit libellé au-dessus, valeur en dessous. */
+/** A header fact: small label above, value below. */
 function Fait({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-0.5">
@@ -260,9 +260,9 @@ function Vide({ children }: { children: ReactNode }) {
   return <p className="m-0 py-8 text-center text-[0.92rem] text-muted">{children}</p>;
 }
 
-/** Transcription : une ligne = un passage. Cliquer la ligne amène la vidéo et la lance ;
- *  la ligne en cours de lecture est surlignée. La correction est un bloc à part, sous la ligne :
- *  l'ouvrir ou y taper ne déplace jamais la vidéo. */
+/** Transcript: one line = one passage. Clicking the line brings and plays the video;
+ *  the line currently playing is highlighted. The correction is a separate block, under the line:
+ *  opening it or typing in it never moves the video. */
 function Transcription({ lignes, tps, video, peutCorriger, aller, corriger }: {
   lignes: any[];
   tps: number;
@@ -325,7 +325,7 @@ function Transcription({ lignes, tps, video, peutCorriger, aller, corriger }: {
                 </span>
               </button>
               {peutCorriger && r.field && (
-                // Bloc frère du bouton, pas enfant : cliquer ou taper ici ne lance jamais la vidéo.
+                // Sibling block of the button, not a child: clicking or typing here never plays the video.
                 <details className="pr-2.5 pb-2 pl-[4.625rem]" onClick={(e) => e.stopPropagation()}>
                   <summary className="cursor-pointer text-[0.8rem] font-semibold text-muted hover:text-deep">
                     {r.field === "text" ? t("sermons.detail.fixSubtitle") : t("sermons.detail.fixTranslation")}
@@ -344,7 +344,7 @@ function Transcription({ lignes, tps, video, peutCorriger, aller, corriger }: {
   );
 }
 
-/** Versets détectés : chaque carte amène la vidéo au moment de la citation. */
+/** Detected verses: each card brings the video to the moment of the quote. */
 function Versets({ versets, video, aller }: { versets: any[]; video: boolean; aller: (s: number) => void }) {
   const { t } = useTranslation();
   if (!versets.length) return <Vide>{t("sermons.detail.noVerses")}</Vide>;
@@ -377,7 +377,7 @@ function Versets({ versets, video, aller }: { versets: any[]; video: boolean; al
   );
 }
 
-/** Correction d'une ligne de transcription : un champ, un bouton, et le passage reste écoutable. */
+/** Correction of a transcript line: one field, one button, and the passage stays listenable. */
 function CorrectionForm({ valeurInitiale, onSave }: { valeurInitiale: string; onSave: (valeur: string) => Promise<void> }) {
   const { t } = useTranslation();
   const [valeur, setValeur] = useState(valeurInitiale);
@@ -409,7 +409,7 @@ function CorrectionForm({ valeurInitiale, onSave }: { valeurInitiale: string; on
   );
 }
 
-/** Rattachement de la khutba à un compte imam, ou à un intervenant sans compte. */
+/** Linking the khutba to an imam account, or to a speaker without an account. */
 function Rattachement({
   imams, imamId, intervenant, onSave,
 }: { imams: any[]; imamId: string; intervenant: string; onSave: (imamId: string, speaker: string) => Promise<void> }) {

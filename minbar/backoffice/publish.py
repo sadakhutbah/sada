@@ -1,13 +1,13 @@
-"""Publication des clips validés, derrière une abstraction de connecteurs.
+"""Publication of validated clips, behind a connector abstraction.
 
-Règle absolue : rien ne se publie sans validation humaine (statut « validé ») ; la vérification est faite ici,
-côté serveur, quel que soit l'appelant.
+Absolute rule: nothing is published without human validation (status "validated"); the check is done here,
+server side, whatever the caller.
 
-Connecteurs V1 :
-  - local      : copie le clip et une fiche JSON dans le dossier de publication de la mosquée (démo, archivage,
-                 ou dossier synchronisé). Fonctionnel.
-  - facebook, youtube, instagram : interfaces prêtes, DÉSACTIVÉES. Sans identifiants : indisponibles. Même avec des
-                 identifiants, la V1 n'implémente aucun appel externe (aucune publication réelle).
+V1 connectors:
+  - local      : copies the clip and a JSON record into the mosque's publication folder (demo, archiving,
+                 or a synchronised folder). Functional.
+  - facebook, youtube, instagram: interfaces ready, DISABLED. Without credentials: unavailable. Even with
+                 credentials, V1 implements no external call (no real publication).
 """
 from __future__ import annotations
 
@@ -43,18 +43,18 @@ class Connector:
     key = ""
     label = ""
     description = ""
-    fields: tuple[str, ...] = ()         # réglages saisis par l'administrateur (stockés en base locale, jamais dans le code)
-    required: tuple[str, ...] = ()       # parmi fields : identifiants sans lesquels le connecteur est indisponible
-    secret: tuple[str, ...] = ()         # parmi fields : masqués à l'affichage
-    labels: dict[str, str] = {}          # libellé affiché par champ (défaut : son nom)
-    enabled_by_default = False           # actif tant que l'administrateur n'a rien enregistré
+    fields: tuple[str, ...] = ()         # settings entered by the administrator (stored in the local database, never in the code)
+    required: tuple[str, ...] = ()       # among fields: credentials without which the connector is unavailable
+    secret: tuple[str, ...] = ()         # among fields: hidden on display
+    labels: dict[str, str] = {}          # label shown per field (default: its name)
+    enabled_by_default = False           # enabled as long as the administrator has saved nothing
 
     def defaults(self, mosque: dict) -> dict:
-        """Valeur utilisée pour un champ laissé vide."""
+        """Value used for a field left empty."""
         return {}
 
     def availability(self, row: dict | None) -> tuple[bool, str]:
-        """(utilisable, raison) d'après la configuration de la mosquée."""
+        """(usable, reason) from the mosque's configuration."""
         settings = json.loads(row["settings"]) if row else {}
         missing = [f for f in self.required if not str(settings.get(f, "")).strip()]
         if missing:
@@ -76,7 +76,7 @@ class LocalFolder(Connector):
     enabled_by_default = True
 
     def defaults(self, mosque):
-        """Réglage enregistré (les Réglages le préremplissent), sinon data/published/<mosquée>."""
+        """Saved setting (Settings pre-fills it), otherwise data/published/<mosque>."""
         return {"path": db.local_folder_default(mosque)}
 
     def publish(self, item: Item, settings: dict) -> Result:
@@ -99,7 +99,7 @@ class LocalFolder(Connector):
 
 
 class _Disabled(Connector):
-    """Connecteur réseau non activé en V1 : ne fait AUCUN appel externe."""
+    """Network connector not enabled in V1: makes NO external call."""
 
     def availability(self, row):
         ok, why = super().availability(row)
@@ -136,9 +136,9 @@ CONNECTORS: dict[str, Connector] = {c.key: c for c in (LocalFolder(), FacebookPa
 
 
 def _short(value):
-    """Un exemple de chemin ne doit pas révéler l'emplacement réel du serveur."""
+    """An example path must not reveal the real location of the server."""
     if not isinstance(value, str) and value is not None:
-        value = str(value)                      # db.local_folder_default rend un chemin
+        value = str(value)                      # db.local_folder_default returns a path
     if value and value.startswith("/"):
         from . import dirs
 
@@ -175,14 +175,14 @@ def default_caption(khutba: dict, mosque: dict, verses: list[str]) -> str:
 
 
 def can_publish(clip: dict) -> tuple[bool, str]:
-    """Règle absolue : seul un clip validé par un humain, dans sa version validée, se publie."""
+    """Absolute rule: only a clip validated by a human, in its validated version, gets published."""
     if clip["status"] not in ("valide", "publie") or clip["needs_regen"] or not clip["decided_by"]:
         return False, "clip non validé : publication refusée"
     return True, ""
 
 
 def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=None) -> Result:
-    """Publie un clip VALIDÉ. Toute tentative (réussie ou refusée) est journalisée."""
+    """Publishes a VALIDATED clip. Every attempt (successful or refused) is logged."""
     c = CONNECTORS.get(connector_key)
 
     def record(status: str, res: Result) -> Result:
@@ -226,7 +226,7 @@ def save_connector(conn, mosque_id: int, key: str, enabled: bool, values: dict, 
     for f in c.fields:
         v = (values.get(f) or "").strip()
         if f in c.secret and v in ("", db.MASK):
-            continue                       # champ secret laissé vide = inchangé
+            continue                       # secret field left empty = unchanged
         settings[f] = v
     conn.execute("INSERT INTO connectors (mosque_id, key, enabled, settings) VALUES (?,?,?,?) ON CONFLICT (mosque_id, key) "
                  "DO UPDATE SET enabled = excluded.enabled, settings = excluded.settings",

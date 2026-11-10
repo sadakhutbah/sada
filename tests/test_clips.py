@@ -1,4 +1,4 @@
-"""Sous-titres des clips : français seul, pages courtes, carte verset propre."""
+"""Clip subtitles: French only, short pages, clean verse card."""
 import re
 
 from minbar.pipeline import clips as C
@@ -29,15 +29,15 @@ def test_french_only_and_verse_card(tmp_path):
     ev = _events(p)
     subs = [e for e in ev if ",Sub," in e]
     assert n > 0 and subs
-    for e in subs:  # aucune lettre arabe dans les sous-titres de parole
+    for e in subs:  # no Arabic letter in the speech subtitles
         assert not re.search(r"[\u0600-\u06FF]", e)
-    assert any("épreuves" in e for e in subs)          # segment arabe traduit
-    assert not any("مترجم" in e for e in ev)            # segment arabe sans traduction : rien à l'écran
+    assert any("épreuves" in e for e in subs)          # Arabic segment translated
+    assert not any("مترجم" in e for e in ev)            # Arabic segment without translation: nothing on screen
     card_ar = [e for e in ev if ",CardAr," in e]
-    assert len(card_ar) == 1 and not re.search(r"[\u06D6-\u06ED]", card_ar[0])  # pas de signes de pause
+    assert len(card_ar) == 1 and not re.search(r"[\u06D6-\u06ED]", card_ar[0])  # no pause marks
     assert any("SOURATE AT-TALAQ" in e and "65:3" in e for e in ev)
     assert any(",CardFr," in e and "Allah atteint" in e for e in ev)
-    # pendant la carte : pas de sous-titre de parole
+    # during the card: no speech subtitle
     def t(s):
         h, m, x = s.split(":"); return int(h) * 3600 + int(m) * 60 + float(x)
     for e in subs:
@@ -46,7 +46,7 @@ def test_french_only_and_verse_card(tmp_path):
 
 
 def test_elision_merged_when_clip_starts_late(tmp_path):
-    # mots Whisper « d » + « 'Allah » : recollés même si le clip ne commence pas à 0
+    # Whisper words “d” + “'Allah”: glued back together even if the clip does not start at 0
     seg = {"start": 100.0, "end": 102.0, "text": "La miséricorde d'Allah",
            "words": [{"w": "La", "s": 100.0, "e": 100.3}, {"w": "miséricorde", "s": 100.3, "e": 101.0},
                      {"w": "d", "s": 101.0, "e": 101.1}, {"w": "'Allah", "s": 101.1, "e": 101.6}]}
@@ -76,7 +76,7 @@ def test_quran_marks_and_formulas():
 
 
 def _khutba():
-    """Une khutba minimale autour du verset de test : récitation vers 200 s, puis l'explication."""
+    """A minimal khutba around the test verse: recitation around 200 s, then the explanation."""
     segs = []
     t = 0.0
     while t < 300.0:
@@ -90,7 +90,7 @@ def test_le_verset_donne_un_rappel_court():
     wins = C.select_windows(_khutba(), [v], 600.0, None, 3)
     premier = wins[0]
     assert premier["kind"] == "rappel"
-    assert 195.0 <= premier["start"] <= 198.0             # on part juste avant la récitation
+    assert 195.0 <= premier["start"] <= 198.0             # we start just before the recitation
     assert premier["end"] <= premier["start"] + C.RAPPEL_MAX
     assert 25.0 <= premier["end"] - premier["start"] <= C.RAPPEL_MAX
 
@@ -99,7 +99,7 @@ def test_un_verset_reconnu_par_la_traduction_garde_son_contexte():
     v = dict(VERSE, start=200.0, end=204.0, ambiguous=True)
     wins = C.select_windows(_khutba(), [v], 600.0, None, 3)
     assert wins[0]["kind"] == "verset"
-    assert wins[0]["start"] <= 190.0                       # le préambule reste dans le clip
+    assert wins[0]["start"] <= 190.0                       # the preamble stays in the clip
 
 
 def test_le_rappel_garde_sa_carte_jusqu_au_bout(tmp_path):
@@ -108,4 +108,4 @@ def test_le_rappel_garde_sa_carte_jusqu_au_bout(tmp_path):
     assert n >= 1
     events = _events(p)
     card = [e for e in events if ",CardFr," in e]
-    assert card and card[0].split(",")[2].strip() == C._ass_time(10.0)   # la carte dure jusqu'au bout
+    assert card and card[0].split(",")[2].strip() == C._ass_time(10.0)   # the card lasts until the end

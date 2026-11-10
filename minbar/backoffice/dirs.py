@@ -1,8 +1,8 @@
-"""Parcours des dossiers de la machine qui héberge le back-office (choix par bouton, pas au clavier).
+"""Browsing of the folders of the machine hosting the back-office (chosen with buttons, not typed).
 
-Le serveur ne rend que des dossiers existants : on part des racines accessibles (accueil, /mnt, /media…)
-et on ne descend que dans des entrées réelles. Les noms cachés et les pseudo-systèmes (/proc, /sys) sont
-masqués ; aucun contenu de fichier n'est exposé.
+The server only renders existing folders: we start from the accessible roots (home, /mnt, /media...)
+and only descend into real entries. Hidden names and pseudo-filesystems (/proc, /sys) are
+masked; no file content is exposed.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .. import paths
 
-# sous-dossiers de /mnt qui ne sont pas des disques utilisateur (interne à Windows/WSL)
+# sub-folders of /mnt that are not user disks (internal to Windows/WSL)
 SKIP_MT = {"wsl", "wslg", "host", "cgroup", "host_mnt"}
 
 
@@ -19,7 +19,7 @@ SKIP = {"proc", "sys", "dev", "run", "boot", "lost+found"}
 
 
 def roots() -> list[dict]:
-    """Points de départ proposés : dossier du programme, accueil, disques montés."""
+    """Starting points offered: program folder, home, mounted disks."""
     out: list[dict] = []
 
     def add(p: Path, label: str | None = None):
@@ -41,7 +41,7 @@ def roots() -> list[dict]:
             for child in sorted(b.iterdir())[:24]:
                 if child.name in SKIP or (base == "/mnt" and child.name in SKIP_MT) or not child.is_dir():
                     continue
-                # « /mnt/c » -> « Disque C: », lisible par un utilisateur de Windows
+                # "/mnt/c" -> "Disque C:", readable by a Windows user
                 label = f"Disque {child.name.upper()}:" if base == "/mnt" and len(child.name) == 1 else child.name
                 add(child, label)
         except OSError:
@@ -51,7 +51,7 @@ def roots() -> list[dict]:
 
 
 def listing(path: str | None) -> dict:
-    """-> {path, parent, exists, writable, entries:[{name,path,readable}]} ; ValueError si hors limites."""
+    """-> {path, parent, exists, writable, entries:[{name,path,readable}]} ; ValueError if out of bounds."""
     p = Path(path).expanduser() if path else Path.home()
     try:
         p = p.resolve()
@@ -86,7 +86,7 @@ def listing(path: str | None) -> dict:
 
 
 def label(path) -> str:
-    """Chemin lisible sans révéler l'emplacement de la machine : relatif au programme si possible."""
+    """Readable path without revealing the machine's location: relative to the program when possible."""
     if not path:
         return ""
     p = Path(path).expanduser()
@@ -98,7 +98,7 @@ def label(path) -> str:
 
 
 def check(path: str, create_if_missing: bool = False) -> tuple[bool, str]:
-    """Vérifie qu'un dossier choisi convient ; le crée s'il manque et que c'est demandé."""
+    """Checks that a chosen folder is suitable; creates it if missing and requested."""
     p = Path(path).expanduser()
     if p.exists() and not p.is_dir():
         return False, "un fichier porte déjà ce nom"

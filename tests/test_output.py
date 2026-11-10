@@ -1,4 +1,4 @@
-"""Manifeste des clips : les runs écrits avant le format courant s'importent encore."""
+"""Clip manifest: runs written before the current format can still be imported."""
 import json
 
 from minbar.pipeline.output import SessionOutput, clip_entry

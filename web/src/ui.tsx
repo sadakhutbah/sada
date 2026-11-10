@@ -33,7 +33,7 @@ export function Btn({
     ghost: "border-deep bg-transparent text-deep hover:bg-paper-2",
     leaf: "border-leaf bg-leaf text-night hover:bg-leaf-2",
     danger: "border-live bg-live text-white hover:bg-[#b42c23]",
-    // Action destructive secondaire : visible sans voler la place de l'action principale.
+    // Secondary destructive action: visible without stealing the main action's place.
     dangerGhost: "border-live/50 bg-transparent text-[#b42c23] hover:bg-err-bg",
     light: "border-white/25 bg-white/10 text-white hover:bg-white/18",
   }[variante];
@@ -62,7 +62,7 @@ export function Pill({ statut, label }: { statut: string; label: string }) {
   );
 }
 
-/** Onglets de premier niveau : pastilles séparées, l'active pleine en vert profond (.tabs du back-office). */
+/** Top-level tabs: separate pills, the active one filled in deep green (.tabs in the back-office). */
 export function Tabs({
   items,
   valeur,
@@ -99,8 +99,8 @@ export function Tabs({
   );
 }
 
-/** Sélecteur segmenté : un seul bloc, pour les sous-onglets d'un même écran.
- *  `compte` (facultatif) affiche un petit total à côté du libellé. */
+/** Segmented selector: a single block, for the sub-tabs of one screen.
+ *  `compte` (optional) shows a small total next to the label. */
 export function Segmented({
   items,
   valeur,
@@ -148,13 +148,13 @@ export function Field({ label, aide, children }: { label: string; aide?: string;
   );
 }
 
-/** En-têtes et cellules de tableau : un seul padding horizontal (8 px) pour que titres et valeurs s'alignent,
- *  et pas de bordure sous la dernière ligne (elle doublerait celle de la carte). */
+/** Table headers and cells: a single horizontal padding (8 px) so titles and values line up,
+ *  and no border under the last row (it would double the card's). */
 export const thClass =
   "border-b border-line px-2 py-2 text-left text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-muted";
 export const tdClass = "border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0";
 
-/** Tableau simple, sans en-tête triable : la dernière ligne ne garde pas de bordure. */
+/** Simple table, no sortable header: the last row keeps no border. */
 export function Table({ entetes, children }: { entetes: string[]; children: ReactNode }) {
   return (
     <table className="w-full border-collapse text-[0.95rem]">

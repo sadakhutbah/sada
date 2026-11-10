@@ -1,11 +1,11 @@
-"""Texte : écriture arabe, dates et durées en français (partagé par le live, le pipeline et le back-office)."""
+"""Text: Arabic script, dates and durations in French (shared by live, pipeline and back-office)."""
 from __future__ import annotations
 
 import datetime as dt
 import re
 
-# libraqm : mise en forme des lettres liées + sens RTL par Pillow/libass ; à défaut, repli sur
-# arabic_reshaper + python-bidi (optionnel : rien ne casse si le paquet est absent).
+# libraqm: shaping of joined letters + RTL direction by Pillow/libass; otherwise fall back on
+# arabic_reshaper + python-bidi (optional: nothing breaks if the package is missing).
 try:
     from PIL import features as _pil_features
 
@@ -15,11 +15,11 @@ except ImportError:
 
 
 def reshaped_view(text: str) -> str:
-    """Forme visuelle de l'arabe quand libraqm n'est pas là (lettres liées, ordre RTL).
+    """Visual form of Arabic when libraqm is absent (joined letters, RTL order).
 
-    libass met en forme tout seul : la forme visuelle sert alors uniquement à la MESURE
-    (PIL sans libraqm compterait les lettres isolées, beaucoup plus larges) ; le texte
-    émis reste brut. Pour un rendu Pillow, cf. shaped()."""
+    libass shapes text on its own: the visual form is then only used for MEASUREMENT
+    (PIL without libraqm would count isolated letters, much wider); the emitted text
+    stays raw. For a Pillow render, see shaped()."""
     if not has_arabic(text) or RAQM:
         return text
     try:
@@ -32,16 +32,16 @@ def reshaped_view(text: str) -> str:
 
 
 def shaped(text: str) -> tuple[str, dict]:
-    """Texte mono-écriture prêt pour ImageDraw.text() : sous libraqm, sens RTL ; sinon forme visuelle."""
+    """Single-script text ready for ImageDraw.text(): RTL direction under libraqm, else the visual form."""
     if RAQM:
-        # direction arabe pour un texte qui contient de l'arabe seulement : sinon la ponctuation
-        # d'une phrase française se retrouve du mauvais côté
+        # Arabic direction only for text that contains Arabic: otherwise the punctuation
+        # of a French sentence ends up on the wrong side
         return text, ({"direction": "rtl", "language": "ar"} if has_arabic(text) else {})
     if not has_arabic(text):
         return text, {}
     return reshaped_view(text), {}
 
-# écriture arabe (lettres, signes, formes de présentation)
+# Arabic script (letters, signs, presentation forms)
 AR_CHARS = "؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿"
 AR_RUN = re.compile(f"[{AR_CHARS}]+")
 _AR_CHAR = re.compile(f"[{AR_CHARS}]")
@@ -68,7 +68,7 @@ def arabic_ratio(text: str) -> float:
 
 
 def is_arabic(text: str) -> bool:
-    """Segment de transcription en arabe (récitation, formule ou phrase arabe) plutôt qu'en français."""
+    """Transcription segment in Arabic (recitation, formula or Arabic sentence) rather than in French."""
     return arabic_ratio(text) > 0.5
 
 
@@ -77,6 +77,6 @@ def french_date(d: dt.date) -> str:
 
 
 def duration(sec: float) -> str:
-    """mm:ss, ou h:mm:ss au-delà d'une heure."""
+    """mm:ss, or h:mm:ss beyond one hour."""
     s = int(round(float(sec)))
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"

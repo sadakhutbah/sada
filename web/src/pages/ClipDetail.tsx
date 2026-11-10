@@ -5,18 +5,18 @@ import { api } from "../api";
 import { Btn, Card, Field, Kicker, Pill, Segmented, inputClass } from "../ui";
 import { dateFr, mmss } from "../format";
 
-/** Fiche d'un clip : écran de validation.
- *  Grand écran : la vidéo à gauche (hauteur plafonnée, jamais plein écran), à droite un panneau collant
- *  qui porte le formulaire découpé en sous-onglets (Décision, Sous-titres, Publication, Historique).
- *  Sous 1000 px, les deux blocs s'empilent. Tout ce qui sert à décider tient sans défiler. */
+/** Sheet for a clip: review screen.
+ *  Large screen: the video on the left (capped height, never full screen), on the right a sticky panel
+ *  carrying the form split into sub-tabs (Decision, Subtitles, Publication, History).
+ *  Under 1000 px, the two blocks stack. Everything needed to decide fits without scrolling. */
 
 type Message = { texte: string; ko: boolean } | null;
 type Agir = (action: () => Promise<any>, succes: string) => Promise<void>;
 
-/** Un chemin de la machine ne s'affiche jamais : seules les adresses web restent lisibles. */
+/** A path from the machine is never displayed: only web addresses stay readable. */
 const estChemin = (v: unknown) => typeof v === "string" && /^(\/|~\/|[A-Za-z]:[\\/]|\\\\)/.test(v.trim());
 
-/** Les booléens venus de SQLite arrivent en 0/1 : `{0 && …}` afficherait « 0 », on force donc un vrai booléen. */
+/** Booleans coming from SQLite arrive as 0/1: `{0 && …}` would display “0”, so we force a real boolean. */
 const oui = (v: unknown) => Boolean(v);
 
 export default function ClipDetail() {
@@ -39,7 +39,7 @@ export default function ClipDetail() {
     recharger();
   }, [cid]);
 
-  // Régénération : la vidéo est refaite côté serveur (environ une minute), la fiche se rafraîchit seule.
+  // Regeneration: the video is rebuilt on the server (about a minute), the sheet refreshes itself.
   const enCours = d?.clip?.regen_state === "en_cours";
   useEffect(() => {
     if (!enCours) return;
@@ -126,7 +126,7 @@ export default function ClipDetail() {
   );
 }
 
-/** Fil d'Ariane : retour à la file, puis la khutba d'origine. */
+/** Breadcrumb: back to the queue, then the original khutba. */
 function Fil({ sermon, langue }: { sermon?: any; langue?: string }) {
   const { t } = useTranslation();
   const lien = "text-deep underline decoration-leaf underline-offset-4 hover:text-deeper";
@@ -145,7 +145,7 @@ function Fil({ sermon, langue }: { sermon?: any; langue?: string }) {
   );
 }
 
-/** Scène vidéo : fond nuit, hauteur fixe plafonnée, image entière (contain) quel que soit le format. */
+/** Video stage: night background, fixed capped height, whole image (contain) whatever the format. */
 function Lecteur({ c, existe }: { c: any; existe: boolean }) {
   const { t } = useTranslation();
   const enCours = c.regen_state === "en_cours";
@@ -189,7 +189,7 @@ function Bandeau({ ko, children }: { ko: boolean; children: ReactNode }) {
   );
 }
 
-/** Ligne de la fiche : libellé discret à gauche, valeur à droite. */
+/** Sheet row: discreet label on the left, value on the right. */
 function Ligne({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
@@ -214,7 +214,7 @@ function Decision({ c, d, occupe, agir, versPublication }: {
 
   return (
     <div className="grid gap-3.5">
-      {/* La fiche : ce qu'il faut savoir pour décider. */}
+      {/* The sheet: what one needs to know in order to decide. */}
       <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[0.9rem]">
         <Ligne label={t("clips.status")}>
           {c.status === "publie" ? (
@@ -237,8 +237,8 @@ function Decision({ c, d, occupe, agir, versPublication }: {
         {c.why ? <Ligne label={t("clips.why")}>{c.why}</Ligne> : null}
       </dl>
 
-      {/* Contexte : un extrait ne se juge pas hors de sa khutba. Thème, verset porté, et la phrase
-          qui précède l'extrait — c'est elle qui donne le rappel d'où part le clip. */}
+      {/* Context: an excerpt is not judged outside its khutba. Theme, verse carried, and the sentence
+          that precedes the excerpt — it is what gives the cue the clip starts from. */}
       {contexteActif && (
         <div className="rounded-[8px] border border-line bg-paper-2/40 px-3 py-2.5">
           <Kicker>{t("clips.detail.context")}</Kicker>
@@ -262,7 +262,7 @@ function Decision({ c, d, occupe, agir, versPublication }: {
         </div>
       )}
 
-      {/* États de la vidéo : régénération attendue, en cours ou en échec. */}
+      {/* Video states: regeneration expected, running or failed. */}
       {enCours && <Bandeau ko={false}>{t("clips.detail.regenRunning")}</Bandeau>}
       {!enCours && c.regen_state === "erreur" && (
         <Bandeau ko>{t("clips.detail.regenError")}{c.regen_error && !estChemin(c.regen_error) ? ` : ${c.regen_error}` : ""}</Bandeau>
@@ -271,7 +271,7 @@ function Decision({ c, d, occupe, agir, versPublication }: {
         <Bandeau ko>{c.status === "publie" ? t("clips.detail.publishedRegen", { n: c.version + 1 }) : t("clips.detail.needsRegen")}</Bandeau>
       )}
 
-      {/* Quand la vidéo doit être refaite, la régénération devient l'action principale. */}
+      {/* When the video must be rebuilt, regeneration becomes the main action. */}
       {aRegenerer && !enCours && (
         d.can_regenerate ? (
           <Btn
@@ -452,7 +452,7 @@ function Publication({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir 
   );
 }
 
-/** Détails d'une action : JSON aplati en « clé : valeur », sans jamais montrer de chemin. */
+/** Action details: JSON flattened to “key: value”, never showing a path. */
 function details(brut: unknown): string {
   if (!brut || brut === "{}") return "";
   try {
@@ -464,7 +464,7 @@ function details(brut: unknown): string {
         .join(" · ");
     }
   } catch {
-    /* texte libre */
+    /* free text */
   }
   return estChemin(brut) ? "" : String(brut);
 }

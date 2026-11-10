@@ -1,13 +1,13 @@
-"""Point d'entrée ASGI du back-office, pour la commande officielle `fastapi run` / `fastapi dev`.
+"""ASGI entry point of the back-office, for the official `fastapi run` / `fastapi dev` command.
 
-L'application est construite à partir de l'environnement (voir `[tool.fastapi]` dans pyproject.toml) :
+The application is built from the environment (see `[tool.fastapi]` in pyproject.toml):
 
-    MINBAR_DB              base SQLite (défaut : data/backoffice/minbar.db)
-    MINBAR_SECURE_COOKIES  « 1 » pour des cookies Secure (derrière HTTPS)
-    MINBAR_IMPORT_EVERY    import automatique des runs toutes les N secondes (0 = désactivé)
+    MINBAR_DB              SQLite database (default: data/backoffice/minbar.db)
+    MINBAR_SECURE_COOKIES  "1" for Secure cookies (behind HTTPS)
+    MINBAR_IMPORT_EVERY    automatic import of runs every N seconds (0 = disabled)
 
-La ligne de commande maison (`python -m minbar.backoffice serve`) reste disponible pour les
-options --host / --port ; elle construit la même application.
+The in-house command line (`python -m minbar.backoffice serve`) remains available for the
+--host / --port options; it builds the same application.
 """
 from __future__ import annotations
 

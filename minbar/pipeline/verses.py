@@ -1,15 +1,15 @@
-"""Détection des versets coraniques dans une transcription (correspondance floue par fenêtres de mots).
+"""Detection of Quranic verses in a transcript (fuzzy matching on word windows).
 
-Méthode :
- 1. On normalise l'arabe (sans diacritiques) ; on garde les mots arabes de chaque segment Whisper.
- 2. Index : toutes les fenêtres de N mots de chaque verset (verset court = fenêtre unique).
- 3. Pour chaque fenêtre de N mots de la transcription (glissante, par segment), meilleur score rapidfuzz (ratio 0-100).
- 4. On garde les fenêtres >= seuil, on les regroupe par (sourate, verset) et par proximité temporelle.
- 5. Un « match » = sourate:verset, score max, horodatage début/fin, texte transcrit, texte exact.
-Toute correspondance reste « à vérifier par un humain » : l'outil propose, ne tranche pas.
+Method:
+ 1. Normalise the Arabic (without diacritics); keep the Arabic words of each Whisper segment.
+ 2. Index: every window of N words of every verse (short verse = a single window).
+ 3. For every window of N words of the transcript (sliding, per segment), best rapidfuzz score (ratio 0-100).
+ 4. Keep the windows >= threshold, group them by (surah, verse) and by temporal proximity.
+ 5. A « match » = surah:verse, max score, start/end timestamp, transcribed text, exact text.
+Every match stays « to be checked by a human »: the tool suggests, it does not decide.
 
-Ce module décide aussi ce qui se MONTRE comme verset (shown / for_display) : les formules rituelles
-(ta'awwudh, basmala…), que la détection floue rapproche de 16:98, 64:1…, n'en sont pas.
+This module also decides what is SHOWN as a verse (shown / for_display): ritual formulas
+(ta'awwudh, basmala…), which fuzzy detection brings close to 16:98, 64:1…, are not verses.
 """
 from __future__ import annotations
 import re
@@ -21,11 +21,11 @@ from ..text import arabic_ratio
 from .arabic import normalize
 from .verses_fr import FrenchIndex, content_words
 
-WIN = 5          # mots par fenêtre
+WIN = 5          # words per window
 MIN_VERSE_WORDS = 3
 THRESH = 86.0
-# Détection par la traduction française : seuil plus bas qu'en arabe (Whisper reformule), mots pleins seulement,
-# et confiance plafonnée à « trad » — un verset reconnu en français seul est proposé, jamais tenu pour acquis.
+# French-translation detection: lower threshold than for Arabic (Whisper rephrases), content words only,
+# and confidence capped at « trad » — a verse recognised from French alone is suggested, never taken for granted.
 THRESH_FR = 68.0
 MIN_FR_WORDS = 4
 
@@ -41,11 +41,11 @@ class Match:
     heard: str
     verse_text: str
     verse_fr: str
-    coverage: float = 0.0   # part des mots du verset retrouvés (approx.)
+    coverage: float = 0.0   # share of the verse words recovered (approx.)
     ref: str = ""
-    confidence: str = "sûr"      # sûr | court | ambigu (formule dans plusieurs versets) | faible (fragment) | trad (via le français)
+    confidence: str = "sûr"      # sûr | court | ambigu (formula in several verses) | faible (fragment) | trad (via French)
     candidates: list = field(default_factory=list)
-    via: str = "arabe"           # arabe | francais (détection par la traduction)
+    via: str = "arabe"           # arabe | francais (detection via the translation)
 
     def __post_init__(self):
         self.ref = f"{self.surah}:{self.ayah}"
@@ -71,7 +71,7 @@ class VerseIndex:
             self.key_owners.setdefault(k, set()).add(o)
 
     def search(self, windows: list[str], thresh: float = THRESH):
-        """Pour chaque fenêtre : (meilleur_score, index_verset) ou None."""
+        """For each window: (best_score, verse_index) or None."""
         if not windows:
             return []
         res = process.cdist(windows, self.keys, scorer=fuzz.ratio, workers=-1, score_cutoff=thresh, dtype="uint8")
@@ -85,11 +85,11 @@ class VerseIndex:
 
 def detect(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_s: float = 25.0,
            thresh_fr: float = THRESH_FR) -> list[Match]:
-    """segments : [{start, end, text}] -> liste de Match triée par temps.
+    """segments: [{start, end, text}] -> list of Match sorted by time.
 
-    Deux passes : l'arabe (transcription de la récitation) puis le français (traduction/transcription
-    française du sens). Une même prise de parole est attribuée à une seule piste, pour ne pas compter
-    deux fois le même passage.
+    Two passes: Arabic (transcription of the recitation) then French (translation/transcription
+    of the meaning in French). A given stretch of speech is assigned to a single pass, so as not to count
+    the same passage twice.
     """
     matches = _detect_ar(segments, index, thresh, gap_s)
     taken = [(m.start, m.end) for m in matches]
@@ -100,14 +100,14 @@ def detect(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_
 
 
 def _detect_ar(segments: list[dict], index: VerseIndex, thresh: float = THRESH, gap_s: float = 25.0) -> list[Match]:
-    """Passage arabe : fenêtres de mots normalisés comparées aux fenêtres des versets."""
+    """Arabic pass: windows of normalised words compared with the verse windows."""
     wins, meta = [], []
     for seg in segments:
         if arabic_ratio(seg["text"]) < 0.3:
             continue
         words = normalize(seg["text"]).split()
         if len(words) < index.win:
-            # segment court : une seule fenêtre si assez de mots
+            # short segment: a single window if enough words
             if len(words) >= MIN_VERSE_WORDS:
                 wins.append(" ".join(words)); meta.append((seg, " ".join(words)))
             continue
@@ -145,7 +145,7 @@ def _detect_ar(segments: list[dict], index: VerseIndex, thresh: float = THRESH, 
             elif len(v["norm"].split()) < index.win:
                 conf = "court"
             elif cov < 0.4:
-                conf = "faible"   # fragment trop court par rapport au verset : probablement une formule voisine
+                conf = "faible"   # fragment too short relative to the verse: probably a neighbouring formula
             else:
                 conf = "sûr"
             m = Match(v["surah"], v["ayah"], v["surah_name"], max(sc for _, _, sc, *_ in cl),
@@ -160,11 +160,11 @@ def _detect_ar(segments: list[dict], index: VerseIndex, thresh: float = THRESH, 
 
 
 def _detect_fr(segments: list[dict], index: VerseIndex, thresh: float = THRESH_FR, gap_s: float = 25.0) -> list[Match]:
-    """Passage français : fenêtres glissantes sur le texte continu, comparées aux traductions des versets.
+    """French pass: sliding windows over the continuous text, compared with the verse translations.
 
-    Whisper découpe l'oral n'importe où : on recoud donc plusieurs segments voisins (les frontières de
-    phrase tombent rarement sur le mot clé) et on garde, par verset, la meilleure fenêtre, avec les
-    segments qu'elle couvre.
+    Whisper cuts speech anywhere: we therefore stitch several neighbouring segments back together (sentence
+    boundaries rarely fall on the key word) and keep, per verse, the best window, with the
+    segments it covers.
     """
     fr_ = index.fr
     if not len(fr_):
@@ -173,7 +173,7 @@ def _detect_fr(segments: list[dict], index: VerseIndex, thresh: float = THRESH_F
     if not usable:
         return []
     n = fr_.win
-    wins, spans = [], []              # spans : (premier segment, dernier segment)
+    wins, spans = [], []              # spans: (first segment, last segment)
     i = 0
     while i < len(usable):
         j, words = i, []
@@ -181,7 +181,7 @@ def _detect_fr(segments: list[dict], index: VerseIndex, thresh: float = THRESH_F
             words += content_words(segments[usable[j]]["text"])
             j += 1
         if len(words) >= n:
-            step = 2 if len(words) > 3 * n else 1      # hybride : fin, puis pas double sur les longs passages
+            step = 2 if len(words) > 3 * n else 1      # hybrid: fine step, then double step over long passages
             for k in range(0, len(words) - n + 1, step):
                 wins.append(" ".join(words[k:k + n])); spans.append((usable[i], usable[j - 1]))
         i = j
@@ -212,7 +212,7 @@ def to_dicts(ms: list[Match]) -> list[dict]:
     return [asdict(m) for m in ms]
 
 
-# ------------------------------------------------------------------ versets montrés
+# ------------------------------------------------------------------ displayed verses
 
 FORMULAS = {
     "اعوذ بالله من الشيطان الرجيم": "Je cherche protection auprès d'Allah contre Satan le banni.",
@@ -225,13 +225,13 @@ FORMULAS = {
     "صلي الله عليه وسلم": "que la paix et les bénédictions d'Allah soient sur lui.",
 }
 FORM_NORM = {normalize(k): v for k, v in FORMULAS.items()}
-# « trad » = reconnu par la traduction française seule : proposé, jamais tenu pour une référence sûre.
+# « trad » = recognised from the French translation alone: suggested, never treated as a safe reference.
 FIRM = ("sûr", "court", "trad")
 FORMULA_MATCH = 85
 
 
 def formula_fr(text: str) -> str | None:
-    """Traduction fixe d'un segment fait de formules rituelles, sinon None."""
+    """Fixed translation of a segment made of ritual formulas, otherwise None."""
     if not is_formula(text):
         return None
     hn = normalize(text)
@@ -239,7 +239,7 @@ def formula_fr(text: str) -> str | None:
 
 
 def is_formula(heard: str) -> bool:
-    """Vrai si le texte entendu est (presque) entièrement fait de formules rituelles."""
+    """True if the heard text is (almost) entirely made of ritual formulas."""
     words = normalize(heard).split()
     if not words:
         return False
@@ -253,10 +253,10 @@ def is_formula(heard: str) -> bool:
 
 
 def shown(matches: list[dict], ambiguous: bool = False) -> list[dict]:
-    """Versets à montrer comme versets : confiance sûre/courte et pas une formule rituelle.
+    """Verses to show as verses: confidence « sûr »/« court » and not a ritual formula.
 
-    ambiguous=True ajoute les passages coraniques certains mais communs à plusieurs versets
-    (ex. « والله يعلم وأنتم لا تعلمون ») : carte « CORAN » sans référence (champ `ambiguous`).
+    ambiguous=True adds Quranic passages that are certain but common to several verses
+    (e.g. « والله يعلم وأنتم لا تعلمون »): a « CORAN » card without a reference (field `ambiguous`).
     """
     out = []
     for m in matches:
@@ -270,7 +270,7 @@ def shown(matches: list[dict], ambiguous: bool = False) -> list[dict]:
 
 
 def for_display(matches: list[dict]) -> list[dict]:
-    """Liste des versets d'une khutba : détections sûres/courtes + tous les passages ambigus, signalés « à vérifier »."""
+    """List of the verses of a khutba: « sûr »/« court » detections + all ambiguous passages, flagged « to be checked »."""
     sure = shown(matches)
     keys = {(m["ref"], m["start"]) for m in sure}
     amb = [{**m, "ambiguous": True} for m in matches
@@ -279,18 +279,18 @@ def for_display(matches: list[dict]) -> list[dict]:
 
 
 def match_for(seg: dict, vms: list[dict]) -> dict | None:
-    """Verset (parmi vms) que récite le segment."""
+    """Verse (among vms) recited by the segment."""
     mid = (seg["start"] + seg["end"]) / 2
     return next((m for m in vms if m["start"] - 0.3 <= mid <= m["end"] + 0.3), None)
 
 
 def strip_quran_marks(t: str) -> str:
-    """Retire les signes de pause / annotations coraniques (U+06D6–U+06ED) et normalise les espaces."""
+    """Remove the pause marks / Quranic annotations (U+06D6–U+06ED) and normalise the whitespace."""
     return re.sub(r"\s+", " ", re.sub(r"[\u06D6-\u06ED]", "", t)).strip()
 
 
 def recited_arabic(m: dict) -> str:
-    """Portion du texte coranique effectivement récitée (fenêtre de mots du verset la plus proche de l'entendu)."""
+    """Portion of the Quranic text actually recited (word window of the verse closest to what was heard)."""
     vw = strip_quran_marks(m["verse_text"]).split()
     hn = normalize(m.get("heard", ""))
     k = len(hn.split())

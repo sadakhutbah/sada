@@ -1,4 +1,4 @@
-"""Horaires de Jumu'a depuis Mawaqit, avec cache local (repli si le site est injoignable)."""
+"""Jumu'a times from Mawaqit, with a local cache (fallback if the site is unreachable)."""
 from __future__ import annotations
 import json
 import re
@@ -34,7 +34,7 @@ def fetch_live(url: str, timeout: float = 15.0) -> dict:
 
 
 def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float = 15.0) -> dict:
-    """Données Mawaqit + jumua_list (horaires de jumua) et origin (live / cache). Rafraîchi si le cache a plus de max_age_h."""
+    """Mawaqit data + jumua_list (jumua times) and origin (live / cache). Refreshed if the cache is older than max_age_h."""
     cp = Path(cache_path)
     cache = None
     if cp.exists():
@@ -57,7 +57,7 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
         cp.write_text(json.dumps(data, ensure_ascii=False, indent=1))
         data["origin"] = "live"
         return _finish(data)
-    except Exception as e:  # panne réseau / format changé : on retombe sur le cache
+    except Exception as e:  # network failure / changed format: fall back on the cache
         if cache:
             cache["origin"] = f"cache (périmé, échec live : {e})"
             return _finish(cache)
@@ -65,10 +65,10 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
 
 
 def prayer_times(d: dict) -> dict:
-    """Horaires du jour depuis Mawaqit : {"fajr","dhuhr","asr","maghrib","isha"} (chaînes « HH:MM »).
+    """Times of the day from Mawaqit: {"fajr","dhuhr","asr","maghrib","isha"} ("HH:MM" strings).
 
-    Mawaqit publie `times` = [fajr, dhuhr, asr, maghrib, isha] ; un tableau plus court donne
-    seulement ce qui est présent, sans rien inventer.
+    Mawaqit publishes `times` = [fajr, dhuhr, asr, maghrib, isha]; a shorter array gives
+    only what is present, without inventing anything.
     """
     names = ("fajr", "dhuhr", "asr", "maghrib", "isha")
     raw = d.get("times") or []

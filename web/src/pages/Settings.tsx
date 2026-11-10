@@ -12,7 +12,7 @@ const CHAMPS_MOSQUEE = [
 ] as const;
 const CHAMPS_MODELE = ["enabled", "url", "model", "protocol"] as const;
 
-/** Valeurs du formulaire à partir de la réponse du serveur (tout en texte, comme l'API l'attend). */
+/** Form values from the server response (all as text, as the API expects). */
 function depuisServeur(d: any): Record<string, string> {
   const f: Record<string, string> = {};
   for (const k of CHAMPS_MOSQUEE) f[k] = d.mosque[k] ?? "";
@@ -21,7 +21,7 @@ function depuisServeur(d: any): Record<string, string> {
   return f;
 }
 
-/** Fenêtre de choix d'un dossier : on navigue dans les dossiers réels du serveur, sans rien taper. */
+/** Folder picker window: we browse the server's real folders, without typing anything. */
 function Parcourir({ depart, onChoix, onFermer }: { depart: string; onChoix: (chemin: string) => void; onFermer: () => void }) {
   const { t } = useTranslation();
   const [vue, setVue] = useState<any>(null);
@@ -89,8 +89,8 @@ function Parcourir({ depart, onChoix, onFermer }: { depart: string; onChoix: (ch
   );
 }
 
-/** Un dossier vide n'est pas une case blanche : c'est le dossier par défaut du programme,
- *  et le chemin par défaut est rappelé dessous en clair relatif (« data/state »). */
+/** An empty folder field is not a blank box: it is the program's default folder,
+ *  and the default path is recalled below in relative plain text (“data/state”). */
 function Chemin({ valeur, defaut }: { valeur: string; defaut?: string }) {
   const { t } = useTranslation();
   return (
@@ -130,7 +130,7 @@ export default function Settings() {
     setMsg(null);
   };
 
-  /** Un seul enregistrement pour tout l'écran : la mosquée, puis le modèle s'il a bougé. */
+  /** A single save for the whole screen: the mosque, then the model if it changed. */
   const enregistrer = async (e: React.FormEvent) => {
     e.preventDefault();
     setEnCours(true); setMsg(null);
@@ -235,7 +235,7 @@ export default function Settings() {
     folders: (
       <div>
         <Title>{t("settings.foldersTitle")}</Title>
-        {/* L'introduction décrit les trois champs : elle se place avant, pas sous le premier. */}
+        {/* The introduction describes the three fields: it goes before, not under the first one. */}
         <p className="mt-0 mb-4 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.foldersHint")}</p>
         <div className="grid gap-4">
           {dossiers.map((ch) => (
@@ -293,7 +293,7 @@ export default function Settings() {
     ),
   };
 
-  // Deux onglets n'ont rien à enregistrer ici : ils renvoient à l'écran qui les porte.
+  // Two tabs have nothing to save here: they point to the screen that owns them.
   contenu.connectors = (
     <div className="grid gap-2 max-w-[520px] text-[0.95rem]">
       <p className="m-0 text-muted">{t("settings.connectorsHint")}</p>
@@ -307,7 +307,7 @@ export default function Settings() {
     </div>
   );
 
-  // Seuls les onglets qui ont un contenu sont proposés ; les autres sont annoncés éteints.
+  // Only the tabs that have content are offered; the others are announced as disabled.
   const onglets = d.sections.map((s: string) => ({
     cle: s,
     label: t(`settings.tabs.${s}`),
@@ -318,7 +318,7 @@ export default function Settings() {
   return (
     <div className="grid gap-4">
       <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("settings.title")}</h1>
-      {/* Un seul formulaire pour tout l'écran : les onglets le découpent, un seul bouton l'enregistre. */}
+      {/* A single form for the whole screen: the tabs split it, a single button saves it. */}
       <form onSubmit={enregistrer}>
         <Tabs items={onglets} valeur={onglet} onChange={(c) => { setOnglet(c); setMsg(null); }} />
         <Card>

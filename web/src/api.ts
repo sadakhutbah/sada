@@ -1,4 +1,4 @@
-/** Client de l'API JSON du back-office. Une seule règle : pas de session = retour à la connexion. */
+/** JSON API client of the back-office. One rule: no session = back to sign-in. */
 export type Session = {
   user: { id: number; name: string; role: string; role_label: string; permissions: string[] };
   mosque: { id: number; slug: string; name: string; timezone: string; logo: string; clip_title: string };
@@ -6,7 +6,7 @@ export type Session = {
   counts: { pending: number };
 };
 
-/** Erreur portant le code HTTP et le message du serveur, pour l'afficher tel quel. */
+/** Error carrying the HTTP status and the server message, to display it as-is. */
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -21,7 +21,7 @@ export function onUnauthorized(fn: () => void) {
   surExpiration = fn;
 }
 
-// Jeton anti-rejeu de la session : le serveur l'exige sur toute écriture (`X-CSRF`).
+// Session anti-replay token: the server requires it on every write (`X-CSRF`).
 let jeton = "";
 export function setCsrf(valeur: string) {
   jeton = valeur;
@@ -41,7 +41,7 @@ async function demande<T>(chemin: string, init: RequestInit = {}): Promise<T> {
   return json as T;
 }
 
-/** Écriture : même client, avec le jeton de session en en-tête. */
+/** Write: same client, with the session token in a header. */
 function ecrire<T>(methode: string, chemin: string, corps?: unknown): Promise<T> {
   return demande<T>(chemin, {
     method: methode,
@@ -50,7 +50,7 @@ function ecrire<T>(methode: string, chemin: string, corps?: unknown): Promise<T>
   });
 }
 
-/** Un événement du programme tel que le serveur le renvoie. */
+/** A schedule event as the server returns it. */
 export type AgendaEvent = {
   id: string; kind: string; kind_label: string; title: string; speaker: string; series: string;
   session: number | null; max_min: number | null; publish: boolean;
@@ -61,7 +61,7 @@ export type EventsList = {
   items: AgendaEvent[]; total: number; kinds: Record<string, string>;
   weekdays: string[]; prayers: string[]; today: string;
 };
-/** Formulaire d'un événement : champs à plat, en texte (le serveur les relit tels quels). */
+/** Event form: flat fields, as text (the server reads them back as-is). */
 export type EventForm = Record<
   "kind" | "title" | "speaker" | "series" | "session" | "max_min" | "publish" | "mode" | "date" | "time" | "weekday" | "after" | "offset_min",
   string
@@ -71,7 +71,7 @@ export const api = {
   session: () => demande<Session>("/session"),
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
   dashboard: () => demande<any>("/dashboard"),
-  /** Recherche, filtre et pages sont faits par le serveur : la liste grandit avec les années. */
+  /** Search, filter and paging are done by the server: the list grows over the years. */
   sermons: (opts: { q?: string; mois?: string; pending?: boolean; limit?: number; offset?: number } = {}) => {
     const p = new URLSearchParams();
     if (opts.q) p.set("q", opts.q);
@@ -83,7 +83,7 @@ export const api = {
     return demande<{ items: any[]; total: number; count: number; offset: number; pending: number }>(
       `/sermons${qs ? `?${qs}` : ""}`);
   },
-  /** Les mois qui contiennent des khutbas : le sélecteur de période s'y adosse. */
+  /** The months that contain khutbas: the period picker is based on them. */
   sermonsMois: () => demande<{ items: { mois: string; n: number }[] }>("/sermons/mois"),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
   clips: (status = "") =>
@@ -95,11 +95,11 @@ export const api = {
   audit: (page = 0, taille = 25, action = "") =>
     demande<{ items: any[]; total: number; labels: Record<string, string> }>(
       `/audit?limit=${taille}&offset=${page * taille}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
-  /** Programme des dars et conférences (fichier lu par l'orchestrateur). */
+  /** Dars and conference schedule (file read by the orchestrator). */
   events: () => demande<EventsList>("/events"),
   folders: (path = "") => demande<any>(`/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
 
-  // Écritures
+  // Writes
   liveCommande: (cmd: string, corps: Record<string, string> = {}) => ecrire<any>("POST", `/live/${cmd}`, corps),
   importer: (run = "") => ecrire<any>("POST", "/import", { run }),
   decision: (cid: number, decision: string, reason = "") => ecrire<any>("POST", `/clips/${cid}/decision`, { decision, reason }),
@@ -122,7 +122,7 @@ export const api = {
     ecrire<{ ok: boolean; message: string; id: string }>("PUT", `/events/${encodeURIComponent(id)}`, corps),
   supprimerEvenement: (id: string) =>
     ecrire<{ ok: boolean; message: string }>("DELETE", `/events/${encodeURIComponent(id)}`),
-  /** Logo : envoi multipart (le navigateur fixe lui-même l'en-tête Content-Type). */
+  /** Logo: multipart upload (the browser sets the Content-Type header itself). */
   envoyerLogo: (fichier: File) => {
     const corps = new FormData();
     corps.append("logo", fichier);

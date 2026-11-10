@@ -1,4 +1,4 @@
-"""Présence (mouvement) : calcul pur, sans caméra ni ffmpeg."""
+"""Presence (motion): pure computation, no camera or ffmpeg."""
 import pytest
 
 from minbar.presence import MotionGate
@@ -7,7 +7,7 @@ W, H = 20, 10
 
 
 def frame(value=0, block=None, level=255):
-    """Image en niveaux de gris ; `block` = (x0, y0, x1, y1) rempli à `level`."""
+    """Grayscale image; `block` = (x0, y0, x1, y1) filled with `level`."""
     px = bytearray([value] * (W * H))
     if block:
         x0, y0, x1, y1 = block
@@ -33,16 +33,16 @@ def test_image_statique_pas_de_presence():
 def test_mouvement_detecte_puis_retombe():
     g = MotionGate(width=W, height=H, threshold=0.004, hold_s=8.0)
     g.update(frame(), now=0.0)
-    assert g.update(frame(block=(2, 2, 8, 6)), now=0.5) is True      # 24 pixels sur 200
-    assert g.present(8.0) is True                                     # toujours dans le maintien
-    assert g.present(9.0) is False                                    # maintien expiré
+    assert g.update(frame(block=(2, 2, 8, 6)), now=0.5) is True      # 24 pixels out of 200
+    assert g.present(8.0) is True                                     # still within the hold
+    assert g.present(9.0) is False                                    # hold expired
 
 
 def test_bruit_sous_le_seuil_pixel_ignore():
     g = MotionGate(width=W, height=H, pixel_delta=12)
     g.update(frame(value=100), now=0.0)
-    assert g.score(frame(value=108)) == 0.0        # +8 : bruit de capteur
-    assert g.score(frame(value=140)) == 1.0        # +40 : vrai changement
+    assert g.score(frame(value=108)) == 0.0        # +8: sensor noise
+    assert g.score(frame(value=140)) == 1.0        # +40: real change
 
 
 def test_seuil_de_part_de_zone():
@@ -55,11 +55,11 @@ def test_seuil_de_part_de_zone():
 
 
 def test_zone_hors_roi_ignoree():
-    g = MotionGate(width=W, height=H, roi=(0.5, 0.0, 1.0, 1.0))   # moitié droite
+    g = MotionGate(width=W, height=H, roi=(0.5, 0.0, 1.0, 1.0))   # right half
     g.update(frame(), now=0.0)
-    gauche = frame(block=(0, 0, 10, 10))           # tout à gauche : hors zone
+    gauche = frame(block=(0, 0, 10, 10))           # all on the left: outside the zone
     assert g.score(gauche) == 0.0
-    droite = frame(block=(10, 0, 20, 10))          # dans la zone
+    droite = frame(block=(10, 0, 20, 10))          # inside the zone
     assert g.score(droite) == 1.0
 
 
@@ -68,7 +68,7 @@ def test_bornes_de_zone():
     assert g.bounds() == (0, 0, W, H)
     g = MotionGate(width=W, height=H, roi=(0.9, 0.9, 0.95, 0.95))
     x0, y0, x1, y1 = g.bounds()
-    assert x1 > x0 and y1 > y0                     # jamais une zone vide
+    assert x1 > x0 and y1 > y0                     # never an empty zone
 
 
 def test_taille_d_image_verifiee():

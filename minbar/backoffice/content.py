@@ -1,8 +1,8 @@
-"""Contenu d'une khutba (transcription corrigée, versets, traductions) et cycle de vie des clips :
-corrections -> régénération (pipeline clips.build_ass + render_clip) -> validation / rejet.
+"""Content of a khutba (corrected transcription, verses, translations) and lifecycle of the clips:
+corrections -> regeneration (clips.build_ass + render_clip pipeline) -> validation / rejection.
 
-Les fichiers du pipeline ne sont jamais modifiés : les corrections vivent en base et sont appliquées en mémoire
-(affichage et régénération). Un clip régénéré est un NOUVEAU fichier (version n+1) qui repasse « à valider ».
+Pipeline files are never modified: corrections live in the database and are applied in memory
+(display and regeneration). A regenerated clip is a NEW file (version n+1) that goes back to "to validate".
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from . import db
 
 STATUS_LABELS = {"a_valider": "À valider", "valide": "Validé", "rejete": "Rejeté", "publie": "Publié"}
 STATUS_TABS = {"a_valider": "À valider", "valide": "Validés", "publie": "Publiés", "rejete": "Rejetés"}
-REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"     # le clip repasse par la validation
+REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"     # the clip goes back through validation
 
 
 def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
@@ -29,7 +29,7 @@ def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
 
 
 def load(conn, k: dict) -> dict:
-    """Transcription + versets + traductions de la khutba, corrections appliquées."""
+    """Transcription + verses + translations of the khutba, corrections applied."""
     o = SessionOutput(k["output_dir"])
     tr = o.read(o.transcript, {"segments": []})
     segs = copy.deepcopy(tr.get("segments", []))
@@ -41,7 +41,7 @@ def load(conn, k: dict) -> dict:
             continue
         if field == "text":
             segs[i]["text"] = c["value"]
-            segs[i].pop("words", None)       # horodatage par mot perdu : build_ass interpole au prorata
+            segs[i].pop("words", None)       # word-level timestamps lost: build_ass interpolates proportionally
         elif field == "fr":
             trans = translate.with_correction(trans, segs[i], c["value"])
     return {"segments": segs, "translations": trans, "verses": ms, "corrections": corr,
@@ -49,7 +49,7 @@ def load(conn, k: dict) -> dict:
 
 
 def transcript_rows(data: dict, t0: float = 0.0, t1: float | None = None) -> list[dict]:
-    """Lignes affichables : texte d'origine, sous-titre français affiché dans les clips, verset éventuel, champ corrigeable."""
+    """Rows to display: original text, French subtitle shown in the clips, verse if any, correctable field."""
     vms = verses.shown(data["verses"], ambiguous=True)
     rows = []
     for i, s in enumerate(data["segments"]):
@@ -70,8 +70,8 @@ def transcript_rows(data: dict, t0: float = 0.0, t1: float | None = None) -> lis
 
 
 def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user: dict, ip=None) -> int:
-    """Enregistre une correction ; les clips qui couvrent ce segment repassent « à valider » et doivent être régénérés.
-    Renvoie le nombre de clips touchés."""
+    """Saves a correction; the clips covering this segment go back to "to validate" and must be regenerated.
+    Returns the number of affected clips."""
     value = " ".join(value.split())
     data = load(conn, k)
     if not (0 <= seg_index < len(data["segments"])):
@@ -95,7 +95,7 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
                   k["id"], seg["end"], seg["start"])
     for c in hit:
         if c["status"] == "publie":
-            # déjà publié : on ne réécrit pas l'histoire ; la version corrigée (v+1) repassera par la validation
+            # already published: we do not rewrite history; the corrected version (v+1) goes through validation again
             conn.execute("UPDATE clips SET needs_regen = 1, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
         else:
             conn.execute(f"UPDATE clips SET needs_regen = 1, {REQUEUE}, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
@@ -104,7 +104,7 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
     return len(hit)
 
 
-# ------------------------------------------------------------------ régénération
+# ------------------------------------------------------------------ regeneration
 
 def can_regenerate(clip: dict) -> tuple[bool, str]:
     if not shutil.which("ffmpeg"):
@@ -117,7 +117,7 @@ def can_regenerate(clip: dict) -> tuple[bool, str]:
 
 
 def recover_interrupted(conn) -> None:
-    """Régénérations en cours quand le serveur s'est arrêté : elles ne finiront jamais."""
+    """Regenerations in progress when the server stopped: they will never finish."""
     conn.execute("UPDATE clips SET regen_state = 'erreur', regen_error = 'interrompue (serveur arrêté)', updated_at = ? "
                  "WHERE regen_state = 'en_cours'", (db.now_iso(),))
 
@@ -161,7 +161,7 @@ def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, back
         _render(db_path, clip["id"])
 
 
-# ------------------------------------------------------------------ décision
+# ------------------------------------------------------------------ decision
 
 def can_validate(clip: dict) -> tuple[bool, str]:
     if clip["needs_regen"] or clip["regen_state"] == "en_cours":

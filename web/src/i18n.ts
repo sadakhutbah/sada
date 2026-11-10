@@ -1,9 +1,9 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
-/** Textes de l'interface. Les adresses et les données restent identiques dans toutes les langues ;
- *  seuls les libellés changent. `ar` est prévu pour les mosquées arabophones (sens de lecture à droite).
- *  Les formulations reprennent mot pour mot celles du back-office en gabarits : c'est la référence. */
+/** Interface texts. Addresses and data stay identical in every language;
+ *  only the labels change. `ar` is planned for Arabic-speaking mosques (right-to-left).
+ *  The wording reuses word for word that of the template back-office: it is the reference. */
 const fr = {
   app: { name: "Minbar Live", office: "back-office" },
   nav: {
@@ -19,12 +19,13 @@ const fr = {
   dashboard: {
     pending: "Clips à valider", ready: "Prêts à publier", sermons: "Khutbas archivées",
     live: "Live du jour", recent: "Dernières khutbas", commands: "Dernières commandes du live",
-    liveOn: "En direct", liveOff: "Hors ligne", unreachable: "Injoignable", noCommands: "Aucune commande manuelle.",
+    liveOn: "En direct", liveOff: "Hors ligne", unreachable: "Injoignable",
+    unreachableHint: "L'orchestrateur ne répond pas : le live n'est probablement pas lancé sur cette machine.", noCommands: "Aucune commande manuelle.",
     janaza: "Déclarer une janaza", janazaName: "Nom du défunt", janazaInfo: "Mention (ex. 67 ans)",
     janazaSend: "Déclarer la janaza", more5: "+5 min", stop: "Arrêter", cancelDay: "Annuler aujourd'hui",
     sceneChoose: "Choisir une scène", sceneApply: "Afficher",
-    // Libellés des commandes du live, choisis par leur clé (le serveur n'envoie que des clés).
-    // États du moteur, choisis par leur valeur : le serveur n'envoie que la valeur.
+    // Labels of the live commands, chosen by their key (the server only sends keys).
+    // Engine states, chosen by their value: the server only sends the value.
     state: {
       IDLE: "En veille", "ARMÉ": "Armé (fenêtre ouverte)", AVANT: "Début imminent",
       KHUTBA: "Khutba en direct", "PRIÈRE": "Prière en cours", ENTRACTE: "Entracte",
@@ -200,7 +201,7 @@ const fr = {
     title: "Journal", when: "Quand", who: "Qui", action: "Action", object: "Objet", ip: "Adresse",
     count_one: "1 entrée", count_other: "{{count}} entrées", filtered: "filtré",
     filter: "Filtrer par action", all: "Toutes les actions",
-    // Actions du journal, choisies par leur clé : le serveur n'envoie que des clés stables.
+    // Log actions, chosen by their key: the server only sends stable keys.
     action_connexion: "Connexion",
     action_connexion_echec: "Échec de connexion",
     action_deconnexion: "Déconnexion",
@@ -251,7 +252,8 @@ const en: typeof fr = {
   dashboard: {
     pending: "Clips to review", ready: "Ready to publish", sermons: "Archived sermons",
     live: "Today's live", recent: "Latest sermons", commands: "Latest live commands",
-    liveOn: "Live", liveOff: "Off air", unreachable: "Unreachable", noCommands: "No manual command.",
+    liveOn: "Live", liveOff: "Off air", unreachable: "Unreachable",
+    unreachableHint: "The orchestrator is not answering: the live is probably not running on this machine.", noCommands: "No manual command.",
     janaza: "Declare a janaza", janazaName: "Name of the deceased", janazaInfo: "Note (e.g. 67 years old)",
     janazaSend: "Declare the janaza", more5: "+5 min", stop: "Stop", cancelDay: "Cancel today",
     sceneChoose: "Choose a scene", sceneApply: "Show",

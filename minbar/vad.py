@@ -1,8 +1,8 @@
-"""Détection de voix (webrtcvad) sur l'audio de la caméra / table de mixage.
+"""Voice detection (webrtcvad) on the camera / mixing desk audio.
 
-Un ffmpeg séparé lit l'audio de la source (RTSP) en PCM 16 kHz mono ; on découpe en trames de 30 ms
-et on garde une fenêtre glissante d'une seconde : « voix » si la part de trames voisées >= vad_ratio.
-Expose voice_run / silence_run (secondes réelles consécutives de voix / de non-voix).
+A separate ffmpeg reads the source audio (RTSP) as 16 kHz mono PCM; it is split into 30 ms frames
+and a sliding one-second window is kept: "voice" if the share of voiced frames >= vad_ratio.
+Exposes voice_run / silence_run (real consecutive seconds of voice / of non-voice).
 """
 from __future__ import annotations
 import collections
@@ -60,11 +60,11 @@ class VadMonitor(threading.Thread):
             dens.append(voice)
             now = time.monotonic()
             with self._lock:
-                # silence_run : secondes écoulées depuis la dernière trame « voix » (une seule suffit à le remettre à 0)
+                # silence_run: seconds elapsed since the last "voice" frame (a single one resets it to 0)
                 if voice:
                     self._last_voice = now
-                # voice_run : durée pendant laquelle la densité de voix sur 10 s reste >= 40 %
-                # (un orateur fait des pauses : exiger une voix continue 20 s ne marcherait jamais)
+                # voice_run: duration for which the voice density over 10 s stays >= 40 %
+                # (a speaker pauses: requiring 20 s of continuous voice would never work)
                 dense = len(dens) == dens.maxlen and sum(dens) / len(dens) >= self.dense_min
                 if dense and self._dense_since is None:
                     self._dense_since = now
@@ -72,7 +72,7 @@ class VadMonitor(threading.Thread):
                     self._dense_since = None
 
     def runs(self) -> tuple[float, float]:
-        """(voice_run, silence_run) en secondes réelles."""
+        """(voice_run, silence_run) in real seconds."""
         with self._lock:
             now = time.monotonic()
             v = (now - self._dense_since) if self._dense_since is not None else 0.0

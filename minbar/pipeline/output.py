@@ -1,7 +1,7 @@
-"""Dossier de sortie d'une session : data/output/<run_id>/<runs.session_dir(index)>/.
+"""Output directory of a session: data/output/<run_id>/<runs.session_dir(index)>/.
 
-Écrit par le pipeline (run.py), lu par le back-office. Tout nom de fichier et tout champ du manifeste des clips
-passent par ici.
+Written by the pipeline (run.py), read by the back-office. Every file name and every clip manifest field
+goes through here.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class SessionOutput:
         self.verses = self.dir / "verses.json"
         self.notes = self.dir / "notes.md"
         self.translations = self.dir / "translations.json"
-        self.video = self.dir / "khutba.mp4"           # extrait du live, écrit par le back-office
+        self.video = self.dir / "khutba.mp4"           # excerpt from the live, written by the back-office
         self.clips = self.dir / "clips"
         self.manifest = self.clips / "manifest.json"
 
@@ -39,22 +39,22 @@ class SessionOutput:
         self.write(self.manifest, entries)
 
     def manifest_entries(self) -> list[dict]:
-        """Clips du manifeste, au format courant (manifestes antérieurs convertis)."""
+        """Manifest clips, in the current format (older manifests converted)."""
         return [_current(c, n) for n, c in enumerate(self.read(self.manifest, []), 1)]
 
 
 def clip_entry(w: dict, idx: int, file: Path, video: str, offset: float, crop: dict | None) -> dict:
-    """Entrée du manifeste pour le clip n° idx de la fenêtre w ; offset = début de la session dans `video`."""
+    """Manifest entry for clip #idx of window w; offset = start of the session inside `video`."""
     return {"idx": idx, "kind": w.get("kind", ""), "why": w.get("why", ""), "start": w["start"], "end": w["end"],
             "file": file.name, "video_source": str(video), "source_offset": round(offset, 2), "crop": crop or None}
 
 
 def _current(c: dict, n: int) -> dict:
     c = dict(c)
-    if "idx" not in c:                                  # manifestes antérieurs au champ idx
+    if "idx" not in c:                                  # manifests predating the idx field
         m = re.match(r"clip(\d+)_", c["file"])
         c["idx"] = int(m.group(1)) if m else n
-    if "source_offset" not in c:                        # manifestes antérieurs : position absolue du début du clip
+    if "source_offset" not in c:                        # older manifests: absolute position of the clip start
         old = c.get("source_offset_s")
         c["source_offset"] = old - c["start"] if old is not None else None
     c.setdefault("kind", "")

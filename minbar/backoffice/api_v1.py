@@ -1,7 +1,7 @@
-"""API JSON versionnée (`/api/v1`) : tout ce que fait le front React.
+"""Versioned JSON API (`/api/v1`): everything the React front does.
 
-Lecture et écriture passent par ici ; les règles d'accès sont celles du back-office (Ctx.require),
-pas une seconde matrice. Les écritures exigent le jeton de session en en-tête `X-CSRF`.
+Reads and writes go through here; the access rules are the back-office's (Ctx.require),
+not a second matrix. Writes require the session token in the `X-CSRF` header.
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _secure(request: Request) -> bool:
     return request.app.state.secure or _sec(request)
 
 
-# ------------------------------------------------------------------ formes de réponse
+# ------------------------------------------------------------------ response shapes
 
 def _user(ctx: Ctx) -> dict:
     u = ctx.user
@@ -69,8 +69,8 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
     pubs = db.all_(ctx.conn, "SELECT p.*, u.display_name who FROM publications p LEFT JOIN users u ON u.id = p.user_id "
                              "WHERE p.clip_id = ? ORDER BY p.id DESC", c["id"]) if _a_table(ctx.conn, "publications") else []
     refs = [r["verse"]["ref"] for r in rows if r["verse"] and not r["verse"]["ambiguous"]]
-    # Contexte : un extrait sorti de sa khutba ne se comprend pas. On donne le thème, les versets
-    # portés par le clip et les deux phrases qui le précèdent (le rappel d'où part l'extrait).
+    # Context: an excerpt taken out of its khutba does not make sense on its own. We give the theme,
+    # the verses carried by the clip and the two phrases preceding it (a reminder of where the excerpt starts).
     complet = content.transcript_rows(data)
     avant = [{"start": r["start"], "texte": ((r["verse"]["fr"] if r["verse"] else None) or r.get("fr") or r["text"] or "")}
              for r in complet if r["end"] <= c["start"] + 0.5 and (r["verse"] or r.get("fr"))][-2:]
@@ -84,7 +84,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
         "caption": publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
         "contexte": {"theme": k["theme"] or "", "avant": avant, "versets": versets},
-        "labels": AUDIT_LABELS,          # l'historique se lit en clair, pas en clés techniques
+        "labels": AUDIT_LABELS,          # the history reads in plain language, not in technical keys
         "exists": bool(c["file_path"]) and Path(c["file_path"]).exists(),
         "status_labels": content.STATUS_LABELS,
     }
@@ -94,7 +94,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
 
 @router.get("/login-challenge")
 def challenge(request: Request):
-    """Jeton anti-rejeu de la connexion : lié au navigateur par un cookie."""
+    """Anti-replay token for login: bound to the browser by a cookie."""
     pre = secrets.token_urlsafe(16)
     r = JSONResponse({"pre": pre})
     r.set_cookie(PRE_COOKIE, pre, httponly=True, samesite="lax", secure=_secure(request), max_age=600, path="/")
@@ -144,12 +144,12 @@ def logout(ctx: CtxDep):
 
 @router.get("/session")
 def session(ctx: CtxDep):
-    """Qui est connecté, sur quelle mosquée, et ce qu'il a le droit de faire.
+    """Who is logged in, on which mosque, and what they are allowed to do.
 
-    Sert aussi de sonde : sans session, l'intercepteur d'authentification répond 401.
+    Also serves as a probe: without a session, the authentication interceptor answers 401.
     """
-    # Le nombre de clips à valider accompagne la session : la navigation l'affiche en pastille
-    # sans une seconde requête au démarrage.
+    # The number of clips to validate comes with the session: the navigation shows it as a badge
+    # without a second request at startup.
     where, args = imam_filter(ctx)
     a_valider = db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                                  f"WHERE {where} AND c.status = 'a_valider'", *args)["n"]
@@ -157,7 +157,7 @@ def session(ctx: CtxDep):
             "counts": {"pending": a_valider}}
 
 
-# ------------------------------------------------------------------ lecture
+# ------------------------------------------------------------------ reads
 
 @router.get("/dashboard")
 def dashboard(ctx: CtxDep):
@@ -169,7 +169,7 @@ def dashboard(ctx: CtxDep):
                              "WHERE a.mosque_id = ? AND a.action LIKE 'live.%' ORDER BY a.id DESC LIMIT 5", ctx.mosque["id"])
     return {"counts": {"pending": count_clips(ctx, "a_valider"), "ready": count_clips(ctx, "valide"), "sermons": total},
             "recent": recent, "live": live_status(ctx), "commands": cmds,
-            # Les commandes proposées viennent du serveur : le front n'invente pas la liste.
+            # The commands offered come from the server: the front does not invent the list.
             "live_commands": [{"key": k, "label": c.label, "style": c.style, "confirm": c.confirm,
                                "choices": [{"value": v, "label": lb} for v, lb in c.choices]}
                               for k, c in live.COMMANDS.items()]}
@@ -177,10 +177,10 @@ def dashboard(ctx: CtxDep):
 
 @router.get("/sermons/mois")
 def sermon_months(ctx: CtxDep):
-    """Les mois qui contiennent des khutbas, du plus récent au plus ancien, avec leur compte.
+    """The months containing khutbas, from the most recent to the oldest, with their count.
 
-    Le sélecteur de période se construit sur ce que la mosquée a réellement : pas de mois vide,
-    pas de calendrier à parcourir, et aucune saisie de date à deviner."""
+    The period selector is built on what the mosque actually has: no empty month,
+    no calendar to browse, and no date to guess."""
     where, args = imam_filter(ctx)
     items = db.all_(ctx.conn, f"SELECT substr(k.date, 1, 7) mois, COUNT(*) n FROM khutbas k "
                               f"LEFT JOIN users u ON u.id = k.imam_id "
@@ -192,12 +192,12 @@ def sermon_months(ctx: CtxDep):
 @router.get("/sermons")
 def sermons(ctx: CtxDep, q: str = "", mois: str = "", pending: int = 0,
             limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)):
-    """Khutbas, de la plus récente à la plus ancienne.
+    """Khutbas, from the most recent to the oldest.
 
-    Une mosquée accumule des années de khutbas : la liste se cherche (`q` sur le passage, le thème
-    et l'imam), se restreint à un mois (`mois` au format AAAA-MM, choisi dans la liste des mois
-    existants), se filtre (`pending` : seulement celles qui attendent une validation) et se pagine.
-    Le total filtré est renvoyé pour que le front sache s'il reste des pages, sans deviner."""
+    A mosque accumulates years of khutbas: the list can be searched (`q` on the passage, the theme
+    and the imam), restricted to a month (`mois` in YYYY-MM format, chosen from the list of existing
+    months), filtered (`pending`: only those awaiting validation) and paginated.
+    The filtered total is returned so that the front knows whether pages remain, without guessing."""
     where, args = imam_filter(ctx)
     if q.strip():
         motif = f"%{q.strip()}%"
@@ -210,7 +210,7 @@ def sermons(ctx: CtxDep, q: str = "", mois: str = "", pending: int = 0,
         where += " AND EXISTS (SELECT 1 FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider')"
     total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "
                               f"WHERE {where}", *args) or {"n": 0})["n"]
-    # Les onglets comptent sur le périmètre de l'utilisateur, pas sur la page affichée.
+    # The tabs count on the user's scope, not on the displayed page.
     perimetre, perimetre_args = imam_filter(ctx)
     en_attente = (db.one(ctx.conn, f"SELECT COUNT(DISTINCT k.id) n FROM khutbas k "
                                    f"JOIN clips c ON c.khutba_id = k.id AND c.status = 'a_valider' "
@@ -236,7 +236,7 @@ def sermon(ctx: CtxDep, kid: int):
     return {"sermon": k, "segments": segments, "clips": clips, "status_labels": content.STATUS_LABELS,
             "transcript": content.transcript_rows(data),
             "notes": notes.read_text(encoding="utf-8") if notes.exists() else "",
-            # Versets détectés : les sûrs/courts et les passages ambigus, signalés « à vérifier ».
+            # Detected verses: the certain/short ones and the ambiguous passages, flagged "to check".
             "verses": verses_mod.for_display(data["verses"]), "imam": imam,
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]) if ctx.can("assign") else [],
             "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists()}
@@ -249,8 +249,8 @@ def clips(ctx: CtxDep, status: str = "", limit: int = Query(200, ge=1, le=1000))
     rows = db.all_(ctx.conn, f"SELECT c.*, k.label sermon, k.date, k.title, k.session_no "
                              f"FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                              f"WHERE {where} {extra} ORDER BY c.id DESC LIMIT ?", *args, *extra_args, limit)
-    # Comptes par statut pour les filtres (« À valider (8) ») : comptés sur la mosquée entière,
-    # sinon le premier filtre choisi effacerait les autres chiffres.
+    # Counts per status for the filters ("To validate (8)"): counted on the whole mosque,
+    # otherwise the first filter chosen would erase the other figures.
     par_statut = {r["status"]: r["n"] for r in db.all_(
         ctx.conn, f"SELECT c.status, COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                   f"WHERE {where} GROUP BY c.status", *args)}
@@ -293,7 +293,7 @@ def _notification_settings(ctx: Ctx) -> dict:
 
 
 def _model_view() -> dict:
-    """Réglage du modèle pour l'écran : jamais la clé d'API, seulement sa présence."""
+    """Model setting for the screen: never the API key, only its presence."""
     cfg = llm.config()
     eff = llm.settings()
     return {"enabled": llm.enabled(), "url": cfg.get("url", ""), "model": cfg.get("model", ""),
@@ -304,14 +304,14 @@ def _model_view() -> dict:
 
 @router.get("/settings")
 def settings(ctx: CtxDep):
-    """Tout ce que montre l'écran Réglages : l'interface découpe elle-même en onglets."""
+    """Everything the Settings screen shows: the interface splits it into tabs itself."""
     ctx.require("admin")
     m = _mosque(ctx)
     m.update({k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"})
-    # un secret enregistré ne ressort jamais en clair : le masque renvoyé tel quel signifie « inchangé »
+    # a stored secret never comes back in clear: the mask returned as is means "unchanged"
     m["orchestrator_token"] = db.MASK if m["orchestrator_token"] else ""
     m["has_logo"] = bool((ctx.mosque.get("logo_path") or "").strip())
-    # « par défaut : data/state » — jamais un chemin de la machine.
+    # "default: data/state" — never a path of the machine.
     defauts = {k: dirs_mod.label(v) for k, v in db.mosque_dirs(ctx.mosque).items()}
     return {"mosque": m, "defaults": defauts, "sections": SECTIONS,
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
@@ -329,7 +329,7 @@ def users(ctx: CtxDep):
 
 @router.get("/audit")
 def audit(ctx: CtxDep, action: str = "", limit: int = Query(25, ge=1, le=200), offset: int = Query(0, ge=0)):
-    """Journal, page par page : le journal d'une mosquée ne tient pas sur un écran."""
+    """Journal, page by page: a mosque's journal does not fit on one screen."""
     ctx.require("journal")
     filtre = "(mosque_id = ? AND (? = '' OR action LIKE ? || '%'))"
     rows = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
@@ -344,7 +344,7 @@ def audit(ctx: CtxDep, action: str = "", limit: int = Query(25, ge=1, le=200), o
 
 @router.get("/folders")
 def folders(ctx: CtxDep, path: str = ""):
-    """Arborescence de la machine qui héberge l'application, pour le bouton « Parcourir »."""
+    """Tree of the machine hosting the application, for the "Browse" button."""
     ctx.require("admin")
     try:
         return {"roots": dirs_mod.roots(), **dirs_mod.listing(path or None)}
@@ -357,7 +357,7 @@ def health():
     return JSONResponse({"ok": True})
 
 
-# ------------------------------------------------------------------ écritures
+# ------------------------------------------------------------------ writes
 
 @router.post("/live/{cmd}")
 async def live_command(cmd: str, ctx: CtxDep):
@@ -366,8 +366,8 @@ async def live_command(cmd: str, ctx: CtxDep):
     if cmd not in live.COMMANDS:
         raise NotFound()
     arg = (f.get("name") or "").strip() or None
-    info = (f.get("info") or "").strip() or None      # fiche janaza : mention sous le nom
-    valeur = (f.get("valeur") or "").strip() or None  # minutes (extend) ou scène (scene)
+    info = (f.get("info") or "").strip() or None      # janaza record: note under the name
+    valeur = (f.get("valeur") or "").strip() or None  # minutes (extend) or scene (scene)
     if live.COMMANDS[cmd].choices and valeur not in (None, *(v for v, _ in live.COMMANDS[cmd].choices)):
         raise Invalid("Valeur inconnue pour cette commande.")
     if cmd == "scene" and not valeur:
@@ -377,7 +377,7 @@ async def live_command(cmd: str, ctx: CtxDep):
         r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info, valeur)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=label,
                  defunt=arg, mention=info, reponse=r.get("message"), etat=r.get("state"))
-        # Après une commande, on veut l'état réel : lecture fraîche, sans cache.
+        # After a command, we want the real state: fresh read, no cache.
         return _ok(f"{label} : {r.get('message', 'ok')}", state=r.get("state"), live=live_status(ctx, forcer=True))
     except live.OrchestratorError as e:
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, commande=label, erreur=str(e))
@@ -517,7 +517,7 @@ async def mosque_save(ctx: CtxDep):
     ctx.require("admin")
     vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS if k != "logo_path" and k in f}
     current = {k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"}
-    vals = {**current, **vals}          # un formulaire partiel ne vide pas les autres réglages
+    vals = {**current, **vals}          # a partial form does not empty the other settings
     if not vals["name"]:
         raise Invalid("Le nom est obligatoire.")
     if vals["orchestrator_url"] and not re.match(r"^https?://", vals["orchestrator_url"]):
@@ -624,7 +624,7 @@ def notifications_test(ctx: CtxDep):
 @router.post("/settings/logo")
 async def logo_save(ctx: CtxDep):
     ctx.require("admin")
-    await ctx.body()                     # jeton CSRF vérifié ; le fichier est gardé en mémoire (2 Mo max)
+    await ctx.body()                     # CSRF token checked; the file is kept in memory (2 MB max)
     up = ctx.files.get("logo")
     if up is None or not getattr(up, "filename", ""):
         raise Invalid("Aucun fichier choisi.")
@@ -645,7 +645,7 @@ def logo_clear(ctx: CtxDep):
     return _ok("Logo retiré : emblème neutre repris.")
 
 
-# ------------------------------------------------------------------ divers
+# ------------------------------------------------------------------ misc
 
 AUDIT_LABELS = {
     "connexion": "Connexion", "connexion.echec": "Échec de connexion", "deconnexion": "Déconnexion",
@@ -665,19 +665,19 @@ AUDIT_LABELS = {
 }
 
 
-# ------------------------------------------------------------------ programme : dars et conférences
+# ------------------------------------------------------------------ programme: dars and conferences
 
-AGENDA_KINDS = ("dars", "conference")       # la khutba du vendredi n'est pas un événement à saisir
+AGENDA_KINDS = ("dars", "conference")       # the Friday khutba is not an event to enter
 _agenda_lock = threading.Lock()
 
 
 def _agenda_path(request: Request) -> Path:
-    """Fichier du programme : celui de l'orchestrateur (`events_file`), sauf surcharge de l'application."""
+    """Programme file: the orchestrator's (`events_file`), unless overridden by the application."""
     return Path(getattr(request.app.state, "events_file", None) or Config().events_file)
 
 
 def _agenda_read(path: Path) -> list[dict]:
-    """Événements bruts du fichier. Un fichier illisible est refusé : on ne l'écrase jamais."""
+    """Raw events of the file. An unreadable file is refused: we never overwrite it."""
     if not path.exists():
         return []
     try:
@@ -689,12 +689,12 @@ def _agenda_read(path: Path) -> list[dict]:
     except (ValueError, OSError) as e:
         raise Invalid(f"Le programme est illisible, corrigez-le d'abord : {e}") from e
     for i, r in enumerate(items):
-        r.setdefault("uid", _agenda_uid(r, i))      # même valeur que celle que le moteur déduit de la position
+        r.setdefault("uid", _agenda_uid(r, i))      # same value as the one the engine deduces from the position
     return items
 
 
 def _agenda_write(path: Path, items: list[dict]) -> None:
-    """Écriture atomique : l'orchestrateur ne lit jamais un fichier à moitié écrit."""
+    """Atomic write: the orchestrator never reads a half-written file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps({"events": items}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -706,7 +706,7 @@ def _agenda_uid(raw: dict, idx: int) -> str:
 
 
 def _agenda_clean(f: dict, uid: str) -> dict:
-    """Formulaire (champs à plat, en texte) -> événement canonique, validé par le moteur lui-même."""
+    """Form (flat fields, as text) -> canonical event, validated by the engine itself."""
     s = lambda k: (f.get(k) or "").strip()                                   # noqa: E731
     kind = s("kind").lower() or "dars"
     if kind not in AGENDA_KINDS:
@@ -748,8 +748,8 @@ def _agenda_clean(f: dict, uid: str) -> dict:
 
 
 def _agenda_item(raw: dict, idx: int, today: dt.date) -> dict:
-    """Une ligne de la liste : l'événement et sa prochaine occurrence (date seule : l'heure relative à
-    une prière dépend des horaires du jour)."""
+    """A row of the list: the event and its next occurrence (date only: the time relative to
+    a prayer depends on the day's timetable)."""
     ev = events_mod.loads(json.dumps({"events": [raw]}))[0]
     rec = raw.get("recurrence") or None
     nxt = None
@@ -770,7 +770,7 @@ def _agenda_item(raw: dict, idx: int, today: dt.date) -> dict:
 def _agenda_today(ctx: Ctx) -> dt.date:
     try:
         return dt.datetime.now(ZoneInfo(ctx.mosque.get("timezone") or "Europe/Paris")).date()
-    except Exception:                                  # noqa: BLE001 — fuseau inconnu : heure de la machine
+    except Exception:                                  # noqa: BLE001 — unknown timezone: machine time
         return dt.date.today()
 
 
@@ -785,7 +785,7 @@ def _agenda_list(ctx: Ctx) -> dict:
 
 @router.get("/events")
 def events_list(ctx: CtxDep):
-    """Programme des dars et conférences, prochaines occurrences d'abord, événements passés à la fin."""
+    """Schedule of dars and conferences, next occurrences first, past events at the end."""
     return _agenda_list(ctx)
 
 
@@ -814,7 +814,7 @@ async def event_update(uid: str, ctx: CtxDep):
         if pos is None:
             raise NotFound()
         raw = _agenda_clean(f, uid)
-        items[pos] = raw           # l'identifiant (uid) est écrit : il ne dépend plus de la position
+        items[pos] = raw           # the identifier (uid) is written: it no longer depends on the position
         _agenda_write(path, items)
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.modifie", "programme", None, ip=ctx.ip,
              uid=uid, type=raw["kind"], titre=raw["title"])
@@ -823,7 +823,7 @@ async def event_update(uid: str, ctx: CtxDep):
 
 @router.delete("/events/{uid}")
 async def event_delete(uid: str, ctx: CtxDep):
-    await ctx.body()                  # vérifie le jeton anti-rejeu
+    await ctx.body()                  # checks the anti-replay token
     ctx.require("assign")
     path = _agenda_path(ctx.request)
     with _agenda_lock:

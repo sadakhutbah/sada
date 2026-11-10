@@ -1,4 +1,4 @@
-"""Agenda des dars et conférences : lecture, création, modification et suppression du programme JSON."""
+"""Dars and conference agenda: read, create, edit and delete the JSON program."""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ from test_backoffice import client  # noqa: E402,F401
 
 @pytest.fixture
 def prog(env):
-    """Fichier de programme isolé dans le répertoire temporaire du test."""
+    """Program file isolated in the test's temporary directory."""
     chemin = env["tmp"] / "programme" / "events.json"
     env["app"].state.events_file = str(chemin)
     return chemin
@@ -83,7 +83,7 @@ def test_droits_et_jeton(env, prog):
     assert imam.ecrire("/events", DARS).status_code == 403
     c = client(env, "responsable")
     assert c.ecrire("/events", DARS).status_code == 200
-    assert c.request("POST", "/api/v1/events", json=DARS).status_code == 403      # sans X-CSRF
+    assert c.request("POST", "/api/v1/events", json=DARS).status_code == 403      # without X-CSRF
     assert client(env).get("/api/v1/events").status_code == 401
 
 
@@ -96,14 +96,14 @@ def test_fichier_illisible_jamais_ecrase(env, prog):
 
 
 def test_entrees_a_la_main_conservees(env, prog):
-    """Un événement écrit à la main (sans uid, ni khutba ni clé inconnue) survit aux modifications."""
+    """A hand-written event (no uid, no khutba, no unknown key) survives modifications."""
     prog.parent.mkdir(parents=True)
     prog.write_text(json.dumps({"events": [
         {"kind": "khutba", "title": "Jumua", "date": "2099-01-01", "time": "13:00", "note": "à garder"},
         {"kind": "dars", "title": "Fiqh", "recurrence": {"weekday": "jeudi", "time": "19:00"}}]}), encoding="utf-8")
     c = client(env, "admin")
     items = c.get("/api/v1/events").json()["items"]
-    assert [i["title"] for i in items] == ["Fiqh"]                  # la khutba n'est pas dans l'agenda
+    assert [i["title"] for i in items] == ["Fiqh"]                  # the khutba is not in the agenda
     assert c.ecrire(f"/events/{items[0]['id']}", {}, "DELETE").status_code == 200
     reste = json.loads(prog.read_text(encoding="utf-8"))["events"]
     assert len(reste) == 1 and reste[0]["note"] == "à garder"

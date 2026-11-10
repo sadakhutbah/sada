@@ -1,13 +1,13 @@
-"""Présence au minbar (v1 : mouvement dans une zone, sans GPU).
+"""Presence at the minbar (v1: motion within a zone, without GPU).
 
-Un ffmpeg séparé lit la caméra à quelques images par seconde, en petit format
-(niveaux de gris). Chaque image est comparée à la précédente sur la seule zone du minbar
-(`presence_roi`, fractions de l'image) : le score est la part de pixels de cette zone qui
-changent nettement. « Présent » = un mouvement a été vu dans les `presence_hold_s` dernières
-secondes.
+A separate ffmpeg reads the camera a few frames per second, in a small format
+(grayscale). Each frame is compared with the previous one on the minbar region only
+(`presence_roi`, fractions of the frame): the score is the share of pixels in that zone that
+change clearly. "Present" = a motion was seen within the last `presence_hold_s`
+seconds.
 
-Vie privée : aucune image n'est écrite, aucun visage ni identité n'est calculé ; seuls un
-score et un booléen sortent de ce module. Une caméra de surveillance à faible débit suffit.
+Privacy: no frame is written, no face or identity is computed; only a
+score and a boolean leave this module. A low-bitrate surveillance camera is enough.
 """
 from __future__ import annotations
 
@@ -16,24 +16,24 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-FRAME_TIMEOUT = 5.0     # sans image pendant ce délai : source considérée perdue
+FRAME_TIMEOUT = 5.0     # no frame for this long: source considered lost
 
 
 @dataclass
 class MotionGate:
-    """Calcul pur du mouvement (aucune E/S) : testable image par image."""
+    """Pure motion computation (no I/O): testable frame by frame."""
     width: int = 160
     height: int = 90
-    roi: tuple[float, ...] = (0.0, 0.0, 1.0, 1.0)                   # x0, y0, x1, y1 en fractions
-    threshold: float = 0.004        # part de pixels changés pour dire « mouvement »
-    pixel_delta: int = 12           # écart de niveau (0-255) compté comme un vrai changement
-    hold_s: float = 8.0             # durée pendant laquelle un mouvement vaut « présence »
+    roi: tuple[float, ...] = (0.0, 0.0, 1.0, 1.0)                   # x0, y0, x1, y1 as fractions
+    threshold: float = 0.004        # share of changed pixels to call it "motion"
+    pixel_delta: int = 12           # level difference (0-255) counted as a real change
+    hold_s: float = 8.0             # duration for which a motion counts as "presence"
     _prev: bytes | None = field(default=None, repr=False)
     _last_motion: float | None = None
     last_score: float | None = field(default=None, repr=False)
 
     def bounds(self) -> tuple[int, int, int, int]:
-        """Zone utile en pixels (au moins 1×1, dans l'image)."""
+        """Usable region in pixels (at least 1×1, within the frame)."""
         if len(self.roi) != 4:
             raise ValueError(f"zone de présence : 4 fractions attendues, {len(self.roi)} reçues")
         x0, y0, x1, y1 = self.roi
@@ -44,7 +44,7 @@ class MotionGate:
         return bx0, by0, bx1, by1
 
     def score(self, frame: bytes) -> float | None:
-        """Part (0–1) de pixels qui changent nettement dans la zone. None pour la 1re image."""
+        """Share (0–1) of pixels that change clearly in the region. None for the first frame."""
         if len(frame) != self.width * self.height:
             raise ValueError(f"image de {len(frame)} octets, attendu {self.width * self.height}")
         prev = self._prev
@@ -65,7 +65,7 @@ class MotionGate:
         return self.last_score
 
     def update(self, frame: bytes, now: float) -> bool:
-        """Nouvelle image → présence à l'instant `now` (secondes monotones)."""
+        """New frame → presence at instant `now` (monotonic seconds)."""
         s = self.score(frame)
         if s is not None and s >= self.threshold:
             self._last_motion = now
@@ -76,7 +76,7 @@ class MotionGate:
 
 
 class PresenceMonitor(threading.Thread):
-    """Fil de lecture de la caméra ; `present()` est sûr depuis n'importe quel fil."""
+    """Camera reader thread; `present()` is safe from any thread."""
 
     def __init__(self, url: str, gate: MotionGate, fps: float = 2.0, log=print):
         super().__init__(daemon=True, name="presence")
@@ -101,7 +101,7 @@ class PresenceMonitor(threading.Thread):
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self._read(self.proc)
-            except Exception as e:  # noqa: BLE001 - on relance, la caméra peut revenir
+            except Exception as e:  # noqa: BLE001 - we restart, the camera may come back
                 self.log(f"Présence : erreur {e}")
             self.connected = False
             with self._lock:
@@ -129,7 +129,7 @@ class PresenceMonitor(threading.Thread):
                 self._score = score
 
     def present(self) -> bool | None:
-        """True/False, ou None si la caméra ne donne plus d'image (détection inutilisable)."""
+        """True/False, or None if the camera no longer provides frames (detection unusable)."""
         with self._lock:
             if not self.connected or (time.monotonic() - self._last_frame) > FRAME_TIMEOUT:
                 return None

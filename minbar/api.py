@@ -1,9 +1,9 @@
-"""API HTTP locale de contrôle manuel (stdlib).  Écoute 127.0.0.1 par défaut ; jeton X-Token optionnel.
+"""Local HTTP API for manual control (stdlib).  Listens on 127.0.0.1 by default; optional X-Token.
 
 GET  /status
-POST /<commande>?name=...|min=...   commandes de Machine.COMMANDS (ex. /extend?min=5, /scene?name=priere,
-                                    /janaza?name=...[&info=...] : nom et mention du défunt, seulement avec l'accord de la famille)
-GET  /  : petite page de contrôle (/?token=... si un jeton est configuré)
+POST /<command>?name=...|min=...    Machine.COMMANDS commands (e.g. /extend?min=5, /scene?name=priere,
+                                    /janaza?name=...[&info=...]: name and note of the deceased, only with the family's consent)
+GET  /  : small control page (/?token=... if a token is configured)
 """
 from __future__ import annotations
 import json
@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from .scenes import SCENE_LABELS
 from .state import STATE_OF_SCENE, Machine
 
-# commandes à paramètre : un bouton par valeur (la scène janaza passe par la commande janaza, qui ouvre sa session)
+# parameterised commands: one button per value (the janaza scene goes through the janaza command, which opens its session)
 _VARIANTS = {
     "extend": [["extend?min=5", "+5 min"], ["extend?min=15", "+15 min"]],
     "scene": [[f"scene?name={sc}", SCENE_LABELS[sc]]
@@ -70,7 +70,7 @@ def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPSer
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             cmd = u.path.strip("/")
             arg = q.get("name") or q.get("min")
-            if q.get("info"):                       # fiche janaza : « nom|mention »
+            if q.get("info"):                       # janaza record: "name|note"
                 arg = f'{q.get("name", "")}|{q["info"]}'
             if cmd not in Machine.COMMANDS:
                 return self._send(404, {"error": "commande inconnue"})

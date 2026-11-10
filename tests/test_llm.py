@@ -1,4 +1,4 @@
-"""Modèle de langage : endpoint HTTP local (formats OpenAI et Anthropic), repli silencieux s'il est absent."""
+"""Language model: local HTTP endpoint (OpenAI and Anthropic formats), silent fallback when absent."""
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -15,7 +15,7 @@ REPLY_ANTHROPIC = {"content": [{"type": "text", "text": '{"theme": "la patience"
 class _Handler(BaseHTTPRequestHandler):
     seen: dict = {}
 
-    def do_POST(self):  # noqa: N802 — nom imposé par http.server
+    def do_POST(self):  # noqa: N802 — name imposed by http.server
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         _Handler.seen = {"path": self.path, "body": body,
                          "headers": {k.lower(): v for k, v in self.headers.items()}}
@@ -27,7 +27,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def log_message(self, format, *args):  # silence : ce n'est pas un serveur de production
+    def log_message(self, format, *args):  # silence: this is not a production server
         pass
 
 
@@ -49,7 +49,7 @@ def test_format_openai(serveur):
 
 
 def test_format_anthropic(serveur):
-    # le format est explicitement choisi : le déduire ici serait circulaire dans le test
+    # the format is chosen explicitly: deducing it here would be circular in the test
     d = llm.ask_json("résume", 5, lambda m: None, url=f"{serveur}/messages", model="claude-local", key="secret",
                      protocol="anthropic")
     assert d == {"theme": "la patience", "points": ["b"]}
@@ -63,27 +63,27 @@ def test_format_anthropic(serveur):
 def test_protocole_deduit_de_l_url():
     assert llm.settings(url="http://127.0.0.1:11434/v1").protocol == "openai"
     assert llm.settings(url="https://api.anthropic.com/v1").protocol == "anthropic"
-    assert llm.settings(url="https://api.anthropic.com/v1/").protocol == "anthropic"   # barre finale tolérée
+    assert llm.settings(url="https://api.anthropic.com/v1/").protocol == "anthropic"   # trailing slash tolerated
     assert llm.settings(url="http://127.0.0.1:8000/v1/messages").protocol == "anthropic"
     assert llm.settings(url="http://127.0.0.1:8000/v1", protocol="anthropic").protocol == "anthropic"
     assert llm.settings(url="http://127.0.0.1:11434/v1", protocol="claude-cli").label() == "claude -p"
 
 
 def test_format_enregistre_ne_s_applique_qu_a_son_adresse(tmp_path, monkeypatch):
-    """Le format gardé en mémoire (back-office) ne doit pas contaminer une autre adresse."""
+    """The format kept in memory (back-office) must not leak into another address."""
     cfg = tmp_path / "llm.json"
     cfg.write_text(json.dumps({"enabled": True, "url": "http://127.0.0.1:11434/v1", "model": "m", "protocol": "openai"}))
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
     monkeypatch.delenv("MINBAR_LLM_PROTOCOL", raising=False)
-    assert llm.settings().protocol == "openai"                                   # même adresse : réglage respecté
-    assert llm.settings(url="https://api.anthropic.com/v1").protocol == "anthropic"  # autre adresse : déduit
+    assert llm.settings().protocol == "openai"                                   # same address: saved setting honoured
+    assert llm.settings(url="https://api.anthropic.com/v1").protocol == "anthropic"  # other address: deduced
 
 
 def test_environnement_prime_sur_le_defaut(monkeypatch):
     monkeypatch.setenv("MINBAR_LLM_URL", "http://127.0.0.1:8080/v1/")
     monkeypatch.setenv("MINBAR_LLM_MODEL", "mistral-small")
     s = llm.settings()
-    assert s.url == "http://127.0.0.1:8080/v1"          # barre finale retirée
+    assert s.url == "http://127.0.0.1:8080/v1"          # trailing slash removed
     assert s.label() == "openai · mistral-small"
 
 
@@ -92,7 +92,7 @@ def test_interrupteur_coupe_tout_appel(serveur, monkeypatch):
     _Handler.seen = {}
     logs = []
     assert llm.ask_json("résume", 5, logs.append, url=serveur) is None
-    assert _Handler.seen == {}                      # aucune requête n'est partie
+    assert _Handler.seen == {}                      # no request left
     assert "désactivé" in logs[0]
 
 
@@ -120,7 +120,7 @@ def test_options_du_cli_reglent_l_interrupteur(monkeypatch):
 
 
 def test_fichier_du_backoffice_et_priorite(serveur, tmp_path, monkeypatch):
-    """Le fichier écrit par les Réglages sert de défaut ; l'environnement reste prioritaire."""
+    """The file written by Settings serves as the default; the environment still takes priority."""
     cfg = tmp_path / "llm.json"
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
     for var in ("MINBAR_LLM_ENABLED", "MINBAR_LLM_URL", "MINBAR_LLM_MODEL", "MINBAR_LLM_PROTOCOL"):
@@ -129,7 +129,7 @@ def test_fichier_du_backoffice_et_priorite(serveur, tmp_path, monkeypatch):
     assert llm.config()["model"] == "du-fichier" and llm.enabled() is True
     assert llm.label() == "openai · du-fichier"
 
-    monkeypatch.setenv("MINBAR_LLM_MODEL", "de-l-env")           # la ligne de commande gagne
+    monkeypatch.setenv("MINBAR_LLM_MODEL", "de-l-env")           # the command line wins
     assert llm.settings().model == "de-l-env"
     monkeypatch.delenv("MINBAR_LLM_MODEL")
 
@@ -137,12 +137,12 @@ def test_fichier_du_backoffice_et_priorite(serveur, tmp_path, monkeypatch):
 
     llm.save_config(enabled=False)
     assert llm.enabled() is False
-    monkeypatch.setenv("MINBAR_LLM_ENABLED", "1")                # MINBAR_LLM_ENABLED l'emporte sur le fichier
+    monkeypatch.setenv("MINBAR_LLM_ENABLED", "1")                # MINBAR_LLM_ENABLED takes precedence over the file
     assert llm.enabled() is True
 
 
 def test_la_cle_locale_survit_a_un_enregistrement(tmp_path, monkeypatch):
-    """La clé posée à la main dans le fichier n'est ni effacée ni réécrite par le formulaire ; le fichier est privé."""
+    """The key set by hand in the file is neither erased nor rewritten by the form; the file is private."""
     cfg = tmp_path / "llm.json"
     cfg.write_text(json.dumps({"enabled": True, "url": "https://api.exemple/v1", "model": "m", "key": "sk-test"}))
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))

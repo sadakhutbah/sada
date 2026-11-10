@@ -1,4 +1,4 @@
-"""Back-office et dars : libellés, migration des colonnes, légende des clips."""
+"""Back-office and dars: labels, column migration, clip caption."""
 import re
 import sqlite3
 
@@ -20,7 +20,7 @@ def test_libelle_dars_et_khutba():
 def test_migration_ajoute_les_colonnes(tmp_path):
     path = tmp_path / "vieux.db"
     old_schema = db.SCHEMA
-    for _, col, _ in db.ADDED_COLUMNS:                       # schéma d'avant : colonnes retirées
+    for _, col, _ in db.ADDED_COLUMNS:                       # previous schema: removed columns
         old_schema = re.sub(rf"\n\s*{col} [^\n]*,", "", old_schema, count=1)
     assert "session_no" not in old_schema
     old = sqlite3.connect(path)

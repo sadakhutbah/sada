@@ -1,15 +1,15 @@
-"""Scènes du direct (SCENES) et leur rendu (calques RGBA 1280x720) avec Pillow, sans OBS.
+"""Live scenes (SCENES) and their rendering (1280x720 RGBA layers) with Pillow, without OBS.
 
-Le flux est composé ainsi : caméra + fond commun des écrans pleins + contenu de la scène (encoder.py).
- - écrans pleins (avant, priere, entracte, termine) : le fond masque la caméra, le contenu est le bloc de textes ;
- - khutba : bandeau en bas à gauche ; janaza : écran plein sobre (la prière s'entend, l'image est
-   remplacée). Le micro n'est ouvert que sur ces deux scènes.
+The stream is composed like this: camera + shared background of the full screens + scene content (encoder.py).
+ - full screens (avant, priere, entracte, termine): the background masks the camera, the content is the text block;
+ - khutba: banner at the bottom left; janaza: sober full screen (the prayer can be heard, the image is
+   replaced). The microphone is open on these two scenes only.
 
-Charte : vert profond (dérivé de cfg.dark_green), or mat en accent, texte ivoire ; titres en
-EB Garamond, textes courants en Source Sans 3, arabe en Amiri (polices OFL dans assets/fonts).
-L'arabe passe par libraqm (mise en forme des lettres liées + sens RTL) ; à défaut, arabic_reshaper
-+ python-bidi s'ils sont installés. Tout le contenu utile reste dans une zone de sécurité centrale
-(les surcouches de l'appli Facebook mobile occupent les coins et le bas de l'image).
+Charter: deep green (derived from cfg.dark_green), matte gold as accent, ivory text; titles in
+EB Garamond, body text in Source Sans 3, Arabic in Amiri (OFL fonts in assets/fonts).
+Arabic goes through libraqm (shaping of joined letters + RTL direction); otherwise arabic_reshaper
++ python-bidi if they are installed. All the useful content stays in a central safe area
+(the overlays of the mobile Facebook app occupy the corners and the bottom of the image).
 """
 from __future__ import annotations
 import datetime as dt
@@ -23,7 +23,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from .paths import FONTS
 from .text import JOURS, french_date, shaped, is_arabic_char, RAQM
 
-if TYPE_CHECKING:                       # uniquement pour les annotations
+if TYPE_CHECKING:                       # for annotations only
     from .events import EventInstance
 
 SERIF = str(FONTS / "EBGaramond-SemiBold.ttf")
@@ -35,10 +35,10 @@ ARABIC_B = str(FONTS / "Amiri-Bold.ttf")
 # --- palette ------------------------------------------------------------------
 IVORY = (244, 240, 230, 255)
 IVORY_DIM = (214, 210, 198, 255)
-GOLD = (200, 169, 106, 255)          # or mat, jamais saturé
+GOLD = (200, 169, 106, 255)          # matte gold, never saturated
 GOLD_SOFT = (200, 169, 106, 150)
 
-# --- textes fixes (arabe vérifié) --------------------------------------------
+# --- fixed texts (verified Arabic) -------------------------------------------
 AR_KHUTBA = "خطبة الجمعة"
 AR_JUMUA = "صلاة الجمعة"
 AR_JAZAKUM = "جزاكم الله خيرا"
@@ -67,7 +67,7 @@ def _font(path: str, size: int):
 
 
 def _strong(ch: str) -> Optional[bool]:
-    """True = arabe, False = latin (fort), None = neutre (espace, ponctuation, chiffres)."""
+    """True = Arabic, False = Latin (strong), None = neutral (space, punctuation, digits)."""
     if is_arabic_char(ch) and ch.isalpha():
         return True
     if ch.isalpha():
@@ -76,10 +76,10 @@ def _strong(ch: str) -> Optional[bool]:
 
 
 def _runs(text: str) -> list[tuple[str, bool]]:
-    """Découpe en segments mono-écriture, dans l'ordre VISUEL (gauche -> droite).
+    """Split into single-script segments, in VISUAL order (left -> right).
 
-    Les neutres situés entre deux lettres arabes restent dans le segment arabe ; ceux en bordure
-    vont au contexte de base. Paragraphe RTL si la première lettre forte est arabe."""
+    Neutrals between two Arabic letters stay in the Arabic segment; those at the edges
+    go to the base context. RTL paragraph if the first strong letter is Arabic."""
     kinds = [_strong(ch) for ch in text]
     base_rtl = next((k for k in kinds if k is not None), False)
     runs: list[list] = []
@@ -100,7 +100,7 @@ def _runs(text: str) -> list[tuple[str, bool]]:
                 j += 1
             seg = text[i:j]
             if base_rtl and runs and runs[-1][1] and not seg.strip(" \u00a0-—·:,.;()«»") :
-                runs[-1][0] += seg  # neutres entre deux segments arabes
+                runs[-1][0] += seg  # neutrals between two Arabic segments
             else:
                 runs.append([seg, False])
             i = j
@@ -111,7 +111,7 @@ def _runs(text: str) -> list[tuple[str, bool]]:
 
 
 def _run_font(font, arabic: bool):
-    """Police adaptée au segment : Amiri pour l'arabe, Source Sans pour le latin."""
+    """Font suited to the segment: Amiri for Arabic, Source Sans for Latin."""
     path = getattr(font, "path", "")
     if arabic and path not in (ARABIC, ARABIC_B):
         return _font(ARABIC_B if path in (SANS_SB, SERIF) else ARABIC, round(font.size * 1.1))
@@ -129,7 +129,7 @@ class SceneRenderer:
         self.cfg = cfg
         self.W, self.H = cfg.width, cfg.height
         self.dark = _hex(cfg.dark_green)
-        # vert profond et digne, dérivé du vert de la mosquée
+        # deep and dignified green, derived from the mosque green
         self.deep = _mix(self.dark, (6, 18, 12), 0.62)
         self.deep_top = _mix(self.dark, (4, 12, 8), 0.74)
         self.panel = _mix(self.dark, (6, 18, 12), 0.55)
@@ -137,14 +137,14 @@ class SceneRenderer:
         self._logo_cache: dict[int, Image.Image] = {}
         self._bg_cache: Optional[Image.Image] = None
         self._medal_cache: dict[tuple, Image.Image] = {}
-        self.s = self.H / 720  # facteur d'échelle (maquette en 1280x720)
+        self.s = self.H / 720  # scale factor (mockup at 1280x720)
 
     def px(self, v: float) -> int:
         return int(round(v * self.s))
 
-    # --- briques ------------------------------------------------------------
+    # --- building blocks ----------------------------------------------------
     def logo(self, size: int) -> Image.Image:
-        """Logo carré (fond blanc) recadré en disque ; sans logo de mosquée : emblème neutre (croissant + étoile)."""
+        """Square logo (white background) cropped into a disc; without a mosque logo: neutral emblem (crescent + star)."""
         if size not in self._logo_cache:
             if self._logo is None:
                 self._logo_cache[size] = self._emblem(size)
@@ -158,21 +158,21 @@ class SceneRenderer:
         return self._logo_cache[size]
 
     def _emblem(self, size: int) -> Image.Image:
-        """Emblème générique dessiné (croissant + étoile) tant qu'aucun logo n'est configuré."""
+        """Generic drawn emblem (crescent + star) as long as no logo is configured."""
         k = 4
         s = size * k
         img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
         g = ImageDraw.Draw(img)
-        pale = _mix(self.dark, (255, 255, 255), 0.86)          # disque presque blanc, teinté du vert de la mosquée
+        pale = _mix(self.dark, (255, 255, 255), 0.86)          # almost white disc, tinted with the mosque green
         g.ellipse([0, 0, s - 1, s - 1], fill=pale)
         area = Image.new("L", (s, s), 0)
         ga = ImageDraw.Draw(area)
         R = s * 0.58
-        ga.ellipse([s / 2 - R, s / 2 - R, s / 2 + R, s / 2 + R], fill=255)          # disque plein
-        rb, bx, by = s * 0.58, s * 0.70, s * 0.30                                   # morsure de même rayon, décalée haut droite
+        ga.ellipse([s / 2 - R, s / 2 - R, s / 2 + R, s / 2 + R], fill=255)          # full disc
+        rb, bx, by = s * 0.58, s * 0.70, s * 0.30                                   # bite of the same radius, shifted up-right
         ga.ellipse([bx - rb, by - rb, bx + rb, by + rb], fill=0)
-        img.paste(self.dark, (0, 0), area)                                          # croissant vert
-        # étoile or à quatre branches, au creux du croissant
+        img.paste(self.dark, (0, 0), area)                                          # green crescent
+        # four-branch gold star, in the hollow of the crescent
         sx, sy, e = s * 0.66, s * 0.36, s * 0.085
         g.polygon([(sx, sy - e), (sx + e * 0.45, sy), (sx, sy + e), (sx - e * 0.45, sy)], fill=GOLD)
         g.polygon([(sx - e * 0.8, sy), (sx, sy - e * 0.42), (sx + e * 0.8, sy), (sx, sy + e * 0.42)], fill=GOLD)
@@ -182,12 +182,12 @@ class SceneRenderer:
         return img.resize((size, size), Image.Resampling.LANCZOS)
 
     def medallion(self, d: int, ring: int = 2, pad: Optional[int] = None) -> Image.Image:
-        """Disque blanc + logo + filet or, avec une ombre douce (taille d + marge d'ombre)."""
+        """White disc + logo + gold ring, with a soft shadow (size d + shadow margin)."""
         pad = max(2, d // 30) if pad is None else pad
         key = (d, ring, pad)
         if key in self._medal_cache:
             return self._medal_cache[key]
-        m = max(6, d // 12)  # marge pour l'ombre
+        m = max(6, d // 12)  # margin for the shadow
         size = d + 2 * m
         k = 4
         big = Image.new("RGBA", (size * k, size * k), (0, 0, 0, 0))
@@ -207,7 +207,7 @@ class SceneRenderer:
         return shadow
 
     def _bg(self) -> Image.Image:
-        """Fond vert profond : dégradé vertical, lumière douce au centre, motif d'étoiles à 8 branches très discret."""
+        """Deep green background: vertical gradient, soft light in the centre, very discreet 8-branch star pattern."""
         if self._bg_cache is not None:
             return self._bg_cache.copy()
         W, H = self.W, self.H
@@ -215,15 +215,15 @@ class SceneRenderer:
         for y in range(H):
             col.putpixel((0, y), _mix(self.deep_top, self.deep, y / (H - 1)))
         img = col.resize((W, H))
-        # halo central (éclaire la zone de lecture), vignettage des bords
-        rad = Image.radial_gradient("L").resize((W, H), Image.Resampling.BICUBIC)  # 0 au centre -> 255 aux bords
+        # central halo (lights the reading area), edge vignetting
+        rad = Image.radial_gradient("L").resize((W, H), Image.Resampling.BICUBIC)  # 0 at the centre -> 255 at the edges
         light = Image.new("RGBA", (W, H), _mix(self.dark, (255, 255, 255), 0.05, 0))
         light.putalpha(rad.point([max(0, 70 - v // 2) for v in range(256)]))
         img.alpha_composite(light)
         dark = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         dark.putalpha(rad.point([max(0, min(110, v - 120)) for v in range(256)]))
         img.alpha_composite(dark)
-        # motif géométrique (khatam) : presque invisible au centre, à peine perceptible sur les bords
+        # geometric pattern (khatam): almost invisible in the centre, barely perceptible at the edges
         pat = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         p = ImageDraw.Draw(pat)
         step = self.px(88)
@@ -242,7 +242,7 @@ class SceneRenderer:
         return img.copy()
 
     def _layout(self, d: ImageDraw.ImageDraw, text: str, font, **kw):
-        """[(texte, police, options, largeur)] dans l'ordre visuel."""
+        """[(text, font, options, width)] in visual order."""
         out = []
         for seg, ar in _runs(text):
             f = _run_font(font, ar)
@@ -252,7 +252,7 @@ class SceneRenderer:
         return out
 
     def _text(self, d: ImageDraw.ImageDraw, xy, text: str, font, fill, anchor: str = "ms", **kw):
-        """Texte (éventuellement mixte latin/arabe) ; ancres Pillow : l/m/r + s/m."""
+        """Text (possibly mixed Latin/Arabic); Pillow anchors: l/m/r + s/m."""
         runs = self._layout(d, text, font, **kw)
         if len(runs) == 1:
             t, f, opts, _ = runs[0]
@@ -272,7 +272,7 @@ class SceneRenderer:
         return sum(r[3] for r in self._layout(d, text, font, **kw))
 
     def _tracked(self, d: ImageDraw.ImageDraw, cx: float, y: float, text: str, font, fill, track: float):
-        """Petites capitales espacées, centrées sur cx (ligne de base y)."""
+        """Small spaced capitals, centred on cx (baseline y)."""
         ws = [d.textlength(ch, font=font) for ch in text]
         total = sum(ws) + track * (len(text) - 1)
         x = cx - total / 2
@@ -281,7 +281,7 @@ class SceneRenderer:
             x += w + track
 
     def _ornament(self, d: ImageDraw.ImageDraw, cx: float, y: float, half: int):
-        """Filet or — losange — filet or."""
+        """Gold rule — diamond — gold rule."""
         g = self.px(14)
         d.line([(cx - half, y), (cx - g, y)], fill=GOLD_SOFT, width=max(1, self.px(1.5)))
         d.line([(cx + g, y), (cx + half, y)], fill=GOLD_SOFT, width=max(1, self.px(1.5)))
@@ -308,22 +308,22 @@ class SceneRenderer:
             self._text(d, (x0 + w_lat + 2 * gap + w_ar / 2, y + self.px(1)), ar, f_ar, IVORY_DIM)
 
     def _ink(self, d: ImageDraw.ImageDraw, text: str, font, **kw) -> tuple[int, int]:
-        """(hauteur au-dessus, sous la ligne de base) de l'encre réelle du texte."""
+        """(height above, below the baseline) of the text's actual ink."""
         up = down = 0
         for t, f, opts, _ in self._layout(d, text, font, **kw):
             b = d.textbbox((0, 0), t, font=f, anchor="ls", **opts)
             up, down = max(up, -b[1]), max(down, b[3])
         return up, down
 
-    # médaillon des écrans pleins : position fixe (pas de saut d'une scène à l'autre)
+    # medallion of the full screens: fixed position (no jump from one scene to another)
     def _med_geom(self) -> tuple[int, int]:
-        return self.px(80), self.px(158)   # (haut, diamètre)
+        return self.px(80), self.px(158)   # (top, diameter)
 
     def background(self) -> Image.Image:
-        """Fond commun des écrans pleins : dégradé + motif, médaillon, pied de page.
+        """Shared background of the full screens: gradient + pattern, medallion, footer.
 
-        Identique pour toutes les scènes pleines : c'est le calque « fond » de l'encodeur, fixe pendant
-        les transitions (seul le bloc de textes change, voir _full_content)."""
+        Identical for all full scenes: it is the encoder's "background" layer, fixed during
+        transitions (only the text block changes, see _full_content)."""
         img = self._bg()
         med_top, med = self._med_geom()
         m = self.medallion(med)
@@ -333,16 +333,16 @@ class SceneRenderer:
 
     def _full_content(self, title: str, sub: str = "", big: str = "", foot: str = "", *,
                       eyebrow: str = "", arabic: str = "") -> Image.Image:
-        """Bloc de textes d'un écran plein (calque transparent) : surtitre, titre, arabe, ornement,
-        (compte à rebours), texte. Le médaillon et le pied de page sont dans background().
+        """Text block of a full screen (transparent layer): eyebrow, title, Arabic, ornament,
+        (countdown), text. The medallion and the footer are in background().
 
-        Les blocs sont empilés d'après l'encre réelle des glyphes (espaces optiquement réguliers),
-        puis centrés verticalement dans la zone utile au-dessus du pied de page."""
+        The blocks are stacked according to the actual ink of the glyphs (optically regular spacing),
+        then centred vertically in the usable area above the footer."""
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
         px = self.px
         tnum = {"features": ["tnum"]} if RAQM else {}
-        # (genre, texte, police, couleur, espace avant, options)
+        # (kind, text, font, colour, gap before, options)
         items: list[tuple] = [("medallion", None, None, None, 0, {})]
         if eyebrow:
             items.append(("eyebrow", eyebrow.upper(), _font(SANS_SB, px(20)), GOLD, px(34), {}))
@@ -369,10 +369,10 @@ class SceneRenderer:
             else:
                 up, down = self._ink(d, text, font, **kw)
             sized.append((kind, text, font, fill, gap, kw, up, down))
-        # textes centrés sous le médaillon (dessiné à position fixe dans background())
+        # texts centred under the medallion (drawn at a fixed position in background())
         rest = sized[1:]
         total = sum(it[4] + it[6] + it[7] for it in rest) - rest[0][4]
-        region_top, bottom_zone = med_top + med + px(30), self.H - px(84)  # pied de page sous bottom_zone
+        region_top, bottom_zone = med_top + med + px(30), self.H - px(84)  # footer below bottom_zone
         y = region_top + max(0, (bottom_zone - region_top - total) * 0.42) - rest[0][4]
         cx = self.W / 2
         for kind, text, font, fill, gap, kw, up, down in rest:
@@ -387,15 +387,15 @@ class SceneRenderer:
         return img
 
     def _fit(self, d, text: str, font, path: str, size: int, max_w: Optional[int] = None):
-        """Réduit la taille si le texte dépasse la zone utile (marges de 10 %)."""
+        """Shrinks the size if the text overflows the usable area (10 % margins)."""
         max_w = max_w or int(self.W * 0.8)
         while size > 12 and self._width(d, text, font) > max_w:
             size -= 2
             font = _font(path, size)
         return font
 
-    # --- scènes -------------------------------------------------------------
-    # Chaque scène rend son calque de contenu (transparent) à partir de l'instant affiché (Moment).
+    # --- scenes -------------------------------------------------------------
+    # Each scene renders its content layer (transparent) from the displayed instant (Moment).
     def _avant(self, m: "Moment") -> Image.Image:
         sub = f"Début à {_hm(m.planned)}" if m.planned else ""
         return self._full_content(self.cfg.title, sub, "", "Merci de patienter, la diffusion commence très bientôt.",
@@ -432,11 +432,11 @@ class SceneRenderer:
         img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(self.px(10))))
 
     def _khutba(self, m: "Moment") -> Image.Image:
-        """Bandeau de la khutba : titre du rendez-vous, nom de la mosquée, titre arabe."""
+        """Khutba banner: meeting title, mosque name, Arabic title."""
         return self._banner(self.cfg.title, self.cfg.mosque_name, AR_KHUTBA)
 
     def _dars(self, m: "Moment") -> Image.Image:
-        """Bandeau d'un dars ou d'une conférence : titre, intervenant, série et séance."""
+        """Banner of a dars or a conference: title, speaker, series and session."""
         ev = m.event
         if ev is None:
             return self._banner("Dars", self.cfg.mosque_name, AR_DARS)
@@ -450,7 +450,7 @@ class SceneRenderer:
         return self._banner(ev.get("title") or "Dars", "  ·  ".join(bits), arabic)
 
     def _dars_fin(self, m: "Moment") -> Image.Image:
-        """Écran de fin d'un dars : remerciement et annonce du prochain cours."""
+        """End screen of a dars: thanks and announcement of the next class."""
         nxt = m.next_event
         foot = "Merci de votre présence."
         if nxt:
@@ -460,7 +460,7 @@ class SceneRenderer:
                                   eyebrow="Fin de la diffusion", arabic=AR_DARS)
 
     def _banner(self, title: str, line2: str, arabic: str) -> Image.Image:
-        """Transparent + bandeau compact en bas à gauche : médaillon, titre, 2e ligne, titre arabe."""
+        """Transparent + compact banner at the bottom left: medallion, title, 2nd line, Arabic title."""
         px = self.px
         img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
@@ -478,13 +478,13 @@ class SceneRenderer:
         line2 = self._ellipsize(d, line2, f_s, max_x1 - px(26) - tx)
         w_text = max(self._width(d, title, f_t), self._width(d, line2, f_s))
         x1 = int(tx + w_text + sep + px(1) + sep + w_ar + px(26))
-        if x1 > max_x1:  # sous-titre ou titre long : on renonce au titre arabe plutôt que de déborder
+        if x1 > max_x1:  # subtitle or long title: we give up the Arabic title rather than overflow
             x1 = int(min(max_x1, tx + w_text + px(26)))
         r = px(6)
         self._panel_shadow(img, (x0, y0, x1, y1), r)
         d = ImageDraw.Draw(img)
         d.rounded_rectangle([x0, y0, x1, y1], r, fill=_alpha(self.panel, 244), corners=(False, True, True, False))
-        d.rectangle([x0, y0, x0 + px(5) - 1, y1], fill=GOLD)  # filet or à gauche
+        d.rectangle([x0, y0, x0 + px(5) - 1, y1], fill=GOLD)  # gold rule on the left
         m = self.medallion(med, ring=max(1, px(1.5)))
         img.alpha_composite(m, (int(x0 + px(5) + pad + med / 2 - m.width / 2), int(y0 + h / 2 - m.height / 2)))
         d = ImageDraw.Draw(img)
@@ -504,11 +504,11 @@ class SceneRenderer:
         return text.rstrip() + "…"
 
     def _janaza(self, m: "Moment") -> Image.Image:
-        """Écran plein dédié à la prière funéraire : sobre, sans caméra ni bandeau.
+        """Full screen dedicated to the funeral prayer: sober, without camera or banner.
 
-        La fiche saisie au tableau de bord n'apparaît que si elle l'a été (accord de la famille) :
-        nom en titre, mention en second. Sinon la carte reste générique. Le micro reste ouvert :
-        la prière s'entend, l'image est remplacée.
+        The record entered in the dashboard appears only if it was (family consent):
+        name as title, note as second line. Otherwise the card stays generic. The mic stays open:
+        the prayer can be heard, the image is replaced.
         """
         name, info = m.janaza_name, m.janaza_info
         sub = (info or "") if name else "La prière n'est pas diffusée."
@@ -517,29 +517,29 @@ class SceneRenderer:
                                   eyebrow="Salat al-Janaza", arabic=AR_JANAZA)
 
     def content(self, scene: str, m: "Moment") -> Image.Image:
-        """Calque de contenu de la scène ; l'encodeur le pose sur le fond commun si la scène est un écran plein."""
+        """Content layer of the scene; the encoder lays it over the shared background if the scene is a full screen."""
         return SCENES[scene].draw(self, m)
 
 
 @dataclass(frozen=True)
 class Moment:
-    """Ce que montrent les scènes : l'heure, la session prévue, le nom du défunt (Janaza, avec l'accord de
-    la famille), et pour un dars le cours en cours (`event`) ou le prochain (`next_event`)."""
+    """What the scenes show: the time, the planned session, the name of the deceased (Janaza, with the family's
+    consent), and for a dars the current class (`event`) or the next one (`next_event`)."""
     now: dt.datetime
     planned: Optional[dt.datetime] = None
     janaza_name: Optional[str] = None
-    janaza_info: Optional[str] = None   # mention sous le nom (âge, qualité…), même accord de la famille
-    event: Optional[dict] = None        # dars / conférence en cours : title, speaker, series, session_no, kind
-    next_event: Optional["EventInstance"] = None   # prochaine occurrence, pour l'écran de fin et l'entracte
+    janaza_info: Optional[str] = None   # note under the name (age, standing…), same family consent
+    event: Optional[dict] = None        # dars / conference in progress: title, speaker, series, session_no, kind
+    next_event: Optional["EventInstance"] = None   # next occurrence, for the end screen and the interlude
 
 
 @dataclass(frozen=True)
 class Scene:
-    full: bool                  # écran plein : le fond commun masque la caméra
-    mic: bool                   # micro du direct ouvert
+    full: bool                  # full screen: the shared background masks the camera
+    mic: bool                   # live microphone open
     draw: Callable[[SceneRenderer, Moment], Image.Image]
-    label: str                  # libellé du bouton de contrôle : le nom de l'état ne convient pas toujours
-    ticking: bool = False       # le contenu change avec l'heure (compte à rebours) : rendu à chaque seconde
+    label: str                  # control button label: the state name does not always fit
+    ticking: bool = False       # the content changes with the time (countdown): rendered every second
 
 
 SCENES = {

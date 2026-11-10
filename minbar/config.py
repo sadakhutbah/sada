@@ -1,6 +1,6 @@
-"""Configuration de l'orchestrateur (surchargeable par un fichier JSON via --config).
+"""Orchestrator configuration (overridable by a JSON file via --config).
 
-Les réglages de la machine à états (horaires, signaux) sont ceux de MachineParams."""
+The state-machine settings (schedule, signals) are those of MachineParams."""
 from __future__ import annotations
 import json
 from dataclasses import dataclass, field
@@ -12,10 +12,10 @@ from .state import MachineParams
 
 @dataclass
 class Config(MachineParams):
-    # --- Entrées / sorties --------------------------------------------------
+    # --- Inputs / outputs ---------------------------------------------------
     camera_url: str = "rtsp://127.0.0.1:8554/cam"
-    # Sortie RTMP : en démo, serveur local qui joue le rôle de Facebook.
-    # En production : rtmps://live-api-s.facebook.com:443/rtmp/<clé> (clé lue dans l'env MINBAR_RTMP_URL).
+    # RTMP output: in demo mode, a local server playing Facebook's role.
+    # In production: rtmps://live-api-s.facebook.com:443/rtmp/<key> (key read from the MINBAR_RTMP_URL env).
     rtmp_url: str = "rtmp://127.0.0.1:1935/live/facebook"
     record_dir: str = str(paths.RECORDINGS)
     state_dir: str = str(paths.STATE)
@@ -23,53 +23,53 @@ class Config(MachineParams):
     height: int = 720
     fps: int = 25
     video_bitrate: str = "2500k"
-    # Enregistrement propre (caméra sans habillage) pour les clips : live_*_clean.mkv, dans le même ffmpeg.
+    # Clean recording (camera without overlay) for clips: live_*_clean.mkv, in the same ffmpeg.
     record_clean: bool = True
-    clean_copy: bool = True             # copie du flux caméra (qualité d'origine) ; False = x264 crf 18 en 1280x720
-    # --- Horaires -----------------------------------------------------------
-    # Laissez vide pour la mosquée : configurez l'URL Mawaqit (cli --mawaqit-url / Réglages → Mosquée)
-    # ou imposez les horaires (cli --times, champ jumua_times_override).
+    clean_copy: bool = True             # camera stream copy (original quality); False = x264 crf 18, 1280x720
+    # --- Schedule -----------------------------------------------------------
+    # Leave empty for the mosque: configure the Mawaqit URL (cli --mawaqit-url / Settings → Mosque)
+    # or impose the times (cli --times, jumua_times_override field).
     mawaqit_url: str = ""
     mawaqit_cache: str = str(paths.CACHE / "mawaqit.json")
-    jumua_times_override: list[str] = field(default_factory=list)  # ex. ["12:30", "13:30"]
-    events_file: str = str(paths.DATA / "events.json")   # programme : dars, conférences
-    # --- Horloge simulée ----------------------------------------------------
-    sim_start: str | None = None        # "HH:MM" : heure simulée de départ (None = heure réelle)
-    sim_speed: float = 1.0              # accélération hors khutba
-    # --- Signaux ------------------------------------------------------------
+    jumua_times_override: list[str] = field(default_factory=list)  # e.g. ["12:30", "13:30"]
+    events_file: str = str(paths.DATA / "events.json")   # programme: dars, conferences
+    # --- Simulated clock ----------------------------------------------------
+    sim_start: str | None = None        # "HH:MM": simulated start time (None = real time)
+    sim_speed: float = 1.0              # acceleration outside the khutba
+    # --- Signals ------------------------------------------------------------
     vad_aggressiveness: int = 3
-    vad_ratio: float = 0.5              # part de trames voisées sur 1 s pour dire « voix »
-    # --- Habillage (identité de la mosquée, à définir pour chaque mosquée) ---
-    mosque_name: str = ""               # ex. "Mosquée Assalam" (pied de page, bandeau khutba, API)
-    mosque_name_ar: str = ""            # ex. "مسجد السلام" (vide : seul le nom latin est affiché)
-    logo: str = ""                      # chemin du logo de la mosquée (jpg/png) ; vide = emblème neutre dessiné
-    # --- Présence au minbar (v1 : mouvement, sans YOLO) ---------------------
+    vad_ratio: float = 0.5              # share of voiced frames over 1 s to call it "voice"
+    # --- Overlay (mosque identity, to be defined for each mosque) ------------
+    mosque_name: str = ""               # e.g. "Mosquée Assalam" (footer, khutba banner, API)
+    mosque_name_ar: str = ""            # e.g. "مسجد السلام" (empty: only the Latin name is shown)
+    logo: str = ""                      # path of the mosque logo (jpg/png); empty = neutral emblem drawn
+    # --- Presence at the minbar (v1: motion, without YOLO) ------------------
     presence: str = "off"               # off | motion
-    presence_threshold: float = 0.004   # part de pixels de la zone qui changent pour dire « mouvement »
-    presence_roi: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])  # x0,y0,x1,y1 en fractions
-    presence_hold_s: float = 8.0        # un mouvement vaut « présent » pendant ce délai
-    presence_pixel_delta: int = 12      # écart de niveau (0-255) compté comme un changement réel
-    presence_fps: float = 2.0           # images analysées par seconde (2 suffit, coût négligeable)
+    presence_threshold: float = 0.004   # share of pixels in the zone that change to call it "motion"
+    presence_roi: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])  # x0,y0,x1,y1 as fractions
+    presence_hold_s: float = 8.0        # a motion counts as "present" for this delay
+    presence_pixel_delta: int = 12      # level difference (0-255) counted as a real change
+    presence_fps: float = 2.0           # analysed frames per second (2 is enough, negligible cost)
     presence_width: int = 160
     presence_height: int = 90
-    # --- Visage au minbar (YuNet, CPU) : signal de fin de khutba --------------
+    # --- Face at the minbar (YuNet, CPU): end-of-khutba signal ----------------
     face: str = "yunet"                 # off | yunet
-    face_threshold: float = 0.6         # score minimal d'un visage de face
-    face_hold_s: float = 4.0            # un visage vu vaut « présent » pendant ce délai
-    face_roi: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])  # x0,y0,x1,y1 en fractions
-    face_fps: float = 5.0               # images analysées par seconde
+    face_threshold: float = 0.6         # minimum score for a frontal face
+    face_hold_s: float = 4.0            # a face seen counts as "present" for this delay
+    face_roi: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])  # x0,y0,x1,y1 as fractions
+    face_fps: float = 5.0               # analysed frames per second
     face_width: int = 320
     face_height: int = 180
     title: str = "Khutba du vendredi"
     dark_green: str = "#1E7A3C"
-    # --- Notifications à l'imam (webhook ou Telegram ; rien n'est publié) ---
-    notify_url: str = ""                # webhook générique (Discord, Slack, n8n…) qui reçoit {"text": ...}
-    telegram_token: str = ""            # bot Telegram : jeton et conversation, à garder hors du dépôt
+    # --- Notifications (webhook or Telegram; nothing published) --------------
+    notify_url: str = ""                # generic webhook (Discord, Slack, n8n…) that receives {"text": ...}
+    telegram_token: str = ""            # Telegram bot: token and conversation, to be kept out of the repository
     telegram_chat: str = ""
     # --- API ----------------------------------------------------------------
     api_host: str = "127.0.0.1"
     api_port: int = 8088
-    api_token: str = ""                 # si défini : en-tête X-Token requis
+    api_token: str = ""                 # if set: X-Token header required
 
     @classmethod
     def load(cls, path: str | None = None, **overrides) -> "Config":

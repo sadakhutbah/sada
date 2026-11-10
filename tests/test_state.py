@@ -17,7 +17,7 @@ def mk(times=("12:30", "13:30"), **kw):
 
 
 class Drv:
-    """Pilote de test : avance t (temps réel) et now (horloge mosquée) ensemble."""
+    """Test driver: advances t (real time) and now (mosque clock) together."""
     def __init__(self, m, now):
         self.m, self.now, self.t = m, now, 1000.0
         self.voice = 0.0
@@ -54,14 +54,14 @@ def test_idle_to_arme_to_avant():
 def test_voice_arms_stream_khutba_only_from_scheduled_time():
     m, _ = mk()
     d = Drv(m, at(12, 5))
-    d.run(40, voice=True)  # voix hors fenêtre : rien
+    d.run(40, voice=True)  # voice outside the window: nothing
     assert m.state == State.IDLE
     d.now = at(12, 20)
     d.step(voice=True)
-    assert m.state == State.ARME  # armé ; voix déjà > 20 s => démarrage anticipé au tick suivant
-    d.run(25, voice=True)         # voix soutenue avant l'horaire : stream armé, caméra pas affichée
+    assert m.state == State.ARME  # armed; voice already > 20 s => early start on the next tick
+    d.run(25, voice=True)         # sustained voice before the scheduled time: stream armed, camera not shown
     assert m.state == State.AVANT and m.stream_on and m.scene == "avant"
-    d.run(11, voice=True, clock=60)  # on franchit T la voix toujours soutenue : la caméra apparaît
+    d.run(11, voice=True, clock=60)  # we cross T with the voice still sustained: the camera appears
     assert m.state == State.KHUTBA
     assert m.records[0].status == "live"
 
@@ -76,11 +76,11 @@ def test_stop_needs_silence_plus_grace_and_resume_cancels():
     m, _ = mk(silence_stop_s=60, grace_s=30, min_khutba_s=100)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(200, voice=True)
-    d.run(61, voice=False)          # silence 61 s -> grâce
+    d.run(61, voice=False)          # 61 s silence -> grace
     assert m.state == State.KHUTBA
-    d.run(5, voice=True)            # la voix revient pendant la grâce
+    d.run(5, voice=True)            # the voice returns during the grace period
     d.run(61, voice=False)
-    assert m.state == State.KHUTBA                # la voix revenue a annulé la grâce : elle repart de zéro
+    assert m.state == State.KHUTBA                # the returning voice cancelled the grace: it starts over from zero
     d.run(31, voice=False)
     assert m.state == State.PRIERE
     assert m.records[0].status == "done" and m.records[0].end_reason == "silence prolongé"
@@ -98,7 +98,7 @@ def test_two_sessions_full_cycle():
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(60, voice=True); d.run(30, voice=False)
     assert m.state == State.PRIERE
-    d.step(clock=11 * 60, voice=False)           # 11 min de prière
+    d.step(clock=11 * 60, voice=False)           # 11 min of prayer
     assert m.state == State.ENTRACTE and m.session == at(13, 30)
     d.now = at(13, 30, 5); d.voice = d.silence = 0
     d.run(25, voice=True)
@@ -121,7 +121,7 @@ def test_second_session_skipped_when_no_signal():
     d.run(60, voice=True); d.run(20, voice=False)
     d.step(clock=11 * 60, voice=False)
     assert m.state == State.ENTRACTE
-    d.now = at(14, 16)               # fenêtre 13:30+45 dépassée, aucune voix
+    d.now = at(14, 16)               # 13:30+45 window passed, no voice
     d.step(voice=False)
     assert m.records[1].status == "skipped"
     assert m.state == State.TERMINE
@@ -132,7 +132,7 @@ def test_manual_override_suspends_auto():
     d = Drv(m, at(12, 29))
     msg = m.command("start", d.sig())
     assert m.state == State.KHUTBA and m.override
-    d.run(500, voice=False)           # le silence n'arrête rien en override
+    d.run(500, voice=False)           # silence stops nothing in override
     assert m.state == State.KHUTBA
     m.command("auto", d.sig())
     assert not m.override
@@ -169,7 +169,7 @@ def test_janaza_excluded_from_pipeline():
     j = [r for r in m.sessions_dicts() if r["status"] == "janaza"]
     assert j and not runs.produces_content(j[0])
     d.run(100, voice=False)
-    assert m.state == State.JANAZA     # jamais coupée automatiquement
+    assert m.state == State.JANAZA     # never cut automatically
     m.command("stop", d.sig())
     assert m.state == State.TERMINE
 
@@ -205,14 +205,14 @@ def test_leaving_khutba_by_hand_closes_its_session():
 def test_khutba_scene_waits_for_the_scheduled_time():
     m, _ = mk()
     d = Drv(m, at(12, 26))
-    d.run(35, voice=True)     # imam qui parle avant 12:30 : stream armé, caméra cachée
+    d.run(35, voice=True)     # imam speaking before 12:30: stream armed, camera hidden
     assert m.state == State.AVANT and m.scene == "avant"
-    d.run(30, voice=False)    # la voix s'arrête avant l'horaire
+    d.run(30, voice=False)    # the voice stops before the scheduled time
     assert m.state == State.AVANT
     d.now = at(12, 30, 1)
-    d.step(voice=False)       # 12:30 sans voix confirmée : toujours pas de caméra
+    d.step(voice=False)       # 12:30 without confirmed voice: still no camera
     assert m.state == State.AVANT
-    d.run(25, voice=True)     # voix soutenue après l'horaire : la scène change
+    d.run(25, voice=True)     # sustained voice after the scheduled time: the scene changes
     assert m.state == State.KHUTBA
 
 
@@ -221,7 +221,7 @@ def test_pause_then_start_then_auto_lets_prayer_end():
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     m.command("pause", d.sig())
     m.command("start", d.sig())
-    assert m.records[0].status == "live"          # la pause n'a pas coupé la session
+    assert m.records[0].status == "live"          # the pause did not cut the session
     m.command("scene", d.sig(), "priere")
     m.command("auto", d.sig())
     d.run(13, voice=False, clock=60)
@@ -246,7 +246,7 @@ def test_session_spanning_an_encoder_restart_keeps_its_first_file():
     pos = [(0, 5.0)]
     m.pos_fn = lambda: pos[0]
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
-    pos[0] = (1, 30.0)                              # ffmpeg relancé : nouvel enregistrement
+    pos[0] = (1, 30.0)                              # ffmpeg restarted: new recording
     m.command("stop", d.sig())
     r = m.records[0]
     assert (r.recording, r.start_pos, r.end_pos) == (0, 5.0, None)
@@ -321,7 +321,7 @@ def test_nothing_comes_back_after_fin():
 
 
 def test_chaque_etat_a_un_libelle_d_affichage():
-    """Un état sans libellé s'affiche brut dans le back-office (« DARS »)."""
+    """A state without a label is shown raw in the back-office (“DARS”)."""
     assert set(STATE_LABELS) == set(State)
     assert all(v and v != k.value for k, v in STATE_LABELS.items())
 

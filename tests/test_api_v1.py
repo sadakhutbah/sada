@@ -1,11 +1,11 @@
-"""API JSON du front React : accès, connexion, et forme des réponses."""
+"""JSON API of the React front end: access, login, and response shapes."""
 from __future__ import annotations
 
 import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import PW, client  # noqa: E402,F401  (conftest assure le chemin)
+from test_backoffice import PW, client  # noqa: E402,F401  (conftest provides the path)
 
 
 def test_api_refuse_sans_session_en_json(env):
@@ -73,7 +73,7 @@ def test_un_imam_ne_voit_que_ses_khutbas(env):
 
 
 def test_khutbas_cherchables_filtrees_et_paginees(env):
-    """Une mosquée accumule des années de khutbas : recherche, filtre et pages sont faits par le serveur."""
+    """A mosque accumulates years of khutbas: search, filtering and paging are done by the server."""
     c = client(env, "admin")
     conn = env["conn"]
     base = conn.execute("SELECT mosque_id, output_dir FROM khutbas LIMIT 1").fetchone()
@@ -87,19 +87,19 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
     tout = c.get("/api/v1/sermons", params={"limit": 200}).json()
     assert tout["total"] >= 6 and tout["total"] == len(tout["items"])
 
-    # Pagination : deux pages disjointes, et le total reste celui du filtre, pas celui de la page.
+    # Pagination: two disjoint pages, and the total remains that of the filter, not of the page.
     p1 = c.get("/api/v1/sermons", params={"limit": 2, "offset": 0}).json()
     p2 = c.get("/api/v1/sermons", params={"limit": 2, "offset": 2}).json()
     assert p1["total"] == p2["total"] == tout["total"] and len(p1["items"]) == len(p2["items"]) == 2
     assert {k["id"] for k in p1["items"]}.isdisjoint({k["id"] for k in p2["items"]})
 
-    # Recherche : le texte porte sur le passage, le thème et l'imam — les dates ont leur sélecteur.
+    # Search: the text covers the passage, the theme and the imam — dates have their own picker.
     r = c.get("/api/v1/sermons", params={"q": "patience"}).json()
     assert r["total"] >= 2 and all("patience" in (k["theme"] or "").lower() for k in r["items"])
     assert c.get("/api/v1/sermons", params={"q": "Passage 3"}).json()["total"] == 1
     assert c.get("/api/v1/sermons", params={"q": "introuvable"}).json()["total"] == 0
 
-    # Filtre « à valider » : ne renvoie que des khutbas qui ont au moins un clip en attente.
+    # “To validate” filter: returns only khutbas that have at least one pending clip.
     a = c.get("/api/v1/sermons", params={"pending": 1}).json()
     assert a["total"] <= tout["total"]
     assert all(int(k["pending"]) > 0 for k in a["items"])
@@ -107,7 +107,7 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
 
 
 def test_mois_de_la_liste(env):
-    """Le sélecteur de période s'adosse aux mois réellement présents, avec leur compte."""
+    """The period picker is based on the months actually present, with their count."""
     c = client(env, "admin")
     tout = c.get("/api/v1/sermons", params={"limit": 200}).json()["items"]
     attendus = {}
@@ -116,11 +116,11 @@ def test_mois_de_la_liste(env):
             attendus[k["date"][:7]] = attendus.get(k["date"][:7], 0) + 1
     r = c.get("/api/v1/sermons/mois").json()["items"]
     assert r and {m["mois"]: m["n"] for m in r} == attendus
-    assert [m["mois"] for m in r] == sorted(attendus, reverse=True)   # du plus récent au plus ancien
+    assert [m["mois"] for m in r] == sorted(attendus, reverse=True)   # from most recent to oldest
 
 
 def test_filtre_par_mois(env):
-    """Choisir un mois ne renvoie que ce mois-là, et la recherche texte se cumule avec."""
+    """Choosing a month returns only that month, and the text search combines with it."""
     c = client(env, "admin")
     mois = c.get("/api/v1/sermons/mois").json()["items"][0]["mois"]
     trouve = c.get("/api/v1/sermons", params={"mois": mois, "limit": 200}).json()
@@ -130,10 +130,10 @@ def test_filtre_par_mois(env):
 
 
 def test_commandes_live_exposees_et_validees(env, monkeypatch):
-    """Le tableau de bord liste toutes les commandes ; une valeur hors liste est refusée avant l'envoi."""
+    """The dashboard lists all commands; a value outside the list is refused before sending."""
     from minbar.backoffice import live
     envoyees = []
-    live._caches.clear()                # le cache du statut est global : on ne laisse rien aux autres tests
+    live._caches.clear()                # the status cache is global: we leave nothing to the other tests
     monkeypatch.setattr(live, "_call", lambda m, meth, chemin, params=None, timeout=3.0:
                         (envoyees.append((chemin, params)) if meth == "POST" else None)
                         or {"message": "ok", "state": "KHUTBA"})

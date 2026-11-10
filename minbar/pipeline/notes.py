@@ -1,7 +1,7 @@
-"""Notes en Markdown : résumé (modèle de langage si disponible, sinon extractif), citations EXACTES uniquement.
+"""Markdown notes: summary (language model when available, extractive otherwise), EXACT quotes only.
 
-Règle stricte : une citation n'est acceptée que si elle est une sous-chaîne littérale d'un segment du transcript
-(vérifié en code, pas de confiance aveugle au LLM). Le résumé est toujours étiqueté « généré, à valider ».
+Strict rule: a quote is accepted only if it is a literal substring of a transcript segment
+(checked in code, no blind trust in the LLM). The summary is always labelled « generated, to be validated ».
 """
 from __future__ import annotations
 import re
@@ -17,7 +17,7 @@ THEME = "## Thème (résumé généré)"
 
 
 def theme_from_markdown(md: str) -> str:
-    """Thème d'un notes.md écrit par build_notes."""
+    """Theme of a notes.md written by build_notes."""
     lines = md.splitlines()
     for i, line in enumerate(lines):
         if line == THEME:
@@ -30,14 +30,14 @@ def _norm_ws(s: str) -> str:
 
 
 def find_quote(quote: str, segments: list[dict]) -> dict | None:
-    """Renvoie le segment contenant littéralement la citation (espaces/casse normalisés), sinon None."""
+    """Return the segment literally containing the quote (whitespace/case normalised), otherwise None."""
     q = _norm_ws(quote).strip("«»\"' .…")
     if len(q) < 12:
         return None
     for s in segments:
         if q in _norm_ws(s["text"]):
             return s
-    # citation à cheval sur deux segments consécutifs
+    # quote spanning two consecutive segments
     for a, b in zip(segments, segments[1:]):
         if q in _norm_ws(a["text"] + " " + b["text"]):
             return a
@@ -45,7 +45,7 @@ def find_quote(quote: str, segments: list[dict]) -> dict | None:
 
 
 def extractive_summary(segments: list[dict], n_points: int = 6) -> dict:
-    """Résumé extractif : phrases du transcript les mieux notées (fréquence des mots porteurs de sens)."""
+    """Extractive summary: the best-scored transcript sentences (frequency of meaning-bearing words)."""
     sents = []
     for s in segments:
         if is_arabic(s["text"]):
@@ -83,7 +83,7 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
     fallback = False
     if not summ:
         summ, fallback = extractive_summary(segments), True
-    # citations vérifiées mécaniquement
+    # quotes checked mechanically
     quotes = []
     rejected = 0
     for q in summ.get("citations", []) or []:
@@ -92,7 +92,7 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
             quotes.append((seg["start"], q.strip()))
         else:
             rejected += 1
-    if not quotes:  # repli : phrases littérales du transcript
+    if not quotes:  # fallback: literal sentences from the transcript
         ex = extractive_summary(segments, 4)
         for p in ex["points"]:
             seg = find_quote(p, segments)

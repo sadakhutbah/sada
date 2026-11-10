@@ -1,4 +1,4 @@
-"""Comptes, mots de passe (argon2id), sessions serveur, jeton CSRF, limitation des tentatives, droits."""
+"""Accounts, passwords (argon2id), server sessions, CSRF token, attempt limiting, permissions."""
 from __future__ import annotations
 
 import hashlib
@@ -14,14 +14,14 @@ from . import db
 ROLES = ("admin", "responsable", "imam")
 ROLE_LABELS = {"admin": "Administrateur", "responsable": "Responsable", "imam": "Imam"}
 
-# Matrice des droits : une seule source de vérité, testée (tests/test_backoffice.py).
-#   live        : piloter le live (live.COMMANDS) — SPEC 5.0 ter : imam et responsables
-#   history_all : voir toutes les khutbas de la mosquée (l'imam ne voit que les siennes)
-#   validate    : corriger / valider / rejeter un clip (l'imam : seulement les clips de ses khutbas)
-#   publish     : publier un clip validé
-#   assign      : rattacher une khutba à un imam, lancer un import
-#   journal     : consulter le journal
-#   admin       : comptes, configuration de la mosquée, connecteurs
+# Permission matrix: a single source of truth, tested (tests/test_backoffice.py).
+#   live        : drive the live (live.COMMANDS) — SPEC 5.0 ter: imam and responsables
+#   history_all : see all the khutbas of the mosque (the imam only sees his own)
+#   validate    : correct / validate / reject a clip (the imam: only the clips of his khutbas)
+#   publish     : publish a validated clip
+#   assign      : attach a khutba to an imam, start an import
+#   journal     : consult the journal
+#   admin       : accounts, mosque configuration, connectors
 PERMS = {
     "live": {"admin", "responsable", "imam"},
     "history_all": {"admin", "responsable"},
@@ -33,11 +33,11 @@ PERMS = {
 }
 
 MIN_PASSWORD = 10
-SESSION_TTL = 7 * 24 * 3600          # durée maximale d'une session
-IDLE_TTL = 12 * 3600                 # déconnexion après 12 h d'inactivité
+SESSION_TTL = 7 * 24 * 3600          # maximum lifetime of a session
+IDLE_TTL = 12 * 3600                 # signed out after 12 h of inactivity
 COOKIE = "minbar_session"
 
-_ph = PasswordHasher()               # argon2id, paramètres par défaut de argon2-cffi (RFC 9106 « low memory »)
+_ph = PasswordHasher()               # argon2id, argon2-cffi default parameters (RFC 9106 "low memory")
 
 
 def can(user: dict | None, perm: str) -> bool:
@@ -68,13 +68,13 @@ def _dummy_hash() -> str:
 
 
 def imams(conn, mosque_id: int) -> list[dict]:
-    """Imams actifs de la mosquée (choix de l'imam d'une khutba, imam par défaut)."""
+    """Active imams of the mosque (choice of the imam of a khutba, default imam)."""
     return db.all_(conn, "SELECT id, display_name FROM users WHERE mosque_id = ? AND role = 'imam' AND active = 1 "
                          "ORDER BY display_name", mosque_id)
 
 
 def imam_id(conn, mosque_id: int, value) -> int | None:
-    """Identifiant d'imam actif de la mosquée lu dans un formulaire, sinon None."""
+    """Id of an active imam of the mosque read from a form, otherwise None."""
     iid = int(value) if str(value or "").isdigit() else None
     return iid if iid in {u["id"] for u in imams(conn, mosque_id)} else None
 
@@ -95,13 +95,13 @@ def create_user(conn, mosque_id: int, username: str, password: str, role: str, d
 
 def set_password(conn, user_id: int, password: str) -> None:
     conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), user_id))
-    conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))   # déconnecte partout
+    conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))   # signs out everywhere
 
 
 def authenticate(conn, username: str, password: str) -> dict | None:
     u = db.one(conn, "SELECT * FROM users WHERE username = ?", username.strip())
     if not u:
-        verify_password(_dummy_hash(), password)   # temps constant : ne révèle pas si le compte existe
+        verify_password(_dummy_hash(), password)   # constant time: does not reveal whether the account exists
         return None
     if not verify_password(u["password_hash"], password) or not u["active"]:
         return None
@@ -117,10 +117,10 @@ def _h(token: str) -> str:
 
 
 def ua_tag(ua: str | None) -> str:
-    """Empreinte courte du navigateur : une session volée depuis un autre navigateur est refusée.
+    """Short fingerprint of the browser: a session stolen from another browser is refused.
 
-    Volontairement tolérante (pas la version complète du user agent, qui change à chaque mise à jour) :
-    on retient la famille et le système.
+    Deliberately tolerant (not the full user agent version, which changes at every update):
+    only the family and the system are kept.
     """
     ua = ua or ""
     fam = next((f for f in ("Firefox", "Edg", "Chrome", "Safari", "OPR") if f in ua), "autre")
@@ -129,7 +129,7 @@ def ua_tag(ua: str | None) -> str:
 
 
 def open_session(conn, user_id: int, ip: str | None, ua: str | None) -> str:
-    """Crée une session ; renvoie le jeton (seul son empreinte SHA-256 est stockée)."""
+    """Creates a session; returns the token (only its SHA-256 digest is stored)."""
     token = secrets.token_urlsafe(32)
     t = time.time()
     conn.execute("INSERT INTO auth_sessions (token_hash, user_id, csrf, created_at, expires_at, last_seen_at, ip, user_agent) "
@@ -141,10 +141,10 @@ def open_session(conn, user_id: int, ip: str | None, ua: str | None) -> str:
 
 
 def load_session(conn, token: str | None, ua: str | None = None, ip: str | None = None) -> tuple[dict, dict] | None:
-    """-> (session, utilisateur) si la session est valide, sinon None.
+    """-> (session, user) if the session is valid, otherwise None.
 
-    Rejetée si expirée, inactive trop longtemps, ou présentée par un autre navigateur que celui de
-    l'ouverture (empreinte ua_tag) : un jeton recopié ailleurs ne sert donc à rien.
+    Rejected if expired, inactive for too long, or presented by a browser other than the one that
+    opened it (ua_tag fingerprint): a token copied elsewhere is therefore useless.
     """
     if not token:
         return None
@@ -153,8 +153,8 @@ def load_session(conn, token: str | None, ua: str | None = None, ip: str | None 
     if not s:
         return None
     if (s["user_agent"] or "autre") != ua_tag(ua):
-        # Jeton présenté par un autre navigateur : on NE détruit PAS la session (ce serait offrir au
-        # voleur un déni de service sur le compte), on journalise pour que le Maître voie la tentative.
+        # Token presented by another browser: we do NOT destroy the session (that would hand the
+        # thief a denial of service on the account), we log it so the Master sees the attempt.
         db.audit(conn, None, s["user_id"], "session.navigateur_inattendu", "session", s["id"], ip=ip)
         return None
     if s["expires_at"] < t or s["last_seen_at"] < t - IDLE_TTL:
@@ -177,10 +177,10 @@ def check_csrf(session: dict, value: str | None) -> bool:
     return bool(value) and secrets.compare_digest(session["csrf"], str(value))
 
 
-# --------------------------------------------------------- limitation des essais
+# --------------------------------------------------------- attempt limiting
 
 class RateLimiter:
-    """5 échecs en 10 min (par IP + identifiant, ou 20 par IP) -> blocage 10 min."""
+    """5 failures in 10 min (per IP + username, or 20 per IP) -> 10 min block."""
 
     def __init__(self, per_user: int = 5, per_ip: int = 20, window: float = 600.0):
         self.per_user, self.per_ip, self.window = per_user, per_ip, window

@@ -1,7 +1,7 @@
-"""Logo propre au back-office : fichier par mosquée sous data/backoffice/logos/ ; emblème neutre à défaut.
+"""Logo specific to the back-office: one file per mosque under data/backoffice/logos/; neutral emblem by default.
 
-Le logo des scènes vidéo (config.logo, monogramme sur l'habillage) est un réglage séparé : ici on ne
-manipule que l'image de l'interface (favicon + barre du haut).
+The logo of the video scenes (config.logo, monogram on the overlay) is a separate setting: here we only
+handle the image of the interface (favicon + top bar).
 """
 from __future__ import annotations
 
@@ -25,14 +25,14 @@ def version(mosque: dict) -> str:
 
 
 def url(mosque: dict | None) -> str:
-    """Adresse de l'image du logo, suffixée par une version : le navigateur ne garde pas l'ancien favicon."""
+    """Address of the logo image, suffixed with a version: the browser does not keep the old favicon."""
     if not mosque or not (mosque.get("logo_path") or "").strip():
         return "/static/emblem.svg"
     return f"/logo/{mosque['slug']}?v={version(mosque)}"
 
 
 def save(mosque: dict, filename: str, content: bytes) -> str:
-    """Valide et enregistre l'image ; renvoie le chemin relatif au dépôt. Lève ValueError si refusée."""
+    """Validates and saves the image; returns the path relative to the repository. Raises ValueError if refused."""
     from PIL import Image
 
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""

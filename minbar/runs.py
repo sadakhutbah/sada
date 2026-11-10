@@ -1,7 +1,7 @@
-"""Run de l'orchestrateur : data/state/<run_id>/sessions.json.
+"""Orchestrator run: data/state/<run_id>/sessions.json.
 
-Écrit par l'orchestrateur (une entrée par session : prévue, manuelle ou janaza), lu par le pipeline et le
-back-office. Les sorties du pipeline d'une session vont dans data/output/<run_id>/<session_dir(index)>/.
+Written by the orchestrator (one entry per session: planned, manual or janaza), read by the pipeline and the
+back-office. The pipeline outputs of a session go to data/output/<run_id>/<session_dir(index)>/.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def run_date(run_id: str) -> str:
 
 
 def session_number(index: int) -> int:
-    """Numéro affiché d'une session (index 0 -> session 1)."""
+    """Displayed number of a session (index 0 -> session 1)."""
     return index + 1
 
 
@@ -48,27 +48,27 @@ def load(path: str | Path) -> dict:
 
 
 def latest(state_dir: Path = paths.STATE) -> Path | None:
-    """sessions.json du run le plus récent."""
+    """sessions.json of the most recent run."""
     runs = sorted((d for d in state_dir.glob("*") if RUN_RE.match(d.name) and (d / SESSIONS).exists()),
                   key=lambda d: d.name)
     return runs[-1] / SESSIONS if runs else None
 
 
 def produces_content(s: dict) -> bool:
-    """La session alimente le pipeline (transcription, clips, import) : tout sauf la Janaza."""
+    """The session feeds the pipeline (transcription, clips, import): everything but the Janaza."""
     return s.get("status") != "janaza"
 
 
 def is_done(s: dict) -> bool:
-    """Session terminée : début et fin connus, prête pour le pipeline."""
+    """Finished session: start and end known, ready for the pipeline."""
     return s.get("status") == "done"
 
 
 def sources(data: dict, s: dict) -> tuple[str | None, str | None]:
-    """(enregistrement du live, enregistrement propre) qui contiennent la session.
+    """(live recording, clean recording) that contain the session.
 
-    Les positions start_pos / end_pos d'une session se lisent dans l'enregistrement n° `recording` (l'encodeur
-    en ouvre un nouveau à chaque relance). Runs anciens sans ce champ : le dernier enregistrement."""
+    The start_pos / end_pos positions of a session are read from recording no. `recording` (the encoder
+    opens a new one on each restart). Older runs without this field: the last recording."""
     recs = data.get("recordings") or []
     cleans = data.get("recordings_clean") or []
     i = s.get("recording")

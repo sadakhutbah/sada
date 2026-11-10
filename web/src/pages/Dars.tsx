@@ -4,21 +4,21 @@ import { api, type AgendaEvent, type EventForm, type EventsList } from "../api";
 import { currentSession } from "../App";
 import { Btn, Field, Pill, Segmented, inputClass } from "../ui";
 
-/** Agenda des dars et conférences : le programme que lit l'orchestrateur, en une liste à modifier.
- *  Une seule surface pour la liste ; un seul formulaire, découpé en onglets (Événement / Horaire),
- *  qui remplace le bouton d'ajout le temps de la saisie. Les données sont celles du serveur : la page
- *  ne calcule rien d'autre que l'affichage des jours et des heures. */
+/** Dars and conference agenda: the schedule the orchestrator reads, as an editable list.
+ *  A single surface for the list; a single form, split into tabs (Event / Time),
+ *  replacing the add button while entering. The data is the server's: the page
+ *  computes nothing but the display of days and times. */
 
 const VIDE: EventForm = {
   kind: "dars", title: "", speaker: "", series: "", session: "", max_min: "", publish: "1",
   mode: "weekly", date: "", time: "", weekday: "mardi", after: "isha", offset_min: "15",
 };
 
-/** Date ISO prise à midi, pour qu'aucun fuseau ne fasse glisser le jour. */
+/** ISO date taken at noon, so that no timezone makes the day slip. */
 const jour = (iso: string) => new Date(`${iso}T12:00:00`);
 const majuscule = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Nom d'un jour de la semaine dans la langue de l'interface (le serveur parle français). */
+/** Name of a weekday in the interface language (the server speaks French). */
 function nomJour(liste: string[], nom: string, langue: string): string {
   const i = liste.indexOf(nom);
   if (i < 0) return nom;
@@ -62,7 +62,7 @@ export default function Dars() {
     }
   };
 
-  /** « chaque mardi, 15 min après Isha » / « 21 nov. 2026 à 18:30 », dans la langue de l'interface. */
+  /** “every Tuesday, 15 min after Isha” / “21 Nov. 2026 at 18:30”, in the interface language. */
   const quand = (e: AgendaEvent): string => {
     const langue = i18n.language;
     const priere = e.after ? t(`dars.prayers.${e.after}`) : "";
@@ -195,8 +195,8 @@ export default function Dars() {
   );
 }
 
-/** Le formulaire unique : deux onglets, un seul bouton d'enregistrement. Le serveur valide ; son message
- *  de refus est affiché tel quel. */
+/** The single form: two tabs, a single save button. The server validates; its rejection
+ *  message is displayed as-is. */
 function Formulaire({ liste, depart, id, jourDe, onAnnuler, onEnregistre }: {
   liste: EventsList; depart: EventForm; id: string | null; jourDe: (n: string) => string;
   onAnnuler: () => void; onEnregistre: (texte: string) => void | Promise<void>;

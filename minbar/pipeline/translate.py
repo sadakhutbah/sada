@@ -1,13 +1,13 @@
-"""Traduction française des segments ARABES pour les sous-titres (les clips sont en français seul).
+"""French translation of the ARABIC segments for the subtitles (the clips are French only).
 
-- Versets détectés (Coran) : jamais traduits par le LLM ; on affiche la traduction Hamidullah (verses.json).
-  Le LLM choisit seulement, dans la traduction Hamidullah, l'EXTRAIT correspondant au passage récité :
-  il doit être une sous-chaîne littérale (vérifié en code), sinon on garde la traduction complète.
-- Formules rituelles (ta'awwudh, basmala, shahada…) : traductions fixes, pas de « carte verset ».
-- Autres segments arabes : modèle de langage (même endpoint que notes.py), traduction sobre, fidèle, courte.
-  Un segment que le LLM signale comme citation coranique NON appariée n'est pas traduit (rien à l'écran
-  plutôt qu'une traduction du Coran improvisée).
-Cache : translations.json ; relancer ne rappelle pas le LLM. Lire et modifier ce cache : segment_fr, verse_fr, with_correction.
+- Detected verses (Quran): never translated by the LLM; the Hamidullah translation is displayed (verses.json).
+  The LLM only picks, inside the Hamidullah translation, the EXCERPT matching the recited passage:
+  it must be a literal substring (checked in code), otherwise the full translation is kept.
+- Ritual formulas (ta'awwudh, basmala, shahada…): fixed translations, no « verse card ».
+- Other Arabic segments: language model (same endpoint as notes.py), sober, faithful, short translation.
+  A segment the LLM flags as an UNMATCHED Quranic quotation is not translated (nothing on screen
+  rather than an improvised Quran translation).
+Cache: translations.json; re-running does not call the LLM again. Read and edit this cache: segment_fr, verse_fr, with_correction.
 """
 from __future__ import annotations
 import copy
@@ -33,17 +33,17 @@ def empty() -> dict:
 
 
 def segment_fr(tr: dict, seg: dict) -> dict | None:
-    """{"fr": traduction, "coran": récitation non appariée} du segment arabe, ou None."""
+    """{"fr": translation, "coran": unmatched recitation} of the Arabic segment, or None."""
     return (tr.get("seg") or {}).get(_seg_key(seg["text"]))
 
 
 def verse_fr(tr: dict, m: dict) -> str:
-    """Traduction Hamidullah à afficher pour le verset : l'extrait récité s'il est connu, sinon le verset entier."""
+    """Hamidullah translation to display for the verse: the recited excerpt when known, otherwise the whole verse."""
     return (tr.get("verse_fr") or {}).get(verse_key(m)) or m.get("verse_fr", "")
 
 
 def with_correction(tr: dict, seg: dict, fr: str) -> dict:
-    """Copie des traductions où le segment a la traduction corrigée par un humain."""
+    """Copy of the translations in which the segment has a human-corrected translation."""
     out = copy.deepcopy(tr)
     out.setdefault("seg", {})[_seg_key(seg["text"])] = {"fr": fr, "coran": False}
     return out
@@ -51,7 +51,7 @@ def with_correction(tr: dict, seg: dict, fr: str) -> dict:
 
 def translate_session(segments: list[dict], matches: list[dict], cache_path: str | Path, use_llm: bool = True,
                       timeout: int = 600, log=print) -> dict:
-    """-> {"seg": {clé_segment: {"fr": str, "coran": bool}}, "verse_fr": {ref@start: extrait}}"""
+    """-> {"seg": {segment_key: {"fr": str, "coran": bool}}, "verse_fr": {ref@start: excerpt}}"""
     cache_path = Path(cache_path)
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else empty()
     vms = shown(matches, ambiguous=True)
@@ -94,7 +94,7 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
                 cache["verse_fr"][k] = ex if ok else m["verse_fr"]
                 if not ok:
                     log(f"traduction : extrait Hamidullah non littéral pour {k}, traduction complète gardée")
-    # formules rituelles connues : traduction fixe si le LLM est indisponible
+    # known ritual formulas: fixed translation when the LLM is unavailable
     for i, s in ar:
         k = _seg_key(s["text"])
         fr = formula_fr(s["text"]) if k not in cache["seg"] else None

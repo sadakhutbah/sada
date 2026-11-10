@@ -1,8 +1,8 @@
-"""Application web du back-office : API JSON (`/api/v1`) et front React servi à la racine.
+"""Web application of the back-office: JSON API (`/api/v1`) and React front served at the root.
 
-Le rendu des pages (Jinja2) a été retiré : l'unique interface est l'application React de `web/`,
-construite dans `web/dist` puis servie en fichiers statiques. Ce module ne produit donc plus que
-du JSON (API et médias) ; les écrans sont décrits une seule fois, dans le front.
+Page rendering (Jinja2) has been removed: the only interface is the React application of `web/`,
+built into `web/dist` then served as static files. This module therefore only produces
+JSON (API and media); screens are described once, in the front.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ FRONT = HERE.parent.parent / "web" / "dist"
 PRE_COOKIE = "minbar_pre"
 
 
-# ------------------------------------------------------------------ erreurs
+# ------------------------------------------------------------------ errors
 
 class LoginRequired(Exception):
     pass
@@ -39,14 +39,14 @@ class NotFound(Exception):
 
 
 class Invalid(Exception):
-    """Requête lisible mais refusée par une règle métier (champ vide, valeur inconnue…)."""
+    """Readable request refused by a business rule (empty field, unknown value...)."""
 
     def __init__(self, message: str):
         super().__init__(message)
         self.message = message
 
 
-# ------------------------------------------------------------------ contexte
+# ------------------------------------------------------------------ context
 
 class Ctx:
     def __init__(self, request: Request, conn, session: dict, user: dict, mosque: dict):
@@ -63,7 +63,7 @@ class Ctx:
             raise Forbidden()
 
     def csrf_ok(self) -> bool:
-        """Jeton anti-rejeu de l'écriture : en-tête `X-CSRF` (le front), ou paramètre `csrf`."""
+        """Anti-replay token for writes: `X-CSRF` header (the front), or `csrf` parameter."""
         jeton = self.request.headers.get("x-csrf") or self.request.query_params.get("csrf")
         return auth.check_csrf(self.session, jeton)
 
@@ -72,10 +72,10 @@ class Ctx:
             raise Forbidden()
 
     async def body(self) -> dict:
-        """Corps de la requête, après vérification du jeton CSRF.
+        """Request body, after the CSRF token check.
 
-        JSON pour le front ; un formulaire nu reste accepté pour un client sans en-tête.
-        Les fichiers envoyés (logo) sont gardés dans `self.files`.
+        JSON for the front; a bare form remains accepted for a client without a header.
+        Uploaded files (logo) are kept in `self.files`.
         """
         self.need_csrf()
         self.files: dict = {}
@@ -87,7 +87,7 @@ class Ctx:
                 form = await self.request.form()
                 self.files = {k: v for k, v in form.items() if not isinstance(v, str)}
                 corps = dict(form)
-        except Exception:                       # noqa: BLE001 — corps vide ou illisible
+        except Exception:                       # noqa: BLE001 — empty or unreadable body
             corps = {}
         if not isinstance(corps, dict):
             corps = {}
@@ -103,7 +103,7 @@ def get_conn(request: Request):
 
 
 def _sec(request) -> bool:
-    """Requête servie en HTTPS (directement ou via un proxy qui pose X-Forwarded-Proto)."""
+    """Request served over HTTPS (directly or through a proxy that sets X-Forwarded-Proto)."""
     fwd = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
     return request.url.scheme == "https" or fwd == "https"
 
@@ -126,10 +126,10 @@ def get_ctx(request: Request, conn: ConnDep) -> Ctx:
 CtxDep = Annotated[Ctx, Depends(get_ctx)]
 
 
-# ------------------------------------------------------------------ règles partagées
+# ------------------------------------------------------------------ shared rules
 
 def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
-    """Khutbas visibles (alias k) : celles de la mosquée ; pour un imam, seulement les siennes."""
+    """Visible khutbas (alias k): those of the mosque; for an imam, only his own."""
     if ctx.can("history_all"):
         return "k.mosque_id = ?", (ctx.mosque["id"],)
     return "k.mosque_id = ? AND k.imam_id = ?", (ctx.mosque["id"], ctx.user["id"])
@@ -157,8 +157,8 @@ def clip_or_404(ctx: Ctx, cid: int) -> tuple[dict, dict]:
 
 
 def live_status(ctx: Ctx, forcer: bool = False) -> dict:
-    """Statut du live pour l'affichage, servi depuis un instantané : un orchestrateur éteint ne doit
-    pas faire attendre chaque page plusieurs secondes."""
+    """Live status for display, served from a snapshot: a powered-off orchestrator must not
+    make each page wait several seconds."""
     return live.status_cached(ctx.mosque, forcer=forcer)
 
 
@@ -166,7 +166,7 @@ def live_status(ctx: Ctx, forcer: bool = False) -> dict:
 
 def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False, auto_import_s: float = 0,
                regen_background: bool = True) -> FastAPI:
-    """regen_background=False : la régénération d'un clip se fait dans la requête (tests)."""
+    """regen_background=False: clip regeneration happens inside the request (tests)."""
     db.init(db_path)
     stop = threading.Event()
 
@@ -197,12 +197,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             threading.Thread(target=importer_loop, daemon=True, name="auto-import").start()
 
         def chauffe_statut():
-            # Le premier affichage du tableau de bord ne doit pas payer l'attente de l'orchestrateur.
+            # The first display of the dashboard must not pay for the orchestrator's wait.
             conn = db.connect(db_path)
             try:
                 for m in db.all_(conn, "SELECT * FROM mosques WHERE orchestrator_url != ''"):
                     live.status_cached(dict(m))
-            except Exception:  # noqa: BLE001 — un statut indisponible n'empêche pas de servir
+            except Exception:  # noqa: BLE001 — an unavailable status does not prevent serving
                 pass
             finally:
                 conn.close()
@@ -216,10 +216,10 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     app.state.secure = secure_cookies
     app.state.limiter = auth.RateLimiter()
     app.state.regen_background = regen_background
-    # Polices et emblème : les seuls fichiers servis par le backend (le front a son propre build).
+    # Fonts and emblem: the only files served by the backend (the front has its own build).
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
-    # ---------------------------------------------------------- middleware et erreurs
+    # ---------------------------------------------------------- middleware and errors
     @app.middleware("http")
     async def headers(request: Request, call_next):
         resp = await call_next(request)
@@ -228,13 +228,13 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                                                    "form-action 'self'; base-uri 'none'")
         resp.headers["X-Content-Type-Options"] = "nosniff"
         if _sec(request):
-            # uniquement derrière HTTPS (proxy ou serveur central) : un HSTS sur du HTTP local bloquerait
-            # l'accès des autres postes du réseau local à cette machine
+            # only behind HTTPS (proxy or central server): an HSTS on local HTTP would block
+            # access to this machine from the other computers on the local network
             resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Referrer-Policy"] = "same-origin"
-        # Les fichiers du front portent une empreinte dans leur nom : ils se gardent en cache.
-        # Tout le reste (API, index.html) ne doit jamais être servi depuis un cache.
+        # Front files carry a fingerprint in their name: they are kept in the cache.
+        # Everything else (API, index.html) must never be served from a cache.
         if not request.url.path.startswith(("/static", "/media", "/assets")):
             resp.headers["Cache-Control"] = "no-store"
         return resp
@@ -262,12 +262,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     async def _value(request: Request, exc: ValueError):
         return JSONResponse({"error": "refusé", "message": str(exc)}, status_code=422)
 
-    # ---------------------------------------------------------- état du direct
+    # ---------------------------------------------------------- live status
     @app.get("/api/live")
     def api_live(ctx: CtxDep):
         return live_status(ctx)
 
-    # ---------------------------------------------------------- médias (par identifiant : pas de chemin dans l'URL)
+    # ---------------------------------------------------------- media (by id: no path in the URL)
     @app.get("/media/sermon/{kid}.mp4")
     def media_khutba(kid: int, ctx: CtxDep):
         k = khutba_or_404(ctx, kid)
@@ -282,7 +282,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         return FileResponse(c["file_path"], media_type="video/mp4")
 
-    # ---------------------------------------------------------- logo de l'interface
+    # ---------------------------------------------------------- interface logo
     @app.get("/logo/{slug}")
     def logo_file(slug: str, conn: ConnDep):
         m = db.one(conn, "SELECT * FROM mosques WHERE slug = ?", slug)
@@ -298,12 +298,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     def health():
         return {"ok": True}
 
-    # ---------------------------------------------------------- API JSON du front
-    from . import api_v1            # import tardif : api_v1 lit ce module
+    # ---------------------------------------------------------- JSON API of the front
+    from . import api_v1            # late import: api_v1 reads this module
     app.include_router(api_v1.router)
 
-    # ------------------------------------------------- anciennes adresses françaises
-    # Conservées en redirection permanente : un signet ou un lien déjà envoyé continue de fonctionner.
+    # ------------------------------------------------- old French addresses
+    # Kept as permanent redirects: a bookmark or a link already sent keeps working.
     ANCIENNES = {
         "/connexion": "/login", "/deconnexion": "/", "/compte": "/settings", "/journal": "/audit",
         "/sermons": "/khutbas", "/publication": "/publications", "/sante": "/health",
@@ -333,12 +333,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     for _vieux, _neuf in ANCIENS_MOTIFS:
         app.add_api_route(_vieux, _redirection(_neuf), methods=["GET", "POST"], include_in_schema=False)
 
-    # ---------------------------------------------------------------- front React
-    # Servi en dernier recours : toute route déclarée au-dessus garde la priorité, et les chemins
-    # inconnus retombent sur index.html pour que le routeur du front gère ses propres adresses.
+    # ---------------------------------------------------------------- React front
+    # Served as a last resort: every route declared above keeps priority, and unknown
+    # paths fall back to index.html so that the front router handles its own addresses.
     if FRONT.is_dir():
-        # Repli explicite sur index.html : le routeur du front gère ses propres adresses
-        # (/khutbas/12), le serveur ne doit pas répondre 404 sur ces chemins.
+        # Explicit fallback to index.html: the front router handles its own addresses
+        # (/khutbas/12), the server must not answer 404 on those paths.
         app.frontend("/", directory=str(FRONT), fallback="index.html")
     else:
         @app.get("/")

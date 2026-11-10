@@ -3,10 +3,10 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Card, Field, inputClass } from "../ui";
 
-const TAILLE = 12;   // une page tient à l'écran avec sa pagination, sans défilement
+const TAILLE = 12;   // one page fits on screen with its pagination, without scrolling
 
-/** Journal du back-office, page par page : filtre par action, libellés en clair, pagination.
- *  Le serveur compte le total filtré : le front ne devine pas la dernière page. */
+/** Back-office log, page by page: filter by action, plain labels, pagination.
+ *  The server counts the filtered total: the front end does not guess the last page. */
 export default function Audit() {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
@@ -21,7 +21,7 @@ export default function Audit() {
 
   const pages = d ? Math.max(1, Math.ceil(d.total / TAILLE)) : 1;
   const libelles = d?.labels ?? {};
-  /** Détails lisibles : le serveur joint un objet JSON (uid, type, titre…) — on n'affiche que ses valeurs. */
+  /** Readable details: the server attaches a JSON object (uid, type, title…) — only its values are shown. */
   const details = (brut?: string | null) => {
     if (!brut || brut === "{}") return "";
     try {
@@ -33,11 +33,11 @@ export default function Audit() {
           .filter(Boolean)
           .join(" · ");
       }
-    } catch { /* texte libre : affiché tel quel */ }
+    } catch { /* free text: displayed as-is */ }
     return brut;
   };
 
-  /** Nom d'action traduit : la clé stable du serveur prime, son libellé sert de repli. */
+  /** Translated action name: the server's stable key wins, its label is the fallback. */
   const nomAction = (cle: string) =>
     t(`audit.action_${cle.replace(/\./g, "_").replace(/-/g, "_")}`, { defaultValue: libelles[cle] ?? cle });
 

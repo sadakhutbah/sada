@@ -1,14 +1,14 @@
-"""Clips verticaux 9:16 (1080x1920) sous-titrés en FRANÇAIS SEUL, sans musique. Tous marqués « à valider ».
+"""Vertical 9:16 clips (1080x1920) subtitled in FRENCH ONLY, without music. All marked « à valider » (to be validated).
 
-Rendu (ASS incrusté par libass) :
-- Parole : 1 à 2 lignes courtes, Montserrat ExtraBold blanc, contour sombre doux, mot prononcé en or
-  (horodatage par mot de Whisper quand il existe ; sinon, et pour l'arabe traduit, interpolé au prorata des caractères).
-  Placées dans le tiers inférieur, au-dessus des zones d'interface TikTok/Reels/Shorts (bas du texte à SAFE_BOTTOM px du bas).
-- Verset : carte distincte (panneau sombre arrondi) : « SOURATE … · s:v » en capitales or, UNE ligne d'arabe propre
-  (sans signes de pause U+06D6–U+06ED, seulement si elle tient sur une ligne), traduction Hamidullah en italique
-  (EB Garamond). Pendant la carte, pas de sous-titre de parole.
-- Segments arabes non appariés : traduction française (translate.py) ; jamais d'arabe brut dans les sous-titres.
-- Discret en-tête les premières secondes (khutba, mosquée, date) ; voile dégradé en bas pour la lisibilité.
+Rendering (ASS burned in by libass):
+- Speech: 1 to 2 short lines, white Montserrat ExtraBold, soft dark outline, spoken word in gold
+  (per-word timestamp from Whisper when it exists; otherwise, and for translated Arabic, interpolated pro rata of the characters).
+  Placed in the lower third, above the TikTok/Reels/Shorts UI areas (bottom of the text at SAFE_BOTTOM px from the bottom).
+- Verse: separate card (rounded dark panel): « SOURATE … · s:v » in gold capitals, ONE line of clean Arabic
+  (without pause marks U+06D6–U+06ED, only if it fits on one line), Hamidullah translation in italics
+  (EB Garamond). While the card is up, no speech subtitle.
+- Unmatched Arabic segments: French translation (translate.py); never raw Arabic in the subtitles.
+- Discreet header for the first seconds (khutba, mosque, date); gradient veil at the bottom for legibility.
 """
 from __future__ import annotations
 import re
@@ -25,16 +25,16 @@ from .verses import match_for, recited_arabic, shown
 DEFAULT_TITLE = "Khutba du vendredi"
 
 MIN_S, MAX_S = 30.0, 90.0
-# Format court : un rappel se regarde d'un trait. On part juste avant la récitation et on s'arrête
-# quand l'explication immédiate est dite — ni le préambule, ni les digressions.
+# Short format: a reminder is watched in one go. We start just before the recitation and stop
+# when the immediate explanation has been said — neither the preamble nor the digressions.
 RAPPEL_MAX, RAPPEL_AVANT, RAPPEL_APRES = 45.0, 2.0, 16.0
 W, H = 1080, 1920
 
-# --- mise en page (pixels, repère 1080x1920) ---------------------------------------------------
-SAFE_BOTTOM = 430          # bas du texte de parole : au-dessus de la légende / des boutons TikTok
-SUB_SIZE = 100             # taille ASS (≈ 82 px de cadratin)
-SUB_MAXW = 920             # largeur max d'une ligne de sous-titre
-SUB_CHUNK_CHARS = 26       # au-delà : nouvelle « page » de sous-titre
+# --- layout (pixels, 1080x1920 reference) ---------------------------------------------
+SAFE_BOTTOM = 430          # bottom of the speech text: above the caption / TikTok buttons
+SUB_SIZE = 100             # ASS size (≈ 82 px em)
+SUB_MAXW = 920             # max width of a subtitle line
+SUB_CHUNK_CHARS = 26       # beyond this: new subtitle « page »
 CARD_BOTTOM = 1920 - 390
 CARD_W = 980
 GOLD = "&H0058C8F2&"       # #F2C858 (BGR)
@@ -51,17 +51,17 @@ def _font(name: str, size: int):
 
 @lru_cache(maxsize=None)
 def _ass_ratio(name: str) -> float:
-    """libass dimensionne la police sur sa hauteur de ligne (ascent+descent), pas sur le cadratin :
-    taille ASS = taille em * ratio (Montserrat 1,22 ; Noto Naskh 1,70 ; EB Garamond 1,31)."""
+    """libass sizes the font on its line height (ascent+descent), not on the em:
+    ASS size = em size * ratio (Montserrat 1.22; Noto Naskh 1.70; EB Garamond 1.31)."""
     a, d = _font(name, 1000).getmetrics()
     return (a + d) / 1000
 
 
 def text_width(text: str, font_file: str, ass_size: float) -> float:
-    """Largeur en pixels d'un texte rendu par libass à la taille ASS donnée.
+    """Width in pixels of a text rendered by libass at the given ASS size.
 
-    Sans libraqm, PIL mesure l'arabe brut en lettres isolées (beaucoup plus large que le rendu
-    de libass) : on mesure la forme visuelle, seul estimateur fidèle sur ces machines."""
+    Without libraqm, PIL measures raw Arabic as isolated letters (much wider than the libass
+    rendering): we measure the visual form, the only faithful estimator on these machines."""
     return _font(font_file, max(1, round(ass_size / _ass_ratio(font_file)))).getlength(reshaped_view(text))
 
 
@@ -69,12 +69,12 @@ def _sub_w(t: str) -> float:
     return text_width(t, "Montserrat-ExtraBold.ttf", SUB_SIZE)
 
 
-# --------------------------------------------------------------------------- fenêtres
+# --------------------------------------------------------------------------- windows
 
 def select_windows(segments: list[dict], matches: list[dict], duration: float, quotes: list[tuple] | None = None, n: int = 3) -> list[dict]:
-    """1 à n fenêtres : (1) meilleur verset + commentaire, (2) citation marquante, (3) conclusion (fin de la PAROLE)."""
+    """1 to n windows: (1) best verse + commentary, (2) striking quote, (3) conclusion (end of the SPEECH)."""
     cands: list[dict] = []
-    if segments:  # une session finit par le silence qui a déclenché l'arrêt : la conclusion = fin de la parole
+    if segments:  # a session ends with the silence that triggered the stop: the conclusion = end of the speech
         duration = min(duration, segments[-1]["end"] + 1.0)
 
     def snap(t0: float, t1: float) -> tuple[float, float]:
@@ -101,11 +101,11 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
     if good:
         m = max(good, key=lambda x: (x["score"] * min(1.0, x["coverage"] + 0.2), x["end"] - x["start"]))
         if m.get("ambiguous"):
-            # Verset reconnu par la traduction seule : il faut le contexte autour pour le comprendre.
+            # Verse recognised from the translation alone: the surrounding context is needed to understand it.
             add("verset", m["start"] - 12, m["start"] + 55,
                 f"verset {m['ref']} ({m['surah_name']}) récité, avec le contexte qui précède")
         else:
-            # Le rappel se suffit à lui-même : on le donne court, de la récitation à son explication.
+            # The reminder stands on its own: it is given short, from the recitation to its explanation.
             a = max(0.0, m["start"] - RAPPEL_AVANT)
             b = min(duration, a + RAPPEL_MAX, m["end"] + RAPPEL_APRES)
             add("rappel", a, b, f"format court : rappel du verset {m['ref']} ({m['surah_name']}) et son explication")
@@ -115,7 +115,7 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
                 add("citation", t - 3, t + 50, f"citation marquante : « {q[:90]} »")
                 break
     add("conclusion", duration - 70, duration, "conclusion / invocation finale")
-    if len(cands) < n:  # compléter par le passage le plus dense en français
+    if len(cands) < n:  # fill up with the densest French passage
         frs = [s for s in segments if arabic_ratio(s["text"]) < 0.3]
         if frs:
             best = None
@@ -129,7 +129,7 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
     return cands[:n]
 
 
-# --------------------------------------------------------------------------- texte
+# --------------------------------------------------------------------------- text
 
 def _ass_time(t: float) -> str:
     cs = int(round(max(0.0, t) * 100))
@@ -147,15 +147,15 @@ PROPER = {"coran": "Coran", "allah": "Allah", "ramadan": "Ramadan", "mecque": "M
 
 
 def clean_fr(t: str) -> str:
-    t = AR_RUN.sub("", t)  # jamais d'arabe dans les sous-titres de parole
+    t = AR_RUN.sub("", t)  # never any Arabic in the speech subtitles
     t = re.sub(r"\s+", " ", t).strip()
     t = re.sub(r"\s+([,.;:!?…])", r"\1", t)
-    t = re.sub(r"\b(" + "|".join(PROPER) + r")\b", lambda m: PROPER[m.group(1)], t)  # Whisper : « coran », « allah »
+    t = re.sub(r"\b(" + "|".join(PROPER) + r")\b", lambda m: PROPER[m.group(1)], t)  # Whisper output: « coran », « allah »
     return t.replace("'", "’")
 
 
 def interpolate_words(text: str, a: float, b: float) -> list[dict]:
-    """Mots + horodatage interpolé au prorata des caractères (faute d'horodatage par mot)."""
+    """Words + timestamp interpolated pro rata of the characters (for lack of a per-word timestamp)."""
     words = clean_fr(text).split()
     if not words or b <= a:
         return []
@@ -169,7 +169,7 @@ def interpolate_words(text: str, a: float, b: float) -> list[dict]:
 
 
 def chunk_words(words: list[dict], max_chars: int = SUB_CHUNK_CHARS) -> list[list[dict]]:
-    """Découpe en « pages » courtes : ponctuation, pauses, longueur ; ne termine pas sur un petit mot faible."""
+    """Cut into short « pages »: punctuation, pauses, length; never ends on a short weak word."""
     chunks, cur = [], []
     for w in words:
         if cur:
@@ -182,7 +182,7 @@ def chunk_words(words: list[dict], max_chars: int = SUB_CHUNK_CHARS) -> list[lis
             if length > max_chars or gap > 0.7 or strong or soft:
                 carry = []
                 if length > max_chars and not strong and not soft and gap <= 0.7:
-                    # ne pas finir une page sur « de », « la », « et »… : ces mots passent à la page suivante
+                    # do not end a page on « de », « la », « et »…: those words move to the next page
                     while len(cur) > 1 and len(carry) < 2 and cur[-1]["w"].lower() in WEAK_END:
                         carry.insert(0, cur.pop())
                 chunks.append(cur); cur = carry
@@ -193,7 +193,7 @@ def chunk_words(words: list[dict], max_chars: int = SUB_CHUNK_CHARS) -> list[lis
 
 
 def split_lines(words: list[str]) -> list[list[str]]:
-    """1 ligne si courte, sinon 2 lignes équilibrées (coupure évitant les mots faibles en fin de ligne)."""
+    """1 line if short, otherwise 2 balanced lines (split avoiding weak words at the end of a line)."""
     full = " ".join(words)
     if len(words) < 2 or (_sub_w(full) <= SUB_MAXW and len(full) <= 18):
         return [words]
@@ -202,7 +202,7 @@ def split_lines(words: list[str]) -> list[list[str]]:
         w1, w2 = _sub_w(" ".join(words[:k])), _sub_w(" ".join(words[k:]))
         over = max(0, w1 - SUB_MAXW) + max(0, w2 - SUB_MAXW)
         pen = (abs(w1 - w2) + over * 10 + (120 if words[k - 1].lower() in WEAK_END else 0)
-               - (160 if words[k - 1][-1:] in ",;:.!?" else 0))   # couper après la ponctuation
+               - (160 if words[k - 1][-1:] in ",;:.!?" else 0))   # split after punctuation
         if best is None or pen < best[0]:
             best = (pen, k)
     k = best[1]
@@ -210,7 +210,7 @@ def split_lines(words: list[str]) -> list[list[str]]:
 
 
 def _speech_events(words: list[dict], hide: list[tuple[float, float]], t_end: float) -> list[str]:
-    """Une page = 1-2 lignes ; un événement par mot actif (mot en or), apparition douce à chaque page."""
+    """One page = 1-2 lines; one event per active word (word in gold), soft fade-in on each page."""
     ev = []
     chunks = chunk_words(words)
     for ci, ch in enumerate(chunks):
@@ -235,13 +235,13 @@ def _speech_events(words: list[dict], hide: list[tuple[float, float]], t_end: fl
                 out += f"{{\\c{GOLD}}}{t}{{\\c{WHITE}}}" if j == i else t
             tag = "{\\fad(80,0)\\blur0.6}" if i == 0 else "{\\blur0.6}"
             ev.append(f"Dialogue: 1,{_ass_time(s)},{_ass_time(e)},Sub,,0,0,0,,{tag}{out}")
-        # halo sombre diffus sous la page (contraste sur fond clair sans boîte opaque)
+        # diffuse dark halo under the page (contrast on a light background without an opaque box)
         plain = "\\N".join(" ".join(_esc(t) for t in ln) for ln in lines)
         ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},Glow,,0,0,0,,{{\\fad(80,0)\\blur18}}{plain}")
     return ev
 
 
-# --------------------------------------------------------------------------- carte verset
+# --------------------------------------------------------------------------- verse card
 
 def _round_rect(w: int, h: int, r: int) -> str:
     k = 0.45 * r
@@ -251,7 +251,7 @@ def _round_rect(w: int, h: int, r: int) -> str:
 
 def wrap_px(text: str, font_file: str, size: int, maxw: float) -> list[str]:
     lines, cur = [], ""
-    for w in text.split(" "):  # split(" ") : respecte les espaces insécables
+    for w in text.split(" "):  # split(" ") : preserves non-breaking spaces
         if not w:
             continue
         t = f"{cur} {w}".strip()
@@ -261,7 +261,7 @@ def wrap_px(text: str, font_file: str, size: int, maxw: float) -> list[str]:
             cur = t
     if cur:
         lines.append(cur)
-    if len(lines) >= 2 and len(lines[-1].split(" ")) == 1 and len(lines[-2].split(" ")) > 2:  # pas de veuve
+    if len(lines) >= 2 and len(lines[-1].split(" ")) == 1 and len(lines[-2].split(" ")) > 2:  # no widow
         a = lines[-2].split(" ")
         lines[-2], lines[-1] = " ".join(a[:-1]), a[-1] + " " + lines[-1]
     return lines
@@ -280,19 +280,19 @@ AR_CARD_FONT = "NotoNaskhArabic-Bold.ttf"
 
 
 def _verse_card(m: dict, fr: str, a: float, b: float) -> list[str]:
-    """Carte verset : panneau + libellé + arabe (1 ligne, si elle tient) + traduction Hamidullah en italique."""
+    """Verse card: panel + label + Arabic (1 line, if it fits) + Hamidullah translation in italics."""
     fr = clean_fr(fr).rstrip()
     inner = CARD_W - 130
-    q = lambda t: f"«\u00a0{t}\u00a0»"  # noqa: E731  (espaces insécables : pas de guillemet seul en bout de ligne)
+    q = lambda t: f"«\u00a0{t}\u00a0»"  # noqa: E731  (non-breaking spaces: no lone quote mark at the end of a line)
     fr_lines = [x.replace("\u00a0", " ") for x in wrap_px(q(fr), FR_CARD_FONT, FR_CARD_SIZE, inner)]
-    if len(fr_lines) > 5:  # trop long : on garde la fin (le passage récité est en général à la fin)
+    if len(fr_lines) > 5:  # too long: keep the end (the recited passage is usually at the end)
         fr_lines = [x.replace("\u00a0", " ") for x in wrap_px(q("… " + fr[-190:].split(" ", 1)[-1]), FR_CARD_FONT, FR_CARD_SIZE, inner)[:5]]
     ar = recited_arabic(m)
     ar_size = AR_CARD_SIZE
     while ar and text_width(ar, AR_CARD_FONT, ar_size) > inner and ar_size > 74:
         ar_size -= 2
     if ar and text_width(ar, AR_CARD_FONT, ar_size) > inner:
-        ar = ""  # ne tient pas sur une ligne : pas d'arabe
+        ar = ""  # does not fit on one line: no Arabic
     pad_t, pad_b, lab_h, rule_h = 46, 44, 30, 44
     ar_h = int(ar_size * 1.3) if ar else 0
     fr_h = int(FR_CARD_SIZE * 0.92)
@@ -302,11 +302,11 @@ def _verse_card(m: dict, fr: str, a: float, b: float) -> list[str]:
     ta, tb = _ass_time(a), _ass_time(b)
     fad = "\\fad(350,300)"
 
-    def pos(x: int, y: float) -> str:  # léger glissement vers le haut à l'apparition
+    def pos(x: int, y: float) -> str:  # slight upward slide on appearance
         return f"\\move({x},{int(y) + 24},{x},{int(y)},0,380)"
 
     ev = [f"Dialogue: 2,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0, top)}{fad}\\p1}}{_round_rect(CARD_W, h, 34)}",
-          # filet or à gauche de la carte
+          # gold rule on the left of the card
           f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0 + 34, top)}{fad}\\1c{GOLD}\\1a&H00&\\p1}}m 0 0 l {CARD_W - 68} 0 l {CARD_W - 68} 4 l 0 4"]
     y = top + pad_t + lab_h / 2
     label = "CORAN" if m.get("ambiguous") else f"SOURATE {_esc(surah_label(m['surah_name']))}   ·   {m['ref']}"
@@ -354,11 +354,11 @@ ASS_HEADER = (
 
 
 def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
-    """Ce que les clips montrent pour un segment (et ce que le back-office propose de corriger) :
-    speech      parole française : le texte du segment ;
-    verse       verset détecté : carte verset, traduction Hamidullah (fr) ;
-    translation parole arabe : sa traduction française (fr None : pas de traduction, rien à l'écran) ;
-    recitation  Coran non apparié : rien à l'écran (pas de traduction improvisée du Coran)."""
+    """What the clips show for a segment (and what the back-office offers to correct):
+    speech      French speech: the segment text;
+    verse       detected verse: verse card, Hamidullah translation (fr);
+    translation Arabic speech: its French translation (fr None: no translation, nothing on screen);
+    recitation  unmatched Quran: nothing on screen (no improvised Quran translation)."""
     if not is_arabic(seg["text"]):
         return {"kind": "speech", "fr": seg["text"]}
     m = match_for(seg, vms)
@@ -372,10 +372,10 @@ def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
 
 def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, path: str, tr: dict | None = None,
               header: dict | None = None, rappel: bool = False) -> int:
-    """Écrit le .ass du clip [t0, t1] (temps de session) ; renvoie le nombre d'unités (pages de sous-titre + cartes).
+    """Write the .ass of clip [t0, t1] (session time); return the number of units (subtitle pages + cards).
 
-    `rappel` : clip court centré sur un verset — la carte reste affichée jusqu'à la fin, car c'est
-    elle qui porte le rappel ; sinon elle s'efface dès que la parole reprend."""
+    `rappel`: short clip centred on a verse — the card stays on screen until the end, because it
+    carries the reminder; otherwise it fades out as soon as the speech resumes."""
     tr = tr or {}
     vms = shown(matches, ambiguous=True)
     dur = t1 - t0
@@ -395,11 +395,11 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                 seen.add(key)
                 ca = max(0.0, m["start"] - t0 - 0.2)
                 after = [x for x in segs if x["start"] > m["end"] - 0.1]
-                limit = (after[0]["start"] - t0 + 3.0) if after else dur  # la carte peut empiéter 3 s sur la parole suivante
+                limit = (after[0]["start"] - t0 + 3.0) if after else dur  # the card may overrun the next speech by 3 s
                 cb = min(dur, limit, max(m["end"] - t0 + 1.0, ca + 2.5 + len(fr) / 15.0))
                 if rappel and not cards:
-                    # La carte porte le rappel : elle reste pendant la récitation et s'efface
-                    # juste après, pour laisser les sous-titres à l'explication qui suit.
+                    # The card carries the reminder: it stays during the recitation and fades out
+                    # just after, leaving the subtitles to the explanation that follows.
                     cb = min(dur, m["end"] - t0 + 6.0)
                 cards.append((ca, cb))
                 ev += _verse_card(m, fr, ca, cb)
@@ -428,7 +428,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
     return pages + len(cards)
 
 
-# --------------------------------------------------------------------------- rendu
+# --------------------------------------------------------------------------- rendering
 
 def _pcm(path: str, start: float = 0.0, dur: float | None = None, sr: int = 8000):
     import numpy as np
@@ -438,10 +438,10 @@ def _pcm(path: str, start: float = 0.0, dur: float | None = None, sr: int = 8000
 
 
 def align_offset(session_wav: str, video: str, probe_at: float = 30.0, probe_len: float = 40.0, sr: int = 8000) -> tuple[float, float]:
-    """Décalage (s) tel que temps_vidéo = temps_session + décalage, par intercorrélation audio.
+    """Offset (s) such that video_time = session_time + offset, by audio cross-correlation.
 
-    Sert à tailler les clips dans une autre vidéo de la même khutba (enregistrement propre décalé, source d'archive).
-    Renvoie (décalage, netteté du pic) ; netteté < 8 = alignement douteux.
+    Used to cut the clips from another video of the same khutba (shifted clean recording, archive source).
+    Returns (offset, peak sharpness); sharpness < 8 = doubtful alignment.
     """
     import numpy as np
     x = _pcm(video, sr=sr)
@@ -456,11 +456,11 @@ def align_offset(session_wav: str, video: str, probe_at: float = 30.0, probe_len
 
 
 def gradient_png(path: str) -> str:
-    """Voile sombre progressif (bas : lisibilité des sous-titres ; haut : en-tête), 1080x1920 RGBA."""
+    """Progressive dark veil (bottom: subtitle legibility; top: header), 1080x1920 RGBA."""
     import numpy as np
     from PIL import Image
     y = np.arange(H, dtype=np.float32)
-    bot = np.clip((y - 1020) / 480, 0, 1) ** 1.4 * 0.78   # plein à partir de ~1500 px : zone des sous-titres et de l'interface
+    bot = np.clip((y - 1020) / 480, 0, 1) ** 1.4 * 0.78   # full from ~1500 px: subtitle and UI area
     top = np.clip((330 - y) / 330, 0, 1) ** 2 * 0.40
     img = np.zeros((H, W, 4), np.uint8)
     img[..., 3] = (np.maximum(bot, top) * 255).astype(np.uint8)[:, None]
@@ -469,7 +469,7 @@ def gradient_png(path: str) -> str:
 
 
 def crop_filter(crop: dict | None) -> str:
-    """Recadrage 9:16. crop = {x: centre horizontal (0-1), top, bottom: fractions de hauteur retirées}."""
+    """9:16 crop. crop = {x: horizontal centre (0-1), top, bottom: fractions of the height removed}."""
     c = {"x": 0.5, "top": 0.0, "bottom": 0.0, **(crop or {})}
     hh = f"ih*{1 - c['top'] - c['bottom']:.4f}"
     return (f"crop=w='trunc({hh}*9/16/2)*2':h='trunc({hh}/2)*2':"
@@ -477,7 +477,7 @@ def crop_filter(crop: dict | None) -> str:
 
 
 def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=print, crop: dict | None = None) -> None:
-    """Recadrage 9:16 (1080x1920), voile dégradé, sous-titres brûlés, audio d'origine normalisé (pas de musique)."""
+    """9:16 crop (1080x1920), gradient veil, burned-in subtitles, normalised original audio (no music)."""
     a, dur = rec_offset + w["start"], w["end"] - w["start"]
     with tempfile.TemporaryDirectory() as td:
         grad = gradient_png(str(Path(td) / "grad.png"))
@@ -495,9 +495,9 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
 
 def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx: int, version: int,
               video: str, offset: float, outdir: Path, header: dict | None, crop: dict | None, log=print) -> Path:
-    """Sous-titres + rendu du clip n° idx, version `version`, de la fenêtre w (temps de session) ; renvoie le MP4.
+    """Subtitles + render of clip #idx, version `version`, of window w (session time); return the MP4.
 
-    offset : position du début de la session dans `video` (temps_vidéo = temps_session + offset)."""
+    offset: position of the session start inside `video` (video_time = session_time + offset)."""
     v = f"_v{version}" if version > 1 else ""
     ass = outdir / f"clip{idx}{v}.ass"
     out = outdir / f"clip{idx}_{w.get('kind') or 'extrait'}{v}_A-VALIDER.mp4"

@@ -1,7 +1,7 @@
-"""Horloge simulée / accélérée. now() renvoie l'heure « mosquée ».
+"""Simulated / accelerated clock. now() returns the "mosque" time.
 
-La vitesse peut changer à chaud (l'orchestrateur la remet à 1x pendant la khutba,
-car la caméra simulée, elle, joue en temps réel)."""
+The speed can change at runtime (the orchestrator resets it to 1x during the khutba,
+because the simulated camera, for its part, runs in real time)."""
 from __future__ import annotations
 import datetime as dt
 import threading

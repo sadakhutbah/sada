@@ -1,9 +1,9 @@
-"""Réglages (API JSON) : sections, registre partiel, sélecteur de dossiers, connecteurs."""
+"""Settings (JSON API): sections, partial registry, folder picker, connectors."""
 import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest assure le chemin)
+from test_backoffice import client, env  # noqa: E402,F401  (conftest provides the path)
 
 
 def test_les_sections_sont_annoncees(env):
@@ -68,7 +68,7 @@ def test_dossier_choisi_enregistre_et_valide(env):
     m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     assert m["output_dir"] == str(target)
     assert db.mosque_dirs(m)["output"] == target
-    # un fichier ne peut pas servir de dossier
+    # a file cannot serve as a folder
     f = env["tmp"] / "pas-un-dossier"
     f.write_text("x")
     ok, why = dirs.check(str(f))
@@ -76,7 +76,7 @@ def test_dossier_choisi_enregistre_et_valide(env):
 
 
 def test_aucun_chemin_de_la_machine_dans_les_reglages(env):
-    """Un placeholder ou une note « par défaut » ne doit jamais exposer l'emplacement réel du serveur."""
+    """A placeholder or a “default” note must never expose the server's real location."""
     import json
     from pathlib import Path as _P
 
@@ -91,7 +91,7 @@ def test_aucun_chemin_de_la_machine_dans_les_reglages(env):
 
 
 def test_les_connecteurs_sont_decoupes(env):
-    """Chaque connecteur expose ses propres champs : l'écran en montre un à la fois."""
+    """Each connector exposes its own fields: the screen shows one at a time."""
     c = client(env, "admin")
     rows = {r["key"]: r for r in c.get("/api/v1/settings").json()["connectors"]}
     assert {"local", "facebook", "youtube", "instagram"} <= set(rows)
@@ -101,7 +101,7 @@ def test_les_connecteurs_sont_decoupes(env):
         assert rows[cle]["fields"], cle
     assert {f["name"] for f in rows["facebook"]["fields"]} == {"page_id", "page_token"}
     assert "page_id" not in {f["name"] for f in rows["local"]["fields"]}
-    # un secret enregistré ne ressort jamais en clair
+    # a saved secret never comes back in clear text
     c.ecrire("/settings/connectors/facebook", {"page_id": "123", "page_token": "secret"})
     from minbar.backoffice import db
     row = next(r for r in c.get("/api/v1/settings").json()["connectors"] if r["key"] == "facebook")
@@ -109,7 +109,7 @@ def test_les_connecteurs_sont_decoupes(env):
 
 
 def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
-    """L'écran reçoit un masque pour le jeton, et jamais la clé d'API du modèle ni le chemin du logo."""
+    """The screen receives a mask for the token, and never the model's API key nor the logo path."""
     import json
 
     from minbar.backoffice import db
@@ -124,7 +124,7 @@ def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
     assert d["mosque"]["orchestrator_token"] == db.MASK
     assert "tres-secret" not in texte and "cle-api-secrete" not in texte
     assert d["model"]["has_key"] is True and d["mosque"]["has_logo"] is False and "logo_path" not in d["mosque"]
-    # le masque renvoyé tel quel laisse le jeton inchangé
+    # the mask returned as-is leaves the token unchanged
     c.ecrire("/settings/mosque", {"orchestrator_token": db.MASK, "name": "Autre nom"}, methode="PATCH")
     m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     assert m["orchestrator_token"] == "tres-secret" and m["name"] == "Autre nom"

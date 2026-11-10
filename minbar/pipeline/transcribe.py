@@ -1,4 +1,4 @@
-"""Transcription faster-whisper (GPU int8 si la VRAM le permet, sinon CPU int8) avec horodatage par segment."""
+"""faster-whisper transcription (int8 GPU when VRAM allows, int8 CPU otherwise) with per-segment timestamps."""
 from __future__ import annotations
 import json
 import os
@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 CUDA_LIBS = [str(Path.home() / ".local/share/raphael/cuda12/nvidia" / p / "lib") for p in ("cublas", "cudnn", "cuda_nvrtc")] + ["/usr/lib/wsl/lib"]
-# Ordre de préférence. large-v3 (~3 Go en int8) n'est utilisé que si la VRAM libre le permet ET s'il est en cache/téléchargeable.
+# Order of preference. large-v3 (~3 GB in int8) is only used if free VRAM allows it AND it is cached/downloadable.
 MODELS = [("large-v3", 3400), ("large-v3-turbo", 2000), ("medium", 1800), ("small", 900)]
 
 
@@ -16,7 +16,7 @@ def setup_env():
     want = [p for p in CUDA_LIBS if p not in cur]
     if want:
         os.environ["LD_LIBRARY_PATH"] = ":".join(want + ([cur] if cur else []))
-        # ctranslate2 charge les libs à l'import : il faut ré-exécuter si le chemin vient d'être ajouté
+        # ctranslate2 loads the libs at import time: we must re-exec if the path was just added
         return True
     return False
 
@@ -42,7 +42,7 @@ def extract_audio(src: str, dst: str, start: float = 0.0, end: float | None = No
 
 
 def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
-    """-> (modèle, device, compute_type)."""
+    """-> (model, device, compute_type)."""
     free = free_vram_mb()
     log(f"VRAM libre : {free} Mo")
     if prefer == "cpu":
@@ -51,7 +51,7 @@ def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
     for name, need in cands:
         if free is not None and free >= need + 300:
             return (name, "cuda", "int8")
-    # pas assez de VRAM (GPU partagé) : CPU int8 avec le meilleur modèle raisonnable
+    # not enough VRAM (shared GPU): int8 CPU with the best reasonable model
     return ("large-v3-turbo" if prefer in (None, "large-v3-turbo", "large-v3") else prefer, "cpu", "int8")
 
 
@@ -68,12 +68,12 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print) ->
         model = WhisperModel(name, device=device, compute_type=ctype, cpu_threads=8)
     import wave
     import numpy as np
-    with wave.open(wav, "rb") as w:  # on décode nous-mêmes le WAV 16 kHz (évite PyAV, incompatible ici)
+    with wave.open(wav, "rb") as w:  # we decode the 16 kHz WAV ourselves (avoids PyAV, which is incompatible here)
         audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
     segs_iter, info = model.transcribe(
         audio, multilingual=True, vad_filter=True,
         beam_size=5, condition_on_previous_text=False, temperature=0.0,
-        word_timestamps=True,   # mots horodatés : mot actif mis en valeur dans les sous-titres des clips
+        word_timestamps=True,   # timestamped words: the active word is highlighted in the clip subtitles
     )
     segs = []
     for s in segs_iter:

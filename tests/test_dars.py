@@ -1,11 +1,11 @@
-"""Dars et conférences : entrée dédiée, fin souple, écran de fin, aucun mélange avec la khutba."""
+"""Dars and conferences: dedicated entry, soft ending, end screen, no mixing with the khutba."""
 import datetime as dt
 
 import pytest
 
 from minbar.state import Machine, MachineParams, SCENE_OF, Signals, State
 
-D = dt.date(2026, 11, 10)                    # mardi
+D = dt.date(2026, 11, 10)                    # Tuesday
 
 
 def at(h, m, s=0):
@@ -13,7 +13,7 @@ def at(h, m, s=0):
 
 
 class Drv:
-    """Fait avancer l'horloge et les signaux de la machine, sans E/S."""
+    """Advances the clock and the machine signals, without I/O."""
 
     def __init__(self, m, now):
         self.m, self.now, self.t = m, now, 1000.0
@@ -51,9 +51,9 @@ def test_dars_demarre_en_scene_dars():
     d = Drv(m, at(18, 55))
     d.run(2)
     assert m.state == State.ARME
-    d.run(20, voice=True)                   # la voix arme le stream, la scène ne bascule qu'à l'heure
+    d.run(20, voice=True)                   # voice arms the stream, the scene only switches at the scheduled time
     assert m.state == State.AVANT
-    d.run(300, voice=True)                  # 19:00 passée : entrée en dars
+    d.run(300, voice=True)                  # 19:00 passed: entering dars
     assert m.state == State.DARS
     assert m.scene == "dars"
     assert SCENE_OF[State.DARS] == "dars"
@@ -68,9 +68,9 @@ def test_fin_par_silence_prolonge_puis_ecran_de_fin():
     d.run(5)
     d.run(75, voice=True)
     assert m.state == State.DARS
-    d.run(181, voice=False)                 # seuil de silence d'un dars : 3 min
-    assert m.state == State.DARS            # le délai de grâce commence
-    d.run(91, voice=False)                  # grâce de 90 s dépassée
+    d.run(181, voice=False)                 # silence threshold for a dars: 3 min
+    assert m.state == State.DARS            # the grace delay starts
+    d.run(91, voice=False)                  # 90 s grace exceeded
     assert m.state == State.DARS_FIN
     d.run(46)
     assert m.state == State.FIN
@@ -82,7 +82,7 @@ def test_garde_fou_duree_maximale_dars():
     d.run(5)
     d.run(75, voice=True)
     assert m.state == State.DARS
-    d.run(320, voice=True)                  # bien au-delà du maximum, sans silence
+    d.run(320, voice=True)                  # well beyond the maximum, without silence
     assert m.state == State.DARS_FIN
     assert m.rec.status == "done"
     assert "durée maximale" in (m.rec.end_reason or "")
@@ -99,7 +99,7 @@ def test_une_khutba_reste_une_khutba():
 
 def test_fenetre_plus_large_pour_un_dars():
     m, _ = mk()
-    d = Drv(m, at(20, 20))                  # T+80 min : hors fenêtre d'une khutba (45), dans celle d'un dars (90)
+    d = Drv(m, at(20, 20))                  # T+80 min: outside a khutba window (45), inside a dars window (90)
     d.run(25, voice=True)
     assert m.state != State.FIN
     assert m.state == State.DARS
@@ -114,7 +114,7 @@ def test_commande_start_en_dars():
 
 
 def test_extras_et_sessions_doivent_s_aligner():
-    """Un désalignement silencieux transformerait un dars en khutba : la machine refuse."""
+    """A silent misalignment would turn a dars into a khutba: the machine refuses."""
     with pytest.raises(ValueError):
         Machine([at(19, 0), at(20, 0)], MachineParams(),
                 extras=[{"kind": "dars"}])

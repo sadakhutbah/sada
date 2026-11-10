@@ -5,8 +5,8 @@ import { api } from "../api";
 import { Card, Pill, Tabs } from "../ui";
 import { dateFr, mmss } from "../format";
 
-/** File de validation : une entrée par clip, comme les items du back-office en gabarits.
- *  Titre « Clip n · type vN », puis la ligne de contexte, puis la raison de la détection. */
+/** Review queue: one entry per clip, like the template back-office items.
+ *  Title “Clip n · type vN”, then the context line, then the detection reason. */
 export default function Clips() {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<any>(null);

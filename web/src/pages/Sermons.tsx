@@ -4,16 +4,16 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Pill, Segmented, inputClass } from "../ui";
 
-/** Liste des khutbas : regroupées par mois, une ligne lisible par khutba (date, passage, imam, thème).
- *  Seul ce qui demande une action ressort : les clips à valider. Toute la ligne ouvre la fiche.
- *  La recherche, le filtre et les pages sont faits par le serveur : une mosquée accumule des années
- *  de khutbas, la page ne doit pas charger l'archive entière pour en afficher vingt.
- *  Mise en page : un en-tête (titre + compte), une seule barre d'outils (recherche + filtre),
- *  puis une seule surface continue où les mois sont des intercalaires — pas une carte par mois. */
+/** Khutba list: grouped by month, one readable row per khutba (date, passage, imam, theme).
+ *  Only what needs action stands out: clips to review. The whole row opens the sheet.
+ *  Search, filter and paging are done by the server: a mosque accumulates years
+ *  of khutbas, the page must not load the whole archive to show twenty.
+ *  Layout: a header (title + count), a single toolbar (search + filter),
+ *  then a single continuous surface where months are dividers — not one card per month. */
 
-const TAILLE = 20; // khutbas par page
+const TAILLE = 20; // khutbas per page
 
-/** Date ISO (AAAA-MM-JJ) prise à midi, pour qu'aucun fuseau ne fasse glisser le jour. */
+/** ISO date (YYYY-MM-DD) taken at noon, so that no timezone makes the day slip. */
 function jour(iso?: string | null): Date | null {
   if (!iso) return null;
   const d = new Date(`${iso}T12:00:00`);
@@ -25,27 +25,27 @@ const majuscule = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export default function Sermons() {
   const { t, i18n } = useTranslation();
   const [saisie, setSaisie] = useState("");
-  const [recherche, setRecherche] = useState("");   // version retardée de la saisie
+  const [recherche, setRecherche] = useState("");   // debounced version of the input
   const [filtre, setFiltre] = useState("toutes");
-  const [mois, setMois] = useState("");              // AAAA-MM, choisi dans les mois existants
+  const [mois, setMois] = useState("");              // YYYY-MM, picked from the existing months
   const [moisDispos, setMoisDispos] = useState<{ mois: string; n: number }[]>([]);
   const [items, setItems] = useState<any[] | null>(null);
   const [total, setTotal] = useState(0);
   const [enAttente, setEnAttente] = useState(0);
   const [charge, setCharge] = useState(false);
 
-  // Les mois proposés sont ceux qui contiennent réellement des khutbas, avec leur compte.
+  // The offered months are those that actually contain khutbas, with their count.
   useEffect(() => {
     api.sermonsMois().then((r) => setMoisDispos(r.items)).catch(() => setMoisDispos([]));
   }, []);
 
-  // On n'interroge pas le serveur à chaque lettre.
+  // The server is not queried on every keystroke.
   useEffect(() => {
     const id = setTimeout(() => setRecherche(saisie.trim()), 300);
     return () => clearTimeout(id);
   }, [saisie]);
 
-  // Première page : à chaque changement de recherche ou de filtre.
+  // First page: on every change of search or filter.
   useEffect(() => {
     let vivant = true;
     setCharge(true);
@@ -62,7 +62,7 @@ export default function Sermons() {
     return () => { vivant = false; };
   }, [recherche, mois, filtre]);
 
-  /** Page suivante : les khutbas s'ajoutent à la suite, elles ne remplacent pas. */
+  /** Next page: khutbas are appended, they do not replace. */
   const plus = () => {
     setCharge(true);
     api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE, offset: items?.length ?? 0 })
@@ -74,7 +74,7 @@ export default function Sermons() {
       .finally(() => setCharge(false));
   };
 
-  // Regroupement par mois, dans l'ordre reçu du serveur.
+  // Grouping by month, in the order received from the server.
   const groupes = new Map<string, any[]>();
   for (const k of items ?? []) {
     const cle = String(k.date ?? "").slice(0, 7);
@@ -89,15 +89,15 @@ export default function Sermons() {
 
   return (
     <div className="grid gap-5">
-      {/* En-tête : le titre, puis ce qu'on regarde en un chiffre. Une seule ligne de lecture. */}
+      {/* Header: the title, then what we are looking at in one figure. A single reading line. */}
       <div className="grid gap-4">
         <header className="grid gap-1">
           <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("sermons.title")}</h1>
-          {/* Hauteur réservée : le titre ne saute pas quand le compte disparaît pendant un chargement. */}
+          {/* Reserved height: the title does not jump when the count disappears during a load. */}
           <p className="m-0 min-h-[1.45rem] text-[0.95rem] text-muted">
             {items ? (
               <>
-                {/* Les onglets portent déjà le compte « à valider » : le rappeler ici serait redondant. */}
+                {/* The tabs already carry the “to review” count: repeating it here would be redundant. */}
                 {recherche ? t("sermons.searchSummary", { count: total, q: recherche }) : t("sermons.summary", { count: total })}
                 {filtre === "a_valider" && <span className="text-warn"> · {t("sermons.pendingTotal", { count: total })}</span>}
               </>
@@ -107,7 +107,7 @@ export default function Sermons() {
           </p>
         </header>
 
-        {/* Barre d'outils : chercher et filtrer sont le même geste, donc la même ligne. */}
+        {/* Toolbar: searching and filtering are the same gesture, hence the same line. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5">
           <div className="relative min-w-[16rem] flex-1">
             <svg
@@ -141,7 +141,7 @@ export default function Sermons() {
             )}
           </div>
 
-          {/* Période : les mois où la mosquée a réellement prêché, pas un calendrier vide. */}
+          {/* Period: the months when the mosque actually preached, not an empty calendar. */}
           <div className="w-[11.5rem] shrink-0">
             <select
               className={`${inputClass} h-11 w-full cursor-pointer text-[0.92rem]`}
@@ -170,7 +170,7 @@ export default function Sermons() {
       </div>
 
       {!items ? (
-        /* Chargement : la même silhouette que les lignes, pour que rien ne saute à l'arrivée. */
+        /* Loading: the same silhouette as the rows, so nothing jumps when they arrive. */
         <div className="grid gap-2" aria-busy="true" aria-label={t("common.loading")}>
           <div className="h-3 w-28 animate-pulse rounded-full bg-paper-2" />
           <div className="divide-y divide-line overflow-hidden rounded-[10px] border border-line bg-white">
@@ -204,7 +204,7 @@ export default function Sermons() {
           )}
         </div>
       ) : (
-        /* Une seule surface : les mois sont des intercalaires, pas des cartes empilées. */
+        /* A single surface: months are dividers, not stacked cards. */
         <div className="overflow-hidden rounded-[10px] border border-line bg-white">
           {[...groupes.entries()].map(([cle, lignes], i) => (
             <section key={cle}>
@@ -228,7 +228,7 @@ export default function Sermons() {
         </div>
       )}
 
-      {/* La suite ne se devine pas : le serveur a dit combien il en reste. */}
+      {/* What follows is not guessed: the server said how many remain. */}
       {items && items.length > 0 && items.length < total && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-[0.85rem] tabular-nums text-muted">
@@ -248,8 +248,8 @@ export default function Sermons() {
   );
 }
 
-/** Une khutba : la date en marge, détachée par un filet ; passage · imam, puis le thème ;
- *  à droite ce qui attend une action (clips à valider), sinon le nombre de clips. */
+/** A khutba: the date in the margin, set off by a rule; passage · imam, then the theme;
+ *  on the right what awaits an action (clips to review), otherwise the clip count. */
 function LigneKhutba({ k, langue }: { k: any; langue: string }) {
   const { t } = useTranslation();
   const d = jour(k.date);

@@ -1,17 +1,17 @@
-"""Appel au modèle de langage : endpoint OpenAI ou Anthropic, local par défaut.
+"""Language-model call: OpenAI or Anthropic endpoint, local by default.
 
-Rien à installer à côté : MINBAR_LLM_URL pointe vers un serveur compatible (Ollama, llama.cpp, LM Studio,
-vLLM, ou une API Anthropic). Sans variable, on vise Ollama en local ; si rien ne répond, l'appel renvoie None
-et le pipeline continue avec ses replis (résumé extractif, traductions fixes).
+Nothing to install on the side: MINBAR_LLM_URL points to a compatible server (Ollama, llama.cpp, LM Studio,
+vLLM, or an Anthropic API). Without the variable, we target a local Ollama; if nothing answers, the call returns None
+and the pipeline goes on with its fallbacks (extractive summary, fixed translations).
 
-    MINBAR_LLM_URL        http://127.0.0.1:11434/v1        (racine de l'API)
+    MINBAR_LLM_URL        http://127.0.0.1:11434/v1        (API root)
     MINBAR_LLM_MODEL      qwen2.5:7b-instruct
-    MINBAR_LLM_API_KEY    (vide en local)
-    MINBAR_LLM_PROTOCOL   openai | anthropic | claude-cli  (déduit de l'URL par défaut)
-    MINBAR_LLM_TIMEOUT    délai en secondes (défaut : 420 pour le résumé, 600 pour la traduction)
+    MINBAR_LLM_API_KEY    (empty locally)
+    MINBAR_LLM_PROTOCOL   openai | anthropic | claude-cli  (deduced from the URL by default)
+    MINBAR_LLM_TIMEOUT    timeout in seconds (default: 420 for the summary, 600 for the translation)
 
-`claude-cli` reste disponible pour l'ancien fonctionnement (binaire `claude -p` lancé en sous-processus) :
-ce n'est plus le défaut, il faut le demander explicitement.
+`claude-cli` stays available for the old behaviour (`claude -p` binary run as a subprocess):
+it is no longer the default, it must be requested explicitly.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ DEFAULT_MODEL = "qwen2.5:7b-instruct"
 ANTHROPIC_VERSION = "2023-06-01"
 CONFIG_KEYS = ("enabled", "url", "model", "protocol", "key")
 
-# réglage propre au processus (back-office, tests) : prioritaire sur l'environnement
+# process-local setting (back-office, tests): takes precedence over the environment
 _OVERRIDE: dict = {}
 
 
@@ -40,7 +40,7 @@ def config_path() -> Path:
 
 
 def config() -> dict:
-    """Réglages enregistrés depuis le back-office (Réglages → Mosquée). Fichier absent ou illisible : {}."""
+    """Settings saved from the back-office (Settings → Mosque). File missing or unreadable: {}."""
     try:
         d = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -49,10 +49,10 @@ def config() -> dict:
 
 
 def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "") -> None:
-    """Écrit le réglage du modèle (fichier local, lisible par le pipeline lancé à côté).
+    """Write the model setting (local file, readable by the pipeline started alongside).
 
-    La clé d'API n'est jamais écrite ici : absente du formulaire web, elle n'est que conservée si elle a été
-    posée à la main dans le fichier (droits 600).
+    The API key is never written here: absent from the web form, it is only kept if it was
+    set by hand in the file (permissions 600).
     """
     p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -66,13 +66,13 @@ def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "
 
 
 def use(**kw) -> None:
-    """Réglages imposés au processus courant (prioritaires sur l'environnement et le fichier)."""
+    """Settings forced on the current process (take precedence over the environment and the file)."""
     _OVERRIDE.clear()
     _OVERRIDE.update({k: v for k, v in kw.items() if k in CONFIG_KEYS and v is not None})
 
 
 def enabled() -> bool:
-    """Interrupteur : réglage du processus, puis MINBAR_LLM_ENABLED, puis le fichier, sinon activé."""
+    """Switch: process setting, then MINBAR_LLM_ENABLED, then the file, otherwise enabled."""
     if "enabled" in _OVERRIDE:
         return bool(_OVERRIDE["enabled"])
     env = os.environ.get("MINBAR_LLM_ENABLED", "").strip().lower()
@@ -82,7 +82,7 @@ def enabled() -> bool:
 
 
 def label() -> str:
-    """Nom court de la méthode effective (journal de démarrage du pipeline)."""
+    """Short name of the effective method (pipeline startup log)."""
     return settings().label()
 
 
@@ -94,7 +94,7 @@ class Settings:
     protocol: str
 
     def label(self) -> str:
-        """Nom court de la méthode, écrit dans les notes et le cache de traduction."""
+        """Short name of the method, written into the notes and the translation cache."""
         if self.protocol == "claude-cli":
             return "claude -p"
         return f"{self.protocol} · {self.model}"
@@ -102,13 +102,13 @@ class Settings:
 
 def settings(url: str | None = None, model: str | None = None, key: str | None = None,
              protocol: str | None = None) -> Settings:
-    """Réglages effectifs : argument, réglage du processus, environnement, fichier du back-office, défaut."""
+    """Effective settings: argument, process setting, environment, back-office file, default."""
     cfg = config()
     url = (url or _OVERRIDE.get("url") or os.environ.get("MINBAR_LLM_URL") or cfg.get("url")
            or DEFAULT_URL).rstrip("/")
     model = model or _OVERRIDE.get("model") or os.environ.get("MINBAR_LLM_MODEL") or cfg.get("model") or DEFAULT_MODEL
-    # Le format enregistré ne vaut que pour l'adresse enregistrée : si l'adresse change (réglage du
-    # back-office, variable d'environnement, argument), le format est de nouveau déduit de l'adresse.
+    # The saved protocol only holds for the saved address: if the address changes (back-office
+    # setting, environment variable, argument), the protocol is deduced again from the address.
     cfg_proto = (cfg.get("protocol") or "").strip().lower() if (cfg.get("url") or "").rstrip("/") == url else ""
     proto = (protocol or _OVERRIDE.get("protocol") or os.environ.get("MINBAR_LLM_PROTOCOL")
              or cfg_proto or "").strip().lower() or _guess_protocol(url)
@@ -118,20 +118,20 @@ def settings(url: str | None = None, model: str | None = None, key: str | None =
 
 
 def _guess_protocol(url: str) -> str:
-    """Déduit le format d'API de l'adresse : « /messages » ou un hôte anthropic parle le format Anthropic."""
+    """Deduce the API format from the address: « /messages » or an anthropic host speaks the Anthropic format."""
     low = (url or "").lower().rstrip("/")
     return "anthropic" if "anthropic" in low or low.endswith("/messages") else "openai"
 
 
 def ask_json(prompt: str, timeout: int, log=print, *, url=None, model=None, key=None, protocol=None) -> dict | None:
-    """Réponse JSON du modèle, ou None s'il est indisponible (le pipeline a toujours un repli)."""
+    """JSON response from the model, or None if it is unavailable (the pipeline always has a fallback)."""
     if not enabled():
         log("LLM désactivé (MINBAR_LLM_ENABLED=0) : repli sans modèle")
         return None
     s = settings(url, model, key, protocol)
     try:
         text = _ask_cli(prompt, timeout, log) if s.protocol == "claude-cli" else _ask_http(s, prompt, timeout, log)
-    except Exception as e:  # noqa: BLE001 — un modèle absent ou lent ne doit pas casser le pipeline
+    except Exception as e:  # noqa: BLE001 — a missing or slow model must not break the pipeline
         log(f"LLM indisponible ({s.label()}) : {e}")
         return None
     if not text:
@@ -143,7 +143,7 @@ def ask_json(prompt: str, timeout: int, log=print, *, url=None, model=None, key=
 
 
 def _json_object(text: str) -> dict | None:
-    """Objet JSON de la réponse : la réponse entière si possible, sinon le premier bloc {...}."""
+    """JSON object of the response: the whole response if possible, otherwise the first {...} block."""
     try:
         d = json.loads(text)
         return d if isinstance(d, dict) else None
@@ -166,7 +166,7 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
 
 
 def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
-    """Un aller-retour HTTP, au format du protocole choisi."""
+    """One HTTP round trip, in the format of the chosen protocol."""
     if s.protocol == "anthropic":
         url = s.url if s.url.endswith("/messages") else f"{s.url}/messages"
         headers = {"Content-Type": "application/json", "anthropic-version": ANTHROPIC_VERSION}
@@ -190,17 +190,17 @@ def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
 
 
 def probe(timeout: int = 8) -> tuple[bool, str]:
-    """Le modèle répond-il ? Indépendant de l'interrupteur : c'est le bouton « Tester » du back-office."""
+    """Does the model answer? Independent of the switch: this is the « Test » button of the back-office."""
     s = settings()
     try:
         _ask_http(s, 'Réponds uniquement {"ok": true}.', timeout, lambda m: None)
-    except Exception as e:  # noqa: BLE001 — le message est montré tel quel à l'administrateur
+    except Exception as e:  # noqa: BLE001 — the message is shown as is to the administrator
         return False, f"{s.label()} injoignable : {e}"
     return True, f"{s.label()} répond."
 
 
 def _ask_cli(prompt: str, timeout: int, log) -> str:
-    """Ancien fonctionnement : binaire `claude` en sous-processus (désactivé par défaut)."""
+    """Old behaviour: `claude` binary as a subprocess (disabled by default)."""
     exe = shutil.which("claude")
     if not exe:
         raise RuntimeError("binaire « claude » introuvable")

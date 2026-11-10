@@ -1,9 +1,9 @@
-"""Logo de l'interface : dépôt réseau distinct, upload validé, repli sur l'emblème neutre."""
+"""Interface logo: separate network repository, validated upload, fallback to the neutral emblem."""
 import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest assure le chemin)
+from test_backoffice import client, env  # noqa: E402,F401  (conftest provides the path)
 
 
 def _png(w=64, h=64, color=(15, 42, 25)) -> bytes:
@@ -32,7 +32,7 @@ def test_sans_logo_embleme_neutre(env):
     c = client(env, "admin")
     d = c.get("/api/v1/settings").json()
     assert d["mosque"]["logo"] == "/static/emblem.svg"
-    assert c.get("/static/emblem.svg").status_code == 200       # repli servi, même sans session
+    assert c.get("/static/emblem.svg").status_code == 200       # fallback served, even without a session
 
 
 def test_upload_puis_retrait(env):

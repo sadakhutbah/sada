@@ -1,4 +1,4 @@
-"""Orchestrateur : horaires + signaux + machine à états + encodeur + API.
+"""Orchestrator: schedule + signals + state machine + encoder + API.
 
     python -m minbar.orchestrator --sim-start 12:12 --sim-speed 40
 """
@@ -41,7 +41,7 @@ class Orchestrator:
         self.times = self._load_times()
         day = self.clock.now().date()
         jumua = [parse_hhmm(t, day) for t in self.times]
-        # programme du jour : les dars et conférences s'ajoutent aux khutbas, au même titre
+        # today's programme: dars and conferences are added to the khutbas, on the same footing
         self.program, ev_err = events_mod.load(cfg.events_file)
         if ev_err:
             log.warning(ev_err)
@@ -93,7 +93,7 @@ class Orchestrator:
 
     @property
     def prayer_times(self) -> dict:
-        """Horaires du jour (« après Isha » etc.) ; vide si Mawaqit est muet."""
+        """Today's times ("after Isha" etc.); empty if Mawaqit is silent."""
         return mawaqit.prayer_times(self.mawaqit_data or {})
 
     def _load_times(self) -> list[str]:
@@ -112,16 +112,16 @@ class Orchestrator:
         log.warning("Repli : horaires par défaut 12:30 / 13:30")
         return ["12:30", "13:30"]
 
-    # --------------------------------------------------------------- événements
+    # --- events ---------------------------------------------------------------
     def _next_event(self, now: dt.datetime):
-        """Prochain cours, annoncé sur l'écran de fin et pendant l'entracte."""
+        """Next class, announced on the end screen and during the interlude."""
         found = events_mod.next_instances(self.program, now, count=1, days=21,
                                           times_for=lambda d: self.prayer_times)
         return found[0] if found else None
 
-    # --------------------------------------------------------------- diffusion
+    # --- broadcast -----------------------------------------------------------
     def _sync(self):
-        """Aligne l'encodeur sur la machine : scène affichée, micro, flux lancé ou arrêté."""
+        """Aligns the encoder on the machine: displayed scene, mic, stream started or stopped."""
         m, enc = self.machine, self.encoder
         if m.scene is not None:
             now = self.clock.now()
@@ -198,7 +198,7 @@ class Orchestrator:
             })
             return st
 
-    # ---------------------------------------------------------------- boucle
+    # --- loop --------------------------------------------------------------
     def _target_speed(self) -> float:
         return self.accel if self.machine.clock_only(self.clock.now()) else 1.0
 

@@ -1,4 +1,4 @@
-"""Texte du Coran (api.alquran.cloud : quran-simple-clean + traduction fr.hamidullah), mis en cache."""
+"""Quran text (api.alquran.cloud: quran-simple-clean + fr.hamidullah translation), cached."""
 from __future__ import annotations
 import json
 from pathlib import Path
@@ -22,7 +22,7 @@ def _get(edition: str) -> dict:
 
 
 def load_verses() -> list[dict]:
-    """[{surah, ayah, surah_name, text, norm, fr}] ; la basmala préfixée au verset 1 est retirée."""
+    """[{surah, ayah, surah_name, text, norm, fr}]; the basmala prefixed to verse 1 is stripped."""
     ar = _get("quran-simple-clean")
     fr = _get("fr.hamidullah")
     out = []
