@@ -28,10 +28,10 @@ const fr = {
     // Labels of the live commands, chosen by their key (the server only sends keys).
     // Engine states, chosen by their value: the server only sends the value.
     state: {
-      IDLE: "En veille", "ARMÉ": "Armé (fenêtre ouverte)", AVANT: "Début imminent",
-      KHUTBA: "Khutba en direct", "PRIÈRE": "Prière en cours", ENTRACTE: "Entracte",
-      "TERMINÉ": "Terminé", JANAZA: "Salat al-Janaza", DARS: "Dars en direct",
-      DARS_FIN: "Dars terminé", FIN: "Live terminé",
+      IDLE: "En veille", ARMED: "Armé (fenêtre ouverte)", BEFORE: "Début imminent",
+      KHUTBA: "Khutba en direct", PRAYER: "Prière en cours", INTERMISSION: "Entracte",
+      ENDED: "Terminé", JANAZA: "Salat al-Janaza", DARS: "Dars en direct",
+      DARS_END: "Dars terminé", STOPPED: "Live terminé",
     },
     cmd: {
       start: "Démarrer", pause: "Pause", resume: "Reprendre", auto: "Automatique", extend: "Prolonger",
@@ -265,10 +265,10 @@ const en: typeof fr = {
     sceneChoose: "Choose a scene", sceneApply: "Show",
     sessionN: "Session {{n}}/{{total}}", noSession: "No upcoming session",
     state: {
-      IDLE: "Idle", "ARMÉ": "Armed (window open)", AVANT: "Starting shortly",
-      KHUTBA: "Khutba on air", "PRIÈRE": "Prayer in progress", ENTRACTE: "Intermission",
-      "TERMINÉ": "Finished", JANAZA: "Salat al-Janaza", DARS: "Lesson on air",
-      DARS_FIN: "Lesson finished", FIN: "Live over",
+      IDLE: "Idle", ARMED: "Armed (window open)", BEFORE: "Starting shortly",
+      KHUTBA: "Khutba on air", PRAYER: "Prayer in progress", INTERMISSION: "Intermission",
+      ENDED: "Finished", JANAZA: "Salat al-Janaza", DARS: "Lesson on air",
+      DARS_END: "Lesson finished", STOPPED: "Live over",
     },
     cmd: {
       start: "Start", pause: "Pause", resume: "Resume", auto: "Automatic", extend: "Extend",

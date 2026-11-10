@@ -46,9 +46,9 @@ def test_idle_to_arme_to_avant():
     d.run(10, voice=False)
     assert m.state == State.IDLE
     d.now = at(12, 15, 1); d.step(voice=False)
-    assert m.state == State.ARME and not m.stream_on
+    assert m.state == State.ARMED and not m.stream_on
     d.now = at(12, 28, 1); d.step(voice=False)
-    assert m.state == State.AVANT and m.stream_on
+    assert m.state == State.BEFORE and m.stream_on
 
 
 def test_voice_arms_stream_khutba_only_from_scheduled_time():
@@ -58,9 +58,9 @@ def test_voice_arms_stream_khutba_only_from_scheduled_time():
     assert m.state == State.IDLE
     d.now = at(12, 20)
     d.step(voice=True)
-    assert m.state == State.ARME  # armed; voice already > 20 s => early start on the next tick
+    assert m.state == State.ARMED  # armed; voice already > 20 s => early start on the next tick
     d.run(25, voice=True)         # sustained voice before the scheduled time: stream armed, camera not shown
-    assert m.state == State.AVANT and m.stream_on and m.scene == "avant"
+    assert m.state == State.BEFORE and m.stream_on and m.scene == "avant"
     d.run(11, voice=True, clock=60)  # we cross T with the voice still sustained: the camera appears
     assert m.state == State.KHUTBA
     assert m.records[0].status == "live"
@@ -82,7 +82,7 @@ def test_stop_needs_silence_plus_grace_and_resume_cancels():
     d.run(61, voice=False)
     assert m.state == State.KHUTBA                # the returning voice cancelled the grace: it starts over from zero
     d.run(31, voice=False)
-    assert m.state == State.PRIERE
+    assert m.state == State.PRAYER
     assert m.records[0].status == "done" and m.records[0].end_reason == "silence prolongé"
 
 
@@ -97,21 +97,21 @@ def test_two_sessions_full_cycle():
     m, logs = mk(silence_stop_s=10, grace_s=5, min_khutba_s=30, prayer_min=10, terminated_hold_s=20)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(60, voice=True); d.run(30, voice=False)
-    assert m.state == State.PRIERE
+    assert m.state == State.PRAYER
     d.step(clock=11 * 60, voice=False)           # 11 min of prayer
-    assert m.state == State.ENTRACTE and m.session == at(13, 30)
+    assert m.state == State.INTERMISSION and m.session == at(13, 30)
     d.now = at(13, 30, 5); d.voice = d.silence = 0
     d.run(25, voice=True)
     assert m.state == State.KHUTBA and m.records[1].status == "live"
     d.run(60, voice=True); d.run(20, voice=False)
-    assert m.state == State.PRIERE
+    assert m.state == State.PRAYER
     d.step(clock=11 * 60, voice=False)
-    assert m.state == State.TERMINE
+    assert m.state == State.ENDED
     d.run(21, voice=False)
-    assert m.state == State.FIN and not m.stream_on
+    assert m.state == State.STOPPED and not m.stream_on
     seq = [l for l in logs if l.startswith("ÉTAT")]
     names = [l.split("→")[1].split()[0] for l in seq]
-    assert names == ["ARMÉ", "AVANT", "KHUTBA", "PRIÈRE", "ENTRACTE", "KHUTBA", "PRIÈRE", "TERMINÉ", "FIN"]
+    assert names == ["ARMED", "BEFORE", "KHUTBA", "PRAYER", "INTERMISSION", "KHUTBA", "PRAYER", "ENDED", "STOPPED"]
     assert [r.status for r in m.records] == ["done", "done"]
 
 
@@ -120,11 +120,11 @@ def test_second_session_skipped_when_no_signal():
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(60, voice=True); d.run(20, voice=False)
     d.step(clock=11 * 60, voice=False)
-    assert m.state == State.ENTRACTE
+    assert m.state == State.INTERMISSION
     d.now = at(14, 16)               # 13:30+45 window passed, no voice
     d.step(voice=False)
     assert m.records[1].status == "skipped"
-    assert m.state == State.TERMINE
+    assert m.state == State.ENDED
 
 
 def test_manual_override_suspends_auto():
@@ -137,7 +137,7 @@ def test_manual_override_suspends_auto():
     m.command("auto", d.sig())
     assert not m.override
     m.command("pause", d.sig())
-    assert m.state == State.PRIERE
+    assert m.state == State.PRAYER
     m.command("resume", d.sig())
     assert m.state == State.KHUTBA
 
@@ -147,7 +147,7 @@ def test_scene_command_and_unknown():
     d = Drv(m, at(12, 0))
     assert "inconnue" in m.command("scene", d.sig(), "disco")
     m.command("scene", d.sig(), "entracte")
-    assert m.state == State.ENTRACTE and m.stream_on and m.scene == "entracte"
+    assert m.state == State.INTERMISSION and m.stream_on and m.scene == "entracte"
 
 
 def test_extend_blocks_stop():
@@ -158,7 +158,7 @@ def test_extend_blocks_stop():
     d.run(200, voice=False)
     assert m.state == State.KHUTBA
     d.run(120, voice=False)
-    assert m.state == State.PRIERE
+    assert m.state == State.PRAYER
 
 
 def test_janaza_excluded_from_pipeline():
@@ -171,7 +171,7 @@ def test_janaza_excluded_from_pipeline():
     d.run(100, voice=False)
     assert m.state == State.JANAZA     # never cut automatically
     m.command("stop", d.sig())
-    assert m.state == State.TERMINE
+    assert m.state == State.ENDED
 
 
 def test_cancel_day():
@@ -180,14 +180,14 @@ def test_cancel_day():
     m.command("cancel", d.sig())
     assert all(r.status == "skipped" for r in m.records)
     d.step()
-    assert m.state == State.FIN
+    assert m.state == State.STOPPED
 
 
 def test_max_duration_guard():
     m, _ = mk(max_khutba_s=100, silence_stop_s=1e9)
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     d.run(101, voice=True)
-    assert m.state == State.PRIERE
+    assert m.state == State.PRAYER
     assert m.records[0].end_reason == "durée maximale"
 
 
@@ -206,12 +206,12 @@ def test_khutba_scene_waits_for_the_scheduled_time():
     m, _ = mk()
     d = Drv(m, at(12, 26))
     d.run(35, voice=True)     # imam speaking before 12:30: stream armed, camera hidden
-    assert m.state == State.AVANT and m.scene == "avant"
+    assert m.state == State.BEFORE and m.scene == "avant"
     d.run(30, voice=False)    # the voice stops before the scheduled time
-    assert m.state == State.AVANT
+    assert m.state == State.BEFORE
     d.now = at(12, 30, 1)
     d.step(voice=False)       # 12:30 without confirmed voice: still no camera
-    assert m.state == State.AVANT
+    assert m.state == State.BEFORE
     d.run(25, voice=True)     # sustained voice after the scheduled time: the scene changes
     assert m.state == State.KHUTBA
 
@@ -225,14 +225,14 @@ def test_pause_then_start_then_auto_lets_prayer_end():
     m.command("scene", d.sig(), "priere")
     m.command("auto", d.sig())
     d.run(13, voice=False, clock=60)
-    assert m.state == State.ENTRACTE and m.records[0].status == "done"
+    assert m.state == State.INTERMISSION and m.records[0].status == "done"
 
 
 def test_stop_while_off_air_does_not_start_the_stream():
     m, _ = mk()
     d = Drv(m, at(12, 0))
     m.command("stop", d.sig())
-    assert m.state == State.FIN and not m.stream_on
+    assert m.state == State.STOPPED and not m.stream_on
 
 
 def test_extend_with_bad_duration_answers():
@@ -266,7 +266,7 @@ def test_after_stop_no_session_is_left_pending():
     d = Drv(m, at(12, 29)); _start_khutba(m, d)
     m.command("stop", d.sig())
     d.run(50, voice=False)
-    assert m.state == State.FIN
+    assert m.state == State.STOPPED
     assert [r.status for r in m.records] == ["done", "skipped"]
 
 
@@ -309,7 +309,7 @@ def test_auto_after_pause_resumes_automatic_mode():
     m.command("pause", d.sig())
     m.command("auto", d.sig())
     d.run(16, voice=False, clock=60)
-    assert m.state == State.ARME
+    assert m.state == State.ARMED
 
 
 def test_nothing_comes_back_after_fin():
@@ -326,7 +326,7 @@ def test_auto_after_janaza_hands_back_the_next_session():
     m.command("janaza", d.sig(), "Ali")
     d.now = at(13, 0)
     m.command("auto", d.sig())
-    assert m.state == State.ENTRACTE and m.records[-1].status == "janaza" and m.records[-1].end_clock
+    assert m.state == State.INTERMISSION and m.records[-1].status == "janaza" and m.records[-1].end_clock
     d.now = at(13, 30, 5)
     d.run(25, voice=True)
     assert m.state == State.KHUTBA and m.records[1].status == "live"

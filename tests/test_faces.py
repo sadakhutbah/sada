@@ -102,7 +102,7 @@ def test_fin_de_khutba_par_visage_perdu():
     for i in range(200):
         p.t += 1.0
         p.m.tick(Signals(p.now, p.t, voice_run=0.0, silence_run=40.0, face_run=60.0 + i))
-    assert m.state is State.PRIERE
+    assert m.state is State.PRAYER
 
 
 def test_visage_de_retour_annule_la_grace():

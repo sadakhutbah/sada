@@ -14,8 +14,8 @@ from typing import Callable, Optional
 
 from .state import Machine, State
 
-# states that deserve a message (ARME/IDLE round trips are noise)
-NOTIFY_STATES = {State.ARME, State.KHUTBA, State.DARS, State.FIN}
+# states that deserve a message (ARMED/IDLE round trips are noise)
+NOTIFY_STATES = {State.ARMED, State.KHUTBA, State.DARS, State.STOPPED}
 # wording of a session type in a sentence
 KIND_NOUNS = {"khutba": "la khutba", "dars": "le dars", "conference": "la conférence"}
 
@@ -24,7 +24,7 @@ def should_send(state: State, m: Machine, now: dt.datetime) -> bool:
     """Should this state transition be notified? A reminder only concerns a session still to come."""
     if state not in NOTIFY_STATES:
         return False
-    return state is not State.ARME or (m.session is not None and m.session > now)
+    return state is not State.ARMED or (m.session is not None and m.session > now)
 
 
 def message_for(state: State, m: Machine) -> Optional[str]:
@@ -32,11 +32,11 @@ def message_for(state: State, m: Machine) -> Optional[str]:
     ref = m.session.strftime("%H:%M") if m.session else "—"
     quoi = KIND_NOUNS.get(m.kind, f"le {m.kind}")
     titre = f" · {m.rec.title}" if m.rec is not None and m.rec.title else ""
-    if state == State.ARME:
+    if state == State.ARMED:
         return f"Rappel : {quoi} de {ref} approche, le direct se prépare."
     if state in (State.KHUTBA, State.DARS):
         return f"Le direct a commencé ({quoi} de {ref}{titre})."
-    if state == State.FIN:
+    if state == State.STOPPED:
         fin = m.rec.end_reason if m.rec is not None else None
         return f"Le direct est terminé{f' ({fin})' if fin else ''}."
     return None

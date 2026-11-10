@@ -1,6 +1,6 @@
 """Broadcast state machine (pure: no I/O, fully testable).
 
-ARMÉ → AVANT → KHUTBA → PRIÈRE → ENTRACTE → KHUTBA (2) → TERMINÉ  (then FIN: stream stopped)
+ARMED → BEFORE → KHUTBA → PRAYER → INTERMISSION → KHUTBA (2) → ENDED  (then STOPPED: stream stopped)
 
 Inputs at each tick:
   now          "mosque" time (simulated clock)                -> time windows
@@ -25,27 +25,27 @@ from typing import Callable, Optional
 
 class State(str, Enum):
     IDLE = "IDLE"          # waiting for the next window
-    ARME = "ARMÉ"          # T-15 min: we listen, the stream is not started yet
-    AVANT = "AVANT"        # T-2 min: stream started, "starting soon" screen
+    ARMED = "ARMED"          # T-15 min: we listen, the stream is not started yet
+    BEFORE = "BEFORE"        # T-2 min: stream started, "starting soon" screen
     KHUTBA = "KHUTBA"      # camera + sound
-    PRIERE = "PRIÈRE"      # "Prayer in progress" screen, camera and mic off
-    ENTRACTE = "ENTRACTE"  # countdown to the next khutba
-    TERMINE = "TERMINÉ"    # end screen, before the stream stops
+    PRAYER = "PRAYER"      # "Prayer in progress" screen, camera and mic off
+    INTERMISSION = "INTERMISSION"  # countdown to the next khutba
+    ENDED = "ENDED"    # end screen, before the stream stops
     JANAZA = "JANAZA"      # manual mode: dedicated full screen, without camera or banner
     DARS = "DARS"          # dars or conference: camera + event banner
-    DARS_FIN = "DARS_FIN"  # end screen of a dars (next class), before the stream stops
-    FIN = "FIN"            # stream stopped
+    DARS_END = "DARS_END"  # end screen of a dars (next class), before the stream stops
+    STOPPED = "STOPPED"            # stream stopped
 
 
 # scene displayed by state (the visual, rendered by scenes.py); no scene = no stream
 SCENE_OF = {
-    State.IDLE: None, State.ARME: None, State.FIN: None,
-    State.AVANT: "avant", State.KHUTBA: "khutba", State.PRIERE: "priere",
-    State.ENTRACTE: "entracte", State.TERMINE: "termine", State.JANAZA: "janaza",
-    State.DARS: "dars", State.DARS_FIN: "dars_fin",
+    State.IDLE: None, State.ARMED: None, State.STOPPED: None,
+    State.BEFORE: "avant", State.KHUTBA: "khutba", State.PRAYER: "priere",
+    State.INTERMISSION: "entracte", State.ENDED: "termine", State.JANAZA: "janaza",
+    State.DARS: "dars", State.DARS_END: "dars_fin",
 }
 STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v}
-WAITING = (State.IDLE, State.ARME, State.AVANT, State.ENTRACTE)
+WAITING = (State.IDLE, State.ARMED, State.BEFORE, State.INTERMISSION)
 
 # Values of the “extend” command, in minutes: the engine default, the local API buttons and the
 # back-office choices all read this one tuple.
@@ -71,7 +71,7 @@ class Signals:
 class MachineParams:
     # mosque-clock minutes, counted from the session time (T)
     arm_before_min: float = 15.0        # arming: we listen to the voice
-    avant_before_min: float = 2.0       # AVANT scene: stream started
+    avant_before_min: float = 2.0       # BEFORE scene: stream started
     window_after_min: float = 45.0      # no signal beyond that: session skipped
     prayer_min: float = 12.0            # assumed duration of the prayer
     # durations in REAL seconds: the signal is in real time
@@ -184,7 +184,7 @@ class Machine:
         self.entered_now = sig.now
         self.grace_until = None
         self.last_reason = reason
-        if new != State.PRIERE:
+        if new != State.PRAYER:
             self.paused_from = None
         if old == State.JANAZA and self.paused_from is None:
             self.janaza_name = self.janaza_info = None
@@ -194,7 +194,7 @@ class Machine:
             r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
             self._open(r, sig)
-        if new == State.FIN:                # the day is over: nothing left to come
+        if new == State.STOPPED:                # the day is over: nothing left to come
             for r in self.records:
                 if r.status == "pending":
                     r.status, r.end_reason = "skipped", reason
@@ -264,11 +264,11 @@ class Machine:
             self.idx += 1
         if self.session is None:
             return self._end_state()
-        return State.ENTRACTE if self.stream_on else State.IDLE
+        return State.INTERMISSION if self.stream_on else State.IDLE
 
     def _end_state(self) -> State:
-        """End of the live: Terminé screen if the stream is running, FIN directly otherwise."""
-        return State.TERMINE if self.stream_on else State.FIN
+        """End of the live: Terminé screen if the stream is running, STOPPED directly otherwise."""
+        return State.ENDED if self.stream_on else State.STOPPED
 
     def _voice_ok(self, sig: Signals) -> bool:
         return sig.voice_run >= self.p.voice_start_s
@@ -278,11 +278,11 @@ class Machine:
         s, p = self.session, self.p
         if self.override or s is None:
             return False
-        if self.state == State.IDLE or (self.state == State.PRIERE and self.paused_from is None):
+        if self.state == State.IDLE or (self.state == State.PRAYER and self.paused_from is None):
             return True
-        if self.state == State.ARME:
+        if self.state == State.ARMED:
             return now < s - dt.timedelta(minutes=p.avant_before_min)
-        if self.state == State.ENTRACTE:
+        if self.state == State.INTERMISSION:
             return now < s - dt.timedelta(minutes=p.arm_before_min)
         return False
 
@@ -307,11 +307,11 @@ class Machine:
         return "écran Terminé puis arrêt du stream"
 
     def _pause(self, sig, arg):
-        if self.state == State.PRIERE:
+        if self.state == State.PRAYER:
             return "déjà en pause"
         self.paused_from = self.state       # before _go: the open session stays open during the pause
         self.override = True
-        self._go(State.PRIERE, sig, "commande pause")
+        self._go(State.PRAYER, sig, "commande pause")
         return "pause (écran Prière en cours)"
 
     def _resume(self, sig, arg):
@@ -325,7 +325,7 @@ class Machine:
         if self.paused_from is not None:
             self._go(self.paused_from, sig, "commande auto (fin de pause)")
         if self.state == State.JANAZA:           # end of the janaza: the remaining sessions resume automatically
-            self._go(State.ENTRACTE if self.session else self._end_state(), sig, "commande auto (fin de janaza)")
+            self._go(State.INTERMISSION if self.session else self._end_state(), sig, "commande auto (fin de janaza)")
         self.override = False
         return "automatique repris"
 
@@ -359,7 +359,7 @@ class Machine:
             if r.status in ("pending", "live"):
                 r.status = "skipped"
                 r.end_reason = "annulé"
-        self.idx = len(self.sessions)       # TERMINÉ first if the stream is running: nothing left to come from now on
+        self.idx = len(self.sessions)       # ENDED first if the stream is running: nothing left to come from now on
         self.override = False
         self._go(self._end_state(), sig, "live du jour annulé")
         return "live du jour annulé"
@@ -388,13 +388,13 @@ class Machine:
         st = self.state
 
         # Terminé -> end: always active (even in override, this is the exit)
-        if st == State.TERMINE:
+        if st == State.ENDED:
             if sig.t - self.entered_t >= self.p.terminated_hold_s:
-                self._go(State.FIN, sig, "écran Terminé affiché, arrêt du stream")
+                self._go(State.STOPPED, sig, "écran Terminé affiché, arrêt du stream")
             return
-        if st == State.DARS_FIN:
+        if st == State.DARS_END:
             if sig.t - self.entered_t >= self.p.dars_fin_hold_s:
-                self._go(State.FIN, sig, "écran de fin du dars affiché, arrêt du stream")
+                self._go(State.STOPPED, sig, "écran de fin du dars affiché, arrêt du stream")
             return
         if st == State.JANAZA or self.override:
             return  # Janaza: manual only
@@ -406,30 +406,30 @@ class Machine:
 
         if st == State.IDLE:
             if sig.now >= s - dt.timedelta(minutes=self.p.arm_before_min):
-                self._go(State.ARME, sig, f"fenêtre armée pour {s:%H:%M}")
+                self._go(State.ARMED, sig, f"fenêtre armée pour {s:%H:%M}")
             return
 
-        if st in (State.ARME, State.AVANT, State.ENTRACTE):
+        if st in (State.ARMED, State.BEFORE, State.INTERMISSION):
             if sig.now > self._window_end():
                 self._skip("aucun signal dans la fenêtre")
                 nxt = self._next_session(sig)
                 self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
                 return
             entry = self._entry_state()
-            if st == State.ENTRACTE:
+            if st == State.INTERMISSION:
                 if sig.now >= s and self._voice_ok(sig):
                     self._go(entry, sig, "voix (2e session)")
                 return
             if self._voice_ok(sig) and sig.now >= s:
-                if st == State.ARME:
-                    self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
+                if st == State.ARMED:
+                    self._go(State.BEFORE, sig, "démarrage anticipé : voix détectée")
                 self._go(entry, sig, f"voix {sig.voice_run:.0f}s (horaire)")
                 return
-            if st == State.ARME and self._voice_ok(sig):
-                self._go(State.AVANT, sig, "démarrage anticipé : voix détectée")
+            if st == State.ARMED and self._voice_ok(sig):
+                self._go(State.BEFORE, sig, "démarrage anticipé : voix détectée")
                 return
-            if st == State.ARME and sig.now >= s - dt.timedelta(minutes=self.p.avant_before_min):
-                self._go(State.AVANT, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
+            if st == State.ARMED and sig.now >= s - dt.timedelta(minutes=self.p.avant_before_min):
+                self._go(State.BEFORE, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
             return
 
         if st in (State.KHUTBA, State.DARS):
@@ -437,7 +437,7 @@ class Machine:
             max_s = self.p.dars_max_s if dars else self.p.max_khutba_s
             silence_s = self.p.dars_silence_stop_s if dars else self.p.silence_stop_s
             grace_s = self.p.dars_grace_s if dars else self.p.grace_s
-            end = State.DARS_FIN if dars else State.PRIERE
+            end = State.DARS_END if dars else State.PRAYER
             elapsed = sig.t - self.entered_t
             if elapsed >= max_s and sig.t >= self.extend_until_t:
                 self._go(end, sig, "durée maximale")
@@ -468,7 +468,7 @@ class Machine:
                     self._go(end, sig, getattr(self, "grace_reason", None) or "silence prolongé")
             return
 
-        if st == State.PRIERE:
+        if st == State.PRAYER:
             if self.paused_from is not None:
                 return
             if sig.now >= self.entered_now + dt.timedelta(minutes=self.p.prayer_min):

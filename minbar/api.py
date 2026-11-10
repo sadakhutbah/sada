@@ -3,7 +3,8 @@
 GET  /status
 POST /<command>?name=...|min=...    Machine.COMMANDS commands (e.g. /extend?min=5, /scene?name=priere,
                                     /janaza?name=...[&info=...]: name and note of the deceased, only with the family's consent)
-GET  /  : small control page (/?token=... if a token is configured)
+
+JSON only: the control screen is the back-office dashboard, there is no page served here.
 """
 from __future__ import annotations
 import json
@@ -11,25 +12,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from .state import EXTEND_MINUTES, PICKABLE_SCENES, Machine
-
-# parameterised commands: one button per value (the janaza scene goes through the janaza command, which opens its session)
-_VARIANTS = {
-    "extend": [[f"extend?min={m}", f"+{m} min"] for m in EXTEND_MINUTES],
-    "scene": [[f"scene?name={sc}", sc] for sc in PICKABLE_SCENES],
-}
-_BUTTONS = [b for c in Machine.COMMANDS for b in _VARIANTS.get(c, [[c]])]
-
-PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width">
-<title>Minbar Live</title><body style="font-family:sans-serif;background:#0f3d20;color:#fff;max-width:480px;margin:auto">
-<h2 style="color:#8DC63F">Minbar Live — contrôle</h2><pre id=s style="background:#1E7A3C;padding:8px;white-space:pre-wrap"></pre>
-<div id=b></div><script>
-const cmds=""" + json.dumps(_BUTTONS) + """;
-b.innerHTML=cmds.map(c=>`<button style="font-size:18px;margin:4px;padding:8px" onclick="go('${c[0]}')">${c[1]||c[0]}</button>`).join("");
-const H={"X-Token":new URLSearchParams(location.search).get("token")||""};
-async function go(p){await fetch("/"+p,{method:"POST",headers:H});ref()}
-async function ref(){const r=await(await fetch("/status",{headers:H})).json();s.textContent=JSON.stringify(r,null,1)}
-ref();setInterval(ref,2000)</script>"""
+from .state import Machine
 
 
 def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPServer:
@@ -53,8 +36,6 @@ def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPSer
 
         def do_GET(self):
             u = urlparse(self.path)
-            if u.path == "/":
-                return self._send(200, PAGE, "text/html")
             if not self._auth():
                 return
             if u.path == "/status":

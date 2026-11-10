@@ -15,10 +15,10 @@ def mk(kind="khutba", meta=None):
 
 def test_message_par_etat():
     m = mk()
-    assert "khutba de 19:00" in message_for(State.ARME, m)
+    assert "khutba de 19:00" in message_for(State.ARMED, m)
     assert "a commencé" in message_for(State.KHUTBA, m)
-    assert "terminé" in message_for(State.FIN, m)
-    assert message_for(State.AVANT, m) is None          # no noise
+    assert "terminé" in message_for(State.STOPPED, m)
+    assert message_for(State.BEFORE, m) is None          # no noise
 
 
 def test_message_dars_porte_le_titre():
@@ -67,14 +67,14 @@ def test_notify_state_ignore_les_etats_sans_message():
     sent = []
     n = Notifier(webhook="https://exemple.test/hook", post=lambda u, p: sent.append(p["text"]))
     m = mk()
-    assert n.notify_state(State.AVANT, m) is False
-    assert n.notify_state(State.ARME, m) is True
+    assert n.notify_state(State.BEFORE, m) is False
+    assert n.notify_state(State.ARMED, m) is True
     assert len(sent) == 1
 
 
 def test_rappel_seulement_pour_une_session_a_venir():
     m = mk()
-    assert should_send(State.ARME, m, dt.datetime(2026, 11, 10, 18, 50)) is True
-    assert should_send(State.ARME, m, dt.datetime(2026, 11, 10, 19, 5)) is False   # already past: no reminder
-    assert should_send(State.AVANT, m, dt.datetime(2026, 11, 10, 18, 50)) is False
+    assert should_send(State.ARMED, m, dt.datetime(2026, 11, 10, 18, 50)) is True
+    assert should_send(State.ARMED, m, dt.datetime(2026, 11, 10, 19, 5)) is False   # already past: no reminder
+    assert should_send(State.BEFORE, m, dt.datetime(2026, 11, 10, 18, 50)) is False
     assert should_send(State.DARS, m, dt.datetime(2026, 11, 10, 19, 5)) is True

@@ -50,9 +50,9 @@ def test_dars_demarre_en_scene_dars():
     m, _ = mk()
     d = Drv(m, at(18, 55))
     d.run(2)
-    assert m.state == State.ARME
+    assert m.state == State.ARMED
     d.run(20, voice=True)                   # voice arms the stream, the scene only switches at the scheduled time
-    assert m.state == State.AVANT
+    assert m.state == State.BEFORE
     d.run(300, voice=True)                  # 19:00 passed: entering dars
     assert m.state == State.DARS
     assert m.scene == "dars"
@@ -70,9 +70,9 @@ def test_fin_par_silence_prolonge_puis_ecran_de_fin():
     d.run(181, voice=False)                 # silence threshold for a dars: 3 min
     assert m.state == State.DARS            # the grace delay starts
     d.run(91, voice=False)                  # 90 s grace exceeded
-    assert m.state == State.DARS_FIN
+    assert m.state == State.DARS_END
     d.run(46)
-    assert m.state == State.FIN
+    assert m.state == State.STOPPED
 
 
 def test_garde_fou_duree_maximale_dars():
@@ -82,7 +82,7 @@ def test_garde_fou_duree_maximale_dars():
     d.run(75, voice=True)
     assert m.state == State.DARS
     d.run(320, voice=True)                  # well beyond the maximum, without silence
-    assert m.state == State.DARS_FIN
+    assert m.state == State.DARS_END
     assert m.rec.status == "done"
     assert "durée maximale" in (m.rec.end_reason or "")
 
@@ -100,7 +100,7 @@ def test_fenetre_plus_large_pour_un_dars():
     m, _ = mk()
     d = Drv(m, at(20, 20))                  # T+80 min: outside a khutba window (45), inside a dars window (90)
     d.run(25, voice=True)
-    assert m.state != State.FIN
+    assert m.state != State.STOPPED
     assert m.state == State.DARS
 
 

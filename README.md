@@ -66,7 +66,7 @@ conférences dans `data/events.json` (modèle : `examples/events.example.json`, 
   silence d'arrêt de 3 min, grâce de 90 s, durée maximale de 2 h.
 - Écrans dédiés : bandeau « Dars : titre · intervenant · série · séance N » sur la caméra, compte à
   rebours « Prochain cours à … » entre deux sessions, écran de fin avec le prochain cours annoncé.
-  L'API de contrôle expose `kind` et `event`, et les boutons `Dars` / `Fin dars`.
+  L'API de contrôle expose `kind` et `event` ; le back-office en dérive les commandes `dars` / `dars_fin`.
 - Un fichier illisible n'empêche pas la diffusion : l'erreur est journalisée et les khutbas restent
   programmées.
 
@@ -162,7 +162,7 @@ face_silence_ratio: 0.5     # … ET au moins cette part du seuil de silence
 face_return_s: 3            # visage de retour sous ce délai : la grâce s'annule
 ```
 
-La bascule vers PRIÈRE exige **les deux** : plus de visage de face depuis `face_absence_s` **et** un
+La bascule vers PRAYER exige **les deux** : plus de visage de face depuis `face_absence_s` **et** un
 silence d'au moins `face_silence_ratio × silence_stop_s`. Puis la grâce habituelle s'applique ; un visage
 qui revient ou une voix qui reprend l'annule. Si la caméra ne donne plus d'image, le signal vaut `null` et
 la machine retombe sur le silence seul au lieu de couper par accident.
