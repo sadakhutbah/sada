@@ -336,7 +336,8 @@ async def live_command(cmd: str, ctx: CtxDep):
         r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=label,
                  defunt=arg, mention=info, reponse=r.get("message"), etat=r.get("state"))
-        return _ok(f"{label} : {r.get('message', 'ok')}", state=r.get("state"), live=live_status(ctx))
+        # Après une commande, on veut l'état réel : lecture fraîche, sans cache.
+        return _ok(f"{label} : {r.get('message', 'ok')}", state=r.get("state"), live=live_status(ctx, forcer=True))
     except live.OrchestratorError as e:
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, commande=label, erreur=str(e))
         return JSONResponse({"error": "injoignable", "message": f"{label} : échec — {e}"}, status_code=503)

@@ -156,11 +156,10 @@ def clip_or_404(ctx: Ctx, cid: int) -> tuple[dict, dict]:
     return c, khutba_or_404(ctx, c["khutba_id"])
 
 
-def live_status(ctx: Ctx) -> dict:
-    try:
-        return {"ok": True, **live.summarize(live.status(ctx.mosque))}
-    except live.OrchestratorError as e:
-        return {"ok": False, "error": str(e)}
+def live_status(ctx: Ctx, forcer: bool = False) -> dict:
+    """Statut du live pour l'affichage, servi depuis un instantané : un orchestrateur éteint ne doit
+    pas faire attendre chaque page plusieurs secondes."""
+    return live.status_cached(ctx.mosque, forcer=forcer)
 
 
 # ------------------------------------------------------------------ application
@@ -196,6 +195,19 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         if auto_import_s:
             import_all()
             threading.Thread(target=importer_loop, daemon=True, name="auto-import").start()
+
+        def chauffe_statut():
+            # Le premier affichage du tableau de bord ne doit pas payer l'attente de l'orchestrateur.
+            conn = db.connect(db_path)
+            try:
+                for m in db.all_(conn, "SELECT * FROM mosques WHERE orchestrator_url != ''"):
+                    live.status_cached(dict(m))
+            except Exception:  # noqa: BLE001 — un statut indisponible n'empêche pas de servir
+                pass
+            finally:
+                conn.close()
+
+        threading.Thread(target=chauffe_statut, daemon=True, name="statut-live-chauffe").start()
         yield
         stop.set()
 

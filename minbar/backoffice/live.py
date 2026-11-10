@@ -6,6 +6,8 @@ Mode A : l'orchestrateur tourne sur la même machine (http://127.0.0.1:8088). Mo
 from __future__ import annotations
 
 import json
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,12 +59,71 @@ def _call(mosque: dict, method: str, path: str, params: dict | None = None, time
         raise OrchestratorError("orchestrateur injoignable (le live n'est pas lancé sur cette machine ?)") from e
 
 
-def status(mosque: dict) -> dict:
-    return _call(mosque, "GET", "status")
+def status(mosque: dict, timeout: float = 3.0) -> dict:
+    return _call(mosque, "GET", "status", timeout=timeout)
+
+
+# --- Statut mis en cache
+#
+# Un orchestrateur éteint ne répond pas : chaque lecture coûte plusieurs secondes d'attente. Le
+# tableau de bord le lisait à chaque affichage, d'où l'impression qu'il ne se chargeait jamais.
+# On garde donc un instantané: la première lecture attend un peu, les suivantes sont immédiates et
+# déclenchent un rafraîchissement en arrière-plan. Une panne se voit au plus un cycle plus tard,
+# ce qui suffit pour un indicateur.
+STATUS_TTL = 10.0
+_caches: dict[str, tuple[float, dict]] = {}
+_en_cours: set[str] = set()
+_verrou = threading.Lock()
+
+
+def _cle(mosque: dict) -> str:
+    return (mosque.get("orchestrator_url") or "").rstrip("/")
+
+
+def _lire(mosque: dict, timeout: float = 1.5) -> dict:
+    try:
+        return {"ok": True, **summarize(status(mosque, timeout=timeout))}
+    except OrchestratorError as e:
+        return {"ok": False, "error": str(e)}
+
+
+def status_cached(mosque: dict, ttl: float = STATUS_TTL, forcer: bool = False) -> dict:
+    """Statut de l'orchestrateur, rafraîchi au plus une fois toutes les `ttl` secondes.
+
+    `forcer` : lecture immédiate et bloquante (après une commande, on veut la conséquence réelle)."""
+    cle = _cle(mosque)
+    entree = None
+    if not forcer:
+        with _verrou:
+            entree = _caches.get(cle)
+            if entree and (time.monotonic() - entree[0] < ttl or cle in _en_cours):
+                return entree[1]
+            if entree is not None:
+                _en_cours.add(cle)
+        if entree is not None:                  # périmé : on sert l'instantané, on rafraîchit derrière
+            threading.Thread(target=_rafraichir, args=(mosque, cle), daemon=True,
+                             name="statut-live").start()
+            return entree[1]
+    resultat = _lire(mosque)                    # premier appel (ou lecture forcée) : on attend
+    with _verrou:
+        _caches[cle] = (time.monotonic(), resultat)
+    return resultat
+
+
+def _rafraichir(mosque: dict, cle: str) -> None:
+    try:
+        resultat = _lire(mosque)
+        with _verrou:
+            _caches[cle] = (time.monotonic(), resultat)
+    finally:
+        with _verrou:
+            _en_cours.discard(cle)
 
 
 def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = None) -> dict:
-    """arg : nom du défunt (janaza) ou minutes (extend) ; info : mention de la fiche janaza."""
+    """arg : nom du défunt (janaza) ou minutes (extend) ; info : mention de la fiche janaza.
+
+    Une commande ne passe jamais par le cache du statut : elle part tout de suite."""
     if cmd not in COMMANDS:
         raise OrchestratorError("commande inconnue")
     params = dict(COMMANDS[cmd].params)
