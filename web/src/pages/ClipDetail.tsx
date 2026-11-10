@@ -209,6 +209,8 @@ function Decision({ c, d, occupe, agir, versPublication }: {
   const aRegenerer = oui(c.needs_regen) || c.regen_state === "erreur";
   const valider = aValider && oui(d.can_validate) && !oui(c.needs_regen);
   const duree = Math.round(c.end - c.start);
+  const contexte = d.contexte ?? { theme: "", avant: [], versets: [] };
+  const contexteActif = Boolean(contexte.theme || contexte.avant.length || contexte.versets.length);
 
   return (
     <div className="grid gap-3.5">
@@ -234,6 +236,31 @@ function Decision({ c, d, occupe, agir, versPublication }: {
         <Ligne label={t("clips.detail.versionLabel")}>{c.version}</Ligne>
         {c.why ? <Ligne label={t("clips.why")}>{c.why}</Ligne> : null}
       </dl>
+
+      {/* Contexte : un extrait ne se juge pas hors de sa khutba. Thème, verset porté, et la phrase
+          qui précède l'extrait — c'est elle qui donne le rappel d'où part le clip. */}
+      {contexteActif && (
+        <div className="rounded-[8px] border border-line bg-paper-2/40 px-3 py-2.5">
+          <Kicker>{t("clips.detail.context")}</Kicker>
+          {contexte.theme && <p className="m-0 text-[0.88rem] text-deep">{contexte.theme}</p>}
+          {contexte.versets.map((v: any, i: number) => (
+            <p key={i} className="mt-1.5 mb-0 text-[0.88rem]">
+              <span className="font-semibold text-green">{v.ref}{v.surah ? ` · ${v.surah}` : ""}</span>
+              {v.fr && <span className="block text-deep">{v.fr}</span>}
+            </p>
+          ))}
+          {contexte.avant.length > 0 && (
+            <>
+              <p className="mt-2 mb-1 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-muted">
+                {t("clips.detail.before")}
+              </p>
+              {contexte.avant.map((a: any) => (
+                <p key={a.start} className="m-0 text-[0.86rem] text-muted">« {a.texte} »</p>
+              ))}
+            </>
+          )}
+        </div>
+      )}
 
       {/* États de la vidéo : régénération attendue, en cours ou en échec. */}
       {enCours && <Bandeau ko={false}>{t("clips.detail.regenRunning")}</Bandeau>}

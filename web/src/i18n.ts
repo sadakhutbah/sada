@@ -47,6 +47,7 @@ const fr = {
     detail: {
       extract: "Extrait {{de}}–{{a}} de la khutba ({{s}} s)",
       version: "version {{n}}",
+      context: "Contexte", before: "Ce qui précède",
       decision: "Décision",
       validate: "Valider ce clip",
       validateBlocked: "Régénérez d'abord : des corrections ne sont pas encore dans la vidéo.",
@@ -157,6 +158,7 @@ const en: typeof fr = {
     detail: {
       extract: "Excerpt {{de}}–{{a}} of the sermon ({{s}} s)",
       version: "version {{n}}",
+      context: "Context", before: "What comes before",
       decision: "Decision",
       validate: "Approve this clip",
       validateBlocked: "Regenerate first: corrections are not in the video yet.",

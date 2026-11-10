@@ -223,6 +223,9 @@ def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
     assert d["exists"] is True and d["clip"]["version"] == 1
     assert d["can_validate"] is True
     assert d["labels"]["clip.valide"] == "Clip validé"   # l'historique se lit, pas en clés techniques
+    # Le contexte accompagne le clip : le thème de la khutba et ce qui précède l'extrait.
+    assert d["contexte"]["theme"]
+    assert isinstance(d["contexte"]["avant"], list)   # vide si le clip ouvre la khutba
     assert d["status_labels"]["a_valider"]
     assert len(d["segments"]) >= 1
     assert c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"}).status_code == 200

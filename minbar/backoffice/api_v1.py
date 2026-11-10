@@ -60,6 +60,13 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
     pubs = db.all_(ctx.conn, "SELECT p.*, u.display_name who FROM publications p LEFT JOIN users u ON u.id = p.user_id "
                              "WHERE p.clip_id = ? ORDER BY p.id DESC", c["id"]) if _a_table(ctx.conn, "publications") else []
     refs = [r["verse"]["ref"] for r in rows if r["verse"] and not r["verse"]["ambiguous"]]
+    # Contexte : un extrait sorti de sa khutba ne se comprend pas. On donne le thème, les versets
+    # portés par le clip et les deux phrases qui le précèdent (le rappel d'où part l'extrait).
+    complet = content.transcript_rows(data)
+    avant = [{"start": r["start"], "texte": ((r["verse"]["fr"] if r["verse"] else None) or r.get("fr") or r["text"] or "")}
+             for r in complet if r["end"] <= c["start"] + 0.5 and (r["verse"] or r.get("fr"))][-2:]
+    versets = [{"ref": r["verse"]["ref"], "surah": r["verse"].get("surah", ""), "fr": r["verse"]["fr"]}
+               for r in complet if r["verse"] and r["end"] > c["start"] and r["start"] < c["end"]]
     return {
         "clip": c, "sermon": k, "segments": rows, "history": hist, "publications": pubs,
         "can_regenerate": regen_ok, "regenerate_reason": regen_why,
@@ -67,6 +74,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         "can_publish": publish.can_publish(c)[0],
         "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
         "caption": publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
+        "contexte": {"theme": k["theme"] or "", "avant": avant, "versets": versets},
         "labels": AUDIT_LABELS,          # l'historique se lit en clair, pas en clés techniques
         "exists": bool(c["file_path"]) and Path(c["file_path"]).exists(),
         "status_labels": content.STATUS_LABELS,
