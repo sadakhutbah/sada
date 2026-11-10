@@ -257,7 +257,7 @@ def clip(cid: int, ctx: CtxDep):
 
 @router.get("/publications")
 def publications(ctx: CtxDep):
-    """État réel des connecteurs (disponibilité et raison), clips prêts, historique ; notifications pour l'administrateur."""
+    """Real connector status (availability and reason), ready clips and history; notification settings for admins only."""
     ctx.require("publish")
     ready = db.all_(ctx.conn, "SELECT c.*, k.label sermon, k.date FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                               "WHERE c.mosque_id = ? AND c.status = 'valide' ORDER BY c.decided_at DESC", ctx.mosque["id"])
@@ -265,18 +265,18 @@ def publications(ctx: CtxDep):
                              "JOIN clips c ON c.id = p.clip_id JOIN khutbas k ON k.id = c.khutba_id "
                              "LEFT JOIN users u ON u.id = p.user_id WHERE p.mosque_id = ? ORDER BY p.id DESC LIMIT 100",
                    ctx.mosque["id"]) if _a_table(ctx.conn, "publications") else []
-    for p in pubs:                                       # jamais le chemin réel de la machine dans l'interface
+    for p in pubs:                                       # never expose the machine's real path in the UI
         p["location"] = dirs_mod.label(p["location"]) if p.get("location") else ""
     rows = publish.connector_rows(ctx.conn, ctx.mosque)
-    for r in rows:                                       # « interface prête » ≠ publication réelle : l'écran le dit
+    for r in rows:                                       # "interface ready" is not real publishing: the screen says so
         r["implemented"] = not isinstance(publish.CONNECTORS[r["key"]], publish._Disabled)
     return {"connectors": rows, "ready": ready, "publications": pubs,
             "can_configure": ctx.can("admin"),
-            "notifications": _notifications(ctx) if ctx.can("admin") else None}
+            "notifications": _notification_settings(ctx) if ctx.can("admin") else None}
 
 
-def _notifications(ctx: Ctx) -> dict:
-    """Réglage des notifications à l'imam ; webhook et jeton Telegram (secrets) sont masqués."""
+def _notification_settings(ctx: Ctx) -> dict:
+    """Notification settings for the imam; the webhook and Telegram token (secrets) are masked."""
     r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
     n = notify.from_settings(r)
     return {"mode": r.get("mode", ""), "webhook": db.MASK if r.get("webhook") else "",
@@ -546,12 +546,12 @@ async def connector_save(key: str, ctx: CtxDep):
 
 @router.put("/settings/notifications")
 async def notifications_save(ctx: CtxDep):
-    """Enregistre la destination des notifications. Un secret laissé vide ou masqué reste inchangé."""
+    """Save the notification destination. A secret left empty or masked keeps its stored value."""
     f = await ctx.body()
     ctx.require("admin")
     mode = (f.get("mode") or "").strip()
     if mode not in ("", "webhook", "telegram"):
-        raise Invalid("Canal de notification inconnu.")
+        raise Invalid("Unknown notification channel.")
     old = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
 
     def val(name: str, secret: bool) -> str:
@@ -560,34 +560,34 @@ async def notifications_save(ctx: CtxDep):
 
     webhook, token, chat = val("webhook", True), val("telegram_token", True), val("telegram_chat", False)
     if webhook and not re.match(r"^https?://", webhook):
-        raise Invalid("L'adresse du webhook doit commencer par http:// ou https://.")
+        raise Invalid("The webhook address must start with http:// or https://.")
     if mode == "webhook" and not webhook:
-        raise Invalid("Indiquez l'adresse du webhook.")
+        raise Invalid("Enter the webhook address.")
     if mode == "telegram" and not (token and chat):
-        raise Invalid("Telegram demande le jeton du bot et l'identifiant de la conversation.")
+        raise Invalid("Telegram requires the bot token and the chat identifier.")
     ctx.conn.execute("INSERT INTO notifications (mosque_id, mode, webhook, telegram_token, telegram_chat, updated_at) "
                      "VALUES (?,?,?,?,?,?) ON CONFLICT (mosque_id) DO UPDATE SET mode = excluded.mode, "
                      "webhook = excluded.webhook, telegram_token = excluded.telegram_token, "
                      "telegram_chat = excluded.telegram_chat, updated_at = excluded.updated_at",
                      (ctx.mosque["id"], mode, webhook, token, chat, db.now_iso()))
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "notifications.configure", "mosque", ctx.mosque["id"], ip=ctx.ip,
-             canal=mode or "aucun")
-    return _ok("Notifications enregistrées. L'orchestrateur les applique à son prochain démarrage.",
-               notifications=_notifications(ctx))
+             channel=mode or "none")
+    return _ok("Notifications saved. The orchestrator applies them at its next start.",
+               notifications=_notification_settings(ctx))
 
 
 @router.post("/settings/notifications/test")
 def notifications_test(ctx: CtxDep):
-    """Envoie un message d'essai à la destination enregistrée (action explicite de l'administrateur)."""
+    """Send a test message to the saved destination (explicit admin action)."""
     ctx.need_csrf()
     ctx.require("admin")
     r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"])
     n = notify.from_settings(r, log=lambda _m: None)
     if not n.enabled:
-        return JSONResponse({"ok": False, "message": "Aucune destination enregistrée : rien n'a été envoyé."}, status_code=422)
-    if not n.send(f"Essai de notification — {ctx.mosque['name']} (back-office)."):
-        return JSONResponse({"ok": False, "message": f"Envoi impossible vers {n.destination}."}, status_code=422)
-    return {"ok": True, "message": f"Message d'essai envoyé ({n.destination})."}
+        return JSONResponse({"ok": False, "message": "No destination saved: nothing was sent."}, status_code=422)
+    if not n.send(f"Notification test - {ctx.mosque['name']} (back-office)."):
+        return JSONResponse({"ok": False, "message": f"Could not send to {n.destination}."}, status_code=422)
+    return {"ok": True, "message": f"Test message sent ({n.destination})."}
 
 
 @router.post("/settings/logo")

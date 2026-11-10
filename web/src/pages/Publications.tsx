@@ -3,79 +3,79 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Card, Field, Table, Title, inputClass, tdClass } from "../ui";
 
-type Champ = { name: string; label: string; value: string; secret: boolean; placeholder: string };
-type Retour = { ok: boolean; texte: string } | null;
+type FieldDef = { name: string; label: string; value: string; secret: boolean; placeholder: string };
+type Feedback = { ok: boolean; text: string } | null;
 
-/** Formulaire d'un connecteur : un secret enregistré s'affiche masqué, et le laisser vide ne le modifie pas. */
-function FormConnecteur({ c, onSaved }: { c: any; onSaved: () => void }) {
+/** Connector form: a stored secret is shown masked, and leaving it empty keeps it unchanged. */
+function ConnectorForm({ c, onSaved }: { c: any; onSaved: () => void }) {
   const { t } = useTranslation();
-  const [vals, setVals] = useState<Record<string, string>>(
-    Object.fromEntries(c.fields.map((f: Champ) => [f.name, f.secret ? "" : f.value])));
-  const [actif, setActif] = useState<boolean>(Boolean(c.enabled));
-  const [msg, setMsg] = useState<Retour>(null);
-  const [occupe, setOccupe] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>(
+    Object.fromEntries(c.fields.map((f: FieldDef) => [f.name, f.secret ? "" : f.value])));
+  const [enabled, setEnabled] = useState<boolean>(Boolean(c.enabled));
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [busy, setBusy] = useState(false);
 
-  const enregistrer = async () => {
-    setOccupe(true);
-    setMsg(null);
+  const save = async () => {
+    setBusy(true);
+    setFeedback(null);
     try {
-      await api.connecteur(c.key, actif, vals);
-      setMsg({ ok: true, texte: t("publications.saved") });
+      await api.saveConnector(c.key, enabled, values);
+      setFeedback({ ok: true, text: t("publications.saved") });
       onSaved();
     } catch (e: any) {
-      setMsg({ ok: false, texte: e.message });
+      setFeedback({ ok: false, text: e.message });
     } finally {
-      setOccupe(false);
+      setBusy(false);
     }
   };
 
   return (
     <div className="grid max-w-xl gap-3 pt-3">
-      {c.fields.map((f: Champ) => (
+      {c.fields.map((f: FieldDef) => (
         <Field key={f.name} label={f.label} aide={f.secret && f.value ? t("publications.secretKeep") : undefined}>
           <input
             className={inputClass}
             type={f.secret ? "password" : "text"}
             autoComplete="off"
-            value={vals[f.name] ?? ""}
+            value={values[f.name] ?? ""}
             placeholder={f.secret && f.value ? f.value : f.placeholder}
-            onChange={(e) => setVals({ ...vals, [f.name]: e.target.value })}
+            onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
           />
         </Field>
       ))}
       <label className="flex items-center gap-2 font-semibold">
-        <input type="checkbox" checked={actif} onChange={(e) => setActif(e.target.checked)} />
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         {t("publications.enableIt")}
       </label>
       <div className="flex flex-wrap items-center gap-3">
-        <Btn onClick={enregistrer} disabled={occupe}>{occupe ? t("common.saving") : t("common.save")}</Btn>
-        {msg && <span className={msg.ok ? "text-deep" : "text-[#b42c23]"} role="status">{msg.texte}</span>}
+        <Btn onClick={save} disabled={busy}>{busy ? t("common.saving") : t("common.save")}</Btn>
+        {feedback && <span className={feedback.ok ? "text-deep" : "text-[#b42c23]"} role="status">{feedback.text}</span>}
       </div>
     </div>
   );
 }
 
-/** Notifications à l'imam : canal, destination (secrets masqués) et envoi d'un message d'essai. */
+/** Notifications to the imam: channel, destination (secrets masked) and a test message. */
 function Notifications({ n, onSaved }: { n: any; onSaved: () => void }) {
   const { t } = useTranslation();
   const [v, setV] = useState({ mode: n.mode as string, webhook: "", telegram_token: "", telegram_chat: n.telegram_chat as string });
-  const [msg, setMsg] = useState<Retour>(null);
-  const [occupe, setOccupe] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [busy, setBusy] = useState(false);
 
-  const agir = async (fn: () => Promise<any>) => {
-    setOccupe(true);
-    setMsg(null);
+  const run = async (fn: () => Promise<any>) => {
+    setBusy(true);
+    setFeedback(null);
     try {
       const r = await fn();
-      setMsg({ ok: true, texte: r.message });
+      setFeedback({ ok: true, text: r.message });
       onSaved();
     } catch (e: any) {
-      setMsg({ ok: false, texte: e.message });
+      setFeedback({ ok: false, text: e.message });
     } finally {
-      setOccupe(false);
+      setBusy(false);
     }
   };
-  const garde = (enregistre: string) => (enregistre ? t("publications.secretKeep") : undefined);
+  const keepHint = (stored: string) => (stored ? t("publications.secretKeep") : undefined);
 
   return (
     <Card>
@@ -93,14 +93,14 @@ function Notifications({ n, onSaved }: { n: any; onSaved: () => void }) {
           </select>
         </Field>
         {v.mode === "webhook" && (
-          <Field label={t("publications.webhookUrl")} aide={garde(n.webhook)}>
+          <Field label={t("publications.webhookUrl")} aide={keepHint(n.webhook)}>
             <input className={inputClass} type="password" autoComplete="off" value={v.webhook} placeholder={n.webhook || "https://"}
               onChange={(e) => setV({ ...v, webhook: e.target.value })} />
           </Field>
         )}
         {v.mode === "telegram" && (
           <>
-            <Field label={t("publications.telegramToken")} aide={garde(n.telegram_token)}>
+            <Field label={t("publications.telegramToken")} aide={keepHint(n.telegram_token)}>
               <input className={inputClass} type="password" autoComplete="off" value={v.telegram_token} placeholder={n.telegram_token}
                 onChange={(e) => setV({ ...v, telegram_token: e.target.value })} />
             </Field>
@@ -110,13 +110,13 @@ function Notifications({ n, onSaved }: { n: any; onSaved: () => void }) {
           </>
         )}
         <div className="flex flex-wrap items-center gap-3">
-          <Btn disabled={occupe} onClick={() => agir(() => api.notifications(v))}>
-            {occupe ? t("common.saving") : t("common.save")}
+          <Btn disabled={busy} onClick={() => run(() => api.saveNotifications(v))}>
+            {busy ? t("common.saving") : t("common.save")}
           </Btn>
-          <Btn variante="ghost" disabled={occupe || !n.active} onClick={() => agir(() => api.testerNotifications())}>
+          <Btn variante="ghost" disabled={busy || !n.active} onClick={() => run(() => api.testNotifications())}>
             {t("publications.test")}
           </Btn>
-          {msg && <span className={msg.ok ? "text-deep" : "text-[#b42c23]"} role="status">{msg.texte}</span>}
+          {feedback && <span className={feedback.ok ? "text-deep" : "text-[#b42c23]"} role="status">{feedback.text}</span>}
         </div>
       </div>
     </Card>
@@ -126,10 +126,10 @@ function Notifications({ n, onSaved }: { n: any; onSaved: () => void }) {
 export default function Publications() {
   const { t } = useTranslation();
   const [d, setD] = useState<any>(null);
-  const [ouvert, setOuvert] = useState("");
+  const [open, setOpen] = useState("");
 
-  const charger = () => api.publications().then(setD).catch(() => setD({ connectors: [], publications: [], ready: [] }));
-  useEffect(() => { charger(); }, []);
+  const load = () => api.publications().then(setD).catch(() => setD({ connectors: [], publications: [], ready: [] }));
+  useEffect(() => { load(); }, []);
 
   return (
     <div className="grid gap-4">
@@ -153,12 +153,12 @@ export default function Publications() {
                     {!c.implemented && <p className="m-0 mt-1 text-[0.9rem] text-muted">{t("publications.notImplemented")}</p>}
                   </div>
                   {d.can_configure && (
-                    <Btn variante="ghost" onClick={() => setOuvert(ouvert === c.key ? "" : c.key)}>
-                      {ouvert === c.key ? t("publications.closeForm") : t("publications.configure")}
+                    <Btn variante="ghost" onClick={() => setOpen(open === c.key ? "" : c.key)}>
+                      {open === c.key ? t("publications.closeForm") : t("publications.configure")}
                     </Btn>
                   )}
                 </div>
-                {d.can_configure && ouvert === c.key && <FormConnecteur c={c} onSaved={charger} />}
+                {d.can_configure && open === c.key && <ConnectorForm c={c} onSaved={load} />}
               </div>
             ))}
           </div>
@@ -166,7 +166,7 @@ export default function Publications() {
         {d && !d.can_configure && <p className="mb-0 mt-3 text-[0.9rem] text-muted">{t("publications.adminOnly")}</p>}
       </Card>
 
-      {d?.notifications && <Notifications key={`${d.notifications.mode}${d.notifications.active}`} n={d.notifications} onSaved={charger} />}
+      {d?.notifications && <Notifications key={`${d.notifications.mode}${d.notifications.active}`} n={d.notifications} onSaved={load} />}
 
       <Card>
         <Title>{t("publications.history")}</Title>

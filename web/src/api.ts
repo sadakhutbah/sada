@@ -98,9 +98,9 @@ export const api = {
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
   modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),
   testerModele: () => ecrire<any>("POST", "/settings/model/test"),
-  /** Identifiants d'un connecteur : un secret laissé vide ou masqué reste inchangé côté serveur. */
-  connecteur: (cle: string, enabled: boolean, valeurs: Record<string, string>) =>
-    ecrire<any>("POST", `/settings/connectors/${cle}`, { ...valeurs, enabled: enabled ? "1" : "0" }),
-  notifications: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/notifications", corps),
-  testerNotifications: () => ecrire<any>("POST", "/settings/notifications/test"),
+  /** Connector credentials: a secret left empty or masked keeps its stored value server-side. */
+  saveConnector: (key: string, enabled: boolean, values: Record<string, string>) =>
+    ecrire<any>("POST", `/settings/connectors/${key}`, { ...values, enabled: enabled ? "1" : "0" }),
+  saveNotifications: (body: Record<string, string>) => ecrire<any>("PUT", "/settings/notifications", body),
+  testNotifications: () => ecrire<any>("POST", "/settings/notifications/test"),
 };

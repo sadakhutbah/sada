@@ -97,10 +97,10 @@ class Notifier:
 
 
 def from_config(cfg, log: Callable[[str], None] = print, db_path=None) -> Notifier:
-    """Notifier réglé par la configuration (webhook ou Telegram, jamais dans le dépôt).
+    """Build the notifier from the configuration (webhook or Telegram, never stored in the repository).
 
-    La configuration de l'orchestrateur est prioritaire ; sans destination, on reprend celle que
-    l'administrateur a saisie dans le back-office (écran Publications), lue au démarrage.
+    The orchestrator configuration takes precedence; without a destination, fall back to the one an
+    administrator entered in the back-office (Publications screen), read once at startup.
     """
     n = Notifier(getattr(cfg, "notify_url", ""), getattr(cfg, "telegram_token", ""),
                  getattr(cfg, "telegram_chat", ""), log=log)
@@ -111,7 +111,7 @@ def from_config(cfg, log: Callable[[str], None] = print, db_path=None) -> Notifi
 
 
 def _backoffice_row(api_port, db_path=None) -> dict | None:
-    """Réglage de notification de la mosquée dont l'orchestrateur écoute sur ce port (ou de la seule mosquée)."""
+    """Notification settings of the mosque whose orchestrator listens on this port (or of the only mosque)."""
     import sqlite3
     from urllib.parse import urlparse
 
@@ -134,14 +134,14 @@ def _backoffice_row(api_port, db_path=None) -> dict | None:
             return dict(r) if r else None
         finally:
             conn.close()
-    except Exception:                                   # base absente, verrouillée, ancienne : le direct n'est pas concerné
+    except Exception:                                   # missing, locked or older database: the live stream must never be affected
         return None
 
 
 def from_settings(row: dict | None, log: Callable[[str], None] = print) -> Notifier:
-    """Notifier réglé par l'écran Publications (table `notifications` du back-office).
+    """Build a notifier from the Publications screen settings (back-office `notifications` table).
 
-    Seul le canal choisi (`mode`) est retenu ; sans réglage, le notifier est « à blanc ».
+    Only the chosen channel (`mode`) is used; with no settings the notifier is a no-op ("à blanc").
     """
     row = row or {}
     if row.get("mode") == "webhook":

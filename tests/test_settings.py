@@ -108,39 +108,39 @@ def test_les_connecteurs_sont_decoupes(env):
     assert {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
 
 
-def test_publications_etat_reel_et_notifications(env, monkeypatch):
-    """L'écran Publications montre l'état réel, masque les secrets et règle les notifications."""
+def test_publications_real_status_and_notifications(env, monkeypatch):
+    """The Publications screen shows real status, masks secrets and configures notifications."""
     from minbar import notify
     c = client(env, "admin")
     d = c.get("/api/v1/publications").json()
     rows = {r["key"]: r for r in d["connectors"]}
     assert rows["local"]["available"] and rows["local"]["implemented"]
     assert not rows["facebook"]["available"] and not rows["facebook"]["implemented"]
-    # des identifiants + activation ne rendent pas un connecteur désactivé en V1 disponible
+    # credentials + enabling must not make a V1-disabled connector available
     c.ecrire("/settings/connectors/facebook", {"page_id": "123", "page_token": "SECRET-FB", "enabled": "1"})
     d = c.get("/api/v1/publications").json()
     fb = next(r for r in d["connectors"] if r["key"] == "facebook")
     assert not fb["available"] and "SECRET-FB" not in str(d)
-    # notifications : secrets masqués, valeur inchangée si le champ revient masqué ou vide
+    # notifications: secrets masked, value unchanged when the field comes back masked or empty
     assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": "ftp://x"}, "PUT").status_code == 422
     assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": "https://hook.example/abc"}, "PUT").status_code == 200
     assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": ""}, "PUT").status_code == 200
     n = c.get("/api/v1/publications").json()["notifications"]
     assert n["mode"] == "webhook" and n["active"] and n["destination"] == "webhook"
     assert n["webhook"] == "••••••" and "hook.example" not in str(n)
-    envoyes = []
-    monkeypatch.setattr(notify, "_http_post", lambda url, payload: envoyes.append((url, payload)))
+    sent = []
+    monkeypatch.setattr(notify, "_http_post", lambda url, payload: sent.append((url, payload)))
     assert c.ecrire("/settings/notifications/test").status_code == 200
-    assert envoyes and envoyes[0][0] == "https://hook.example/abc"
-    # Telegram exige jeton et conversation ; un responsable ne voit ni ne règle rien
+    assert sent and sent[0][0] == "https://hook.example/abc"
+    # Telegram needs token and chat; a non-admin neither sees nor changes anything
     assert c.ecrire("/settings/notifications", {"mode": "telegram", "telegram_token": "t"}, "PUT").status_code == 422
     r = client(env, "responsable")
     assert r.get("/api/v1/publications").json()["notifications"] is None
     assert r.ecrire("/settings/notifications", {"mode": ""}, "PUT").status_code == 403
 
 
-def test_notifier_lit_le_reglage_du_back_office(env):
-    """Sans destination dans la config de l'orchestrateur, from_config reprend le réglage saisi à l'écran."""
+def test_notifier_reads_backoffice_settings(env):
+    """Without a destination in the orchestrator config, from_config falls back to the on-screen setting."""
     from types import SimpleNamespace
     from minbar import notify
     c = client(env, "admin")
@@ -148,5 +148,5 @@ def test_notifier_lit_le_reglage_du_back_office(env):
     cfg = SimpleNamespace(notify_url="", telegram_token="", telegram_chat="", api_port=8088)
     n = notify.from_config(cfg, log=lambda _m: None, db_path=env["conn"].execute("PRAGMA database_list").fetchone()[2])
     assert n.enabled and n.destination == "telegram"
-    cfg.notify_url = "https://prioritaire.example"
+    cfg.notify_url = "https://priority.example"
     assert notify.from_config(cfg, db_path=None).destination == "webhook"
