@@ -1,0 +1,60 @@
+"""Le mode d'emploi doit arriver à l'administrateur sous forme de page, pas de texte brut."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from minbar.backoffice import docpage
+
+DOCS = Path(__file__).resolve().parent.parent / "docs"
+
+
+def test_le_modele_du_back_office_rend_une_page_complete():
+    html = docpage.page("# Titre\n\nUn paragraphe.", titre="x", source="/docs/x.md")
+    assert html.startswith("<!doctype html>")
+    assert "<h1>Titre</h1>" in html
+    assert "<p>Un paragraphe.</p>" in html
+    assert "<title>Titre</title>" in html
+
+
+def test_le_vrai_document_ne_laisse_aucune_syntaxe_brute():
+    md = (DOCS / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
+    html = docpage.rendre(md)
+    assert "<h1>" in html
+    assert html.count("<h2>") >= 8
+    # rien de la syntaxe Markdown ne doit survivre à l'écran
+    assert not re.search(r"^#{1,6} ", html, re.M)
+    assert "**" not in html
+    assert not re.search(r"^\|", html, re.M)
+
+
+def test_les_six_ecrans_et_les_variables_sont_expliques():
+    md = (DOCS / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
+    for mot in ("Avant", "Prière", "Entracte", "Terminé", "Janaza", "Fin de cours",
+                "{heure}", "{date}", "{mosquee}", "{cours}"):
+        assert mot in md, f"« {mot} » manque au mode d'emploi"
+
+
+def test_le_tableau_des_six_moments_est_rendu_en_tableau():
+    md = (DOCS / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
+    html = docpage.rendre(md)
+    assert html.count("<table>") == 1
+    assert "<th>Écran</th>" in html
+
+
+def test_un_lien_javascript_ne_passe_pas():
+    html = docpage.rendre("[clique](javascript:alert(1))")
+    assert "javascript:" not in html
+    assert "clique" in html
+
+
+def test_le_html_du_document_est_echappe():
+    html = docpage.rendre("Un <script>alert('x')</script> dans le texte.")
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_un_filet_avant_un_titre_ne_double_pas_le_filet():
+    html = docpage.rendre("Texte.\n\n---\n\n## Section")
+    assert "<hr>" not in html

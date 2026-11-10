@@ -47,7 +47,7 @@ def settings(ctx: CtxDep):
     base = str(ctx.request.base_url).rstrip("/")
     return {"mosque": m, "defaults": defauts, "sections": SECTIONS,
             "guide": {"url": base + "/docs/agent-gabarit-ecrans.md",
-                      "human": base + "/docs/ecrans-mode-emploi.md"},
+                      "human": base + "/docs/ecrans-mode-emploi"},
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
             "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
             "targets": destinations.rows(ctx.conn, ctx.mosque),

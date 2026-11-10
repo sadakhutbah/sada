@@ -11,11 +11,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import paths
-from . import auth, branding, content, db, importer, live
+from . import auth, branding, content, db, docpage, importer, live
 from .api import router as api_router
 from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
                       clip_or_404, khutba_or_404, live_status)
@@ -168,9 +168,19 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return FileResponse(f, media_type="text/markdown; charset=utf-8",
                             headers={"Content-Disposition": "inline; filename=\"agent-gabarit-ecrans.md\""})
 
-    @app.get("/docs/ecrans-mode-emploi.md")
+    @app.get("/docs/ecrans-mode-emploi")
     def doc_ecrans():
-        """The human manual for the screen texts, written for the mosque administrator."""
+        """The human manual, rendered as a page. Reading raw Markdown in a browser is not a manual."""
+        f = DOCS / "ecrans-mode-emploi.md"
+        if not f.exists():
+            raise NotFound()
+        return HTMLResponse(docpage.page(f.read_text(encoding="utf-8"),
+                                         titre="Mode d'emploi des écrans",
+                                         source="/docs/ecrans-mode-emploi.md"))
+
+    @app.get("/docs/ecrans-mode-emploi.md")
+    def doc_ecrans_source():
+        """Same text, raw: for pasting into a chat when a link cannot be opened."""
         f = DOCS / "ecrans-mode-emploi.md"
         if not f.exists():
             raise NotFound()
