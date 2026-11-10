@@ -5,14 +5,22 @@ pas une seconde matrice. Les écritures exigent le jeton de session en en-tête 
 """
 from __future__ import annotations
 
+import datetime as dt
+import json
+import os
 import re
 import secrets
+import threading
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from .. import events as events_mod
+from ..config import Config
+from ..text import JOURS
 from ..pipeline import llm, verses as verses_mod
 from ..pipeline.output import SessionOutput
 from . import auth, branding, content, db, dirs as dirs_mod, importer, live, publish
@@ -567,7 +575,182 @@ AUDIT_LABELS = {
     "utilisateur.cree": "Compte créé", "utilisateur.modifie": "Compte modifié",
     "utilisateur.mot_de_passe": "Mot de passe changé", "mosquee.configuree": "Configuration modifiée",
     "connecteur.configure": "Connecteur configuré", "acces.refuse": "Accès refusé",
+    "programme.cree": "Événement ajouté au programme", "programme.modifie": "Événement du programme modifié",
+    "programme.supprime": "Événement retiré du programme",
 }
+
+
+# ------------------------------------------------------------------ programme : dars et conférences
+
+AGENDA_KINDS = ("dars", "conference")       # la khutba du vendredi n'est pas un événement à saisir
+_agenda_lock = threading.Lock()
+
+
+def _agenda_path(request: Request) -> Path:
+    """Fichier du programme : celui de l'orchestrateur (`events_file`), sauf surcharge de l'application."""
+    return Path(getattr(request.app.state, "events_file", None) or Config().events_file)
+
+
+def _agenda_read(path: Path) -> list[dict]:
+    """Événements bruts du fichier. Un fichier illisible est refusé : on ne l'écrase jamais."""
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8") or "{}")
+        items = data.get("events", []) if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            raise ValueError("« events » doit être une liste")
+        events_mod.loads(json.dumps({"events": items}))
+    except (ValueError, OSError) as e:
+        raise Invalid(f"Le programme est illisible, corrigez-le d'abord : {e}") from e
+    for i, r in enumerate(items):
+        r.setdefault("uid", _agenda_uid(r, i))      # même valeur que celle que le moteur déduit de la position
+    return items
+
+
+def _agenda_write(path: Path, items: list[dict]) -> None:
+    """Écriture atomique : l'orchestrateur ne lit jamais un fichier à moitié écrit."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps({"events": items}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _agenda_uid(raw: dict, idx: int) -> str:
+    return str(raw.get("uid") or f"{str(raw.get('kind', 'dars')).strip().lower()}-{idx}")
+
+
+def _agenda_clean(f: dict, uid: str) -> dict:
+    """Formulaire (champs à plat, en texte) -> événement canonique, validé par le moteur lui-même."""
+    s = lambda k: (f.get(k) or "").strip()                                   # noqa: E731
+    kind = s("kind").lower() or "dars"
+    if kind not in AGENDA_KINDS:
+        raise Invalid("Type inconnu : choisissez un dars ou une conférence.")
+    raw: dict = {"uid": uid, "kind": kind, "title": s("title")[:200], "speaker": s("speaker")[:120],
+                 "series": s("series")[:200], "publish": s("publish").lower() not in ("0", "false", "non", "off")}
+    if s("session"):
+        try:
+            raw["session"] = int(s("session"))
+        except ValueError as e:
+            raise Invalid("Le numéro de séance doit être un nombre entier.") from e
+        if raw["session"] < 1:
+            raise Invalid("Le numéro de séance doit être positif.")
+    if s("max_min"):
+        try:
+            raw["max_min"] = float(s("max_min").replace(",", "."))
+        except ValueError as e:
+            raise Invalid("La durée maximale doit être un nombre de minutes.") from e
+        if raw["max_min"] <= 0:
+            raise Invalid("La durée maximale doit être positive.")
+    if s("mode") == "weekly":
+        rec: dict = {"weekday": s("weekday").lower()}
+        if s("after"):
+            rec["after"] = s("after").lower()
+            try:
+                rec["offset_min"] = float(s("offset_min").replace(",", ".") or 0)
+            except ValueError as e:
+                raise Invalid("Le décalage doit être un nombre de minutes.") from e
+        else:
+            rec["time"] = s("time")
+        raw["recurrence"] = rec
+    else:
+        raw["date"], raw["time"] = s("date"), s("time")
+    try:
+        events_mod.loads(json.dumps({"events": [raw]}))
+    except (ValueError, json.JSONDecodeError) as e:
+        raise Invalid(re.sub(r"^événement #\d+( \([^)]*\))? : ", "", str(e)).capitalize() + ".") from e
+    return raw
+
+
+def _agenda_item(raw: dict, idx: int, today: dt.date) -> dict:
+    """Une ligne de la liste : l'événement et sa prochaine occurrence (date seule : l'heure relative à
+    une prière dépend des horaires du jour)."""
+    ev = events_mod.loads(json.dumps({"events": [raw]}))[0]
+    rec = raw.get("recurrence") or None
+    nxt = None
+    if ev.date is not None:
+        nxt = ev.date
+    elif ev.recurrence is not None:
+        nxt = today + dt.timedelta(days=(ev.recurrence.weekday - today.weekday()) % 7)
+    return {"id": _agenda_uid(raw, idx), "kind": ev.kind, "kind_label": events_mod.kind_label(ev.kind),
+            "title": ev.title, "speaker": ev.speaker, "series": ev.series, "session": ev.session,
+            "max_min": ev.max_min, "publish": ev.publish,
+            "mode": "weekly" if rec else "once",
+            "date": raw.get("date") or "", "time": raw.get("time") or (rec or {}).get("time") or "",
+            "weekday": (rec or {}).get("weekday") or "", "after": (rec or {}).get("after") or "",
+            "offset_min": (rec or {}).get("offset_min") or 0,
+            "next": nxt.isoformat() if nxt else "", "past": bool(ev.date and ev.date < today)}
+
+
+def _agenda_today(ctx: Ctx) -> dt.date:
+    try:
+        return dt.datetime.now(ZoneInfo(ctx.mosque.get("timezone") or "Europe/Paris")).date()
+    except Exception:                                  # noqa: BLE001 — fuseau inconnu : heure de la machine
+        return dt.date.today()
+
+
+def _agenda_list(ctx: Ctx) -> dict:
+    items = _agenda_read(_agenda_path(ctx.request))
+    today = _agenda_today(ctx)
+    rows = [_agenda_item(r, i, today) for i, r in enumerate(items) if str(r.get("kind", "dars")).lower() in AGENDA_KINDS]
+    rows.sort(key=lambda r: (r["past"], r["next"] or "9999", r["time"] or "99:99", r["title"].lower()))
+    return {"items": rows, "total": len(rows), "kinds": {k: events_mod.kind_label(k) for k in AGENDA_KINDS},
+            "weekdays": list(JOURS), "prayers": list(events_mod.PRAYERS), "today": today.isoformat()}
+
+
+@router.get("/events")
+def events_list(ctx: CtxDep):
+    """Programme des dars et conférences, prochaines occurrences d'abord, événements passés à la fin."""
+    return _agenda_list(ctx)
+
+
+@router.post("/events")
+async def event_create(ctx: CtxDep):
+    f = await ctx.body()
+    ctx.require("assign")
+    path = _agenda_path(ctx.request)
+    with _agenda_lock:
+        items = _agenda_read(path)
+        raw = _agenda_clean(f, secrets.token_hex(4))
+        _agenda_write(path, [*items, raw])
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.cree", "programme", None, ip=ctx.ip,
+             uid=raw["uid"], type=raw["kind"], titre=raw["title"])
+    return _ok(f"« {raw['title']} » ajouté au programme.", id=raw["uid"])
+
+
+@router.put("/events/{uid}")
+async def event_update(uid: str, ctx: CtxDep):
+    f = await ctx.body()
+    ctx.require("assign")
+    path = _agenda_path(ctx.request)
+    with _agenda_lock:
+        items = _agenda_read(path)
+        pos = next((i for i, r in enumerate(items) if _agenda_uid(r, i) == uid), None)
+        if pos is None:
+            raise NotFound()
+        raw = _agenda_clean(f, uid)
+        items[pos] = raw           # l'identifiant (uid) est écrit : il ne dépend plus de la position
+        _agenda_write(path, items)
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.modifie", "programme", None, ip=ctx.ip,
+             uid=uid, type=raw["kind"], titre=raw["title"])
+    return _ok(f"« {raw['title']} » mis à jour.", id=uid)
+
+
+@router.delete("/events/{uid}")
+async def event_delete(uid: str, ctx: CtxDep):
+    await ctx.body()                  # vérifie le jeton anti-rejeu
+    ctx.require("assign")
+    path = _agenda_path(ctx.request)
+    with _agenda_lock:
+        items = _agenda_read(path)
+        pos = next((i for i, r in enumerate(items) if _agenda_uid(r, i) == uid), None)
+        if pos is None:
+            raise NotFound()
+        gone = items.pop(pos)
+        _agenda_write(path, items)
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.supprime", "programme", None, ip=ctx.ip,
+             uid=uid, type=gone.get("kind"), titre=gone.get("title"))
+    return _ok(f"« {gone.get('title')} » retiré du programme.")
 
 
 def _a_table(conn, nom: str) -> bool:

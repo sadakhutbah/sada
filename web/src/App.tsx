@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Sermons from "./pages/Sermons";
 import SermonDetail from "./pages/SermonDetail";
+import Dars from "./pages/Dars";
 import Clips from "./pages/Clips";
 import ClipDetail from "./pages/ClipDetail";
 import Publications from "./pages/Publications";
@@ -80,6 +81,7 @@ export default function App() {
           <nav className="ml-auto flex flex-nowrap items-center gap-0.5">
             {lien("/", "dashboard")}
             {lien("/khutbas", "sermons")}
+            {lien("/dars", "dars")}
             {lien("/clips", "clips", undefined, session.counts?.pending ?? 0)}
             {lien("/publications", "publications", "publish")}
             {lien("/audit", "audit", "journal")}
@@ -112,6 +114,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/khutbas" element={<Sermons />} />
+          <Route path="/dars" element={<Dars />} />
           <Route path="/clips" element={<Clips />} />
           <Route path="/khutbas/:id" element={<SermonDetail />} />
           {/* Ancienne adresse : les liens déjà partagés continuent de mener à la liste. */}

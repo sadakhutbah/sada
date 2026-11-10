@@ -50,6 +50,23 @@ function ecrire<T>(methode: string, chemin: string, corps?: unknown): Promise<T>
   });
 }
 
+/** Un événement du programme tel que le serveur le renvoie. */
+export type AgendaEvent = {
+  id: string; kind: string; kind_label: string; title: string; speaker: string; series: string;
+  session: number | null; max_min: number | null; publish: boolean;
+  mode: "once" | "weekly"; date: string; time: string; weekday: string; after: string; offset_min: number;
+  next: string; past: boolean;
+};
+export type EventsList = {
+  items: AgendaEvent[]; total: number; kinds: Record<string, string>;
+  weekdays: string[]; prayers: string[]; today: string;
+};
+/** Formulaire d'un événement : champs à plat, en texte (le serveur les relit tels quels). */
+export type EventForm = Record<
+  "kind" | "title" | "speaker" | "series" | "session" | "max_min" | "publish" | "mode" | "date" | "time" | "weekday" | "after" | "offset_min",
+  string
+>;
+
 export const api = {
   session: () => demande<Session>("/session"),
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
@@ -78,6 +95,8 @@ export const api = {
   audit: (page = 0, taille = 25, action = "") =>
     demande<{ items: any[]; total: number; labels: Record<string, string> }>(
       `/audit?limit=${taille}&offset=${page * taille}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
+  /** Programme des dars et conférences (fichier lu par l'orchestrateur). */
+  events: () => demande<EventsList>("/events"),
   folders: (path = "") => demande<any>(`/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
 
   // Écritures
@@ -98,4 +117,9 @@ export const api = {
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
   modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),
   testerModele: () => ecrire<any>("POST", "/settings/model/test"),
+  creerEvenement: (corps: EventForm) => ecrire<{ ok: boolean; message: string; id: string }>("POST", "/events", corps),
+  majEvenement: (id: string, corps: EventForm) =>
+    ecrire<{ ok: boolean; message: string; id: string }>("PUT", `/events/${encodeURIComponent(id)}`, corps),
+  supprimerEvenement: (id: string) =>
+    ecrire<{ ok: boolean; message: string }>("DELETE", `/events/${encodeURIComponent(id)}`),
 };
