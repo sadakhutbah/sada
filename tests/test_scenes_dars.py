@@ -49,7 +49,16 @@ def test_entracte_annonce_un_prochain_cours():
     r = SceneRenderer(Config())
     cours = r.content("entracte", Moment(NOW, next_event=NEXT))
     autre = r.content("entracte", Moment(NOW))
-    assert ImageChops.difference(cours, autre).getbbox() is not None
+    assert ImageChops.difference(cours.convert("RGB"), autre.convert("RGB")).getbbox() is not None
+
+
+def test_compte_a_rebours_lisible_quelle_que_soit_l_echeance():
+    """Un « 4694:43 » ne veut rien dire : au-delà d'une heure, on compte en heures puis en jours."""
+    from minbar.scenes import _countdown
+    assert _countdown(43) == "00:43"
+    assert _countdown(754) == "12:34"
+    assert _countdown(3 * 3600 + 5 * 60) == "3 h 05"
+    assert _countdown(3 * 86400 + 6 * 3600 + 43 * 60 + 17) == "3 j 06 h"
 
 
 def test_dars_sans_evenement_ne_casse_rien():

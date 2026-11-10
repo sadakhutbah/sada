@@ -40,7 +40,7 @@ def test_every_scene_renders_and_janaza_shows_the_name():
         assert img.size == (1280, 720) and img.mode == "RGBA" and img.getbbox(), sc
     plain = r.content("janaza", Moment(now))
     named = r.content("janaza", Moment(now, janaza_name="Ahmed"))
-    assert ImageChops.difference(plain, named).getbbox()       # the entered name appears on screen
+    assert ImageChops.difference(plain.convert("RGB"), named.convert("RGB")).getbbox()       # the entered name appears on screen
 
 
 def test_encoder_diffuse_vers_plusieurs_destinations(tmp_path):

@@ -445,7 +445,7 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
     from minbar.pipeline import clips as clipmod
     seen = {}
 
-    def fake_render(src, off, w, ass, out, log=print, crop=None):
+    def fake_render(src, off, w, ass, out, log=print, crop=None, fade_out=None):
         seen.update(off=off, w=w, ass=(Path(out).parent / ass).read_text())
         Path(out).write_bytes(b"clip v2")
     monkeypatch.setattr(clipmod, "render_clip", fake_render)
@@ -533,7 +533,7 @@ def test_correction_apres_publication_ne_reecrit_pas_l_historique(env, monkeypat
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["status"] == "publie" and clip["needs_regen"] == 1
     from minbar.pipeline import clips as clipmod
-    monkeypatch.setattr(clipmod, "render_clip", lambda src, off, w, ass, out, log=print, crop=None: Path(out).write_bytes(b"v2"))
+    monkeypatch.setattr(clipmod, "render_clip", lambda src, off, w, ass, out, log=print, crop=None, fade_out=None: Path(out).write_bytes(b"v2"))
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
     c.ecrire(f"/clips/{cid}/regenerate")
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)

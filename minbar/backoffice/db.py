@@ -106,8 +106,11 @@ def timezone(mosque: dict) -> dt.tzinfo:
 
 def update_mosque(conn, mosque_id: int, **vals) -> None:
     if "timezone" in vals:
+        # Validate strictly here: timezone() is deliberately lenient at runtime (it falls back so a
+        # machine without tzdata can still preview), so calling it would accept any garbage typed by
+        # the mosque and only break months later in the screen previews.
         try:
-            timezone(vals)
+            ZoneInfo(vals["timezone"] or DEFAULT_TZ)
         except (ValueError, ZoneInfoNotFoundError):
             raise ValueError(f"fuseau horaire inconnu : {vals['timezone']} (ex. Europe/Paris)") from None
     if vals:

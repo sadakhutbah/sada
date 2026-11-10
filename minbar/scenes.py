@@ -125,6 +125,23 @@ def _hm(t: dt.datetime) -> str:
     return f"{t:%H} h {t:%M}"
 
 
+def _countdown(seconds: int) -> str:
+    """Remaining time, in the unit that reads best: days, then hours, then minutes:seconds.
+
+    A countdown to next Friday is days away ("3 j 06 h"), a countdown to the next khutba in the
+    same hour is "MM:SS"; showing 4694:43 on the intermission screen means nothing to anyone.
+    """
+    s = max(0, int(seconds))
+    d, s = divmod(s, 86400)
+    h, s = divmod(s, 3600)
+    mi, se = divmod(s, 60)
+    if d:
+        return f"{d} j {h:02d} h"
+    if h:
+        return f"{h} h {mi:02d}"
+    return f"{mi:02d}:{se:02d}"
+
+
 class SceneRenderer:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -420,13 +437,11 @@ class SceneRenderer:
                      cours=getattr(nxt, "title", "") if nxt is not None and nxt.kind != "khutba" else "")
         if nxt is not None and nxt.kind != "khutba":
             remaining = max(0, int((nxt.starts - m.now).total_seconds()))
-            mi, se = divmod(remaining, 60)
-            return self._full_content(t["title_cours"] or t["title"], nxt.title, f"{mi:02d}:{se:02d}",
+            return self._full_content(t["title_cours"] or t["title"], nxt.title, _countdown(remaining),
                                       t["foot"], eyebrow=t["eyebrow"])
         if m.planned:
             remaining = max(0, int((m.planned - m.now).total_seconds()))
-            mi, se = divmod(remaining, 60)
-            return self._full_content(t["title_khutba"] or t["title"], "", f"{mi:02d}:{se:02d}",
+            return self._full_content(t["title_khutba"] or t["title"], "", _countdown(remaining),
                                       t["foot"], eyebrow=t["eyebrow"])
         return self._full_content(t["title"], "", "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
 
