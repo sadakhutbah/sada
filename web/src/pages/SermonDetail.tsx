@@ -18,6 +18,7 @@ export default function SermonDetail() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [onglet, setOnglet] = useState("transcription");
   const [avis, setAvis] = useState<string | null>(null);
+  const [tps, setTps] = useState(0);        // position de lecture, pour suivre le passage à l'écran
   const video = useRef<HTMLVideoElement | null>(null);
 
   const perms = currentSession()?.user.permissions ?? [];
@@ -32,11 +33,13 @@ export default function SermonDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid]);
 
-  /** Cliquer un horodatage amène la vidéo au passage : c'est le seul moyen de vérifier une correction. */
+  /** Cliquer une ligne de transcription amène la vidéo au passage : c'est le seul moyen de vérifier
+   *  une correction à l'oreille. La ligne en cours de lecture reste mise en évidence. */
   const aller = (secondes: number) => {
     const v = video.current;
     if (!v) return;
     v.currentTime = Math.max(0, secondes);
+    setTps(Math.max(0, secondes));
     v.play().catch(() => {});
   };
 
@@ -74,6 +77,7 @@ export default function SermonDetail() {
           <div className="overflow-hidden rounded-[10px] border border-line bg-white">
             {d.has_video ? (
               <video ref={video} controls preload="metadata" playsInline
+                     onTimeUpdate={(e) => setTps(e.currentTarget.currentTime)}
                      className={`w-full ${VIDEO_MAX} bg-night object-contain`}
                      src={`/media/sermon/${k.id}.mp4`} />
             ) : (
@@ -118,12 +122,18 @@ export default function SermonDetail() {
 
           {onglet === "transcription" && (
             <div className={`grid gap-2.5 overflow-y-auto pr-1 ${d.has_video ? "lg:max-h-[58vh]" : "max-h-[70vh]"}`}>
-              {d.transcript.map((r: any) => (
-                <div key={r.i} className={`border-l-2 pl-3 ${r.verse || r.coran ? "border-leaf/60" : "border-line"}`}>
-                  <button type="button" onClick={() => aller(r.start)}
-                          className="mb-1 cursor-pointer border-0 bg-transparent p-0 text-[0.8rem] font-semibold tabular-nums text-green hover:underline">
+              {d.transcript.map((r: any) => {
+                const actif = tps >= r.start && tps < r.end;
+                return (
+                <div key={r.i} onClick={() => aller(r.start)}
+                     role="button" tabIndex={0}
+                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); aller(r.start); } }}
+                     title={t("sermons.detail.seek")}
+                     className={`cursor-pointer rounded-r-[6px] border-l-2 py-1 pr-2 pl-3 transition-colors hover:bg-paper-2/70 ${
+                       actif ? "border-green bg-leaf/10" : r.verse || r.coran ? "border-leaf/60" : "border-line"}`}>
+                  <span className={`mb-1 block text-[0.8rem] font-semibold tabular-nums ${actif ? "text-deep" : "text-green"}`}>
                     {mmss(r.start)}
-                  </button>
+                  </span>
                   {r.arabic && <p className="m-0 text-right text-[1.05rem] leading-[1.9] text-deep" dir="rtl">{r.text}</p>}
                   {r.verse && (
                     <p className="m-0 text-[0.88rem]">
@@ -144,7 +154,8 @@ export default function SermonDetail() {
                     </p>
                   )}
                   {peutCorriger && r.field && (
-                    <details className="mt-1.5">
+                    // La correction se déplie sans emmener la vidéo ailleurs : le clic reste au champ.
+                    <details className="mt-1.5" onClick={(e) => e.stopPropagation()}>
                       <summary className="cursor-pointer text-[0.82rem] font-semibold text-muted hover:text-deep">
                         {r.field === "text" ? t("sermons.detail.fixSubtitle") : t("sermons.detail.fixTranslation")}
                       </summary>
@@ -159,7 +170,8 @@ export default function SermonDetail() {
                     </details>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

@@ -36,6 +36,7 @@ const fr = {
       ambiguous: "à vérifier", viaTranslation: "via la traduction",
       recitation: "Récitation non identifiée : pas de sous-titre (aucune traduction libre du Coran).",
       corrected: "corrigé", fixSubtitle: "Corriger le sous-titre", fixTranslation: "Corriger la traduction",
+      seek: "Amener la vidéo à ce passage",
     },
   },
   clips: {
@@ -145,6 +146,7 @@ const en: typeof fr = {
       ambiguous: "to check", viaTranslation: "via the translation",
       recitation: "Unmatched recitation: no subtitle (no free translation of the Quran).",
       corrected: "corrected", fixSubtitle: "Fix the subtitle", fixTranslation: "Fix the translation",
+      seek: "Jump the video to this passage",
     },
   },
   clips: {
