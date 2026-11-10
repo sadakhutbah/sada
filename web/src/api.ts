@@ -119,6 +119,7 @@ export const api = {
   creerCompte: (corps: Record<string, string>) => ecrire<any>("POST", "/users", corps),
   majCompte: (id: number, corps: Record<string, string>) => ecrire<any>("PATCH", `/users/${id}`, corps),
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
+  adresseInstance: (public_url: string) => ecrire<any>("PUT", "/settings/instance", { public_url }),
   modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),
   testerModele: () => ecrire<any>("POST", "/settings/model/test"),
   creerEvenement: (corps: EventForm) => ecrire<{ ok: boolean; message: string; id: string }>("POST", "/events", corps),

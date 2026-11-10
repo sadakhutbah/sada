@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, Response
 
 from ... import notify
 from ...pipeline import llm
-from .. import auth, branding, db, destinations, dirs as dirs_mod, live_input, publish, storage
+from .. import auth, branding, db, destinations, dirs as dirs_mod, instance, live_input, publish, storage
 from .. import screens as screens_mod
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
@@ -44,10 +44,14 @@ def settings(ctx: CtxDep):
     m["has_logo"] = bool((ctx.mosque.get("logo_path") or "").strip())
     # "default: data/state" — never a path of the machine.
     defauts = {k: dirs_mod.label(v) for k, v in db.mosque_dirs(ctx.mosque).items()}
-    base = str(ctx.request.base_url).rstrip("/")
+    # L'adresse affichée doit être celle par laquelle la mosquée nous atteint : réglage s'il existe,
+    # sinon celle de la requête (juste en local, fausse derrière un proxy).
+    base = instance.base(str(ctx.request.base_url))
     return {"mosque": m, "defaults": defauts, "sections": SECTIONS,
             "guide": {"url": base + "/docs/agent-gabarit-ecrans.md",
-                      "human": base + "/docs/ecrans-mode-emploi"},
+                      "human": base + "/docs/ecrans-mode-emploi",
+                      "docs": base + "/docs",
+                      "public_url": instance.public_url()},
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
             "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
             "targets": destinations.rows(ctx.conn, ctx.mosque),
@@ -55,6 +59,19 @@ def settings(ctx: CtxDep):
             "storage": storage.view(ctx.conn, ctx.mosque["id"]),
             "screens": screens_mod.view(ctx.conn, ctx.mosque),
             "model": _model_view()}
+
+
+@router.put("/settings/instance")
+async def settings_instance(ctx: CtxDep):
+    """Adresse publique de cette installation : elle sert dans les liens de documentation affichés."""
+    ctx.require("admin")
+    corps = await ctx.raw_body()
+    try:
+        valeur = instance.enregistrer(str((corps or {}).get("public_url") or ""))
+    except ValueError as e:
+        raise Invalid(str(e)) from e
+    return {"ok": True, "public_url": valeur,
+            "docs": (valeur or str(ctx.request.base_url).rstrip("/")) + "/docs"}
 
 
 @router.get("/folders")

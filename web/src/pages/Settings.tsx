@@ -146,7 +146,9 @@ export default function Settings() {
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
   const [apercu, setApercu] = useState("");
-  const [guide, setGuide] = useState({ agent: "", humain: "" });
+  const [guide, setGuide] = useState({ agent: "", humain: "", docs: "" });
+  const [adresse, setAdresse] = useState("");
+  const [adresseInitiale, setAdresseInitiale] = useState("");
   const fichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
@@ -157,7 +159,10 @@ export default function Settings() {
                           push_rtmp: r.input?.push_rtmp ?? "" };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
       setGuide({ agent: typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`,
-                 humain: typeof r.guide?.human === "string" ? r.guide.human : `${window.location.origin}/docs/ecrans-mode-emploi` });
+                 humain: typeof r.guide?.human === "string" ? r.guide.human : `${window.location.origin}/docs/ecrans-mode-emploi`,
+                 docs: typeof r.guide?.docs === "string" ? r.guide.docs : `${window.location.origin}/docs` });
+      const ad = typeof r.guide?.public_url === "string" ? r.guide.public_url : "";
+      setAdresse(ad); setAdresseInitiale(ad);
       setEntree(e); setEntreeInitiale(JSON.stringify(e));
       const st: Stockage = { endpoint: r.storage?.endpoint ?? "", region: r.storage?.region ?? "auto",
         bucket: r.storage?.bucket ?? "", access_key: r.storage?.access_key ?? "",
@@ -193,8 +198,9 @@ export default function Settings() {
   const entreeModifiee = JSON.stringify(entree) !== entreeInitiale;
   const stockageModifie = JSON.stringify(stockage) !== stockageInitial;
   const ecransModifies = JSON.stringify(ecrans) !== ecransInitial;
+  const adresseModifiee = adresse.trim().replace(/\/+$/, "") !== adresseInitiale;
   const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales
-    || entreeModifiee || stockageModifie || ecransModifies;
+    || entreeModifiee || stockageModifie || ecransModifies || adresseModifiee;
   const majCible = (i: number, champ: keyof Cible, valeur: string | boolean) => {
     setCibles((x) => x.map((c, j) => (j === i ? { ...c, [champ]: valeur } : c)));
     setMsg(null);
@@ -225,6 +231,7 @@ export default function Settings() {
         setEssaiStockage(null);
       }
       if (ecransModifies) await api.ecrans(ecrans);
+      if (adresseModifiee) await api.adresseInstance(adresse.trim());
       await charger();
       setTest(null);
       setMsg({ ok: true, texte: t("settings.saved") });
@@ -310,6 +317,10 @@ export default function Settings() {
         </Field>
         <Field label={t("settings.mawaqit")} aide={t("settings.mawaqitHelp")}>
           <input className={inputClass} value={f.mawaqit_url} onChange={maj("mawaqit_url")} placeholder="https://mawaqit.net/fr/…" inputMode="url" />
+        </Field>
+        <Field label={t("settings.publicUrl")} aide={t("settings.publicUrlHelp")}>
+          <input className={inputClass} value={adresse} placeholder="https://minbar.exemple.org"
+            onChange={(e) => { setAdresse(e.target.value); setMsg(null); }} inputMode="url" />
         </Field>
       </div>
     ),
