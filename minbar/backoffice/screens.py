@@ -15,7 +15,7 @@ from typing import Any
 from .. import scenes
 from .. import screens as base
 from ..config import Config
-from . import branding, db
+from . import branding, db, variables_ecran
 
 
 class InvalidScreens(ValueError):
@@ -23,9 +23,14 @@ class InvalidScreens(ValueError):
 
 
 def saved(conn, mosque_id: int) -> dict[str, dict[str, str]]:
-    """What the mosque changed: {écran: {champ: texte}}."""
+    """What the mosque changed: {écran: {champ: texte}}.
+
+    The reserved screen `_commun` (common template texts: Arabic lines) is not one of the engine's
+    six screens and stays out of this view.
+    """
     out: dict[str, dict[str, str]] = {}
-    for r in db.all_(conn, "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ?", mosque_id):
+    for r in db.all_(conn, "SELECT screen, slot, text FROM screen_texts "
+                           "WHERE mosque_id = ? AND screen <> ?", mosque_id, variables_ecran.SCREEN):
         out.setdefault(r["screen"], {})[r["slot"]] = r["text"]
     return out
 
@@ -47,7 +52,9 @@ def save(conn, mosque: dict, payload, user_id=None, ip: str | None = None) -> di
         clean = base.check(payload or {})
     except ValueError as e:
         raise InvalidScreens(str(e)) from e
-    conn.execute("DELETE FROM screen_texts WHERE mosque_id = ?", (mosque["id"],))
+    # Only the six engine screens: the common texts (`_commun`) have their own save route.
+    conn.execute("DELETE FROM screen_texts WHERE mosque_id = ? AND screen <> ?",
+                 (mosque["id"], variables_ecran.SCREEN))
     for screen, slots in clean.items():
         for slot, text in slots.items():
             if text:                                   # empty = default, nothing stored

@@ -591,18 +591,17 @@ export default function Settings() {
             <p className="m-0 max-w-[62ch] text-[0.8rem] leading-[1.5] text-muted">{t("settings.screensVars")}</p>
           </div>
           <figure className="m-0 grid gap-1.5 sm:sticky sm:top-3">
-            {apercu
+            {/* Un seul aperçu : le fichier importé, ou à défaut le dessin du moteur. Deux cadres
+                montreraient deux images pour un même écran, donc une question sans réponse. */}
+            {gabarit.present ? (
+              <iframe src={`${gabarit.url}&ecran=${ecranVue}`} title={t("settings.screensImportPreview")} sandbox="allow-same-origin"
+                className="aspect-video w-full rounded-[8px] border border-line bg-paper-2" />
+            ) : apercu
               ? <img src={apercu} alt="" className="aspect-video w-full rounded-[8px] border border-line object-cover" />
               : <div className="aspect-video w-full rounded-[8px] border border-line bg-paper-2" />}
-            <figcaption className="text-[0.76rem] leading-[1.4] text-muted">{t("settings.screensPreview")}</figcaption>
-            {gabarit.present && (
-              <div className="mt-0.5 grid gap-1">
-                {/* Même origine, scripts coupés : le fichier importé est une référence, pas du code exécuté. */}
-                <iframe src={`${gabarit.url}&ecran=${ecranVue}`} title={t("settings.screensImportPreview")} sandbox="allow-same-origin"
-                  className="aspect-video w-full rounded-[8px] border border-line bg-paper-2" />
-                <p className="m-0 text-[0.7rem] leading-[1.35] text-muted">{t("settings.screensImportCaption")}</p>
-              </div>
-            )}
+            <figcaption className="text-[0.76rem] leading-[1.4] text-muted">
+              {t(gabarit.present ? "settings.screensImportCaption" : "settings.screensPreview")}
+            </figcaption>
             {rapport && (
               <div className="grid gap-0.5">
                 <p role="status" className="m-0 text-[0.72rem] leading-[1.4] text-deep">

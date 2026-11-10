@@ -152,6 +152,9 @@ export const api = {
     ecrire<{ ok: boolean; detail: string }>("POST", "/settings/storage/test", v),
   /** Texts of the live screens (slates): {écran: {champ: texte}}, an empty field means "default". */
   ecrans: (screens: Record<string, Record<string, string>>) => ecrire<any>("PUT", "/settings/screens", { screens }),
+  /** Common template texts: the mosque's Arabic lines, never a text invented by the application. */
+  variablesEcran: (variables: Record<string, string>) =>
+    ecrire<any>("PUT", "/settings/screens/variables", { variables }),
   /** Multipart import of an `ecrans.html` template: the server checks it, keeps it, applies its texts. */
   importerGabarit: (fichier: File) => {
     const corps = new FormData();

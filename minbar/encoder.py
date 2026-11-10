@@ -223,6 +223,25 @@ class Encoder:
             self._ensure_worker()
             self._ev.set()
 
+    def show_image(self, scene: str, full: bool, image, cle: str = "") -> None:
+        """Displays a screen drawn elsewhere (the imported template) as one image.
+
+        The transitions work on layers: an image replaces the whole visible surface, background and
+        content together. It is therefore written as a new background, and the content layers are
+        cleared — otherwise the engine's drawing would show through where the image is transparent.
+        An identical image for the same scene is not rewritten: nothing changes, so nothing moves.
+        """
+        if self.shown and self.shown[0] == scene and len(self.shown) > 2 and self.shown[2] == cle:
+            return
+        with self._mx:
+            write_png_atomic(image, self.layer_png["fond"])
+            vide = Image.new("RGBA", image.size, (0, 0, 0, 0))
+            for k in ("a", "b"):
+                write_png_atomic(vide, self.layer_png[k])
+            self.shown = (scene, self.active, cle)       # type: ignore[assignment]
+            self.full = full
+            self.levels.update({"fond": 1.0 if full else 0.0, f"a_{self.active}": 0.0})
+
     def _ensure_worker(self):
         if self._worker is None or not self._worker.is_alive():
             self._worker = threading.Thread(target=self._transitions, daemon=True, name="encoder-transitions")

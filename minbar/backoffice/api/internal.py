@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from .. import db, destinations, internal, live_input, storage
+from .. import db, destinations, gabarit, internal, live_input, storage, variables_ecran as variables_mod
 from .. import screens as screens_mod
 from ..context import ConnDep
 
@@ -73,7 +73,35 @@ def screen_texts(request: Request, conn: ConnDep, port: int = 0):
     mid = _mosque_id(conn, port)
     if mid is None:
         return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
-    return {"mosque_id": mid, "screens": screens_mod.saved(conn, mid)}
+    mosque = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
+    if not mosque:
+        return JSONResponse({"error": "mosquée introuvable"}, status_code=404)
+    return {"mosque_id": mid, "screens": screens_mod.saved(conn, mid),
+            "variables": variables_mod.variables(conn, mosque)}
+
+
+@router.get("/internal/gabarit")
+def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
+    """Le fichier d'écrans importé par la mosquée, tel qu'il doit s'afficher à l'antenne.
+
+    La page est servie décorée (l'écran voulu est rendu visible) et les textes de la mosquée y sont
+    posés, exactement comme pour l'aperçu : c'est le même document, donc la même image.
+    ``variables`` porte ce que le moteur seul connaît (logo, nom, textes arabes saisis).
+    """
+    if not internal.check(request.headers.get(internal.HEADER)):
+        return _refuse()
+    mid = _mosque_id(conn, port)
+    if mid is None:
+        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+    mosquee = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid) or {}
+    fichier = gabarit.lire(mosquee)
+    if not fichier:
+        return {"mosque_id": mid, "nom": "", "present": False, "pages": {}, "variables": {}}
+    valeurs = variables_mod.variables(conn, mosquee)
+    # une page par écran, chacune avec l'écran voulu visible : le moteur n'a pas à découper le HTML
+    pages = {e: gabarit.pour_ecran(fichier, e) for e in gabarit.ECRANS}
+    return {"mosque_id": mid, "nom": mosquee.get("name") or "", "present": True,
+            "pages": pages, "variables": valeurs}
 
 
 @router.get("/internal/live-input")

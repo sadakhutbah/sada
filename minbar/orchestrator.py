@@ -5,6 +5,7 @@
 from __future__ import annotations
 import argparse
 import datetime as dt
+import io
 import logging
 import os
 import signal
@@ -14,7 +15,9 @@ import time
 from pathlib import Path
 
 from . import events as events_mod
-from . import destinations, mawaqit, notify, runs, screens, source, upload
+from PIL import Image
+
+from . import destinations, gabarit_antenne, mawaqit, notify, runs, screens, source, upload
 from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
@@ -66,6 +69,9 @@ class Orchestrator:
         # Replays: after the live, the recordings are sent to the bucket saved in the interface.
         self.uploader = upload.Uploader(
             upload.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info), log=log.info)
+        # Le gabarit importé par la mosquée est ce qui s'affiche : le dessin du moteur ne sert plus
+        # que de repli quand aucun fichier n'a été importé, ou quand le navigateur de rendu manque.
+        self.gabarit = gabarit_antenne.depuis_backoffice(cfg, cfg.backoffice_url, cfg.api_port, log_fn=log.info)
         self.renderer = SceneRenderer(cfg)
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())
@@ -148,7 +154,8 @@ class Orchestrator:
             if key != self._shown_key:
                 self._shown_key = key
                 moment = Moment(now, m.session, m.janaza_name, m.janaza_info, event=ev, next_event=nxt)
-                enc.show(m.scene, spec.full, self.renderer.content(m.scene, moment))
+                if not self._afficher_gabarit(m.scene, spec.full, moment):
+                    enc.show(m.scene, spec.full, self.renderer.content(m.scene, moment))
             if spec.mic != enc.mic_on:
                 enc.mic(spec.mic)
         if m.state != self._notified_state:
@@ -162,6 +169,29 @@ class Orchestrator:
             log.info("Stream arrêté. Enregistrements : %s", [r for r, _ in enc.recordings])
             self._envoyer_rediffusions()
         self._save_sessions()
+
+    def _afficher_gabarit(self, scene: str, full: bool, moment) -> bool:
+        """Le fichier de la mosquée pour cet écran ; ``False`` s'il n'en fournit pas.
+
+        Une image déjà rendue pour cet état n'est pas réécrite : le direct n'a rien à changer.
+        """
+        if self.gabarit is None or not self.gabarit.actif:
+            return False
+        from .gabarit_antenne import ECRANS
+
+        if scene not in ECRANS:
+            return False
+        png = self.gabarit.image(scene, moment)
+        if png is None:
+            return False
+        cle = f"{scene}|{self.gabarit.variable_de_l_instant(scene)}"
+        try:
+            image = Image.open(io.BytesIO(png)).convert("RGBA")
+        except Exception as e:                      # noqa: BLE001 — image illisible : on dessine
+            log.warning("Gabarit : image de l'écran %s illisible (%s) — dessin du moteur", scene, e)
+            return False
+        self.encoder.show_image(scene, full, image, cle)
+        return True
 
     def _envoyer_rediffusions(self):
         """Les fichiers du direct partent en tâche de fond : le moteur n'attend pas le réseau."""

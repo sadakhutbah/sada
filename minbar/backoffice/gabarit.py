@@ -74,6 +74,23 @@ def remplir(page: str, valeurs: dict[str, str]) -> str:
     return page
 
 
+def lire(mosque: dict) -> str:
+    """Le fichier importé, ou une chaîne vide si la mosquée n'en a pas encore déposé."""
+    f = path_for(mosque)
+    if not f.is_file():
+        return ""
+    return f.read_text(encoding="utf-8", errors="replace")
+
+
+def page_antenne(mosque: dict, ecran: str, valeurs: dict[str, str]) -> str:
+    """Le document que le moteur doit afficher : écran voulu visible, textes de la mosquée posés.
+
+    C'est le même traitement que l'aperçu, appliqué au fichier conservé — l'antenne et l'aperçu ne
+    peuvent donc pas diverger : ce sont les mêmes octets.
+    """
+    return remplir(pour_ecran(lire(mosque), ecran), valeurs)
+
+
 def pour_ecran(page: str, ecran: str) -> str:
     """La même page, montrant un autre écran que celui que le fichier met en avant.
 

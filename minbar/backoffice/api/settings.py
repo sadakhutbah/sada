@@ -11,6 +11,7 @@ from ...pipeline import llm
 from .. import auth, branding, db, destinations, dirs as dirs_mod, instance, live_input, publish, storage
 from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
+from .. import variables_ecran
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
 
@@ -62,6 +63,8 @@ def settings(ctx: CtxDep):
             "input": live_input.view(ctx.conn, ctx.mosque, _host(ctx)),
             "storage": storage.view(ctx.conn, ctx.mosque["id"]),
             "screens": screens_mod.view(ctx.conn, ctx.mosque),
+            # Lignes arabes du gabarit : saisies par la mosquée, jamais fournies par le code.
+            "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
             "gabarit": gabarit_mod.view(ctx.mosque),
             "model": _model_view()}
 
@@ -221,6 +224,24 @@ async def screens_save(ctx: CtxDep):
         raise Invalid(str(e)) from e
     return _ok("Textes des écrans enregistrés. Le moteur les prend au prochain lancement du direct.",
                screens=vue)
+
+
+@router.put("/settings/screens/variables")
+async def screens_variables_save(ctx: CtxDep):
+    """Textes communs du gabarit : les lignes arabes saisies par la mosquée.
+
+    Un champ vide efface la ligne ; le gabarit n'affiche alors rien. Aucun texte arabe n'est
+    proposé par défaut.
+    """
+    f = await ctx.raw_body()
+    ctx.require("admin")
+    try:
+        v = variables_ecran.enregistrer(ctx.conn, ctx.mosque["id"], f.get("variables", f),
+                                        ctx.user["id"], ctx.ip)
+    except variables_ecran.InvalidVariables as e:
+        raise Invalid(str(e)) from e
+    return _ok("Textes communs et arabe enregistrés. Le gabarit les prend au prochain lancement du direct.",
+               screens_variables=v)
 
 
 @router.post("/settings/screens/import")
