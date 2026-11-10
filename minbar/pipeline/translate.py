@@ -50,12 +50,20 @@ def with_correction(tr: dict, seg: dict, fr: str) -> dict:
 
 
 def translate_session(segments: list[dict], matches: list[dict], cache_path: str | Path, use_llm: bool = True,
-                      timeout: int = 600, log=print) -> dict:
-    """-> {"seg": {segment_key: {"fr": str, "coran": bool}}, "verse_fr": {ref@start: excerpt}}"""
+                      timeout: int = 600, log=print, only: list[tuple[float, float]] | None = None) -> dict:
+    """-> {"seg": {segment_key: {"fr": str, "coran": bool}}, "verse_fr": {ref@start: excerpt}}
+
+    only: windows actually kept for the clips. Only the speech inside them is translated — the rest of
+    the session would be translated and never read."""
     cache_path = Path(cache_path)
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else empty()
     vms = shown(matches, ambiguous=True)
     ar = [(i, s) for i, s in enumerate(segments) if is_arabic(s["text"])]
+    if only:
+        ar = [(i, s) for i, s in ar
+              if any(s["end"] > a - 2 and s["start"] < b + 2 for a, b in only)]
+        log(f"traduction : {len(ar)} segments dans les fenêtres retenues "
+            f"(sur {sum(1 for _, s in enumerate(segments) if is_arabic(s['text']))})")
     todo = [(i, s) for i, s in ar if _seg_key(s["text"]) not in cache["seg"]]
     vtodo = [m for m in vms if verse_key(m) not in cache["verse_fr"]]
     if (todo or vtodo) and use_llm:

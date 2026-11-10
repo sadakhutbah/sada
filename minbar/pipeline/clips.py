@@ -119,21 +119,12 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
             add("rappel", a, b, f"format court : rappel du verset {m['ref']} ({m['surah_name']}) et son explication")
     if quotes:
         for t, q in quotes:
-            if 60 < t < duration - 120:
+            if 60 < t < duration - 120 and len(q.strip()) >= 40:
                 add("citation", t - 3, t + 50, f"citation marquante : « {q[:90]} »")
                 break
-    add("conclusion", duration - 70, duration, "conclusion / invocation finale")
-    if len(cands) < n:  # fill up with the densest French passage
-        frs = [s for s in segments if arabic_ratio(s["text"]) < 0.3]
-        if frs:
-            best = None
-            for s in frs[:: max(1, len(frs) // 40)]:
-                w = [x for x in frs if s["start"] <= x["start"] < s["start"] + 55]
-                sc = sum(len(x["text"]) for x in w)
-                if best is None or sc > best[0]:
-                    best = (sc, s["start"])
-            if best:
-                add("passage", best[1], best[1] + 55, "passage le plus dense de la khutba")
+    # No filler: the end of a khutba is ritual formulas (salawat, « wa-l-hamdu lillah ») — nothing to
+    # publish — and a dense passage without a hook is not a clip either. If nothing qualifies, the
+    # session produces no clip at all rather than a clip nobody would post.
     return cands[:n]
 
 

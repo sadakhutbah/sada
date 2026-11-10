@@ -54,7 +54,13 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
     log(f"notes -> {o.notes} (résumé : {extra['summary'].get('method')})")
     manifest = []
     o.clips.mkdir(exist_ok=True)
-    trs = trmod.translate_session(segs, ms, o.translations, use_llm, log=log)
+    # Windows first, translation second: a 20-minute khutba becomes 1-3 clips of ~1 minute, so
+    # translating the whole session burns the LLM for text nobody will read. Only the windows are translated.
+    wins = clipmod.select_windows(segs, ms, res["duration"], extra["quotes"], nclips) if nclips else []
+    if nclips and not wins:
+        log("aucun clip publiable (ni rappel de verset ni citation) : rien n'est monté")
+    trs = trmod.translate_session(segs, ms, o.translations, use_llm, log=log,
+                                  only=[(w["start"], w["end"]) for w in wins])
     if nclips:
         vsrc, voff = src, start
         if clip_video:
@@ -66,7 +72,6 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
                     log("clips : alignement douteux -> retour à l'enregistrement")
                     vsrc, voff = src, start
         log(f"clips : vidéo {vsrc}")
-        wins = clipmod.select_windows(segs, ms, res["duration"], extra["quotes"], nclips)
         for i, w in enumerate(wins, 1):
             out = clipmod.make_clip(segs, ms, trs, w, i, 1, vsrc, voff, o.clips, header, crop, log)
             manifest.append(clip_entry(w, i, out, vsrc, voff, crop))
