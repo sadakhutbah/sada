@@ -98,8 +98,8 @@ export default function Sermons() {
             {items ? (
               <>
                 {/* Les onglets portent déjà le compte « à valider » : le rappeler ici serait redondant. */}
-                {recherche ? t("sermons.searchSummary", { n: total, q: recherche }) : t("sermons.summary", { n: total })}
-                {filtre === "a_valider" && <span className="text-warn"> · {t("sermons.pendingTotal", { n: total })}</span>}
+                {recherche ? t("sermons.searchSummary", { count: total, q: recherche }) : t("sermons.summary", { count: total })}
+                {filtre === "a_valider" && <span className="text-warn"> · {t("sermons.pendingTotal", { count: total })}</span>}
               </>
             ) : (
               <span aria-hidden className="block h-[0.75rem] w-40 animate-pulse rounded-full bg-paper-2/70" />
@@ -279,9 +279,9 @@ function LigneKhutba({ k, langue }: { k: any; langue: string }) {
       </span>
 
       <span className="flex shrink-0 items-center justify-self-end gap-3">
-        {pending > 0 && <Pill statut="a_valider" label={t("sermons.pendingCount", { n: pending })} />}
+        {pending > 0 && <Pill statut="a_valider" label={t("sermons.pendingCount", { count: pending })} />}
         <span className="hidden whitespace-nowrap text-[0.82rem] tabular-nums text-muted sm:inline">
-          {t("sermons.detail.clipCount", { n: clips })}
+          {t("sermons.detail.clipCount", { count: clips })}
         </span>
         <svg
           aria-hidden

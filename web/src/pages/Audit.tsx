@@ -21,6 +21,25 @@ export default function Audit() {
 
   const pages = d ? Math.max(1, Math.ceil(d.total / TAILLE)) : 1;
   const libelles = d?.labels ?? {};
+  /** Détails lisibles : le serveur joint un objet JSON (uid, type, titre…) — on n'affiche que ses valeurs. */
+  const details = (brut?: string | null) => {
+    if (!brut || brut === "{}") return "";
+    try {
+      const o = JSON.parse(brut);
+      if (o && typeof o === "object" && !Array.isArray(o)) {
+        return Object.entries(o)
+          .filter(([cle]) => cle !== "uid")
+          .map(([, valeur]) => String(valeur))
+          .filter(Boolean)
+          .join(" · ");
+      }
+    } catch { /* texte libre : affiché tel quel */ }
+    return brut;
+  };
+
+  /** Nom d'action traduit : la clé stable du serveur prime, son libellé sert de repli. */
+  const nomAction = (cle: string) =>
+    t(`audit.action_${cle.replace(/\./g, "_").replace(/-/g, "_")}`, { defaultValue: libelles[cle] ?? cle });
 
   return (
     <div className="grid gap-4">
@@ -28,7 +47,7 @@ export default function Audit() {
         <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("audit.title")}</h1>
         {d && (
           <p className="m-0 text-[0.88rem] text-muted">
-            {t("audit.count", { n: d.total })}{action ? ` · ${t("audit.filtered")}` : ""}
+            {t("audit.count", { count: d.total })}{action ? ` · ${t("audit.filtered")}` : ""}
           </p>
         )}
       </div>
@@ -44,8 +63,8 @@ export default function Audit() {
             }}
           >
             <option value="">{t("audit.all")}</option>
-            {Object.entries(libelles).map(([cle, label]) => (
-              <option key={cle} value={cle}>{label}</option>
+            {Object.keys(libelles).map((cle) => (
+              <option key={cle} value={cle}>{nomAction(cle)}</option>
             ))}
           </select>
         </Field>
@@ -75,9 +94,9 @@ export default function Audit() {
                   </td>
                   <td className="border-b border-line px-2 py-2 align-top">{a.who ?? "—"}</td>
                   <td className="border-b border-line px-2 py-2 align-top font-semibold">
-                    {libelles[a.action] ?? a.action}
-                    {a.details && a.details !== "{}" && (
-                      <span className="block text-[0.82rem] font-normal text-muted">{a.details}</span>
+                    {nomAction(a.action)}
+                    {details(a.details) && (
+                      <span className="block text-[0.82rem] font-normal text-muted">{details(a.details)}</span>
                     )}
                   </td>
                   <td className="border-b border-line px-2 py-2 align-top text-muted">

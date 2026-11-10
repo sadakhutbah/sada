@@ -141,14 +141,14 @@ export default function SermonDetail() {
               <span className="tabular-nums">
                 {d.has_video ? `${mmss(tps)} / ${mmss(k.duration_s)}` : mmss(k.duration_s)}
               </span>
-              <span>{k.label} · {t("sermons.detail.clipCount", { n: d.clips.length })}</span>
+              <span>{k.label} · {t("sermons.detail.clipCount", { count: d.clips.length })}</span>
             </div>
           </div>
 
           <Card>
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <Title>{t("sermons.detail.clipsTitle")}</Title>
-              {clipsAValider > 0 && <Pill statut="a_valider" label={t("sermons.pendingCount", { n: clipsAValider })} />}
+              {clipsAValider > 0 && <Pill statut="a_valider" label={t("sermons.pendingCount", { count: clipsAValider })} />}
             </div>
             {d.clips.length === 0 ? (
               <p className="m-0 text-muted">{t("sermons.detail.noClips")}</p>

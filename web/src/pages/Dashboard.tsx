@@ -57,7 +57,8 @@ export default function Dashboard() {
   const horsService = v.ok === false;
   const etat = horsService
     ? t("dashboard.unreachable")
-    : v.state_label ?? (v.state === "live" ? t("dashboard.liveOn") : t("dashboard.liveOff"));
+    : (v.state && t(`dashboard.state.${v.state}`, { defaultValue: v.state_label ?? "" }))
+      || (v.state === "live" ? t("dashboard.liveOn") : t("dashboard.liveOff"));
   const pastille = horsService || v.state === "off" ? "bg-dot-off" : v.state === "live" ? "bg-live" : "bg-leaf";
 
   return (

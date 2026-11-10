@@ -82,7 +82,7 @@ export default function Dars() {
       <header className="grid gap-1">
         <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("dars.title")}</h1>
         <p className="m-0 min-h-[1.45rem] text-[0.95rem] text-muted">
-          {liste ? t("dars.summary", { n: liste.total }) : (
+          {liste ? t("dars.summary", { count: liste.total }) : (
             <span aria-hidden className="block h-[0.75rem] w-40 animate-pulse rounded-full bg-paper-2/70" />
           )}
         </p>
