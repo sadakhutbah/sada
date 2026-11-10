@@ -23,8 +23,8 @@ def publications(ctx: CtxDep):
     for p in pubs:                                       # never expose the machine's real path in the UI
         p["location"] = dirs_mod.label(p["location"]) if p.get("location") else ""
     rows = publish.connector_rows(ctx.conn, ctx.mosque)
-    for r in rows:                                       # "interface ready" is not real publishing: the screen says so
-        r["implemented"] = not isinstance(publish.CONNECTORS[r["key"]], publish._Disabled)
+    for r in rows:                                       # the screen says when a connector cannot publish for real
+        r["implemented"] = publish.CONNECTORS[r["key"]].implemented
     return {"connectors": rows, "ready": ready, "publications": pubs,
             "can_configure": ctx.can("admin"),
             "notifications": _notification_settings(ctx) if ctx.can("admin") else None}

@@ -44,8 +44,15 @@ Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug v
   pour désactiver ; bouton « Importer » dans Khutbas, ou `python -m minbar.backoffice import [--run 20261106_220224]`).
   Les sessions Janaza ne sont pas importées. L'import ne touche jamais aux validations ni aux corrections.
 - **Imam par défaut** des nouvelles khutbas (sinon rattachement à la main sur la page de la khutba).
-- **Connecteurs** : seul « Dossier local » publie en V1 (copie du clip + fiche JSON dans `data/published/<mosquée>/<date>/`).
-  Facebook, YouTube et Instagram sont présents mais désactivés : aucun appel externe.
+- **Connecteurs** : les quatre publient réellement, sur un clip validé par un humain et à la demande.
+  - *Dossier local* : copie du clip et de sa fiche JSON dans `data/published/<mosquée>/<date>/`.
+  - *Page Facebook* : dépôt de la vidéo sur la page, légende = celle saisie (`graph-video`).
+  - *YouTube* : envoi sur la chaîne (jeton d'actualisation OAuth, envoi repris, visibilité réglable).
+  - *Instagram* : Reel sur le compte professionnel ; l'API télécharge la vidéo elle-même, donc elle exige
+    une adresse publique du dossier de publication (`public_base_url`), servi par le site de la mosquée.
+
+  Sans identifiants, un connecteur reste indisponible et ne fait aucun appel ; un refus de la plateforme
+  est enregistré tel quel dans l'historique des publications (son message, pas une traduction).
 
 ## Programme : dars et conférences
 

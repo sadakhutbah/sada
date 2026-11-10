@@ -557,15 +557,25 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
         assert not rows[key]["available"] and "identifiants absents" in rows[key]["why"]
         res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), key, resp, "x")
         assert not res.ok
-    # even with credentials, no real publication in V1
+    # with credentials the connector is usable; the network is down here, so the attempt is logged as such
     admin = db.one(conn, "SELECT * FROM users WHERE username = 'admin'")
     publish.save_connector(conn, env["mid"], "facebook", True, {"page_id": "123", "page_token": "secret"}, admin)
     row = next(r for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"])) if r["key"] == "facebook")
-    assert not row["available"] and "non implémentée" in row["why"] and {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
-    res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), "facebook", resp, "x")
-    assert not res.ok
+    assert row["available"] and {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
+
+    def down(*_a, **_k):
+        raise publish.social.PublishError("réseau injoignable")
+
+    import minbar.backoffice.social as social_mod
+    saved = social_mod.SESSION
+    social_mod.SESSION = type("S", (), {"post": staticmethod(down)})
+    try:
+        res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), "facebook", resp, "x")
+    finally:
+        social_mod.SESSION = saved
+    assert not res.ok and "réseau injoignable" in res.message
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "valide"
-    assert {p["status"] for p in db.all_(conn, "SELECT status FROM publications")} == {"refuse"}
+    assert {p["status"] for p in db.all_(conn, "SELECT status FROM publications")} == {"refuse", "erreur"}
 
 
 def test_cli_cree_admin_et_imam(tmp_path, monkeypatch, capsys):

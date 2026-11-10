@@ -171,12 +171,14 @@ def test_publications_real_status_and_notifications(env, monkeypatch):
     d = c.get("/api/v1/publications").json()
     rows = {r["key"]: r for r in d["connectors"]}
     assert rows["local"]["available"] and rows["local"]["implemented"]
-    assert not rows["facebook"]["available"] and not rows["facebook"]["implemented"]
-    # credentials + enabling must not make a V1-disabled connector available
+    assert all(r["implemented"] for r in rows.values())        # real connectors, all four
+    # without credentials a network connector is unavailable, and says which one is missing
+    assert not rows["facebook"]["available"] and "page_token" in rows["facebook"]["why"]
+    # with credentials saved and the switch on, it becomes available (nothing is sent at this point)
     c.ecrire("/settings/connectors/facebook", {"page_id": "123", "page_token": "SECRET-FB", "enabled": "1"})
     d = c.get("/api/v1/publications").json()
     fb = next(r for r in d["connectors"] if r["key"] == "facebook")
-    assert not fb["available"] and "SECRET-FB" not in str(d)
+    assert fb["available"] and fb["why"] == "" and "SECRET-FB" not in str(d)
     # notifications: secrets masked, value unchanged when the field comes back masked or empty
     assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": "ftp://x"}, "PUT").status_code == 422
     assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": "https://hook.example/abc"}, "PUT").status_code == 200

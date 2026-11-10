@@ -3,23 +3,24 @@
 Absolute rule: nothing is published without human validation (status "validated"); the check is done here,
 server side, whatever the caller.
 
-V1 connectors:
+Connectors:
   - local      : copies the clip and a JSON record into the mosque's publication folder (demo, archiving,
-                 or a synchronised folder). Functional.
-  - facebook, youtube, instagram: interfaces ready, DISABLED. Without credentials: unavailable. Even with
-                 credentials, V1 implements no external call (no real publication).
+                 or a synchronised folder).
+  - facebook   : video on the mosque's page (Graph API).
+  - youtube    : upload to the mosque's channel (Data API, resumable, OAuth refresh token).
+  - instagram  : Reel on the professional account, fetched by the API from a public address.
+
+The three networks are real: they call the platform (`minbar.backoffice.social`) and publish nothing
+without credentials. The publication is always launched by a person, on a validated clip.
 """
 from __future__ import annotations
 
 import json
-import re
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import runs
 from ..events import kind_label
-from . import db
+from . import db, social
 
 
 @dataclass
@@ -48,6 +49,7 @@ class Connector:
     secret: tuple[str, ...] = ()         # among fields: hidden on display
     labels: dict[str, str] = {}          # label shown per field (default: its name)
     enabled_by_default = False           # enabled as long as the administrator has saved nothing
+    implemented = True                   # real publication (the screen says so when it is not)
 
     def defaults(self, mosque: dict) -> dict:
         """Value used for a field left empty."""
@@ -80,56 +82,67 @@ class LocalFolder(Connector):
         return {"path": db.local_folder_default(mosque)}
 
     def publish(self, item: Item, settings: dict) -> Result:
-        k, c, m = item.khutba, item.clip, item.mosque
-        dest = Path(settings.get("path") or db.mosque_dirs(m)["publish"]) / (k["date"] or "sans-date")
-        dest.mkdir(parents=True, exist_ok=True)
-        base = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{m['slug']}_{k['run_id']}_s{runs.session_number(k['session_index'])}_clip{c['idx']}_{c['kind']}_v{c['version']}")
-        src = Path(c["file_path"])
-        out = dest / f"{base}.mp4"
-        shutil.copy2(src, out)
-        meta = {
-            "mosquee": m["name"], "khutba": k["label"], "date": k["date"], "run": k["run_id"],
-            "clip": {"numero": c["idx"], "type": c["kind"], "version": c["version"], "debut_s": c["start"], "fin_s": c["end"],
-                     "pourquoi": c["why"], "source": src.name},
-            "legende": item.caption, "valide_par": item.validated_by, "publie_par": item.published_by,
-            "publie_le": db.now_iso(), "musique": False, "sous_titres": "français seul",
-        }
-        (dest / f"{base}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        out = social.archive(item, settings.get("path") or db.mosque_dirs(item.mosque)["publish"])
         return Result(True, str(out), "copié dans le dossier de publication")
 
 
-class _Disabled(Connector):
-    """Network connector not enabled in V1: makes NO external call."""
+class FacebookPage(Connector):
+    key, label = "facebook", "Page Facebook"
+    description = "Publie le clip en vidéo sur la page de la mosquée (API Graph)."
+    fields = required = ("page_id", "page_token")
+    secret = ("page_token",)
+    labels = {"page_id": "Identifiant de la page", "page_token": "Jeton d'accès de la page"}
+
+    def publish(self, item: Item, settings: dict) -> Result:
+        where = social.facebook(item, settings)
+        return Result(True, where, "vidéo publiée sur la page")
+
+
+class YouTube(Connector):
+    key, label = "youtube", "YouTube"
+    description = "Envoie le clip sur la chaîne de la mosquée (API YouTube Data, jeton d'actualisation OAuth)."
+    fields = ("channel_id", "client_id", "client_secret", "refresh_token", "privacy_status", "category_id")
+    required = ("client_id", "client_secret", "refresh_token")
+    secret = ("client_secret", "refresh_token")
+    labels = {"channel_id": "Identifiant de la chaîne", "client_id": "Identifiant client OAuth",
+              "client_secret": "Secret client OAuth", "refresh_token": "Jeton d'actualisation",
+              "privacy_status": "Visibilité (public, unlisted, private)", "category_id": "Catégorie (27 = éducation)"}
+
+    def defaults(self, mosque):
+        return {"privacy_status": "public", "category_id": "27"}
+
+    def publish(self, item: Item, settings: dict) -> Result:
+        where = social.youtube(item, settings)
+        return Result(True, where, "vidéo publiée sur la chaîne")
+
+
+class Instagram(Connector):
+    key, label = "instagram", "Instagram"
+    description = ("Publie le clip en Reel sur le compte professionnel ; l'API récupère la vidéo depuis"
+                   " l'adresse publique du dossier de publication.")
+    fields = ("ig_user_id", "access_token", "public_base_url", "folder")
+    required = ("ig_user_id", "access_token", "public_base_url")
+    secret = ("access_token",)
+    labels = {"ig_user_id": "Identifiant du compte professionnel", "access_token": "Jeton d'accès",
+              "public_base_url": "Adresse publique du dossier de publication",
+              "folder": "Dossier de publication (archivage avant envoi)"}
+
+    def defaults(self, mosque):
+        return {"folder": db.local_folder_default(mosque)}
 
     def availability(self, row):
         ok, why = super().availability(row)
         if not ok:
             return ok, why
-        return False, "désactivé : publication réelle non implémentée en V1 (aucun appel externe)"
+        settings = json.loads(row["settings"]) if row else {}
+        base = str(settings.get("public_base_url") or "").strip()
+        if not base.startswith(("http://", "https://")):
+            return False, "désactivé : l'adresse publique du dossier doit être une URL http(s)"
+        return True, ""
 
-    def publish(self, item, settings):
-        return Result(False, "", "connecteur désactivé en V1 : aucune publication réelle")
-
-
-class FacebookPage(_Disabled):
-    key, label = "facebook", "Page Facebook"
-    description = "Vidéo (Reel) sur la page de la mosquée, via l'API Graph."
-    fields = required = ("page_id", "page_token")
-    secret = ("page_token",)
-
-
-class YouTube(_Disabled):
-    key, label = "youtube", "YouTube"
-    description = "Short sur la chaîne de la mosquée, via l'API YouTube Data (OAuth)."
-    fields = required = ("channel_id", "client_id", "client_secret", "refresh_token")
-    secret = ("client_secret", "refresh_token")
-
-
-class Instagram(_Disabled):
-    key, label = "instagram", "Instagram"
-    description = "Reel sur le compte professionnel lié à la page Facebook."
-    fields = required = ("ig_user_id", "access_token")
-    secret = ("access_token",)
+    def publish(self, item: Item, settings: dict) -> Result:
+        where = social.instagram(item, settings)
+        return Result(True, where, "Reel publié sur le compte")
 
 
 CONNECTORS: dict[str, Connector] = {c.key: c for c in (LocalFolder(), FacebookPage(), YouTube(), Instagram())}
