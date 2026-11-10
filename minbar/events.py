@@ -16,12 +16,14 @@ An event has either a `date` + `time` (one-off), or a weekly `recurrence`:
 `weekday` (in French), and the time — absolute (`time`) or relative to a prayer (`after` = dhuhr, asr,
 maghrib, isha + `offset_min`), recomputed each day with the Mawaqit times.
 
-No I/O here apart from reading the file: all the computation is testable.
+No I/O here apart from the programme file itself (tolerant read, atomic write): all the
+computation is testable.
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Optional
@@ -131,6 +133,11 @@ class Event:
                              publish=self.publish, uid=self.uid)
 
 
+def uid_of(raw: Mapping, idx: int) -> str:
+    """Stable identifier of a raw entry: its `uid`, or `kind-index`."""
+    return str(raw.get("uid") or f"{str(raw.get('kind', 'dars')).strip().lower()}-{idx}")
+
+
 def _parse(raw: dict, idx: int) -> Event:
     where = f"événement #{idx + 1}" + (f" ({raw.get('title')!r})" if raw.get("title") else "")
     if not isinstance(raw, dict):
@@ -173,7 +180,7 @@ def _parse(raw: dict, idx: int) -> Event:
                  session=int(session) if session not in (None, "") else None,
                  max_min=float(raw["max_min"]) if raw.get("max_min") else None,
                  publish=bool(raw.get("publish", True)), date=date, time=time, recurrence=rec,
-                 uid=str(raw.get("uid") or f"{kind}-{idx}"))
+                 uid=uid_of(raw, idx))
 
 
 def loads(text: str) -> list[Event]:
@@ -193,6 +200,43 @@ def load(path: str | Path) -> tuple[list[Event], Optional[str]]:
         return loads(p.read_text(encoding="utf-8")), None
     except (ValueError, json.JSONDecodeError) as e:
         return [], f"programme illisible ({p}) : {e}"
+
+
+def parse(raw: dict, idx: int = 0) -> Event:
+    """One entry, validated with the same rules as the ones read from the file."""
+    return _parse(raw, idx)
+
+
+def read_raw(path: str | Path) -> list[dict]:
+    """Raw entries of the programme, validated and carrying a uid; unknown keys are kept.
+
+    A missing file is an empty programme. An unreadable one raises ValueError: callers must
+    never replace a file they could not read.
+    """
+    p = Path(path)
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8") or "{}")
+        items = data.get("events", []) if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            raise ValueError("« events » doit être une liste")
+        for i, raw in enumerate(items):
+            _parse(raw, i)
+    except (ValueError, OSError) as e:
+        raise ValueError(str(e)) from e
+    for i, raw in enumerate(items):
+        raw.setdefault("uid", uid_of(raw, i))       # same value as the one deduced from the position
+    return items
+
+
+def write_raw(path: str | Path, items: Iterable[dict]) -> None:
+    """Atomically replace the programme: a reader never sees a half-written file."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps({"events": list(items)}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
 
 
 def instances_on(events: Iterable[Event], day: dt.date,
