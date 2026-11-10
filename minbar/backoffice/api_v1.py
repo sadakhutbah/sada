@@ -13,6 +13,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from .. import notify
 from ..pipeline import llm, verses as verses_mod
 from ..pipeline.output import SessionOutput
 from . import auth, branding, content, db, dirs as dirs_mod, importer, live, publish
@@ -256,17 +257,31 @@ def clip(cid: int, ctx: CtxDep):
 
 @router.get("/publications")
 def publications(ctx: CtxDep):
+    """État réel des connecteurs (disponibilité et raison), clips prêts, historique ; notifications pour l'administrateur."""
     ctx.require("publish")
-    etats = db.all_(ctx.conn, "SELECT * FROM connectors WHERE mosque_id = ?", ctx.mosque["id"]) \
-        if _a_table(ctx.conn, "connectors") else []
     ready = db.all_(ctx.conn, "SELECT c.*, k.label sermon, k.date FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                               "WHERE c.mosque_id = ? AND c.status = 'valide' ORDER BY c.decided_at DESC", ctx.mosque["id"])
     pubs = db.all_(ctx.conn, "SELECT p.*, u.display_name who, c.idx, c.kind, k.label sermon, k.date FROM publications p "
                              "JOIN clips c ON c.id = p.clip_id JOIN khutbas k ON k.id = c.khutba_id "
                              "LEFT JOIN users u ON u.id = p.user_id WHERE p.mosque_id = ? ORDER BY p.id DESC LIMIT 100",
                    ctx.mosque["id"]) if _a_table(ctx.conn, "publications") else []
-    return {"connectors": [{"key": k, "label": v.label, "fields": list(v.fields)} for k, v in publish.CONNECTORS.items()],
-            "configured": etats, "ready": ready, "publications": pubs}
+    for p in pubs:                                       # jamais le chemin réel de la machine dans l'interface
+        p["location"] = dirs_mod.label(p["location"]) if p.get("location") else ""
+    rows = publish.connector_rows(ctx.conn, ctx.mosque)
+    for r in rows:                                       # « interface prête » ≠ publication réelle : l'écran le dit
+        r["implemented"] = not isinstance(publish.CONNECTORS[r["key"]], publish._Disabled)
+    return {"connectors": rows, "ready": ready, "publications": pubs,
+            "can_configure": ctx.can("admin"),
+            "notifications": _notifications(ctx) if ctx.can("admin") else None}
+
+
+def _notifications(ctx: Ctx) -> dict:
+    """Réglage des notifications à l'imam ; webhook et jeton Telegram (secrets) sont masqués."""
+    r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
+    n = notify.from_settings(r)
+    return {"mode": r.get("mode", ""), "webhook": db.MASK if r.get("webhook") else "",
+            "telegram_token": db.MASK if r.get("telegram_token") else "", "telegram_chat": r.get("telegram_chat", ""),
+            "active": n.enabled, "destination": n.destination}
 
 
 @router.get("/settings")
@@ -529,6 +544,52 @@ async def connector_save(key: str, ctx: CtxDep):
     return _ok(f"Connecteur « {publish.CONNECTORS[key].label} » enregistré.")
 
 
+@router.put("/settings/notifications")
+async def notifications_save(ctx: CtxDep):
+    """Enregistre la destination des notifications. Un secret laissé vide ou masqué reste inchangé."""
+    f = await ctx.body()
+    ctx.require("admin")
+    mode = (f.get("mode") or "").strip()
+    if mode not in ("", "webhook", "telegram"):
+        raise Invalid("Canal de notification inconnu.")
+    old = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
+
+    def val(name: str, secret: bool) -> str:
+        v = (f.get(name) or "").strip()
+        return old.get(name, "") if secret and v in ("", db.MASK) else v
+
+    webhook, token, chat = val("webhook", True), val("telegram_token", True), val("telegram_chat", False)
+    if webhook and not re.match(r"^https?://", webhook):
+        raise Invalid("L'adresse du webhook doit commencer par http:// ou https://.")
+    if mode == "webhook" and not webhook:
+        raise Invalid("Indiquez l'adresse du webhook.")
+    if mode == "telegram" and not (token and chat):
+        raise Invalid("Telegram demande le jeton du bot et l'identifiant de la conversation.")
+    ctx.conn.execute("INSERT INTO notifications (mosque_id, mode, webhook, telegram_token, telegram_chat, updated_at) "
+                     "VALUES (?,?,?,?,?,?) ON CONFLICT (mosque_id) DO UPDATE SET mode = excluded.mode, "
+                     "webhook = excluded.webhook, telegram_token = excluded.telegram_token, "
+                     "telegram_chat = excluded.telegram_chat, updated_at = excluded.updated_at",
+                     (ctx.mosque["id"], mode, webhook, token, chat, db.now_iso()))
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "notifications.configure", "mosque", ctx.mosque["id"], ip=ctx.ip,
+             canal=mode or "aucun")
+    return _ok("Notifications enregistrées. L'orchestrateur les applique à son prochain démarrage.",
+               notifications=_notifications(ctx))
+
+
+@router.post("/settings/notifications/test")
+def notifications_test(ctx: CtxDep):
+    """Envoie un message d'essai à la destination enregistrée (action explicite de l'administrateur)."""
+    ctx.need_csrf()
+    ctx.require("admin")
+    r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"])
+    n = notify.from_settings(r, log=lambda _m: None)
+    if not n.enabled:
+        return JSONResponse({"ok": False, "message": "Aucune destination enregistrée : rien n'a été envoyé."}, status_code=422)
+    if not n.send(f"Essai de notification — {ctx.mosque['name']} (back-office)."):
+        return JSONResponse({"ok": False, "message": f"Envoi impossible vers {n.destination}."}, status_code=422)
+    return {"ok": True, "message": f"Message d'essai envoyé ({n.destination})."}
+
+
 @router.post("/settings/logo")
 async def logo_save(ctx: CtxDep):
     ctx.require("admin")
@@ -566,7 +627,7 @@ AUDIT_LABELS = {
     "publication.refuse": "Publication refusée", "publication.erreur": "Publication en erreur",
     "utilisateur.cree": "Compte créé", "utilisateur.modifie": "Compte modifié",
     "utilisateur.mot_de_passe": "Mot de passe changé", "mosquee.configuree": "Configuration modifiée",
-    "connecteur.configure": "Connecteur configuré", "acces.refuse": "Accès refusé",
+    "connecteur.configure": "Connecteur configuré", "notifications.configure": "Notifications configurées", "acces.refuse": "Accès refusé",
 }
 
 

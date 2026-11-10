@@ -120,6 +120,14 @@ CREATE TABLE IF NOT EXISTS connectors (
     settings TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (mosque_id, key)
 );
+CREATE TABLE IF NOT EXISTS notifications (
+    mosque_id INTEGER PRIMARY KEY REFERENCES mosques(id),
+    mode TEXT NOT NULL DEFAULT '' CHECK (mode IN ('', 'webhook', 'telegram')),
+    webhook TEXT NOT NULL DEFAULT '',
+    telegram_token TEXT NOT NULL DEFAULT '',
+    telegram_chat TEXT NOT NULL DEFAULT '',
+    updated_at TEXT
+);
 CREATE TABLE IF NOT EXISTS publications (
     id INTEGER PRIMARY KEY,
     mosque_id INTEGER NOT NULL REFERENCES mosques(id),
