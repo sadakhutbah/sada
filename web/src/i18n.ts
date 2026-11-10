@@ -10,7 +10,7 @@ const fr = {
     dashboard: "Tableau de bord", sermons: "Khutbas", clips: "Clips", publications: "Publication",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion",
   },
-  common: { loading: "Chargement…", empty: "Rien à afficher.", save: "Enregistrer", close: "Fermer", error: "Erreur", browse: "Parcourir…" },
+  common: { loading: "Chargement…", empty: "Rien à afficher.", save: "Enregistrer", saving: "Enregistrement…", close: "Fermer", error: "Erreur", browse: "Parcourir…" },
   footer: "back-office",
   login: {
     title: "Connexion", user: "Identifiant", password: "Mot de passe", submit: "Entrer",
@@ -26,6 +26,17 @@ const fr = {
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
     theme: "Thème", open: "Ouvrir",
+    detail: {
+      duration: "durée {{d}}", verseCount: "{{n}} verset(s) détecté(s)", clipCount: "{{n}} clip(s)",
+      imamLabel: "Imam", noImam: "non renseigné", speaker: "Intervenant (si pas de compte)",
+      noVideo: "Vidéo de la khutba non disponible (enregistrement introuvable).",
+      clipsTitle: "Clips de la khutba", noClips: "Aucun clip proposé.",
+      transcript: "Transcription", verses: "Versets", notes: "Notes", assignment: "Rattachement",
+      noVerses: "Aucun verset détecté.", noNotes: "Aucune note pour cette khutba.",
+      ambiguous: "à vérifier", viaTranslation: "via la traduction",
+      recitation: "Récitation non identifiée : pas de sous-titre (aucune traduction libre du Coran).",
+      corrected: "corrigé", fixSubtitle: "Corriger le sous-titre", fixTranslation: "Corriger la traduction",
+    },
   },
   clips: {
     title: "File de validation des clips",
@@ -108,7 +119,7 @@ const en: typeof fr = {
     dashboard: "Dashboard", sermons: "Sermons", clips: "Clips", publications: "Publishing",
     settings: "Settings", users: "Users", audit: "Log", logout: "Sign out",
   },
-  common: { loading: "Loading…", empty: "Nothing to show.", save: "Save", close: "Close", error: "Error", browse: "Browse…" },
+  common: { loading: "Loading…", empty: "Nothing to show.", save: "Save", saving: "Saving…", close: "Close", error: "Error", browse: "Browse…" },
   footer: "back office",
   login: {
     title: "Sign in", user: "Username", password: "Password", submit: "Sign in",
@@ -124,6 +135,17 @@ const en: typeof fr = {
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",
     theme: "Theme", open: "Open",
+    detail: {
+      duration: "length {{d}}", verseCount: "{{n}} verse(s) detected", clipCount: "{{n}} clip(s)",
+      imamLabel: "Imam", noImam: "not set", speaker: "Speaker (no account)",
+      noVideo: "Sermon video unavailable (recording not found).",
+      clipsTitle: "Clips from this sermon", noClips: "No clip proposed.",
+      transcript: "Transcript", verses: "Verses", notes: "Notes", assignment: "Assignment",
+      noVerses: "No verse detected.", noNotes: "No note for this sermon.",
+      ambiguous: "to check", viaTranslation: "via the translation",
+      recitation: "Unmatched recitation: no subtitle (no free translation of the Quran).",
+      corrected: "corrected", fixSubtitle: "Fix the subtitle", fixTranslation: "Fix the translation",
+    },
   },
   clips: {
     title: "Clip review queue",

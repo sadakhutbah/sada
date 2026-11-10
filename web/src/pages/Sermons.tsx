@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Card } from "../ui";
@@ -28,13 +29,26 @@ export default function Sermons() {
           </thead>
           <tbody>
             {items.map((k) => (
-              <tr key={k.id} className="hover:bg-paper-2/60">
-                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 whitespace-nowrap">{k.date}</td>
-                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 font-semibold">{k.label}</td>
-                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 text-muted">{k.imam ?? "—"}</td>
-                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">{k.theme ?? ""}</td>
-                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">{k.clips}</td>
-                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">{k.pending || ""}</td>
+              // La ligne entière ouvre la fiche : une liste qui ne mène nulle part ne sert à rien.
+              <tr key={k.id} className="cursor-pointer hover:bg-paper-2/60">
+                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 whitespace-nowrap">
+                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.date}</Link>
+                </td>
+                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 font-semibold">
+                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.label}</Link>
+                </td>
+                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0 text-muted">
+                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.imam ?? "—"}</Link>
+                </td>
+                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">
+                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline">{k.theme ?? ""}</Link>
+                </td>
+                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">
+                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline tabular-nums">{k.clips}</Link>
+                </td>
+                <td className="border-b border-line px-2 py-2.5 align-middle [tr:last-child_&]:border-b-0">
+                  <Link to={`/sermons/${k.id}`} className="block text-inherit no-underline tabular-nums">{k.pending || "—"}</Link>
+                </td>
               </tr>
             ))}
           </tbody>

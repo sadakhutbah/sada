@@ -426,6 +426,9 @@ def test_fiche_khutba_par_l_api(env):
     assert "La patience est une lumière." in json.dumps(d["transcript"], ensure_ascii=False)
     assert d["sermon"]["duration_s"] == 20.0
     assert d["notes"].startswith("# Notes") and len(d["clips"]) == 2 and d["has_video"] is False
+    # Le rattachement n'est proposé qu'à qui peut l'écrire (droit « assign »).
+    assert client(env, "imam").get(f"/api/v1/sermons/{env['kid']}").json()["imams"] == []
+    assert d["imams"]
 
 
 # ------------------------------------------------------------------ validation

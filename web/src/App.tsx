@@ -6,6 +6,7 @@ import { LANGUAGES, setLanguage } from "./i18n";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Sermons from "./pages/Sermons";
+import SermonDetail from "./pages/SermonDetail";
 import Clips from "./pages/Clips";
 import ClipDetail from "./pages/ClipDetail";
 import Publications from "./pages/Publications";
@@ -111,8 +112,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/sermons" element={<Sermons />} />
-          <Route path="/sermons/:id" element={<Sermons />} />
           <Route path="/clips" element={<Clips />} />
+          <Route path="/sermons/:id" element={<SermonDetail />} />
           <Route path="/clips/:id" element={<ClipDetail />} />
           <Route path="/publications" element={<Publications />} />
           <Route path="/settings" element={<Settings />} />
