@@ -25,6 +25,9 @@ from .verses import match_for, recited_arabic, shown
 DEFAULT_TITLE = "Khutba du vendredi"
 
 MIN_S, MAX_S = 30.0, 90.0
+# Format court : un rappel se regarde d'un trait. On part juste avant la récitation et on s'arrête
+# quand l'explication immédiate est dite — ni le préambule, ni les digressions.
+RAPPEL_MAX, RAPPEL_AVANT, RAPPEL_APRES = 45.0, 2.0, 16.0
 W, H = 1080, 1920
 
 # --- mise en page (pixels, repère 1080x1920) ---------------------------------------------------
@@ -97,7 +100,15 @@ def select_windows(segments: list[dict], matches: list[dict], duration: float, q
     good = [m for m in vms if m["coverage"] >= 0.45] or vms
     if good:
         m = max(good, key=lambda x: (x["score"] * min(1.0, x["coverage"] + 0.2), x["end"] - x["start"]))
-        add("verset", m["start"] - 12, m["start"] + 55, f"verset {m['ref']} ({m['surah_name']}) récité, avec le contexte qui précède")
+        if m.get("ambiguous"):
+            # Verset reconnu par la traduction seule : il faut le contexte autour pour le comprendre.
+            add("verset", m["start"] - 12, m["start"] + 55,
+                f"verset {m['ref']} ({m['surah_name']}) récité, avec le contexte qui précède")
+        else:
+            # Le rappel se suffit à lui-même : on le donne court, de la récitation à son explication.
+            a = max(0.0, m["start"] - RAPPEL_AVANT)
+            b = min(duration, a + RAPPEL_MAX, m["end"] + RAPPEL_APRES)
+            add("rappel", a, b, f"format court : rappel du verset {m['ref']} ({m['surah_name']}) et son explication")
     if quotes:
         for t, q in quotes:
             if 60 < t < duration - 120:
@@ -360,8 +371,11 @@ def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
 
 
 def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, path: str, tr: dict | None = None,
-              header: dict | None = None) -> int:
-    """Écrit le .ass du clip [t0, t1] (temps de session) ; renvoie le nombre d'unités (pages de sous-titre + cartes)."""
+              header: dict | None = None, rappel: bool = False) -> int:
+    """Écrit le .ass du clip [t0, t1] (temps de session) ; renvoie le nombre d'unités (pages de sous-titre + cartes).
+
+    `rappel` : clip court centré sur un verset — la carte reste affichée jusqu'à la fin, car c'est
+    elle qui porte le rappel ; sinon elle s'efface dès que la parole reprend."""
     tr = tr or {}
     vms = shown(matches, ambiguous=True)
     dur = t1 - t0
@@ -383,6 +397,10 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                 after = [x for x in segs if x["start"] > m["end"] - 0.1]
                 limit = (after[0]["start"] - t0 + 3.0) if after else dur  # la carte peut empiéter 3 s sur la parole suivante
                 cb = min(dur, limit, max(m["end"] - t0 + 1.0, ca + 2.5 + len(fr) / 15.0))
+                if rappel and not cards:
+                    # La carte porte le rappel : elle reste pendant la récitation et s'efface
+                    # juste après, pour laisser les sous-titres à l'explication qui suit.
+                    cb = min(dur, m["end"] - t0 + 6.0)
                 cards.append((ca, cb))
                 ev += _verse_card(m, fr, ca, cb)
         elif sub["kind"] == "translation" and sub["fr"]:
@@ -483,6 +501,7 @@ def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx:
     v = f"_v{version}" if version > 1 else ""
     ass = outdir / f"clip{idx}{v}.ass"
     out = outdir / f"clip{idx}_{w.get('kind') or 'extrait'}{v}_A-VALIDER.mp4"
-    build_ass(segments, matches, w["start"], w["end"], str(ass), tr=tr, header=header)
+    build_ass(segments, matches, w["start"], w["end"], str(ass), tr=tr, header=header,
+              rappel=w.get("kind") == "rappel")
     render_clip(video, offset, w, ass.name, str(out), log, crop=crop)
     return out

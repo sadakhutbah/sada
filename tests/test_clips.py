@@ -73,3 +73,39 @@ def test_quran_marks_and_formulas():
     assert recited_arabic(VERSE).startswith("إن الله") or recited_arabic(VERSE).startswith("إِنَّ")
     assert is_formula("أعوذ بالله من الشيطان الرجيم")
     assert not is_formula("ولنتوقف اليوم عند هذه الآية العظيمة من سورة الطلاق")
+
+
+def _khutba():
+    """Une khutba minimale autour du verset de test : récitation vers 200 s, puis l'explication."""
+    segs = []
+    t = 0.0
+    while t < 300.0:
+        segs.append({"start": t, "end": t + 3.0, "text": "la patience éclaire le croyant dans l'épreuve"})
+        t += 4.0
+    return segs
+
+
+def test_le_verset_donne_un_rappel_court():
+    v = dict(VERSE, start=200.0, end=204.0)
+    wins = C.select_windows(_khutba(), [v], 600.0, None, 3)
+    premier = wins[0]
+    assert premier["kind"] == "rappel"
+    assert 195.0 <= premier["start"] <= 198.0             # on part juste avant la récitation
+    assert premier["end"] <= premier["start"] + C.RAPPEL_MAX
+    assert 25.0 <= premier["end"] - premier["start"] <= C.RAPPEL_MAX
+
+
+def test_un_verset_reconnu_par_la_traduction_garde_son_contexte():
+    v = dict(VERSE, start=200.0, end=204.0, ambiguous=True)
+    wins = C.select_windows(_khutba(), [v], 600.0, None, 3)
+    assert wins[0]["kind"] == "verset"
+    assert wins[0]["start"] <= 190.0                       # le préambule reste dans le clip
+
+
+def test_le_rappel_garde_sa_carte_jusqu_au_bout(tmp_path):
+    p = tmp_path / "r.ass"
+    n = C.build_ass(SEGS, [VERSE], 8.0, 18.0, str(p), tr=TR, rappel=True)
+    assert n >= 1
+    events = _events(p)
+    card = [e for e in events if ",CardFr," in e]
+    assert card and card[0].split(",")[2].strip() == C._ass_time(10.0)   # la carte dure jusqu'au bout

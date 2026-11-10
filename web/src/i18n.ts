@@ -43,7 +43,7 @@ const fr = {
     title: "File de validation des clips",
     intro: "Aucun clip n'est publié sans validation humaine. Regardez le clip, corrigez si besoin, puis validez ou rejetez.",
     sermon: "Khutba", kind: "Type", status: "Statut", duration: "Durée", why: "Raison",
-    all: "Tous", clip: "Clip", kinds: { verset: "verset", conclusion: "conclusion" },
+    all: "Tous", clip: "Clip", kinds: { verset: "verset", rappel: "rappel", citation: "citation", passage: "passage", conclusion: "conclusion" },
     detail: {
       extract: "Extrait {{de}}–{{a}} de la khutba ({{s}} s)",
       version: "version {{n}}",
@@ -154,7 +154,7 @@ const en: typeof fr = {
     title: "Clip review queue",
     intro: "No clip is published without human review. Watch it, fix it if needed, then approve or reject.",
     sermon: "Sermon", kind: "Kind", status: "Status", duration: "Length", why: "Reason",
-    all: "All", clip: "Clip", kinds: { verset: "verse", conclusion: "conclusion" },
+    all: "All", clip: "Clip", kinds: { verset: "verse", rappel: "reminder", citation: "quote", passage: "passage", conclusion: "conclusion" },
     detail: {
       extract: "Excerpt {{de}}–{{a}} of the sermon ({{s}} s)",
       version: "version {{n}}",
