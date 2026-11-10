@@ -146,7 +146,7 @@ export default function Settings() {
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
   const [apercu, setApercu] = useState("");
-  const [guide, setGuide] = useState("");
+  const [guide, setGuide] = useState({ agent: "", humain: "" });
   const fichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
@@ -156,7 +156,8 @@ export default function Settings() {
       const e: Entree = { mode: r.input?.mode === "push" ? "push" : "camera", url: r.input?.url ?? "",
                           push_rtmp: r.input?.push_rtmp ?? "" };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
-      setGuide(typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`);
+      setGuide({ agent: typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`,
+                 humain: typeof r.guide?.human === "string" ? r.guide.human : `${window.location.origin}/docs/ecrans-mode-emploi.md` });
       setEntree(e); setEntreeInitiale(JSON.stringify(e));
       const st: Stockage = { endpoint: r.storage?.endpoint ?? "", region: r.storage?.region ?? "auto",
         bucket: r.storage?.bucket ?? "", access_key: r.storage?.access_key ?? "",
@@ -475,32 +476,26 @@ export default function Settings() {
             <div className="grid gap-1.5">
               <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
                 valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
-              {/* Pas de panneau déplié : une ligne, une bulle au survol, et le guide sur son adresse. */}
-              <div className="flex max-w-[62ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
+              {/* Pas de panneau déplié : le mode d'emploi s'ouvre dans un onglet, la page ne bouge pas. */}
+              <div className="flex max-w-[68ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
                 <span>{t("settings.screensHint")}</span>
-                <span className="group relative inline-flex">
-                  <button type="button" aria-describedby="aide-ecrans"
-                    className="cursor-help border-0 bg-transparent p-0 text-[0.84rem] font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
-                    {t("settings.screensHelpOpen")}
-                  </button>
-                  <span id="aide-ecrans" role="tooltip"
-                    className="pointer-events-none invisible absolute top-[calc(100%+8px)] left-0 z-20 w-[46ch] rounded-[8px] border border-line bg-white px-3 py-2.5 text-[0.82rem] leading-[1.6] font-normal text-ink opacity-0 shadow-[0_6px_24px_rgba(15,42,25,.14)] transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-                    {t("settings.screensHelpTip")}
-                  </span>
-                </span>
+                <a href={guide.humain} target="_blank" rel="noreferrer"
+                  className="font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
+                  {t("settings.screensHelpOpen")}
+                </a>
               </div>
-              {/* Le guide est un fichier servi par cette instance : on donne son adresse, à coller dans un chat. */}
-              <div className="flex max-w-[62ch] flex-wrap items-center gap-x-2 gap-y-1 rounded-[8px] border border-line bg-paper px-3 py-2">
+              {/* Le guide pour un assistant est un fichier servi par cette instance : on donne son adresse. */}
+              <div className="flex max-w-[68ch] flex-wrap items-center gap-x-2 gap-y-1 rounded-[8px] border border-line bg-paper px-3 py-2">
                 <p className="m-0 text-[0.82rem] text-muted">{t("settings.screensGuide")}</p>
-                {guide && (
-                  <a href={guide} target="_blank" rel="noreferrer"
+                {guide.agent && (
+                  <a href={guide.agent} target="_blank" rel="noreferrer"
                     className="break-all font-mono text-[0.78rem] text-deep underline decoration-line decoration-1 underline-offset-4">
-                    {guide}
+                    {guide.agent}
                   </a>
                 )}
                 <button type="button"
                   className="ml-auto shrink-0 rounded-[6px] border border-line bg-white px-2 py-1 text-[0.78rem] font-semibold text-deep hover:bg-paper-2"
-                  onClick={() => { navigator.clipboard.writeText(guide).then(() => setMsg({ ok: true, texte: t("settings.screensGuideCopied") })).catch(() => setMsg({ ok: false, texte: t("settings.screensGuideCopyFail") })); }}>
+                  onClick={() => { navigator.clipboard.writeText(guide.agent).then(() => setMsg({ ok: true, texte: t("settings.screensGuideCopied") })).catch(() => setMsg({ ok: false, texte: t("settings.screensGuideCopyFail") })); }}>
                   {t("settings.screensGuideCopy")}
                 </button>
               </div>

@@ -168,6 +168,15 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return FileResponse(f, media_type="text/markdown; charset=utf-8",
                             headers={"Content-Disposition": "inline; filename=\"agent-gabarit-ecrans.md\""})
 
+    @app.get("/docs/ecrans-mode-emploi.md")
+    def doc_ecrans():
+        """The human manual for the screen texts, written for the mosque administrator."""
+        f = DOCS / "ecrans-mode-emploi.md"
+        if not f.exists():
+            raise NotFound()
+        return FileResponse(f, media_type="text/markdown; charset=utf-8",
+                            headers={"Content-Disposition": "inline; filename=\"ecrans-mode-emploi.md\""})
+
     @app.get("/health")
     def health():
         return {"ok": True}
