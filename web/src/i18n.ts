@@ -196,6 +196,7 @@ const fr = {
     modelTest: "Tester la connexion", modelTesting: "Test en cours…", modelTestSave: "Enregistrez d'abord vos modifications pour tester.",
     modelNow: "Méthode appliquée : {{label}}",
   },
+  role: { admin: "Administrateur", responsable: "Responsable", imam: "Imam" },
   users: { title: "Comptes", user: "Identifiant", name: "Nom affiché", role: "Rôle", active: "Actif", last: "Dernière connexion" },
   audit: {
     title: "Journal", when: "Quand", who: "Qui", action: "Action", object: "Objet", ip: "Adresse",
@@ -432,6 +433,7 @@ const en: typeof fr = {
     modelTest: "Test the connection", modelTesting: "Testing…", modelTestSave: "Save your changes first to test.",
     modelNow: "Method in use: {{label}}",
   },
+  role: { admin: "Administrator", responsable: "Manager", imam: "Imam" },
   users: { title: "Users", user: "Username", name: "Display name", role: "Role", active: "Active", last: "Last sign-in" },
   audit: {
     title: "Log", when: "When", who: "Who", action: "Action", object: "Object", ip: "Address",

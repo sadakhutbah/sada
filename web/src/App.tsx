@@ -99,7 +99,7 @@ export default function App() {
               ))}
             </select>
             <span className="text-[0.85rem] whitespace-nowrap text-night-link">{session.user.name}</span>
-            <span className="text-[0.78rem] whitespace-nowrap text-night-muted">{session.user.role_label}</span>
+            <span className="text-[0.78rem] whitespace-nowrap text-night-muted">{t(`role.${session.user.role}`, { defaultValue: session.user.role_label })}</span>
             <a
               href="/"
               onClick={deconnexion}
