@@ -473,11 +473,13 @@ export default function Settings() {
               {t("settings.screensHelpClose")}
             </span>
           </summary>
-          <div className="mt-3 grid gap-2.5 border-t border-line pt-3 text-[0.88rem] leading-[1.6] text-ink">
+          <div className="mt-3 grid gap-3 border-t border-line pt-3 text-[0.88rem] leading-[1.65] text-ink">
             <p className="m-0">{t("settings.screensHelpWhat")}</p>
             <p className="m-0 text-muted">{t("settings.screensHelpEmpty")}</p>
             <p className="m-0 text-muted">{t("settings.screensHelpWhen")}</p>
-            <p className="m-0 border-l-2 border-leaf pl-3 text-deep">{t("settings.screensHelpSteps")}</p>
+            <div className="mt-0.5 rounded-[6px] bg-paper-2 px-3 py-2">
+              <p className="m-0 text-deep">{t("settings.screensHelpSteps")}</p>
+            </div>
           </div>
         </details>
         <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
