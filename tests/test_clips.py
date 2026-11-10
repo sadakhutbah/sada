@@ -125,3 +125,40 @@ def test_deux_versets_rapproches_ne_superposent_pas_leurs_cartes(tmp_path):
                     for e in _events(str(p)) if ",CardLabel," in e))
     assert len(spans) == 2, spans
     assert spans[0][1] <= spans[1][0], f"cartes superposees : {spans}"
+
+
+def test_un_clip_ne_finit_jamais_en_pleine_phrase():
+    """Whisper coupe la phrase sur le segment suivant : le clip doit aller jusqu'a sa fin."""
+    segs = [
+        {"start": 0.0, "end": 6.0, "text": "Premiere phrase d'introduction du discours."},
+        {"start": 60.0, "end": 70.0, "text": "milieu du discours"},
+        {"start": 70.0, "end": 80.0, "text": "fin de la phrase cette fois."},
+    ]
+    q = [(65.0, "un extrait marquant assez long pour qualifier le passage")]
+    segs = segs[:3]
+    # la phrase du milieu se poursuit sur le segment suivant : le clip doit aller jusqu'au point
+    wins = C.select_windows(segs, [], 220.0, q, 1)
+    assert wins, "un clip doit etre propose: %r" % (wins,)
+    fin = [s for s in segs if s["end"] <= wins[0]["end"] + 0.4][-1]
+    assert fin["text"].endswith("."), fin["text"]
+
+
+def test_bornes_du_modele_recalées_sur_les_segments():
+    """Le modèle ne fournit que des horodatages : on ne garde que ceux qui tombent juste."""
+    segs = [{"start": float(i * 5), "end": float(i * 5 + 4), "text": f"phrase {i}."} for i in range(20)]
+    wins = C.refine_windows([{"kind": "modele", "start": 12.0, "end": 42.0}], segs)
+    assert len(wins) == 1 and abs(wins[0]["start"] - 9.8) < 0.5 and abs(wins[0]["end"] - 44.3) < 0.5, wins
+    assert C.refine_windows([{"kind": "modele", "start": 999.0, "end": 1000.0}], segs) == []
+
+
+def test_le_code_complete_les_extraits_manquants_du_modele():
+    """Le modèle en propose un : le code ajoute les autres, sans chevauchement, dans l'ordre."""
+    modele = [{"kind": "modele", "start": 100.0, "end": 160.0}]
+    code = [{"kind": "verset", "start": 120.0, "end": 180.0},     # chevauche l'extrait du modèle
+            {"kind": "citation", "start": 300.0, "end": 360.0},
+            {"kind": "rappel", "start": 500.0, "end": 550.0}]
+    wins = C.merge_windows(modele, code, 3)
+    assert [w["start"] for w in wins] == [100.0, 300.0, 500.0], wins
+    assert len(C.merge_windows(modele, code, 2)) == 2
+    assert len(C.merge_windows(modele, [], 3)) == 1
+

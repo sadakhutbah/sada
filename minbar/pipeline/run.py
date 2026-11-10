@@ -49,14 +49,31 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
     ms = to_dicts(detect(segs, idx))
     o.write(o.verses, ms)
     log(f"{len(ms)} versets détectés : " + ", ".join(f"{m['ref']}@{fmt_t(m['start'])}({m['score']:.0f})" for m in ms))
-    md, extra = notemod.build_notes(label, segs, ms, res, use_llm, log)
+    md, extra = notemod.build_notes(label, segs, ms, res, use_llm, log, n_clips=nclips)
     o.notes.write_text(md, encoding="utf-8")
     log(f"notes -> {o.notes} (résumé : {extra['summary'].get('method')})")
     manifest = []
     o.clips.mkdir(exist_ok=True)
     # Windows first, translation second: a 20-minute khutba becomes 1-3 clips of ~1 minute, so
     # translating the whole session burns the LLM for text nobody will read. Only the windows are translated.
-    wins = clipmod.select_windows(segs, ms, res["duration"], extra["quotes"], nclips) if nclips else []
+    # The model already read the whole transcript for the notes: its clip boundaries are used as the
+    # windows (one call per transcript, not per clip). Each one is checked mechanically by notes.py;
+    # an empty or doubtful list falls back on the code's own selection.
+    wins = []
+    if nclips:
+        wins = extra.get("clip_windows") or []
+        if wins:
+            log("clips : bornes proposées par le modèle, " + ", ".join(f"{w['start']:.0f}→{w['end']:.0f}" for w in wins))
+            wins = clipmod.refine_windows(wins, segs, res["duration"])
+        else:
+            log("clips : pas de bornes exploitables du modèle, découpage par le code")
+        # The model rarely proposes as many extracts as asked: rather than settle for one clip per
+        # khutba, the code's own candidates fill the remaining slots (no overlap, chronological).
+        if len(wins) < nclips:
+            extra_wins = clipmod.select_windows(segs, ms, res["duration"], extra["quotes"], nclips)
+            wins = clipmod.merge_windows(wins, extra_wins, nclips)
+            if wins:
+                log(f"clips : {len(wins)} extraits après complément (code : {len(extra_wins)} candidats)")
     if nclips and not wins:
         log("aucun clip publiable (ni rappel de verset ni citation) : rien n'est monté")
     trs = trmod.translate_session(segs, ms, o.translations, use_llm, log=log,
