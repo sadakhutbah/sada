@@ -23,15 +23,14 @@ export default function Dashboard() {
     api.dashboard().then(setD).catch(() => setErreur(true));
   }, []);
 
-  /** Label of a command or choice: the translation wins, the server label is the fallback.
-   *  The server only sends stable keys; no interface text comes from it. */
-  const libelle = (c: any) => t(`dashboard.cmd.${c.key}`, { defaultValue: c.label });
-  const libelleChoix = (o: any) => t(`dashboard.choice.${o.value}`, { defaultValue: o.label });
-  const question = (c: any) => t(`dashboard.confirm.${c.key}`, { defaultValue: c.confirm });
+  /** Label of a command or choice: the translation is the only source. The server sends stable
+   *  keys and values, never interface text. */
+  const variante = (c: any): "leaf" | "light" | "danger" =>
+    c.destructive ? "danger" : c.key === "start" ? "leaf" : "light";
 
   /** Sends a command to the live. The server answers with the re-read state: the card updates without a reload. */
   async function envoyer(c: any, corps: Record<string, string> = {}) {
-    if (c.confirm && !window.confirm(question(c))) return;
+    if (c.destructive && !window.confirm(t(`dashboard.confirm.${c.key}`))) return;
     setOccupe(true);
     setRetour(null);
     try {
@@ -57,11 +56,16 @@ export default function Dashboard() {
   const horsService = v.ok === false;
   const etat = horsService
     ? t("dashboard.unreachable")
-    : (v.state && t(`dashboard.state.${v.state}`, { defaultValue: v.state_label ?? "" }))
+    : (v.state && t(`dashboard.state.${v.state}`, { defaultValue: v.state }))
       || (v.state === "live" ? t("dashboard.liveOn") : t("dashboard.liveOff"));
   /** The engine writes its times as “12 h 30”: in other languages, we render them as “12:30”. */
   const heureLisible = (texte?: string | null) =>
     texte ? texte.replace(/(\d{1,2})\s*h\s*(\d{2})/g, "$1:$2") : texte;
+  /** The current session comes structured ({n, total, planned}): the sentence is built here. */
+  const session = v.session as { n?: number | null; total?: number; planned?: string | null } | null;
+  const ligneSession = session
+    ? `${session.n ? `${t("dashboard.sessionN", { n: session.n, total: session.total })} — ` : ""}${heureLisible(session.planned) ?? ""}`
+    : v.has_sessions ? t("dashboard.noSession") : "—";
   const pastille = horsService || v.state === "off" ? "bg-dot-off" : v.state === "live" ? "bg-live" : "bg-leaf";
 
   return (
@@ -80,30 +84,31 @@ export default function Dashboard() {
         {/* Nothing to say about the session when the orchestrator does not answer: the error message is enough. */}
         {!horsService && (
           <p className="m-0 mt-1.5 text-[0.92rem] text-night-muted">
-            {heureLisible(v.session) ?? "—"} · <span className="tabular-nums">{horloge(v.clock)}</span>
+            {ligneSession} · <span className="tabular-nums">{horloge(v.clock)}</span>
           </p>
         )}
 
-        {/* Live commands: the list comes from the server (live_commands). Commands with choices
-            (extend, scene) expand; the janaza has its collapsible form. */}
+        {/* Live commands: the list comes from the server (live_commands), with keys, values and a
+            danger flag only. Commands with choices (extend, scene) expand; the janaza has its
+            collapsible form. */}
         <div className="mt-4 flex flex-wrap items-center gap-2.5">
           {commandes.filter((c: any) => c.key !== "janaza" && c.key !== "scene").map((c: any) =>
             c.choices.length > 0 ? (
-              c.choices.map((o: any) => (
-                <Btn key={`${c.key}-${o.value}`} variante={c.style} disabled={occupe}
-                     onClick={() => envoyer(c, { valeur: o.value })}>{libelleChoix(o)}</Btn>
+              c.choices.map((valeur: string) => (
+                <Btn key={`${c.key}-${valeur}`} variante={variante(c)} disabled={occupe}
+                     onClick={() => envoyer(c, { valeur })}>{t(`dashboard.choice.${valeur}`)}</Btn>
               ))
             ) : (
-              <Btn key={c.key} variante={c.style} disabled={occupe} onClick={() => envoyer(c)}>{libelle(c)}</Btn>
+              <Btn key={c.key} variante={variante(c)} disabled={occupe} onClick={() => envoyer(c)}>{t(`dashboard.cmd.${c.key}`)}</Btn>
             ))}
         </div>
         {scene && (
           <div className="mt-3 flex flex-wrap items-center gap-2.5">
-            <label className="text-[0.92rem] text-night-muted" htmlFor="scene-live">{libelle(scene)}</label>
+            <label className="text-[0.92rem] text-night-muted" htmlFor="scene-live">{t(`dashboard.cmd.${scene.key}`)}</label>
             <select id="scene-live" value={choixScene} onChange={(e) => setChoixScene(e.target.value)}
                     className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white">
               <option value="" className="text-ink">{t("dashboard.sceneChoose")}</option>
-              {scene.choices.map((o: any) => <option key={o.value} value={o.value} className="text-ink">{libelleChoix(o)}</option>)}
+              {scene.choices.map((valeur: string) => <option key={valeur} value={valeur} className="text-ink">{t(`dashboard.choice.${valeur}`)}</option>)}
             </select>
             <Btn variante="light" disabled={occupe || !choixScene} className="min-h-9 px-3 py-1.5 text-[0.9rem]"
                  onClick={() => envoyer(scene, { valeur: choixScene })}>{t("dashboard.sceneApply")}</Btn>

@@ -538,19 +538,16 @@ class Scene:
     full: bool                  # full screen: the shared background masks the camera
     mic: bool                   # live microphone open
     draw: Callable[[SceneRenderer, Moment], Image.Image]
-    label: str                  # control button label: the state name does not always fit
     ticking: bool = False       # the content changes with the time (countdown): rendered every second
 
 
 SCENES = {
-    "avant": Scene(full=True, mic=False, draw=SceneRenderer._avant, label="Avant"),
-    "khutba": Scene(full=False, mic=True, draw=SceneRenderer._khutba, label="Khutba"),
-    "priere": Scene(full=True, mic=False, draw=SceneRenderer._priere, label="Prière"),
-    "entracte": Scene(full=True, mic=False, draw=SceneRenderer._entracte, label="Entracte", ticking=True),
-    "termine": Scene(full=True, mic=False, draw=SceneRenderer._termine, label="Terminé"),
-    "janaza": Scene(full=True, mic=True, draw=SceneRenderer._janaza, label="Janaza"),
-    "dars": Scene(full=False, mic=True, draw=SceneRenderer._dars, label="Dars"),
-    "dars_fin": Scene(full=True, mic=False, draw=SceneRenderer._dars_fin, label="Fin dars"),
+    "avant": Scene(full=True, mic=False, draw=SceneRenderer._avant),
+    "khutba": Scene(full=False, mic=True, draw=SceneRenderer._khutba),
+    "priere": Scene(full=True, mic=False, draw=SceneRenderer._priere),
+    "entracte": Scene(full=True, mic=False, draw=SceneRenderer._entracte, ticking=True),
+    "termine": Scene(full=True, mic=False, draw=SceneRenderer._termine),
+    "janaza": Scene(full=True, mic=True, draw=SceneRenderer._janaza),
+    "dars": Scene(full=False, mic=True, draw=SceneRenderer._dars),
+    "dars_fin": Scene(full=True, mic=False, draw=SceneRenderer._dars_fin),
 }
-
-SCENE_LABELS = {name: sc.label for name, sc in SCENES.items()}

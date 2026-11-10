@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
+import { auditActionKey } from "../i18n";
 import { Btn, Card, Field, Kicker, Pill, Segmented, inputClass } from "../ui";
 import { dateFr, mmss } from "../format";
 
@@ -481,7 +482,7 @@ function Historique({ d }: { d: any }) {
           <li key={a.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 border-b border-line py-2 text-[0.88rem] last:border-0">
             <span className="tabular-nums text-muted">{String(a.created_at ?? "").replace("T", " ").slice(0, 16)}</span>
             <span>
-              <b className="font-semibold">{(d.labels ?? {})[a.action] ?? a.action}</b>
+              <b className="font-semibold">{t(auditActionKey(a.action), { defaultValue: a.action })}</b>
               <span className="text-muted"> · {a.who ?? t("clips.detail.system")}</span>
               {plus && <span className="block text-[0.82rem] text-muted">{plus}</span>}
             </span>

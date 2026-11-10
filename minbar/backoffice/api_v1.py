@@ -84,7 +84,6 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
         "caption": publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
         "contexte": {"theme": k["theme"] or "", "avant": avant, "versets": versets},
-        "labels": AUDIT_LABELS,          # the history reads in plain language, not in technical keys
         "exists": bool(c["file_path"]) and Path(c["file_path"]).exists(),
         "status_labels": content.STATUS_LABELS,
     }
@@ -169,10 +168,10 @@ def dashboard(ctx: CtxDep):
                              "WHERE a.mosque_id = ? AND a.action LIKE 'live.%' ORDER BY a.id DESC LIMIT 5", ctx.mosque["id"])
     return {"counts": {"pending": count_clips(ctx, "a_valider"), "ready": count_clips(ctx, "valide"), "sermons": total},
             "recent": recent, "live": live_status(ctx), "commands": cmds,
-            # The commands offered come from the server: the front does not invent the list.
-            "live_commands": [{"key": k, "label": c.label, "style": c.style, "confirm": c.confirm,
-                               "choices": [{"value": v, "label": lb} for v, lb in c.choices]}
-                              for k, c in live.COMMANDS.items()]}
+            # Commands offered: keys derived from the engine, plus the values they accept and a
+            # danger flag. Every label is built by the front end from i18n.
+            "live_commands": [{"key": k, "destructive": k in live.DESTRUCTIVE, "choices": list(live.choices(k))}
+                              for k in live.COMMANDS]}
 
 
 @router.get("/sermons/mois")
@@ -338,8 +337,11 @@ def audit(ctx: CtxDep, action: str = "", limit: int = Query(25, ge=1, le=200), o
                    ctx.mosque["id"], action, action, limit, offset)
     total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM audit WHERE {filtre}",
                     ctx.mosque["id"], action, action) or {"n": 0})["n"]
+    # Action keys really present for this mosque, for the filter. Labels come from the front end.
+    actions = [r["action"] for r in db.all_(
+        ctx.conn, "SELECT DISTINCT action FROM audit WHERE mosque_id = ? ORDER BY action", ctx.mosque["id"])]
     return {"items": rows, "count": len(rows), "total": total, "offset": offset, "limit": limit,
-            "labels": AUDIT_LABELS}
+            "actions": actions}
 
 
 @router.get("/folders")
@@ -368,20 +370,24 @@ async def live_command(cmd: str, ctx: CtxDep):
     arg = (f.get("name") or "").strip() or None
     info = (f.get("info") or "").strip() or None      # janaza record: note under the name
     valeur = (f.get("valeur") or "").strip() or None  # minutes (extend) or scene (scene)
-    if live.COMMANDS[cmd].choices and valeur not in (None, *(v for v, _ in live.COMMANDS[cmd].choices)):
+    permises = live.choices(cmd)
+    if permises and valeur not in (None, *permises):
         raise Invalid("Valeur inconnue pour cette commande.")
     if cmd == "scene" and not valeur:
         raise Invalid("Choisissez une scène.")
-    label = live.choice_label(cmd, valeur)
     try:
         r = await run_in_threadpool(live.command, ctx.mosque, cmd, arg, info, valeur)
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, commande=label,
-                 defunt=arg, mention=info, reponse=r.get("message"), etat=r.get("state"))
+        # The audit trail stores protocol keys (command, value), not labels: the log is translated
+        # by the front end like the rest of the interface.
+        details = {k: v for k, v in {"commande": cmd, "valeur": valeur, "defunt": arg, "mention": info,
+                                     "reponse": r.get("message"), "etat": r.get("state")}.items() if v}
+        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.commande", ip=ctx.ip, **details)
         # After a command, we want the real state: fresh read, no cache.
-        return _ok(f"{label} : {r.get('message', 'ok')}", state=r.get("state"), live=live_status(ctx, forcer=True))
+        return _ok(r.get("message", "ok"), state=r.get("state"), live=live_status(ctx, forcer=True))
     except live.OrchestratorError as e:
-        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, commande=label, erreur=str(e))
-        return JSONResponse({"error": "injoignable", "message": f"{label} : échec — {e}"}, status_code=503)
+        details = {k: v for k, v in {"commande": cmd, "valeur": valeur, "erreur": str(e)}.items() if v}
+        db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, **details)
+        return JSONResponse({"error": "injoignable", "message": f"échec — {e}"}, status_code=503)
 
 
 @router.post("/import")
@@ -646,23 +652,6 @@ def logo_clear(ctx: CtxDep):
 
 
 # ------------------------------------------------------------------ misc
-
-AUDIT_LABELS = {
-    "connexion": "Connexion", "connexion.echec": "Échec de connexion", "deconnexion": "Déconnexion",
-    "live.commande": "Commande live", "live.echec": "Commande live en échec",
-    "import.khutba": "Import khutba", "import.clip": "Import clip", "import.manuel": "Import lancé",
-    "khutba.imam": "Imam rattaché", "correction.sous-titre": "Sous-titre corrigé",
-    "correction.traduction": "Traduction corrigée", "clip.regeneration": "Régénération demandée",
-    "clip.regenere": "Clip régénéré", "clip.valide": "Clip validé", "clip.rejete": "Clip rejeté",
-    "clip.remis_en_file": "Clip remis en file", "publication.publie": "Publié",
-    "publication.refuse": "Publication refusée", "publication.erreur": "Publication en erreur",
-    "utilisateur.cree": "Compte créé", "utilisateur.modifie": "Compte modifié",
-    "utilisateur.mot_de_passe": "Mot de passe changé", "mosquee.configuree": "Configuration modifiée",
-    "connecteur.configure": "Connecteur configuré", "notifications.configure": "Notifications configurées",
-    "acces.refuse": "Accès refusé",
-    "programme.cree": "Événement ajouté au programme", "programme.modifie": "Événement du programme modifié",
-    "programme.supprime": "Événement retiré du programme",
-}
 
 
 # ------------------------------------------------------------------ programme: dars and conferences

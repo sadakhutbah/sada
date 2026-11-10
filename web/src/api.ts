@@ -93,7 +93,7 @@ export const api = {
   settings: () => demande<any>("/settings"),
   users: () => demande<any>("/users"),
   audit: (page = 0, taille = 25, action = "") =>
-    demande<{ items: any[]; total: number; labels: Record<string, string> }>(
+    demande<{ items: any[]; total: number; actions: string[] }>(
       `/audit?limit=${taille}&offset=${page * taille}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
   /** Dars and conference schedule (file read by the orchestrator). */
   events: () => demande<EventsList>("/events"),

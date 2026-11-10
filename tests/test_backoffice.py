@@ -205,7 +205,7 @@ def test_le_journal_se_lit_page_par_page(env):
         _db.audit(env["conn"], env["mid"], None, "live.commande", commande=f"cmd{i}")
     d = c.get("/api/v1/audit?limit=10").json()
     assert d["total"] >= 40 and d["count"] == 10 and d["offset"] == 0
-    assert d["labels"]["live.commande"] == "Commande live"
+    assert "labels" not in d and "live.commande" in d["actions"]   # keys only, the front translates
     page2 = c.get("/api/v1/audit?limit=10&offset=10").json()
     assert page2["total"] == d["total"]
     assert not ({a["id"] for a in page2["items"]} & {a["id"] for a in d["items"]})
@@ -222,7 +222,7 @@ def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
     d = c.get(f"/api/v1/clips/{cid}").json()
     assert d["exists"] is True and d["clip"]["version"] == 1
     assert d["can_validate"] is True
-    assert d["labels"]["clip.valide"] == "Clip validé"   # the history is readable, not in technical keys
+    assert "labels" not in d          # history labels are translated by the front end, not sent
     # The context accompanies the clip: the khutba theme and what precedes the extract.
     assert d["contexte"]["theme"]
     assert isinstance(d["contexte"]["avant"], list)   # empty if the clip opens the khutba
@@ -312,8 +312,9 @@ def orch(env):
 def test_tableau_de_bord_et_commandes_live(env, orch):
     c = client(env, "imam")
     d = c.get("/api/v1/dashboard").json()
-    assert d["live"]["clock"] == "13:42:10" and d["live"]["state_label"] == "Khutba en direct"
-    assert d["live"]["session"] == "Session 1/2 — 13:30"
+    assert d["live"]["clock"] == "13:42:10" and d["live"]["state"] == "KHUTBA"
+    assert "state_label" not in d["live"] and "sessions" not in d["live"]   # keys, not screen text
+    assert d["live"]["session"] == {"n": 1, "total": 2, "planned": "13:30"}
     assert [c["key"] for c in d["live_commands"]] == [
         "start", "pause", "resume", "auto", "extend", "skip", "scene", "janaza", "stop", "cancel"]
     for cmd in ("extend", "janaza", "stop", "cancel"):
@@ -383,14 +384,6 @@ def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
     r = c.ecrire("/settings/model/test")
     assert r.status_code == 422
     assert "injoignable" in r.json()["message"]
-
-
-def test_libelle_d_un_dars_et_commandes_proposees():
-    """The dashboard names the dars states and only offers commands from the machine."""
-    from minbar.backoffice import live
-    from minbar.state import Machine
-    assert live.summarize({"state": "DARS", "sessions": []})["state_label"] == "Dars en direct"
-    assert set(live.COMMANDS) <= set(Machine.COMMANDS)
 
 
 def test_commande_live_orchestrateur_absent(env):

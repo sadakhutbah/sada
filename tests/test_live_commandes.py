@@ -2,7 +2,7 @@
 import pytest
 
 from minbar.backoffice import live
-from minbar.state import STATE_OF_SCENE, Machine
+from minbar.state import EXTEND_MINUTES, PICKABLE_SCENES
 
 MOSQUE = {"orchestrator_url": "http://127.0.0.1:9"}
 
@@ -14,15 +14,6 @@ def appels(monkeypatch):
     monkeypatch.setattr(live, "_call", lambda mosque, methode, chemin, params=None, timeout=3.0:
                         vus.append((methode, chemin, params)) or {"ok": True})
     return vus
-
-
-def test_toutes_les_commandes_de_la_machine_sont_exposees():
-    assert set(live.COMMANDS) == set(Machine.COMMANDS)
-
-
-def test_les_scenes_proposees_existent_dans_la_machine():
-    valeurs = {v for v, _ in live.COMMANDS["scene"].choices}
-    assert valeurs == set(STATE_OF_SCENE) - {"janaza"}
 
 
 @pytest.mark.parametrize("cmd", ["start", "stop", "pause", "resume", "auto", "skip", "cancel"])
@@ -64,6 +55,9 @@ def test_commande_inconnue():
         live.command(MOSQUE, "rm")
 
 
-def test_libelle_de_variante():
-    assert live.choice_label("extend", "15") == "+15 min"
-    assert live.choice_label("stop", None) == "Arrêter"
+def test_les_variantes_viennent_du_moteur():
+    """Values are protocol keys from the engine, not a second copy of labels."""
+    assert live.choices("extend") == EXTEND_MINUTES
+    assert live.choices("scene") == PICKABLE_SCENES
+    assert live.choices("stop") == ()
+    assert "janaza" not in live.choices("scene")      # janaza has its own command, which opens its form

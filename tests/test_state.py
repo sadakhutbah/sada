@@ -1,6 +1,6 @@
 import datetime as dt
 from minbar import runs
-from minbar.state import STATE_LABELS, Machine, MachineParams, Signals, State
+from minbar.state import Machine, MachineParams, Signals, State
 
 D = dt.date(2026, 11, 6)
 
@@ -318,12 +318,6 @@ def test_nothing_comes_back_after_fin():
     m.command("stop", d.sig())
     assert m.status()["next_session"] is None
     assert "aucune session" in m.command("skip", d.sig())
-
-
-def test_chaque_etat_a_un_libelle_d_affichage():
-    """A state without a label is shown raw in the back-office (“DARS”)."""
-    assert set(STATE_LABELS) == set(State)
-    assert all(v and v != k.value for k, v in STATE_LABELS.items())
 
 
 def test_auto_after_janaza_hands_back_the_next_session():

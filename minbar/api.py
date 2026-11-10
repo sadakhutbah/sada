@@ -11,14 +11,12 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from .scenes import SCENE_LABELS
-from .state import STATE_OF_SCENE, Machine
+from .state import EXTEND_MINUTES, PICKABLE_SCENES, Machine
 
 # parameterised commands: one button per value (the janaza scene goes through the janaza command, which opens its session)
 _VARIANTS = {
-    "extend": [["extend?min=5", "+5 min"], ["extend?min=15", "+15 min"]],
-    "scene": [[f"scene?name={sc}", SCENE_LABELS[sc]]
-              for sc in STATE_OF_SCENE if sc != "janaza"],
+    "extend": [[f"extend?min={m}", f"+{m} min"] for m in EXTEND_MINUTES],
+    "scene": [[f"scene?name={sc}", sc] for sc in PICKABLE_SCENES],
 }
 _BUTTONS = [b for c in Machine.COMMANDS for b in _VARIANTS.get(c, [[c]])]
 
