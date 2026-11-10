@@ -98,4 +98,15 @@ export const api = {
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
   modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),
   testerModele: () => ecrire<any>("POST", "/settings/model/test"),
+  /** Logo : envoi multipart (le navigateur fixe lui-même l'en-tête Content-Type). */
+  envoyerLogo: (fichier: File) => {
+    const corps = new FormData();
+    corps.append("logo", fichier);
+    return demande<{ ok: boolean; message: string; logo: string }>("/settings/logo", {
+      method: "POST",
+      headers: { "X-CSRF": jeton },
+      body: corps,
+    });
+  },
+  retirerLogo: () => ecrire<{ ok: boolean; message: string }>("DELETE", "/settings/logo"),
 };
