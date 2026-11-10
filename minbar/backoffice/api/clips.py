@@ -46,18 +46,22 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
 
 
 @router.get("/clips")
-def clips(ctx: CtxDep, status: str = "", limit: int = Query(200, ge=1, le=1000)):
+def clips(ctx: CtxDep, status: str = "", limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)):
     where, args = imam_filter(ctx)
     extra, extra_args = ("AND c.status = ?", (status,)) if status else ("", ())
     rows = db.all_(ctx.conn, f"SELECT c.*, k.label sermon, k.date, k.title, k.session_no "
                              f"FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
-                             f"WHERE {where} {extra} ORDER BY c.id DESC LIMIT ?", *args, *extra_args, limit)
+                             f"WHERE {where} {extra} ORDER BY c.id DESC LIMIT ? OFFSET ?", *args, *extra_args, limit, offset)
     # Counts per status for the filters ("To validate (8)"): counted on the whole mosque,
     # otherwise the first filter chosen would erase the other figures.
     par_statut = {r["status"]: r["n"] for r in db.all_(
         ctx.conn, f"SELECT c.status, COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                   f"WHERE {where} GROUP BY c.status", *args)}
-    return {"items": rows, "count": len(rows), "counts": par_statut, "tabs": content.CLIP_STATUSES}
+    # The filtered total lets the front know how many rows remain, instead of guessing from the page size.
+    total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
+                              f"WHERE {where} {extra}", *args, *extra_args) or {}).get("n", 0)
+    return {"items": rows, "count": len(rows), "total": total, "offset": offset,
+            "counts": par_statut, "tabs": content.CLIP_STATUSES}
 
 
 @router.get("/clips/{cid}")

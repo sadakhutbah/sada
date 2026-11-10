@@ -87,8 +87,11 @@ export const api = {
   /** The months that contain khutbas: the period picker is based on them. */
   sermonsMois: () => demande<{ items: { mois: string; n: number }[] }>("/sermons/mois"),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
-  clips: (status = "") =>
-    demande<{ items: any[]; tabs: string[]; counts: Record<string, number> }>(`/clips${status ? `?status=${status}` : ""}`),
+  clips: (status = "", limit = 20, offset = 0) => {
+    const p = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (status) p.set("status", status);
+    return demande<{ items: any[]; tabs: string[]; counts: Record<string, number>; total: number }>(`/clips?${p}`);
+  },
   clip: (id: number) => demande<any>(`/clips/${id}`),
   publications: () => demande<any>("/publications"),
   settings: () => demande<any>("/settings"),

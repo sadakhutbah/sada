@@ -1,25 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
-import { Card, Pill, Tabs } from "../ui";
+import { Btn, Card, Pill, Tabs } from "../ui";
 import { dateFr, mmss } from "../format";
 
 /** Review queue: one entry per clip, like the template back-office items.
- *  Title “Clip n · type vN”, then the context line, then the detection reason. */
+ *  Title “Clip n · type vN”, then the context line, then the detection reason.
+ *  The list arrives by pages of twenty: the archive grows with every khutba, and a page that renders
+ *  three hundred entries takes visibly long to fill and to scroll. */
+
+const TAILLE = 20;
+
 export default function Clips() {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<any>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
   const [statut, setStatut] = useState("");
+  const [charge, setCharge] = useState(false);
+  const debut = useRef(0);
 
   useEffect(() => {
-    api.clips(statut).then(setData).catch(() => setData({ items: [], tabs: [], counts: {} }));
+    let vivant = true;
+    debut.current = 0;
+    setData(null);
+    setItems([]);
+    setTotal(0);
+    setCharge(true);
+    api.clips(statut, TAILLE, 0).then((r) => {
+      if (!vivant) return;
+      setData(r);
+      setItems(r.items ?? []);
+      setTotal(r.total ?? 0);
+      debut.current = (r.items ?? []).length;
+    }).catch(() => {
+      if (vivant) setData({ items: [], tabs: [], counts: {}, total: 0 });
+    }).finally(() => { if (vivant) setCharge(false); });
+    return () => { vivant = false; };
   }, [statut]);
 
+  /** Next page: clips are appended, they do not replace. */
+  const plus = async () => {
+    setCharge(true);
+    try {
+      const r = await api.clips(statut, TAILLE, debut.current);
+      setItems((l) => [...l, ...(r.items ?? [])]);
+      setTotal(r.total ?? total);
+      debut.current += (r.items ?? []).length;
+    } catch { /* on garde ce qui est affiché */ } finally { setCharge(false); }
+  };
+
   const comptes = data?.counts ?? {};
-  const total = Object.values(comptes).reduce((a: number, n: any) => a + Number(n), 0);
+  const somme = Object.values(comptes).reduce((a: number, n: any) => a + Number(n), 0);
   const onglets = [
-    { cle: "", label: t("clips.all"), compte: total },
+    { cle: "", label: t("clips.all"), compte: somme },
     ...(data?.tabs ?? []).map((cle: string) => ({ cle, label: t(`clips.statusTabs.${cle}`), compte: Number(comptes[cle] ?? 0) })),
   ];
 
@@ -33,11 +68,11 @@ export default function Clips() {
       <Tabs items={onglets} valeur={statut} onChange={setStatut} />
 
       <Card>
-        {!data ? <p className="text-muted">{t("common.loading")}</p> : data.items.length === 0 ? (
+        {!data ? <p className="text-muted">{t("common.loading")}</p> : items.length === 0 ? (
           <p className="text-muted">{t("common.empty")}</p>
         ) : (
           <ul className="m-0 grid list-none p-0">
-            {data.items.map((c: any) => (
+            {items.map((c: any) => (
               <li key={c.id} className="border-b border-line last:border-0">
                 <Link
                   to={`/clips/${c.id}`}
@@ -64,6 +99,18 @@ export default function Clips() {
           </ul>
         )}
       </Card>
+
+      {/* Remaining rows come from the server's count, never from a guess. */}
+      {items.length > 0 && items.length < total && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-[0.85rem] tabular-nums text-muted">
+            {t("clips.shown", { n: items.length, total })}
+          </span>
+          <Btn variante="ghost" disabled={charge} onClick={plus}>
+            {charge ? t("common.loading") : t("clips.loadMore", { n: Math.min(TAILLE, total - items.length) })}
+          </Btn>
+        </div>
+      )}
     </div>
   );
 }

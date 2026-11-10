@@ -63,6 +63,35 @@ def test_forme_des_reponses(env):
     assert a["count"] == len(a["items"])
 
 
+def test_les_clips_arrivent_par_pages(env):
+    """Three hundred clips must not be rendered at once: the page asks for twenty, then follows."""
+    from minbar.backoffice import db
+    conn, kid, mid = env["conn"], env["kid"], env["mid"]
+    for i in range(3, 28):
+        conn.execute("""INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, end, file_path,
+                        status, version, created_at, updated_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     (mid, kid, i, "verset", "test", i * 10.0, i * 10.0 + 40, f"/tmp/c{i}.mp4",
+                      "a_valider" if i % 2 else "valide", 1, "2026-11-10T10:00:00", "2026-11-10T10:00:00"))
+    conn.commit()
+    c = client(env, "admin")
+
+    page = c.get("/api/v1/clips?limit=10").json()
+    assert len(page["items"]) == 10 and page["offset"] == 0
+    assert page["total"] == 27 and page["count"] == 10
+    assert sum(page["counts"].values()) == 27
+
+    suite = c.get("/api/v1/clips?limit=10&offset=20").json()
+    assert len(suite["items"]) == 7 and suite["total"] == 27
+    assert {x["id"] for x in page["items"]}.isdisjoint({x["id"] for x in suite["items"]})
+
+    filtre = c.get("/api/v1/clips?status=a_valider&limit=10&offset=0").json()
+    assert filtre["total"] == filtre["counts"]["a_valider"] == 15   # 13 ajoutés + 2 du jeu de départ
+    assert all(x["status"] == "a_valider" for x in filtre["items"])
+
+    assert c.get("/api/v1/clips?limit=0").status_code == 422
+
+
 def test_un_imam_ne_voit_que_ses_khutbas(env):
     admin = client(env, "admin")
     toutes = admin.get("/api/v1/sermons").json()["count"]
