@@ -117,8 +117,12 @@ class Encoder:
             "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-b:v", c.video_bitrate,
             "-maxrate", c.video_bitrate, "-bufsize", "5000k", "-g", str(c.fps * 2), "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-flags", "+global_header",
-            "-f", "tee", f"[f=flv:onfail=ignore]{c.rtmp_url}|[f=matroska]{rec}",
+            "-f", "tee", f"{self._tee_targets()}|[f=matroska]{rec}",
         ] + out_clean
+
+    def _tee_targets(self) -> str:
+        """One tee output per destination: a platform that drops must not interrupt the others."""
+        return "|".join(f"[f=flv:onfail=ignore]{url}" for url in self.cfg.rtmp_urls)
 
     # ------------------------------------------------------------------ life cycle
     def start(self):
@@ -129,7 +133,7 @@ class Encoder:
 
     def _spawn(self):
         rec, clean = self.new_recording()
-        self.log("ENCODEUR : démarrage ffmpeg -> " + self.cfg.rtmp_url + "  | enreg. " + rec
+        self.log("ENCODEUR : démarrage ffmpeg -> " + " , ".join(self.cfg.rtmp_urls) + "  | enreg. " + rec
                  + (f"  | propre {clean}" if clean else ""))
         if self._log_file:
             self._log_file.close()

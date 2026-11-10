@@ -47,9 +47,11 @@ def convert(raw, template):
 class Config(MachineParams):
     # --- Inputs / outputs ---------------------------------------------------
     camera_url: str = "rtsp://127.0.0.1:8554/cam"
-    # RTMP output: in demo mode, a local server playing Facebook's role.
-    # In production: rtmps://live-api-s.facebook.com:443/rtmp/<key> (key read from the MINBAR_RTMP_URL env).
-    rtmp_url: str = "rtmp://127.0.0.1:1935/live/facebook"
+    # RTMP outputs: the same stream is sent to every destination (tee muxer), in one ffmpeg.
+    # In production: rtmps://live-api-s.facebook.com:443/rtmp/<key> and
+    # rtmps://a.rtmp.youtube.com/live2/<key>; the keys come from MINBAR_RTMP_URLS (comma-separated).
+    # In demo mode: a single local server playing Facebook's role.
+    rtmp_urls: list[str] = field(default_factory=lambda: ["rtmp://127.0.0.1:1935/live/facebook"])
     record_dir: str = str(paths.RECORDINGS)
     state_dir: str = str(paths.STATE)
     width: int = 1280

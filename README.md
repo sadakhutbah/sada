@@ -110,6 +110,19 @@ Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-
 des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le
 demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
 
+## Diffusion en direct : plusieurs destinations à la fois
+
+Le même flux part vers **toutes** les destinations configurées, en un seul ffmpeg : l'encodeur écrit
+plusieurs sorties (`tee`), et une plateforme qui lâche n'interrompt pas les autres (`onfail=ignore`).
+
+```bash
+export MINBAR_RTMP_URLS="rtmps://live-api-s.facebook.com:443/rtmp/<clé-page>,rtmps://a.rtmp.youtube.com/live2/<clé-chaîne>"
+```
+
+Les clés se créent chez la plateforme (Facebook : diffusion en direct de la page ; YouTube : direct
+activé sur la chaîne). Aucune clé n'est écrite dans le dépôt. Instagram ne diffuse pas en direct par
+RTMP : pour ce réseau, seule la publication de Reels après le direct est possible.
+
 ## Configuration : une seule règle de précédence
 
 Chaque réglage peut venir de trois endroits, et l'ordre ne change pas d'un réglage à l'autre :

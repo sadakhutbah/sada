@@ -43,6 +43,27 @@ def test_every_scene_renders_and_janaza_shows_the_name():
     assert ImageChops.difference(plain, named).getbbox()       # the entered name appears on screen
 
 
+def test_encoder_diffuse_vers_plusieurs_destinations(tmp_path):
+    """The same stream goes to every destination at once: one ffmpeg, one tee output each."""
+    cfg = Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path),
+                      rtmp_urls=["rtmps://live-api-s.facebook.com:443/rtmp/CLE-FB",
+                                 "rtmps://a.rtmp.youtube.com/live2/CLE-YT"])
+    enc = Encoder(cfg, tmp_path, log=lambda m: None)
+    cmd = enc.ffmpeg_cmd(*enc.new_recording())
+    tee = cmd[cmd.index("tee") + 1]
+    assert tee.count("[f=flv:onfail=ignore]") == 2
+    assert "facebook.com:443/rtmp/CLE-FB" in tee and "youtube.com/live2/CLE-YT" in tee
+    assert tee.split("|")[-1].startswith("[f=matroska]")     # the recording stays in the tee, after the streams
+
+
+def test_encoder_urls_lues_dans_l_environnement(tmp_path, monkeypatch):
+    """MINBAR_RTMP_URLS: comma-separated, one destination per key, single rule of precedence."""
+    monkeypatch.setenv("MINBAR_RTMP_URLS", "rtmps://a/1, rtmps://b/2")
+    cfg = Config.load(None)
+    assert cfg.rtmp_urls == ["rtmps://a/1", "rtmps://b/2"]
+    assert Config.load(None, rtmp_urls=["rtmps://c/3"]).rtmp_urls == ["rtmps://c/3"]   # flag wins
+
+
 def test_encoder_layer_graph(tmp_path):
     cfg = Config.load(None, record_dir=str(tmp_path), state_dir=str(tmp_path))
     enc = Encoder(cfg, tmp_path, log=lambda m: None)
