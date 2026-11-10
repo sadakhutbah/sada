@@ -70,3 +70,37 @@ def test_un_imam_ne_voit_que_ses_khutbas(env):
     siennes = imam.get("/api/v1/sermons").json()["count"]
     assert siennes <= toutes
     assert imam.get("/api/v1/users").status_code == 403
+
+
+def test_khutbas_cherchables_filtrees_et_paginees(env):
+    """Une mosquée accumule des années de khutbas : recherche, filtre et pages sont faits par le serveur."""
+    c = client(env, "admin")
+    conn = env["conn"]
+    base = conn.execute("SELECT mosque_id, output_dir FROM khutbas LIMIT 1").fetchone()
+    for i in range(5):
+        conn.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, theme, date, output_dir, "
+                     "imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                     (base["mosque_id"], f"essai{i}", i, f"Passage {i}", "la patience" if i % 2 else "la misericorde",
+                      f"2024-0{i + 1}-12", base["output_dir"]))
+    conn.commit()
+
+    tout = c.get("/api/v1/sermons", params={"limit": 200}).json()
+    assert tout["total"] >= 6 and tout["total"] == len(tout["items"])
+
+    # Pagination : deux pages disjointes, et le total reste celui du filtre, pas celui de la page.
+    p1 = c.get("/api/v1/sermons", params={"limit": 2, "offset": 0}).json()
+    p2 = c.get("/api/v1/sermons", params={"limit": 2, "offset": 2}).json()
+    assert p1["total"] == p2["total"] == tout["total"] and len(p1["items"]) == len(p2["items"]) == 2
+    assert {k["id"] for k in p1["items"]}.isdisjoint({k["id"] for k in p2["items"]})
+
+    # Recherche : thème, date, et rien du tout.
+    r = c.get("/api/v1/sermons", params={"q": "patience"}).json()
+    assert r["total"] >= 2 and all("patience" in (k["theme"] or "").lower() for k in r["items"])
+    assert c.get("/api/v1/sermons", params={"q": "2024-02"}).json()["total"] == 1
+    assert c.get("/api/v1/sermons", params={"q": "introuvable"}).json()["total"] == 0
+
+    # Filtre « à valider » : ne renvoie que des khutbas qui ont au moins un clip en attente.
+    a = c.get("/api/v1/sermons", params={"pending": 1}).json()
+    assert a["total"] <= tout["total"]
+    assert all(int(k["pending"]) > 0 for k in a["items"])
+    assert a["pending"] == a["total"]

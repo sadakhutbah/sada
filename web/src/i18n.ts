@@ -26,9 +26,11 @@ const fr = {
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
     theme: "Thème", open: "Ouvrir",
-    summary: "{{n}} khutba(s) archivée(s)", pendingTotal: "{{n}} clip(s) à valider", pendingCount: "{{n}} à valider",
+    summary: "{{n}} khutba(s) archivée(s)", pendingTotal: "{{n}} khutba(s) à valider", pendingCount: "{{n}} à valider",
     filterAll: "Toutes", noPending: "Aucune khutba n'attend de validation.", empty: "Aucune khutba archivée pour l'instant.",
     noTheme: "Thème non renseigné", noImam: "Imam non renseigné",
+    search: "Rechercher un passage, un thème, un imam, une date…", searchSummary: "{{n}} résultat(s) pour « {{q}} »",
+    searchEmpty: "Rien ne correspond à « {{q}} ».", shown: "{{n}} sur {{total}} affichées", loadMore: "Afficher les {{n}} suivantes",
     detail: {
       hours: "Horaires", length: "Durée", saved: "Enregistré.",
       seekHelp: "Cliquez une ligne : la vidéo s'y place et démarre.",
@@ -143,9 +145,11 @@ const en: typeof fr = {
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",
     theme: "Theme", open: "Open",
-    summary: "{{n}} archived sermon(s)", pendingTotal: "{{n}} clip(s) to review", pendingCount: "{{n}} to review",
+    summary: "{{n}} archived sermon(s)", pendingTotal: "{{n}} sermon(s) to review", pendingCount: "{{n}} to review",
     filterAll: "All", noPending: "No sermon is waiting for review.", empty: "No archived sermon yet.",
     noTheme: "No theme set", noImam: "Imam not set",
+    search: "Search a passage, a theme, an imam, a date…", searchSummary: "{{n}} result(s) for “{{q}}”",
+    searchEmpty: "Nothing matches “{{q}}”.", shown: "{{n}} of {{total}} shown", loadMore: "Show the next {{n}}",
     detail: {
       hours: "Time", length: "Length", saved: "Saved.",
       seekHelp: "Click a line: the video jumps there and plays.",

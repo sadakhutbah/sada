@@ -166,14 +166,34 @@ def dashboard(ctx: CtxDep):
 
 
 @router.get("/sermons")
-def sermons(ctx: CtxDep, limit: int = Query(100, ge=1, le=500)):
+def sermons(ctx: CtxDep, q: str = "", pending: int = 0, limit: int = Query(20, ge=1, le=200),
+            offset: int = Query(0, ge=0)):
+    """Khutbas, de la plus récente à la plus ancienne.
+
+    Une mosquée accumule des années de khutbas : la liste se cherche (`q` sur le passage, le thème,
+    l'imam et la date), se filtre (`pending` : seulement celles qui attendent une validation) et se
+    pagine. Le total filtré est renvoyé pour que le front sache s'il reste des pages, sans deviner."""
     where, args = imam_filter(ctx)
+    if q.strip():
+        motif = f"%{q.strip()}%"
+        where += " AND (k.label LIKE ? OR k.theme LIKE ? OR u.display_name LIKE ? OR k.date LIKE ?)"
+        args = (*args, motif, motif, motif, motif)
+    if pending:
+        where += " AND EXISTS (SELECT 1 FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider')"
+    total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "
+                              f"WHERE {where}", *args) or {"n": 0})["n"]
+    # Les onglets comptent sur le périmètre de l'utilisateur, pas sur la page affichée.
+    perimetre, perimetre_args = imam_filter(ctx)
+    en_attente = (db.one(ctx.conn, f"SELECT COUNT(DISTINCT k.id) n FROM khutbas k "
+                                   f"JOIN clips c ON c.khutba_id = k.id AND c.status = 'a_valider' "
+                                   f"WHERE {perimetre}", *perimetre_args) or {"n": 0})["n"]
     rows = db.all_(ctx.conn, f"SELECT k.*, u.display_name imam, "
                              f"(SELECT COUNT(*) FROM clips c WHERE c.khutba_id = k.id) clips, "
                              f"(SELECT COUNT(*) FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider') pending "
                              f"FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id WHERE {where} "
-                             f"ORDER BY k.date DESC, k.run_id DESC, k.session_index LIMIT ?", *args, limit)
-    return {"items": rows, "count": len(rows)}
+                             f"ORDER BY k.date DESC, k.run_id DESC, k.session_index LIMIT ? OFFSET ?",
+                    *args, limit, offset)
+    return {"items": rows, "count": len(rows), "total": total, "offset": offset, "pending": en_attente}
 
 
 @router.get("/sermons/{kid}")
