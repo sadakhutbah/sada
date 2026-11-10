@@ -20,7 +20,7 @@ from . import db
 
 STATUS_LABELS = {"a_valider": "À valider", "valide": "Validé", "rejete": "Rejeté", "publie": "Publié"}
 STATUS_TABS = {"a_valider": "À valider", "valide": "Validés", "publie": "Publiés", "rejete": "Rejetés"}
-REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"     # the clip goes back through validation
+REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"
 
 
 def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:

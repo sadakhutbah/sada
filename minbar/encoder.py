@@ -55,7 +55,7 @@ class Encoder:
                                          "a_b": 0.0, "x_b": 0.0, "y_b": 0.0}
         self.active = "a"                    # layer of the displayed content
         self.shown: Optional[tuple] = None   # (scene key, layer): content shown or coming in
-        self.full = True                     # the displayed scene is a full screen
+        self.full = True
         self.vol = 0.0                       # mic level (0..1), target of the last fade
         self._mx = threading.Lock()          # protects pending / shown
         self._anim = threading.Lock()        # one transition at a time

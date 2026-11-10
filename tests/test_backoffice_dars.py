@@ -38,6 +38,19 @@ def test_migration_ajoute_les_colonnes(tmp_path):
         assert {"kind", "title", "series", "session_no"} <= cols
         row = db.one(conn, "SELECT * FROM khutbas")
         assert row["kind"] == "khutba" and row["title"] == ""
+        migrated = {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")}
+    finally:
+        conn.close()
+
+    fresh = tmp_path / "neuve.db"
+    db.init(fresh)
+    conn = db.connect(fresh)
+    try:
+        assert {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")} == migrated
+        assert {"kind", "title", "series", "session_no"} <= migrated
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(mosques)")}
+        assert "logo_path" in cols
+        db.create_mosque(conn, "exemple", "Mosquée Exemple")
     finally:
         conn.close()
 

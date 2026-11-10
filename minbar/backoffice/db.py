@@ -156,7 +156,6 @@ CREATE INDEX IF NOT EXISTS audit_mosque ON audit (mosque_id, id);
 CREATE INDEX IF NOT EXISTS clips_mosque ON clips (mosque_id, status);
 CREATE INDEX IF NOT EXISTS khutbas_mosque ON khutbas (mosque_id, date);
 """
-SCHEMA_VERSION = 2
 # columns added after the fact: (table, column, declaration) — applied to existing databases
 ADDED_COLUMNS = [
     ("khutbas", "kind", "TEXT NOT NULL DEFAULT 'khutba'"),
@@ -196,7 +195,6 @@ def init(path: str | Path) -> None:
     try:
         conn.executescript(SCHEMA)
         _migrate(conn)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     finally:
         conn.close()
 

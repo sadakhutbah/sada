@@ -279,7 +279,6 @@ def for_display(matches: list[dict]) -> list[dict]:
 
 
 def match_for(seg: dict, vms: list[dict]) -> dict | None:
-    """Verse (among vms) recited by the segment."""
     mid = (seg["start"] + seg["end"]) / 2
     return next((m for m in vms if m["start"] - 0.3 <= mid <= m["end"] + 0.3), None)
 
