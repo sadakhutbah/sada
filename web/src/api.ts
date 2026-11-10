@@ -152,6 +152,16 @@ export const api = {
     ecrire<{ ok: boolean; detail: string }>("POST", "/settings/storage/test", v),
   /** Texts of the live screens (slates): {écran: {champ: texte}}, an empty field means "default". */
   ecrans: (screens: Record<string, Record<string, string>>) => ecrire<any>("PUT", "/settings/screens", { screens }),
+  /** Multipart import of an `ecrans.html` template: the server checks it, keeps it, applies its texts. */
+  importerGabarit: (fichier: File) => {
+    const corps = new FormData();
+    corps.append("file", fichier);
+    return demande<any>("/settings/screens/import", {
+      method: "POST",
+      headers: { "X-CSRF": jeton },
+      body: corps,
+    });
+  },
   /** PNG of one screen, drawn by the engine with the texts currently typed (not saved yet). */
   apercuEcran: async (screen: string, screens: Record<string, Record<string, string>>) => {
     const r = await fetch("/api/v1/settings/screens/preview", {

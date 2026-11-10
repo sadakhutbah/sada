@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from ... import notify
 from ...pipeline import llm
 from .. import auth, branding, db, destinations, dirs as dirs_mod, instance, live_input, publish, storage
+from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
@@ -58,6 +59,7 @@ def settings(ctx: CtxDep):
             "input": live_input.view(ctx.conn, ctx.mosque, _host(ctx)),
             "storage": storage.view(ctx.conn, ctx.mosque["id"]),
             "screens": screens_mod.view(ctx.conn, ctx.mosque),
+            "gabarit": gabarit_mod.view(ctx.mosque),
             "model": _model_view()}
 
 
@@ -216,6 +218,27 @@ async def screens_save(ctx: CtxDep):
         raise Invalid(str(e)) from e
     return _ok("Textes des écrans enregistrés. Le moteur les prend au prochain lancement du direct.",
                screens=vue)
+
+
+@router.post("/settings/screens/import")
+async def screens_import(ctx: CtxDep):
+    """Imports the `ecrans.html` template made by an assistant: checks it, keeps it, applies its texts.
+
+    The template is a visual reference and the source of the texts; the live keeps the engine's
+    rendering. A refused file changes nothing.
+    """
+    ctx.require("admin")
+    await ctx.body()                 # CSRF token checked; the upload is kept in `ctx.files`
+    up = ctx.files.get("file")
+    if up is None or not getattr(up, "filename", ""):
+        raise Invalid("Aucun fichier choisi.")
+    donnees = await up.read()
+    try:
+        res = screens_mod.import_gabarit(ctx.conn, ctx.mosque, up.filename, donnees,
+                                         ctx.user["id"], ctx.ip)
+    except (screens_mod.InvalidScreens, gabarit_mod.GabaritRefused) as e:
+        raise Invalid(str(e)) from e
+    return _ok(res.pop("message"), **res)
 
 
 @router.post("/settings/screens/preview")
