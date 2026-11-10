@@ -154,6 +154,14 @@ CREATE TABLE IF NOT EXISTS storage (
     enabled INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS screen_texts (
+    mosque_id INTEGER NOT NULL REFERENCES mosques(id),
+    screen TEXT NOT NULL,
+    slot TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    updated_at TEXT,
+    PRIMARY KEY (mosque_id, screen, slot)
+);
 CREATE TABLE IF NOT EXISTS publications (
     id INTEGER PRIMARY KEY,
     mosque_id INTEGER NOT NULL REFERENCES mosques(id),

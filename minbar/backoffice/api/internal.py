@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from .. import db, destinations, internal, live_input, storage
+from .. import screens as screens_mod
 from ..context import ConnDep
 
 router = APIRouter()
@@ -62,6 +63,17 @@ def storage_target(request: Request, conn: ConnDep, port: int = 0):
     if mid is None:
         return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
     return {"mosque_id": mid, "target": storage.effective(conn, mid)}
+
+
+@router.get("/internal/screens")
+def screen_texts(request: Request, conn: ConnDep, port: int = 0):
+    """Texts the mosque changed on the live screens: {écran: {champ: texte}}; empty = defaults."""
+    if not internal.check(request.headers.get(internal.HEADER)):
+        return _refuse()
+    mid = _mosque_id(conn, port)
+    if mid is None:
+        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+    return {"mosque_id": mid, "screens": screens_mod.saved(conn, mid)}
 
 
 @router.get("/internal/live-input")

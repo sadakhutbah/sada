@@ -12,6 +12,10 @@ type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string };
 type Stockage = { endpoint: string; region: string; bucket: string; access_key: string;
                   secret_key: string; prefix: string; enabled: boolean };
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
+/** Texts of the slates as the screen edits them: {écran: {champ: texte}}; empty = default. */
+type Ecrans = Record<string, Record<string, string>>;
+
+const ECRANS = ["avant", "priere", "entracte", "termine", "janaza", "dars_fin"] as const;
 
 const CHAMPS_MOSQUEE = [
   "name", "timezone", "clip_title", "mawaqit_url", "orchestrator_url", "orchestrator_token",
@@ -130,6 +134,10 @@ export default function Settings() {
   const [stockageInitial, setStockageInitial] = useState("");
   const [essaiStockage, setEssaiStockage] = useState<{ ok: boolean; detail: string } | null>(null);
   const [test, setTest] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
+  const [ecrans, setEcrans] = useState<Ecrans>({});
+  const [ecransInitial, setEcransInitial] = useState("");
+  const [ecranVue, setEcranVue] = useState<string>("avant");
+  const [apercu, setApercu] = useState("");
   const fichier = useRef<HTMLInputElement>(null);
 
   const charger = () =>
@@ -145,15 +153,37 @@ export default function Settings() {
         secret_key: r.storage?.secret_key ?? "", prefix: r.storage?.prefix ?? "rediffusions/",
         enabled: !!r.storage?.enabled };
       setStockage(st); setStockageInitial(JSON.stringify(st));
+      const ec: Ecrans = {};
+      for (const [nom, champs] of Object.entries<any>(r.screens ?? {})) {
+        ec[nom] = {};
+        for (const [champ, v] of Object.entries<any>(champs)) ec[nom][champ] = v?.value ?? "";
+      }
+      setEcrans(ec); setEcransInitial(JSON.stringify(ec));
     }).catch(() => setD(null));
   useEffect(() => { charger(); }, []);
+
+  /** Aperçu du moteur, redessiné peu après la dernière frappe : il montre le texte tapé, pas seulement l'enregistré. */
+  useEffect(() => {
+    if (!d) return;
+    let annule = false;
+    const minuteur = setTimeout(() => {
+      api.apercuEcran(ecranVue, ecrans)
+        .then((url) => {
+          if (annule) { URL.revokeObjectURL(url); return; }
+          setApercu((avant) => { if (avant) URL.revokeObjectURL(avant); return url; });
+        })
+        .catch(() => { /* champ refusé : l'aperçu précédent reste affiché */ });
+    }, 400);
+    return () => { annule = true; clearTimeout(minuteur); };
+  }, [ecrans, ecranVue, d]);
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
   const defauts = d.defaults ?? {};
   const entreeModifiee = JSON.stringify(entree) !== entreeInitiale;
   const stockageModifie = JSON.stringify(stockage) !== stockageInitial;
+  const ecransModifies = JSON.stringify(ecrans) !== ecransInitial;
   const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales
-    || entreeModifiee || stockageModifie;
+    || entreeModifiee || stockageModifie || ecransModifies;
   const majCible = (i: number, champ: keyof Cible, valeur: string | boolean) => {
     setCibles((x) => x.map((c, j) => (j === i ? { ...c, [champ]: valeur } : c)));
     setMsg(null);
@@ -183,6 +213,7 @@ export default function Settings() {
         await api.stockage({ ...stockage, enabled: stockage.enabled ? "1" : "0" });
         setEssaiStockage(null);
       }
+      if (ecransModifies) await api.ecrans(ecrans);
       await charger();
       setTest(null);
       setMsg({ ok: true, texte: t("settings.saved") });
@@ -424,6 +455,36 @@ export default function Settings() {
             <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#8a2219]" : "text-muted"}`}>{test.texte}</span>
           )}
         </div>
+      </div>
+    ),
+    screens: (
+      <div className="grid gap-2.5">
+        {/* Un écran à la fois : les sous-onglets évitent une page qui n'en finit pas. */}
+        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.screensHint")}</p>
+        <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
+          valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_262px]">
+          {/* Deux colonnes de champs : cinq lignes tiennent sans allonger la page ; le pied de page prend la largeur. */}
+          <div className="grid content-start gap-2 sm:grid-cols-2">
+            {Object.entries<any>(d.screens?.[ecranVue] ?? {}).map(([champ, v]) => (
+              <Field key={champ} label={t(`settings.screenFields.${champ}`)}
+                className={champ === "foot" ? "sm:col-span-2" : ""}>
+                <input className={inputClass} value={ecrans[ecranVue]?.[champ] ?? ""} placeholder={v?.default ?? ""} spellCheck
+                  onChange={(e) => {
+                    setEcrans((x) => ({ ...x, [ecranVue]: { ...(x[ecranVue] ?? {}), [champ]: e.target.value } }));
+                    setMsg(null);
+                  }} />
+              </Field>
+            ))}
+          </div>
+          <figure className="m-0 grid content-start gap-1">
+            {apercu
+              ? <img src={apercu} alt="" className="w-full rounded-[6px] border border-line" />
+              : <div className="aspect-video rounded-[6px] border border-line bg-deeper/5" />}
+            <figcaption className="text-[0.78rem] text-muted">{t("settings.screensPreview")}</figcaption>
+          </figure>
+        </div>
+        <p className="m-0 text-[0.8rem] text-muted">{t("settings.screensVars")}</p>
       </div>
     ),
     replays: (

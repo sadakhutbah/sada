@@ -54,6 +54,19 @@ Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug v
   Sans identifiants, un connecteur reste indisponible et ne fait aucun appel ; un refus de la plateforme
   est enregistré tel quel dans l'historique des publications (son message, pas une traduction).
 
+### Écrans du direct (slates)
+
+**Réglages → Écrans** règle les textes affichés sur les écrans pleins — avant-direct, prière, entracte,
+fin, janaza, fin de dars — un écran par sous-onglet, avec l'aperçu que le moteur vient de dessiner à
+droite. Les textes par défaut restent dans `minbar/screens.py` : un champ laissé vide reprend le
+défaut, rappelé en gris dans le champ, et seule la personnalisation de la mosquée est enregistrée
+(table `screen_texts`). L'orchestrateur les relit au lancement du direct
+(`GET /api/v1/internal/screens`).
+
+Les gabarits acceptent des variables remplacées au moment du rendu : `{heure}` (heure annoncée),
+`{date}`, `{jour}`, `{cours}`, `{titre}`, `{mosquee}`. Un écran dont la variable n'existe pas à ce
+moment-là n'affiche pas la ligne, au lieu d'une phrase tronquée.
+
 ## Programme : dars et conférences
 
 Outre les khutbas du vendredi (horaires Mawaqit), l'orchestrateur suit un programme de dars et de

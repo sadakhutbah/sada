@@ -141,9 +141,10 @@ export function Segmented({
   );
 }
 
-export function Field({ label, aide, children }: { label: string; aide?: string; children: ReactNode }) {
+export function Field({ label, aide, children, className = "" }:
+  { label: string; aide?: string; children: ReactNode; className?: string }) {
   return (
-    <label className="block">
+    <label className={`block ${className}`}>
       <span className="mb-1 block text-[0.9rem] font-semibold">{label}</span>
       {children}
       {aide && <span className="mt-1 block text-[0.82rem] text-muted">{aide}</span>}

@@ -149,6 +149,21 @@ export const api = {
   stockage: (v: Record<string, any>) => ecrire<any>("PUT", "/settings/storage", v),
   testStockage: (v: Record<string, any>) =>
     ecrire<{ ok: boolean; detail: string }>("POST", "/settings/storage/test", v),
+  /** Texts of the live screens (slates): {écran: {champ: texte}}, an empty field means "default". */
+  ecrans: (screens: Record<string, Record<string, string>>) => ecrire<any>("PUT", "/settings/screens", { screens }),
+  /** PNG of one screen, drawn by the engine with the texts currently typed (not saved yet). */
+  apercuEcran: async (screen: string, screens: Record<string, Record<string, string>>) => {
+    const r = await fetch("/api/v1/settings/screens/preview", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF": jeton },
+      body: JSON.stringify({ screen, screens }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      throw new ApiError(r.status, (j && (j.message || j.error)) || `${r.status} ${r.statusText}`);
+    }
+    return URL.createObjectURL(await r.blob());
+  },
   /** The wizard is offered once: completing or skipping it records the choice. */
   onboardingDone: (done = true) => ecrire<any>("PUT", "/settings/onboarding", { done }),
   testInput: (mode: string, url: string) =>

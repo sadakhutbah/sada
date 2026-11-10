@@ -4,17 +4,18 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from ... import notify
 from ...pipeline import llm
 from .. import auth, branding, db, destinations, dirs as dirs_mod, live_input, publish, storage
+from .. import screens as screens_mod
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
 
 router = APIRouter()
 
-SECTIONS = ("mosque", "logo", "live", "replays", "folders", "model", "connectors", "access")
+SECTIONS = ("mosque", "logo", "screens", "live", "replays", "folders", "model", "connectors", "access")
 
 
 def _host(ctx) -> str:
@@ -49,6 +50,7 @@ def settings(ctx: CtxDep):
             "targets": destinations.rows(ctx.conn, ctx.mosque),
             "input": live_input.view(ctx.conn, ctx.mosque, _host(ctx)),
             "storage": storage.view(ctx.conn, ctx.mosque["id"]),
+            "screens": screens_mod.view(ctx.conn, ctx.mosque),
             "model": _model_view()}
 
 
@@ -181,6 +183,31 @@ async def storage_test(ctx: CtxDep):
     propre.update(secret_key=f["secret_key"], bucket=propre["bucket"])
     ok, detail = storage.probe(propre)
     return {"ok": ok, "detail": detail, "bucket": propre["bucket"], "prefix": propre["prefix"]}
+
+
+@router.put("/settings/screens")
+async def screens_save(ctx: CtxDep):
+    """Texts of the live screens (slates): the whole set at once, empty field = default."""
+    f = await ctx.raw_body()          # nested objects: body() would flatten them to ""
+    ctx.require("admin")
+    try:
+        vue = screens_mod.save(ctx.conn, ctx.mosque, f.get("screens", f), ctx.user["id"], ctx.ip)
+    except screens_mod.InvalidScreens as e:
+        raise Invalid(str(e)) from e
+    return _ok("Textes des écrans enregistrés. Le moteur les prend au prochain lancement du direct.",
+               screens=vue)
+
+
+@router.post("/settings/screens/preview")
+async def screens_preview(ctx: CtxDep):
+    """PNG of one screen drawn by the engine, with the texts currently typed (before saving)."""
+    f = await ctx.raw_body()
+    ctx.require("admin")
+    try:
+        png = screens_mod.preview(ctx.mosque, f.get("screens", {}), str(f.get("screen", "")))
+    except screens_mod.InvalidScreens as e:
+        raise Invalid(str(e)) from e
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @router.post("/settings/input/test")

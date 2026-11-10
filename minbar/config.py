@@ -96,6 +96,8 @@ class Config(MachineParams):
     face_width: int = 320
     face_height: int = 180
     title: str = defaults.CLIP_TITLE
+    # Free texts of the live screens (Settings → Écrans): {"avant": {"foot": "…"}}; empty = default
+    screen_texts: dict = field(default_factory=dict)
     dark_green: str = "#1E7A3C"
     # --- Notifications (webhook or Telegram; nothing published) --------------
     notify_url: str = ""                # generic webhook (Discord, Slack, n8n…) that receives {"text": ...}

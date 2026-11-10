@@ -86,7 +86,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     @app.middleware("http")
     async def headers(request: Request, call_next):
         resp = await call_next(request)
-        resp.headers["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
+        resp.headers["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
                                                    "script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
                                                    "form-action 'self'; base-uri 'none'")
         resp.headers["X-Content-Type-Options"] = "nosniff"

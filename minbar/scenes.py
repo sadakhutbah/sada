@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from . import screens
 from .paths import FONTS
 from .text import JOURS, french_date, shaped, is_arabic_char, RAQM
 
@@ -315,6 +316,11 @@ class SceneRenderer:
             up, down = max(up, -b[1]), max(down, b[3])
         return up, down
 
+    def txt(self, screen: str, m: "Moment", **variables) -> dict[str, str]:
+        """Texts of a screen for this instant: defaults of minbar.screens, mosque overrides, variables."""
+        vals = screens.variables(m, title=self.cfg.title, mosque=self.cfg.mosque_name, **variables)
+        return screens.resolve(screen, getattr(self.cfg, "screen_texts", None), vals)
+
     # medallion of the full screens: fixed position (no jump from one scene to another)
     def _med_geom(self) -> tuple[int, int]:
         return self.px(80), self.px(158)   # (top, diameter)
@@ -397,33 +403,37 @@ class SceneRenderer:
     # --- scenes -------------------------------------------------------------
     # Each scene renders its content layer (transparent) from the displayed instant (Moment).
     def _avant(self, m: "Moment") -> Image.Image:
-        sub = f"Début à {_hm(m.planned)}" if m.planned else ""
-        return self._full_content(self.cfg.title, sub, "", "Merci de patienter, la diffusion commence très bientôt.",
-                                  eyebrow="Début imminent", arabic=AR_KHUTBA)
+        t = self.txt("avant", m, heure=_hm(m.planned) if m.planned else "")
+        return self._full_content(self.cfg.title, t["sub"], "", t["foot"],
+                                  eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
 
     def _priere(self, m: "Moment") -> Image.Image:
-        return self._full_content("Prière en cours", "La prière n'est pas diffusée.", "",
-                                  "La diffusion reprendra pour la prochaine khutba, in sha Allah.",
-                                  eyebrow=french_date(m.now), arabic=AR_JUMUA)
+        t = self.txt("priere", m)
+        return self._full_content(t["title"], t["sub"], "", t["foot"],
+                                  eyebrow=t["eyebrow"] or (french_date(m.now) if m.now else ""),
+                                  arabic=AR_JUMUA)
 
     def _entracte(self, m: "Moment") -> Image.Image:
         nxt = m.next_event
+        t = self.txt("entracte", m, heure=_hm(nxt.starts) if nxt is not None and nxt.kind != "khutba"
+                     else (_hm(m.planned) if m.planned else ""),
+                     cours=getattr(nxt, "title", "") if nxt is not None and nxt.kind != "khutba" else "")
         if nxt is not None and nxt.kind != "khutba":
             remaining = max(0, int((nxt.starts - m.now).total_seconds()))
             mi, se = divmod(remaining, 60)
-            return self._full_content(f"Prochain cours à {_hm(nxt.starts)}", nxt.title, f"{mi:02d}:{se:02d}",
-                                      "Le live continue : restez connectés.", eyebrow="Entracte")
+            return self._full_content(t["title_cours"] or t["title"], nxt.title, f"{mi:02d}:{se:02d}",
+                                      t["foot"], eyebrow=t["eyebrow"])
         if m.planned:
             remaining = max(0, int((m.planned - m.now).total_seconds()))
             mi, se = divmod(remaining, 60)
-            return self._full_content(f"Prochaine khutba à {_hm(m.planned)}", "", f"{mi:02d}:{se:02d}",
-                                      "Le live continue : restez connectés.", eyebrow="Entracte")
-        return self._full_content("Entracte", "", "", "Le live continue : restez connectés.", arabic=AR_KHUTBA)
+            return self._full_content(t["title_khutba"] or t["title"], "", f"{mi:02d}:{se:02d}",
+                                      t["foot"], eyebrow=t["eyebrow"])
+        return self._full_content(t["title"], "", "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
 
     def _termine(self, m: "Moment") -> Image.Image:
-        return self._full_content("Khutba terminée", "Jazakoum Allahou khayran — qu'Allah vous récompense.", "",
-                                  "Rendez-vous vendredi prochain, in sha Allah.",
-                                  eyebrow="Fin de la diffusion", arabic=AR_JAZAKUM)
+        t = self.txt("termine", m)
+        return self._full_content(t["title"], t["sub"], "", t["foot"],
+                                  eyebrow=t["eyebrow"], arabic=AR_JAZAKUM)
 
     def _panel_shadow(self, img: Image.Image, box, radius: int):
         sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -452,12 +462,13 @@ class SceneRenderer:
     def _dars_fin(self, m: "Moment") -> Image.Image:
         """End screen of a dars: thanks and announcement of the next class."""
         nxt = m.next_event
-        foot = "Merci de votre présence."
-        if nxt:
-            jour = JOURS[nxt.starts.weekday()]
-            foot = f"Prochain cours : {jour} {_hm(nxt.starts)} — {nxt.title}"
-        return self._full_content("Dars terminé", "Qu'Allah vous récompense.", "", foot,
-                                  eyebrow="Fin de la diffusion", arabic=AR_DARS)
+        t = self.txt("dars_fin", m,
+                     jour=JOURS[nxt.starts.weekday()] if nxt else "",
+                     heure=_hm(nxt.starts) if nxt else "",
+                     cours=nxt.title if nxt else "")
+        foot = (t["foot_cours"] or t["foot"]) if nxt else t["foot"]
+        return self._full_content(t["title"], t["sub"], "", foot,
+                                  eyebrow=t["eyebrow"], arabic=AR_DARS)
 
     def _banner(self, title: str, line2: str, arabic: str) -> Image.Image:
         """Transparent + compact banner at the bottom left: medallion, title, 2nd line, Arabic title."""
@@ -510,11 +521,11 @@ class SceneRenderer:
         name as title, note as second line. Otherwise the card stays generic. The mic stays open:
         the prayer can be heard, the image is replaced.
         """
+        t = self.txt("janaza", m)
         name, info = m.janaza_name, m.janaza_info
-        sub = (info or "") if name else "La prière n'est pas diffusée."
-        return self._full_content(name or "Prière funéraire", sub, "",
-                                  "Le direct reprendra après la prière, in sha Allah.",
-                                  eyebrow="Salat al-Janaza", arabic=AR_JANAZA)
+        sub = (info or t["sub"]) if name else t["sub"]
+        return self._full_content(name or t["title"], sub, "", t["foot"],
+                                  eyebrow=t["eyebrow"], arabic=AR_JANAZA)
 
     def content(self, scene: str, m: "Moment") -> Image.Image:
         """Content layer of the scene; the encoder lays it over the shared background if the scene is a full screen."""

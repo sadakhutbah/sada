@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from . import events as events_mod
-from . import destinations, mawaqit, notify, runs, source, upload
+from . import destinations, mawaqit, notify, runs, screens, source, upload
 from .api import make_server
 from .clock import SimClock, parse_hhmm
 from .config import Config
@@ -59,6 +59,10 @@ class Orchestrator:
         entree = source.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
         if entree:
             cfg.camera_url = entree
+        # Texts of the live screens (slates), also edited in the interface.
+        textes = screens.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
+        if textes:
+            cfg.screen_texts = textes
         # Replays: after the live, the recordings are sent to the bucket saved in the interface.
         self.uploader = upload.Uploader(
             upload.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info), log=log.info)
