@@ -58,6 +58,22 @@ def view(mosque: dict) -> dict:
 ECRANS = ("avant", "priere", "entracte", "termine", "janaza", "dars_fin")
 
 
+VARIABLES = ("heure", "date", "jour", "cours", "titre", "mosquee")
+
+
+def remplir(page: str, valeurs: dict[str, str]) -> str:
+    """Remplace les variables d'écran par leurs valeurs, comme le fait le moteur.
+
+    Sans cela, l'aperçu du fichier affichait « Début à {heure} » quand le moteur affichait l'heure
+    réelle : deux textes différents pour le même écran, et l'administrateur ne savait plus lequel
+    croire.
+    """
+    for nom in VARIABLES:
+        valeur = valeurs.get(nom) or ""
+        page = page.replace("{" + nom + "}", valeur)
+    return page
+
+
 def pour_ecran(page: str, ecran: str) -> str:
     """La même page, montrant un autre écran que celui que le fichier met en avant.
 

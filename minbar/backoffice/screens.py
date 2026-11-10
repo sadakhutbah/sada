@@ -87,6 +87,23 @@ def import_gabarit(conn, mosque: dict, filename: str, content: bytes, user_id=No
             "gabarit": gabarit.view(mosque), "message": gabarit.summary(taken, ignored, empty)}
 
 
+def valeurs_apercu(mosque: dict, screen: str) -> dict[str, str]:
+    """Les valeurs des variables pour un aperçu : les mêmes que celles que le moteur emploiera.
+
+    Le direct n'a pas de « prochaine classe » connue à la seconde près dans un aperçu ; on annonce
+    donc un cours plausible, exactement comme le fait l'image du moteur, pour que les deux aperçus
+    montrent le même texte.
+    """
+    now = dt.datetime.now(dt.timezone.utc).astimezone(db.timezone(mosque))
+    nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf",
+                               kind="dars")
+    moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
+    return base.variables(moment, title=mosque.get("clip_title") or "",
+                          mosque=mosque.get("name") or "",
+                          heure=f"{moment.planned:%H} h {moment.planned:%M}",
+                          cours=nxt.title, jour=f"{moment.planned:%A}".capitalize())
+
+
 def preview(mosque: dict, payload, screen: str) -> bytes:
     """PNG (1280×720) of the screen as it will look, drawn by the engine's own renderer."""
     try:

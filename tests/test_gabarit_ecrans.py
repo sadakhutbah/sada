@@ -264,3 +264,26 @@ def test_une_police_hors_liste_est_refusee(env, stockage):
     assert c.get("/screens/assets/fonts/secret.txt").status_code == 404
     assert c.get("/screens/assets/fonts/..%2F..%2Fpyproject.toml").status_code == 404
     assert client(env).get("/screens/assets/fonts/Montserrat-Bold.ttf").status_code == 401
+
+
+def test_l_apercu_remplit_le_cours_et_le_jour_comme_le_moteur(env, stockage):
+    c = client(env, "admin")
+    bloc = _bloc({"dars_fin": {"eyebrow": "Fin du dars", "title": "Barak Allahou fikoum",
+                               "sub": "Prochain cours : {cours} · {jour} {date}", "foot": "{mosquee}"}})
+    url = _envoi(c, _html(bloc)).json()["gabarit"]["url"]
+    base = url.split("?")[0]
+    html = c.get(f"{base}?ecran=dars_fin").text
+    assert "Tafsir de la sourate Al-Kahf" in html
+    for variable in ("{cours}", "{jour}", "{date}", "{mosquee}"):
+        assert variable not in html, variable
+
+
+def test_l_apercu_remplit_les_variables_comme_le_moteur(env, stockage):
+    """L'aperçu montrait « Début à {heure} » là où le moteur affiche l'heure : deux vérités."""
+    c = client(env, "admin")
+    url = _envoi(c, _page_six()).json()["gabarit"]["url"]
+    base = url.split("?")[0]
+    html = c.get(f"{base}?ecran=avant").text
+    assert "{heure}" not in html
+    assert " h " in html                      # « 14 h 36 », la forme du moteur
+    assert "{mosquee}" not in html

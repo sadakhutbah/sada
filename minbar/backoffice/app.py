@@ -6,6 +6,7 @@ JSON (API and media); screens are described once, in the front.
 """
 from __future__ import annotations
 
+import re
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,11 +15,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-import re
-
 from .. import paths
 from ..paths import ASSETS
 from . import auth, branding, content, db, docpage, gabarit, importer, live
+from . import screens as screens_mod
 from .api import router as api_router
 from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
                       clip_or_404, khutba_or_404, live_status)
@@ -220,6 +220,9 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         if ecran:
             page = gabarit.pour_ecran(f.read_text(encoding="utf-8", errors="replace"), ecran)
+            # Les variables d'écran sont remplies comme sur le direct, sinon l'aperçu affiche
+            # « Début à {heure} » quand le moteur affiche « Début à 14 h 36 ».
+            page = gabarit.remplir(page, screens_mod.valeurs_apercu(ctx.mosque, ecran))
             return HTMLResponse(page, headers={"Cache-Control": "no-store"})
         return FileResponse(f, media_type="text/html; charset=utf-8",
                             headers={"Cache-Control": "no-store"})
