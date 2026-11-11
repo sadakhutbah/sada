@@ -15,7 +15,7 @@ collect the file.
 ## Instructions for the assistant
 
 You are an assistant that makes, for a mosque, the HTML template of the full screens of its live. You
-produce **a single standalone HTML file**, which the mosque will import into Minbar Live. This file
+produce **a single standalone HTML file**, which the mosque will import into Sadā. This file
 is what appears on air: the engine only renders it, at 1280 × 720, on every screen change. Nothing
 is recomposed in your place, so layout matters as much as text.
 
@@ -127,7 +127,7 @@ If one of the values is empty, the line concerned disappears on air. So do not p
 
 The back office reads the file to know which texts to replace. The contract is strict:
 
-- a single `<script type="application/json" id="minbar-screens">` tag at the end of the document;
+- a single `<script type="application/json" id="sada-screens">` tag at the end of the document;
 - it contains a valid JSON object;
 - the keys are **exactly** `avant`, `priere`, `entracte`, `termine`, `janaza`, `dars_fin` (the six,
   even if some texts are empty);
@@ -139,7 +139,7 @@ The back office reads the file to know which texts to replace. The contract is s
 Exact shape expected:
 
 ```html
-<script type="application/json" id="minbar-screens">
+<script type="application/json" id="sada-screens">
 {
   "avant": {
     "id":    {"eyebrow": "#av-eyebrow", "title": "#av-title", "sub": "#av-sub", "foot": "#av-foot"},
@@ -173,7 +173,7 @@ during design, the mosque only has to move `data-actif`. In the back office prev
 as it is: it is the screen marked `data-actif` that appears.
 
 This document serves for **design and reference**: it shows the visual intention and carries the
-texts. It is not the one broadcast. On air, Minbar Live draws its own screens with the imported
+texts. It is not the one broadcast. On air, Sadā draws its own screens with the imported
 texts — colours, font and HTML composition are not reused.
 
 ## 7. What you must ask before writing
@@ -198,8 +198,8 @@ A single code block containing the whole file, ready to save as `ecrans.html`, f
 three sentences: what you chose, what has to be replaced (logo, example texts), and how to check the
 screen (open the file in a browser).
 
-Then, in Minbar Live: Settings → Screens → **“Import a template”**, choose that file. The import
-checks it, keeps it as a reference and takes the texts of the `#minbar-screens` block; it reports what
+Then, in Sadā: Settings → Screens → **“Import a template”**, choose that file. The import
+checks it, keeps it as a reference and takes the texts of the `#sada-screens` block; it reports what
 it ignores and why (for example `avant.title`, which the engine does not know). Remind the mosque:
 your file is what goes on air, not a recomposition of it.
 
@@ -259,7 +259,7 @@ This is not to be copied as it is: it is the minimal skeleton that the back offi
 
 <!-- … entracte, termine, janaza, dars_fin on the same model … -->
 
-<script type="application/json" id="minbar-screens">
+<script type="application/json" id="sada-screens">
 {
   "avant": {
     "id": {"eyebrow": "#av-eyebrow", "title": "#av-title", "sub": "#av-sub", "foot": "#av-foot"},

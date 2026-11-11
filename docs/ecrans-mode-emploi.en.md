@@ -1,6 +1,6 @@
 # Screen manual
 
-This document is for **the person who administers Minbar Live in a mosque**. No technical
+This document is for **the person who administers Sadā in a mosque**. No technical
 vocabulary, no prerequisites: if you can fill in a form, you can do this.
 
 ---
@@ -12,7 +12,7 @@ people are settling in, between two sequences, when the hall empties. A full scr
 text, in place of the video — avoids broadcasting an empty hall or people who do not want to be
 filmed.
 
-In Minbar Live, this is called a **screen**. There are six, each for a precise moment of the live.
+In Sadā, this is called a **screen**. There are six, each for a precise moment of the live.
 The engine shows them automatically; you have nothing to trigger.
 
 You can change **the texts** of these screens. You do not change their layout: we take care of that
@@ -58,7 +58,7 @@ not mean “nothing on screen”: it means “put back what was written before�
 
 ## 4. The braces: `{heure}`, `{date}`, `{jour}`…
 
-Some texts contain braces. These are not typing mistakes: Minbar Live replaces them at the moment
+Some texts contain braces. These are not typing mistakes: Sadā replaces them at the moment
 of the live.
 
 - `{heure}` → the session time, for example “Starts at **{heure}**” becomes “Starts at **19:30**”.
@@ -90,7 +90,7 @@ its own: “The broadcast starts at {heure}.”
 
 ## 6. A look entirely of your own
 
-The six base screens share one design, the Minbar Live one. A mosque that wants **its own look** —
+The six base screens share one design, the Sadā one. A mosque that wants **its own look** —
 its colours, its font, its logo, its composition — can have it made by a chat assistant.
 
 The principle: you give the assistant a written instruction, it returns an HTML file, and **that
@@ -107,14 +107,14 @@ file is what appears on air**.
 5. Still in Settings → Screens, click **“Import a template”** and choose that file.
    The back office checks it: if it does not comply, it explains why and changes nothing. If it
    complies, it keeps it, shows it in the preview, and takes the texts of
-   the `#minbar-screens` block to fill the fields of the six screens. These texts are saved straight
+   the `#sada-screens` block to fill the fields of the six screens. These texts are saved straight
    away; read them again and correct them if need be, like any other text.
 
 This file remains your property: it contains only text and colours, it runs without internet, and it
 does nothing but display.
 
 What you must know, without ambiguity: **this file is what goes on air.** On every screen change,
-Minbar Live renders it at 1280 × 720 and broadcasts that image. Your colours, your font and your
+Sadā renders it at 1280 × 720 and broadcasts that image. Your colours, your font and your
 composition are therefore respected, and the preview on the page shows exactly what the worshippers
 will see.
 
@@ -123,8 +123,8 @@ Two things to know:
 - The file is a **still image** as long as the screen does not change. An animated background, a
   video or a script will not animate; scripts are not executed at all.
 - Rendering uses a browser shipped with the application. The command
-  `python -m minbar.backoffice fetch-engine` installs it on the broadcast machine (about 280 MB).
-  Without it, the screens are drawn by the Minbar Live engine: the live goes on, but your template is
+  `python -m sada.backoffice fetch-engine` installs it on the broadcast machine (about 280 MB).
+  Without it, the screens are drawn by the Sadā engine: the live goes on, but your template is
   not followed pixel for pixel.
 
 ---

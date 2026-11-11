@@ -3,8 +3,8 @@ import datetime as dt
 
 import numpy as np
 
-from minbar.faces import FaceGate
-from minbar.state import Machine, MachineParams, Signals, State
+from sada.faces import FaceGate
+from sada.state import Machine, MachineParams, Signals, State
 
 W, H = 40, 20
 
@@ -45,7 +45,7 @@ def test_score_sous_le_seuil_ignore():
     assert g.last_score == 0.4
 
 
-def test_zone_du_minbar_restreinte():
+def test_zone_du_sada_restreinte():
     seen = {}
 
     def detect(zone, _roi=None):

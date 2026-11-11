@@ -21,7 +21,7 @@ def test_reglages_reserves_a_l_admin(env):
 
 
 def test_registre_partiel_ne_vide_pas_les_autres_reglages(env):
-    from minbar.backoffice import db
+    from sada.backoffice import db
     c = client(env, "admin")
     r = c.ecrire("/settings/mosque", {"orchestrator_url": "http://127.0.0.1:8089", "orchestrator_token": ""}, methode="PATCH")
     assert r.status_code == 200, r.text
@@ -63,7 +63,7 @@ def test_api_dossiers_reservee_a_l_admin(env):
 
 
 def test_dossier_choisi_enregistre_et_valide(env):
-    from minbar.backoffice import db, dirs
+    from sada.backoffice import db, dirs
     c = client(env, "admin")
     target = env["tmp"] / "nouveau" / "output"
     c.ecrire("/settings/mosque", {"output_dir": str(target)}, methode="PATCH")
@@ -82,7 +82,7 @@ def test_aucun_chemin_de_la_machine_dans_les_reglages(env):
     import json
     from pathlib import Path as _P
 
-    from minbar import paths
+    from sada import paths
 
     d = client(env, "admin").get("/api/v1/settings").json()
     texte = json.dumps({k: d[k] for k in ("defaults", "sections")}, ensure_ascii=False)
@@ -105,7 +105,7 @@ def test_les_connecteurs_sont_decoupes(env):
     assert "page_id" not in {f["name"] for f in rows["local"]["fields"]}
     # a saved secret never comes back in clear text
     c.ecrire("/settings/connectors/facebook", {"page_id": "123", "page_token": "secret"})
-    from minbar.backoffice import db
+    from sada.backoffice import db
     row = next(r for r in c.get("/api/v1/settings").json()["connectors"] if r["key"] == "facebook")
     assert {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
 
@@ -114,10 +114,10 @@ def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
     """The screen receives a mask for the token, and never the model's API key nor the logo path."""
     import json
 
-    from minbar.backoffice import db
-    from minbar.pipeline import llm
+    from sada.backoffice import db
+    from sada.pipeline import llm
 
-    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(env["tmp"] / "llm.json"))
+    monkeypatch.setenv("SADA_LLM_CONFIG", str(env["tmp"] / "llm.json"))
     c = client(env, "admin")
     c.ecrire("/settings/mosque", {"orchestrator_token": "tres-secret"}, methode="PATCH")
     llm.config_path().write_text(json.dumps({"enabled": True, "url": "http://h:1/v1", "key": "cle-api-secrete"}))
@@ -133,7 +133,7 @@ def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
 
 
 def test_mawaqit_et_fuseau_enregistres_et_valides(env):
-    from minbar.backoffice import db
+    from sada.backoffice import db
     c = client(env, "admin")
     assert c.ecrire("/settings/mosque", {"mawaqit_url": "https://mawaqit.net/fr/x", "timezone": "Africa/Casablanca"},
                     methode="PATCH").status_code == 200
@@ -156,7 +156,7 @@ def test_dossier_inutilisable_refuse(env):
 
 
 def test_modele_enregistre_et_relu(env, monkeypatch):
-    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(env["tmp"] / "llm.json"))
+    monkeypatch.setenv("SADA_LLM_CONFIG", str(env["tmp"] / "llm.json"))
     c = client(env, "admin")
     r = c.ecrire("/settings/model", {"enabled": "1", "url": "http://127.0.0.1:1/v1", "model": "m", "protocol": "openai"},
                  methode="PUT")
@@ -168,7 +168,7 @@ def test_modele_enregistre_et_relu(env, monkeypatch):
 
 def test_publications_real_status_and_notifications(env, monkeypatch):
     """The Publications screen shows real status, masks secrets and configures notifications."""
-    from minbar import notify
+    from sada import notify
     c = client(env, "admin")
     d = c.get("/api/v1/publications").json()
     rows = {r["key"]: r for r in d["connectors"]}
@@ -201,8 +201,8 @@ def test_publications_real_status_and_notifications(env, monkeypatch):
 
 def test_endpoint_interne_des_notifications(env, monkeypatch, tmp_path):
     """The orchestrator gets the settings over HTTP with the local token, never by opening the database."""
-    from minbar.backoffice import internal
-    monkeypatch.setenv("MINBAR_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
+    from sada.backoffice import internal
+    monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
     c = client(env, "admin")
     c.ecrire("/settings/notifications", {"mode": "telegram", "telegram_token": "tok", "telegram_chat": "42"}, "PUT")
     url = "/api/v1/internal/notification-settings?port=8088"
@@ -216,9 +216,9 @@ def test_endpoint_interne_des_notifications(env, monkeypatch, tmp_path):
 def test_notifier_reads_backoffice_settings(env, monkeypatch, tmp_path):
     """Without a destination in the orchestrator config, from_config falls back to the on-screen setting."""
     from types import SimpleNamespace
-    from minbar import notify
-    from minbar.backoffice import internal
-    monkeypatch.setenv("MINBAR_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
+    from sada import notify
+    from sada.backoffice import internal
+    monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
     c = client(env, "admin")
     c.ecrire("/settings/notifications", {"mode": "telegram", "telegram_token": "tok", "telegram_chat": "42"}, "PUT")
     seen = []

@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from minbar import events  # noqa: E402
+from sada import events  # noqa: E402
 from test_backoffice import client  # noqa: E402,F401
 
 

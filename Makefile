@@ -20,12 +20,12 @@ demo-short:
 bac:
 	$(PY) tools/bac_a_sable.py
 
-# Back-office web (http://<machine>:8090) ; créer d'abord un admin : $(PY) -m minbar.backoffice create-admin --username admin
+# Back-office web (http://<machine>:8090) ; créer d'abord un admin : $(PY) -m sada.backoffice create-admin --username admin
 backoffice:
-	$(PY) -m minbar.backoffice serve
+	$(PY) -m sada.backoffice serve
 
 pipeline:
-	$(PY) -m minbar.pipeline.run
+	$(PY) -m sada.pipeline.run
 
 # Front React du back-office : reconstruit web/dist, servi par le serveur à la racine
 front:

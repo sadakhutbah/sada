@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from minbar.backoffice import template_render as tr
+from sada.backoffice import template_render as tr
 
 
 def test_le_navigateur_fourni_prime_sur_celui_de_la_machine(tmp_path, monkeypatch):

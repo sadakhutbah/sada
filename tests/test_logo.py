@@ -18,7 +18,7 @@ def _png(w=64, h=64, color=(15, 42, 25)) -> bytes:
 def test_le_depot_n_embarque_plus_le_logo_de_la_mosquee():
     from pathlib import Path
 
-    static = Path(__file__).resolve().parent.parent / "minbar" / "backoffice" / "static"
+    static = Path(__file__).resolve().parent.parent / "sada" / "backoffice" / "static"
     assert not (static / "logo.jpg").exists()
     assert (static / "emblem.svg").exists()
 

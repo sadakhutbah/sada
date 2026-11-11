@@ -1,7 +1,7 @@
 """Gabarit `ecrans.html` : import contrôlé, conservation du fichier, textes appliqués, aperçu protégé.
 
 Le fichier produit par un assistant reste une référence visuelle : le direct est toujours dessiné par
-le moteur. L'import reprend les textes du bloc `#minbar-screens` et les enregistre comme réglages.
+le moteur. L'import reprend les textes du bloc `#sada-screens` et les enregistre comme réglages.
 """
 import json
 
@@ -35,14 +35,14 @@ def _html(bloc: dict | None = None, *, marqueur: str = "GABARIT-EXEMPLE", script
     contenu = script if script is not None else json.dumps(bloc if bloc is not None else _bloc(), ensure_ascii=False)
     return (f"<!doctype html>\n<html lang=\"fr\"><head><meta charset=\"utf-8\"><title>Écrans</title>"
             f"<style>.ecran{{display:none}}</style></head><body>{marqueur}"
-            f"<script type=\"application/json\" id=\"minbar-screens\">{contenu}</script>"
+            f"<script type=\"application/json\" id=\"sada-screens\">{contenu}</script>"
             f"</body></html>").encode()
 
 
 @pytest.fixture
 def stockage(env, monkeypatch):
     """Le dossier de référence sort du dépôt : chaque test écrit dans son tmp_path."""
-    from minbar.backoffice import gabarit
+    from sada.backoffice import gabarit
 
     monkeypatch.setattr(gabarit, "DIR", env["tmp"] / "screens")
     return gabarit
@@ -81,7 +81,7 @@ def test_import_valide_applique_les_textes_et_conserve_le_fichier(env, stockage)
     assert str(env["tmp"]) not in r.text            # aucun chemin de la machine dans la réponse
 
     # et le moteur de diffusion lit bien les textes repris
-    from minbar.backoffice import internal
+    from sada.backoffice import internal
 
     moteur = c.get("/api/v1/internal/screens", headers={internal.HEADER: internal.token()}).json()
     assert moteur["screens"]["avant"]["eyebrow"] == "Début imminent"
@@ -112,7 +112,7 @@ def test_fichier_sans_bloc_refuse(env, stockage):
     c = client(env, "admin")
     r = _envoi(c, b"<!doctype html><html><body>Une page ordinaire.</body></html>")
     assert r.status_code == 422
-    assert "minbar-screens" in r.json()["message"]
+    assert "sada-screens" in r.json()["message"]
     assert _valeurs(c)["avant"]["eyebrow"]["value"] == ""       # rien n'a bougé
     assert not (env["tmp"] / "screens").exists()
 
@@ -136,7 +136,7 @@ def test_gabarit_incomplet_refuse(env, stockage):
 
 
 def test_fichier_trop_gros_refuse(env, stockage):
-    from minbar.backoffice import gabarit
+    from sada.backoffice import gabarit
 
     c = client(env, "admin")
     gros = b"<!doctype html><html><body>" + b"x" * (gabarit.MAX_BYTES + 1) + b"</body></html>"
@@ -207,7 +207,7 @@ PAGE_SIX = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>
 <section class="ecran" data-ecran="termine"><p>TERMINE</p></section>
 <section class="ecran" data-ecran="janaza"><p>JANAZA</p></section>
 <section class="ecran" data-ecran="dars_fin"><p>DARS</p></section>
-<script type="application/json" id="minbar-screens">{bloc}</script>
+<script type="application/json" id="sada-screens">{bloc}</script>
 </body></html>"""
 
 

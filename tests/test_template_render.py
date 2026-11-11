@@ -11,8 +11,8 @@ import time
 import pytest
 from PIL import Image
 
-from minbar.backoffice.gabarit import ECRANS, pour_ecran
-from minbar.backoffice.template_render import RenderUnavailable, TemplateRender, browser_path
+from sada.backoffice.gabarit import ECRANS, pour_ecran
+from sada.backoffice.template_render import RenderUnavailable, TemplateRender, browser_path
 
 PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>
 body { margin:0; background:#0b1f16; color:#f4ead2; font-family:Georgia, serif; }

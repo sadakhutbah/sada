@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from minbar.backoffice import live
+from sada.backoffice import live
 
 MOSQUE = {"orchestrator_url": "http://127.0.0.1:9"}
 

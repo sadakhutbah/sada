@@ -12,7 +12,7 @@ L'application s'installe en une commande, puis elle vérifie elle-même ce qui m
 
 ```
 pip install -e .
-python -m minbar.installer
+python -m sada.installer
 ```
 
 La seconde commande est la seule à retenir. Elle examine la machine, fait ce qui peut l'être seule,
@@ -40,7 +40,7 @@ ressort par un nouvel examen complet.
 Pour savoir où en est une machine, sans rien modifier :
 
 ```
-python -m minbar.installer --verifier
+python -m sada.installer --verifier
 ```
 
 Le bilan se lit ligne par ligne : `ok`, `à faire` (avec la commande qui le fait), ou `bloqué`. La
@@ -213,7 +213,7 @@ Au premier direct :
    textes des écrans, gabarit d'écrans, compartiment.
 1 bis. Si la mosquée a importé un gabarit, les écrans affichés sont **ce fichier**, rendu par le
    navigateur fourni avec l'application. Une commande l'installe sur la machine du direct :
-   `python -m minbar.backoffice fetch-engine` (environ 280 Mo, aucun droit administrateur). Sans
+   `python -m sada.backoffice fetch-engine` (environ 280 Mo, aucun droit administrateur). Sans
    lui, le moteur dessine ses propres écrans : rien ne s'arrête, le rendu est simplement moins
    fidèle au fichier.
 2. Si le back-office est fermé, il continue avec sa propre configuration et les notifications restent

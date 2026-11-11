@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from minbar.backoffice import db, migrations, models
+from sada.backoffice import db, migrations, models
 
 # colonnes ajoutées après le schéma initial (migrations 2, 3 et 5)
 ADDED = {

@@ -1,8 +1,8 @@
 """Passages arabes rendus en français incohérent : repérés et retranscrits en arabe forcé."""
 import numpy as np
 
-from minbar.pipeline import settings as reglages
-from minbar.pipeline import transcribe as T
+from sada.pipeline import settings as reglages
+from sada.pipeline import transcribe as T
 
 
 class Word:
@@ -108,12 +108,12 @@ def test_plafond_de_segments_examines():
 
 
 def test_reglage_arabic_retry_prioritaire(monkeypatch, tmp_path):
-    monkeypatch.setenv("MINBAR_PIPELINE_CONFIG", str(tmp_path / "pipeline.json"))
-    monkeypatch.delenv("MINBAR_ARABIC_RETRY", raising=False)
+    monkeypatch.setenv("SADA_PIPELINE_CONFIG", str(tmp_path / "pipeline.json"))
+    monkeypatch.delenv("SADA_ARABIC_RETRY", raising=False)
     assert reglages.arabic_retry_enabled() is True
-    monkeypatch.setenv("MINBAR_ARABIC_RETRY", "0")
+    monkeypatch.setenv("SADA_ARABIC_RETRY", "0")
     assert reglages.arabic_retry_enabled() is False
     assert reglages.arabic_retry_enabled(True) is True          # l'option de commande gagne
     (tmp_path / "pipeline.json").write_text('{"arabic_retry": false}', encoding="utf-8")
-    monkeypatch.delenv("MINBAR_ARABIC_RETRY")
+    monkeypatch.delenv("SADA_ARABIC_RETRY")
     assert reglages.arabic_retry_enabled() is False

@@ -134,7 +134,7 @@ export default function Dars() {
       </div>
 
       {message && (
-        <p role="status" className={`m-0 rounded-lg px-3.5 py-2.5 text-[0.92rem] ${message.ok ? "bg-paper-2 text-deep" : "bg-err-bg text-[#8a2219]"}`}>
+        <p role="status" className={`m-0 rounded-lg px-3.5 py-2.5 text-[0.92rem] ${message.ok ? "bg-paper-2 text-deep" : "bg-err-bg text-[#7a1f20]"}`}>
           {message.texte}
         </p>
       )}
@@ -368,7 +368,7 @@ function ImportVideo() {
         </div>
       )}
 
-      {erreur && <p role="alert" className="m-0 rounded-lg bg-err-bg px-3.5 py-2.5 text-[0.92rem] text-[#8a2219]">{erreur}</p>}
+      {erreur && <p role="alert" className="m-0 rounded-lg bg-err-bg px-3.5 py-2.5 text-[0.92rem] text-[#7a1f20]">{erreur}</p>}
 
       <div className="flex flex-wrap gap-2">
         <Btn type="submit" disabled={envoi || !fichier}>
@@ -491,7 +491,7 @@ function Formulaire({ liste, depart, id, jourDe, onAnnuler, onEnregistre }: {
         </div>
       )}
 
-      {erreur && <p role="alert" className="m-0 rounded-lg bg-err-bg px-3.5 py-2.5 text-[0.92rem] text-[#8a2219]">{erreur}</p>}
+      {erreur && <p role="alert" className="m-0 rounded-lg bg-err-bg px-3.5 py-2.5 text-[0.92rem] text-[#7a1f20]">{erreur}</p>}
       <div className="flex flex-wrap gap-2">
         <Btn type="submit" disabled={envoi}>{envoi ? t("common.saving") : t("common.save")}</Btn>
         <Btn type="button" variante="ghost" onClick={onAnnuler}>{t("dars.cancel")}</Btn>

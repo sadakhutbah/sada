@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from minbar.backoffice import publish, social
+from sada.backoffice import publish, social
 
 
 class Reply:

@@ -5,7 +5,7 @@ import pytest
 
 from dataclasses import replace
 
-from minbar.state import Machine, MachineParams, Signals, State
+from sada.state import Machine, MachineParams, Signals, State
 
 D = dt.date(2026, 11, 10)                    # Tuesday
 

@@ -13,8 +13,8 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from minbar.backoffice import auth, content, db, importer, publish  # noqa: E402
-from minbar.backoffice.app import create_app  # noqa: E402
+from sada.backoffice import auth, content, db, importer, publish  # noqa: E402
+from sada.backoffice.app import create_app  # noqa: E402
 
 PW = "motdepasse-solide"
 RUN = "20261106_220224"
@@ -146,7 +146,7 @@ def test_connexion_cookie_et_deconnexion(env):
     r = login(c, "admin")
     assert r.status_code == 200
     cookie = r.headers["set-cookie"]
-    assert "minbar_session=" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
+    assert "sada_session=" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
     token = c.cookies.get(auth.COOKIE)
     assert db.one(env["conn"], "SELECT COUNT(*) n FROM auth_sessions WHERE token_hash = ?", token)["n"] == 0   # token not stored in clear text
     assert c.get("/api/v1/session").status_code == 200
@@ -199,7 +199,7 @@ def test_matrice_des_droits(env, role, url, code):
 
 def test_le_journal_se_lit_page_par_page(env):
     """Paginated log: the filtered total comes from the server; the next page does not repeat the previous one."""
-    from minbar.backoffice import db as _db
+    from sada.backoffice import db as _db
     c = client(env, "admin")
     for i in range(40):
         _db.audit(env["conn"], env["mid"], None, "live.commande", commande=f"cmd{i}")
@@ -240,7 +240,7 @@ def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
     assert t.status_code == 200 and t.content == r.content
     assert t.headers["content-type"] == "video/mp4"
     cd = t.headers["content-disposition"]
-    assert cd.startswith("attachment") and f"minbar-clip-{cid}-v" in cd and "/" not in cd
+    assert cd.startswith("attachment") and f"sada-clip-{cid}-v" in cd and "/" not in cd
     assert client(env).get(f"/media/clip/{cid}.mp4?download=1").status_code == 401
 
 
@@ -306,7 +306,7 @@ class FakeOrch:
 
 @pytest.fixture
 def orch(env):
-    from minbar.api import make_server
+    from sada.api import make_server
     fake = FakeOrch()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -347,7 +347,7 @@ def test_fiche_janaza_depuis_le_tableau_de_bord(env, orch):
 
 def test_regeneration_refusee_sans_correction():
     """The button is only offered on a corrected clip; a direct POST must not overwrite a validation."""
-    from minbar.backoffice import content
+    from sada.backoffice import content
     clip = {"id": 1, "mosque_id": 1, "version": 1, "needs_regen": 0, "regen_state": ""}
     with pytest.raises(ValueError, match="aucune correction"):
         content.start_regeneration(None, "x.db", clip, {"id": 1})
@@ -355,10 +355,10 @@ def test_regeneration_refusee_sans_correction():
 
 def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
     """Settings → Language model: writes the file the pipeline reads, with no secret on the web side."""
-    from minbar.pipeline import llm
+    from sada.pipeline import llm
     cfg = tmp_path / "llm.json"
-    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(cfg))
-    for var in ("MINBAR_LLM_ENABLED", "MINBAR_LLM_URL", "MINBAR_LLM_MODEL", "MINBAR_LLM_PROTOCOL"):
+    monkeypatch.setenv("SADA_LLM_CONFIG", str(cfg))
+    for var in ("SADA_LLM_ENABLED", "SADA_LLM_URL", "SADA_LLM_MODEL", "SADA_LLM_PROTOCOL"):
         monkeypatch.delenv(var, raising=False)
     c = client(env, "admin")
     assert c.get("/api/v1/settings").json()["model"]["label"]
@@ -385,10 +385,10 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
 
 def test_nombre_d_extraits_reglable_depuis_le_backoffice(env, tmp_path, monkeypatch):
     """Réglages → Traitement : le nombre d'extraits écrit dans le fichier que lit le pipeline."""
-    from minbar.pipeline import settings as reglages
+    from sada.pipeline import settings as reglages
     cfg = tmp_path / "pipeline.json"
-    monkeypatch.setenv("MINBAR_PIPELINE_CONFIG", str(cfg))
-    monkeypatch.delenv("MINBAR_CLIPS", raising=False)
+    monkeypatch.setenv("SADA_PIPELINE_CONFIG", str(cfg))
+    monkeypatch.delenv("SADA_CLIPS", raising=False)
     c = client(env, "admin")
     assert c.get("/api/v1/settings").json()["processing"]["clips"] == reglages.DEFAULT_CLIPS
 
@@ -421,10 +421,10 @@ def test_nombre_d_extraits_reglable_depuis_le_backoffice(env, tmp_path, monkeypa
 def test_le_pipeline_prend_le_nombre_d_extraits_regle(tmp_path, monkeypatch):
     """Le pipeline sans --clips suit le réglage du back-office ; --no-clips et --clips restent maîtres."""
     from argparse import Namespace
-    from minbar.pipeline import run
-    from minbar.pipeline import settings as reglages
-    monkeypatch.setenv("MINBAR_PIPELINE_CONFIG", str(tmp_path / "pipeline.json"))
-    monkeypatch.delenv("MINBAR_CLIPS", raising=False)
+    from sada.pipeline import run
+    from sada.pipeline import settings as reglages
+    monkeypatch.setenv("SADA_PIPELINE_CONFIG", str(tmp_path / "pipeline.json"))
+    monkeypatch.delenv("SADA_CLIPS", raising=False)
     assert run.nclips_option(Namespace(no_clips=False, clips=None)) == reglages.DEFAULT_CLIPS
     reglages.save_config(5)
     assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 5
@@ -432,16 +432,16 @@ def test_le_pipeline_prend_le_nombre_d_extraits_regle(tmp_path, monkeypatch):
     assert run.nclips_option(Namespace(no_clips=True, clips=None)) == 0
     reglages.save_config(5, enabled=False)
     assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 0
-    monkeypatch.setenv("MINBAR_CLIPS", "6")                   # l'environnement passe avant le fichier
+    monkeypatch.setenv("SADA_CLIPS", "6")                   # l'environnement passe avant le fichier
     assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 6
-    monkeypatch.setenv("MINBAR_CLIPS", "0")
+    monkeypatch.setenv("SADA_CLIPS", "0")
     assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 0
 
 
 def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
     """The “Test” button queries the saved address and reports the failure without breaking the screen."""
-    monkeypatch.setenv("MINBAR_LLM_CONFIG", str(tmp_path / "llm.json"))
-    monkeypatch.delenv("MINBAR_LLM_ENABLED", raising=False)
+    monkeypatch.setenv("SADA_LLM_CONFIG", str(tmp_path / "llm.json"))
+    monkeypatch.delenv("SADA_LLM_ENABLED", raising=False)
     c = client(env, "admin")
     c.ecrire("/settings/model", {"enabled": "1", "url": "http://127.0.0.1:9/v1", "model": "petit",
                                  "protocol": "openai"}, methode="PUT")
@@ -506,7 +506,7 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
     c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
     # regeneration: the pipeline does receive the correction (real build_ass, simulated ffmpeg render)
-    from minbar.pipeline import clips as clipmod
+    from sada.pipeline import clips as clipmod
     seen = {}
 
     def fake_render(src, off, w, ass, out, log=print, crop=None, fade_out=None):
@@ -596,7 +596,7 @@ def test_correction_apres_publication_ne_reecrit_pas_l_historique(env, monkeypat
     c.ecrire(f"/sermons/{env['kid']}/revisions", {"seg": "1", "field": "text", "value": "Texte corrigé."})
     clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
     assert clip["status"] == "publie" and clip["needs_regen"] == 1
-    from minbar.pipeline import clips as clipmod
+    from sada.pipeline import clips as clipmod
     monkeypatch.setattr(clipmod, "render_clip", lambda src, off, w, ass, out, log=print, crop=None, fade_out=None: Path(out).write_bytes(b"v2"))
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
     c.ecrire(f"/clips/{cid}/regenerate")
@@ -630,7 +630,7 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     def down(*_a, **_k):
         raise publish.social.PublishError("réseau injoignable")
 
-    import minbar.backoffice.social as social_mod
+    import sada.backoffice.social as social_mod
     saved = social_mod.SESSION
     social_mod.SESSION = type("S", (), {"post": staticmethod(down)})
     try:
@@ -643,7 +643,7 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
 
 
 def test_cli_cree_admin_et_imam(tmp_path, monkeypatch, capsys):
-    from minbar.backoffice.__main__ import main
+    from sada.backoffice.__main__ import main
     path = tmp_path / "cli.db"
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(PW + "\n"))
     assert main(["--db", str(path), "create-admin", "--username", "chef", "--mosque", "ma-mosquee",

@@ -12,7 +12,7 @@ One command installs it, then the application checks for itself what is missing.
 
 ```
 pip install -e .
-python -m minbar.installer
+python -m sada.installer
 ```
 
 The second command is the only one to remember. It inspects the machine, does what it can on its
@@ -40,7 +40,7 @@ last resort by a full fresh check.
 To know where a machine stands, changing nothing:
 
 ```
-python -m minbar.installer --verifier
+python -m sada.installer --verifier
 ```
 
 The report reads line by line: `ok`, `à faire` (with the command that does it), or `bloqué`. The
@@ -214,7 +214,7 @@ On the first live:
    screen texts, screen template, bucket.
 1a. If the mosque imported a template, the screens shown are **that file**, rendered by the browser
    shipped with the application. One command installs it on the broadcast machine:
-   `python -m minbar.backoffice fetch-engine` (about 280 MB, no administrator rights). Without it,
+   `python -m sada.backoffice fetch-engine` (about 280 MB, no administrator rights). Without it,
    the engine draws its own screens: nothing stops, the result is simply less faithful to the file.
 2. If the back office is closed, it carries on with its own configuration and notifications stay
    blank. A closed back office never breaks a live.

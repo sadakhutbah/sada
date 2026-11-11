@@ -1,6 +1,6 @@
 # Les écrans du direct — mode d'emploi
 
-Ce document s'adresse à **la personne qui administre Minbar Live dans une mosquée**. Pas de
+Ce document s'adresse à **la personne qui administre Sadā dans une mosquée**. Pas de
 vocabulaire technique, pas de prérequis : si vous savez remplir un formulaire, vous savez faire.
 
 ---
@@ -12,7 +12,7 @@ commence, pendant que les gens s'installent, entre deux séquences, quand la sal
 plein — une image avec un texte, à la place de la vidéo — évite de diffuser une salle vide ou des
 gens qui ne veulent pas être filmés.
 
-Dans Minbar Live, on appelle cela un **écran**. Il y en a six, chacun pour un moment précis du
+Dans Sadā, on appelle cela un **écran**. Il y en a six, chacun pour un moment précis du
 direct. Le moteur les affiche automatiquement, vous n'avez rien à déclencher.
 
 Vous pouvez changer **les textes** de ces écrans. Vous ne changez pas leur mise en page : nous nous en
@@ -58,7 +58,7 @@ vide ne veut pas dire « rien à l'écran » : il veut dire « remets ce qui ét
 
 ## 4. Les accolades : `{heure}`, `{date}`, `{jour}`…
 
-Certains textes contiennent des accolades. Ce ne sont pas des fautes de frappe : Minbar Live les
+Certains textes contiennent des accolades. Ce ne sont pas des fautes de frappe : Sadā les
 remplace au moment du direct.
 
 - `{heure}` → l'heure de la session, par exemple « Début à **{heure}** » devient « Début à **19h30** ».
@@ -90,7 +90,7 @@ qui tient debout toute seule : « La diffusion commence à {heure}. »
 
 ## 6. Se faire un visuel entièrement à vous
 
-Les six écrans de base ont un dessin commun, celui de Minbar Live. Une mosquée qui veut **son propre
+Les six écrans de base ont un dessin commun, celui de Sadā. Une mosquée qui veut **son propre
 visuel** — ses couleurs, sa police, son logo, sa composition — peut le faire fabriquer par un
 assistant conversationnel.
 
@@ -108,14 +108,14 @@ fichier qui s'affiche à l'antenne**.
 5. Toujours dans Réglages → Écrans, cliquez sur **« Importer un gabarit »** et choisissez ce fichier.
    Le back-office le vérifie : s'il n'est pas conforme, il explique pourquoi et ne change rien. S'il
    est conforme, il le conserve, l'affiche dans l'aperçu et reprend les textes du bloc
-   `#minbar-screens` pour remplir les champs des six écrans. Ces textes sont enregistrés tout de
+   `#sada-screens` pour remplir les champs des six écrans. Ces textes sont enregistrés tout de
    suite ; relisez-les et corrigez-les au besoin, comme n'importe quel texte.
 
 Ce fichier reste votre propriété : il ne contient que du texte et des couleurs, il tourne sans
 internet, et il ne fait rien d'autre que s'afficher.
 
 Ce qu'il faut savoir, sans ambiguïté : **c'est ce fichier qui part à l'antenne.** À chaque changement
-d'écran, Minbar Live le rend à 1280 × 720 et diffuse cette image. Vos couleurs, votre police et votre
+d'écran, Sadā le rend à 1280 × 720 et diffuse cette image. Vos couleurs, votre police et votre
 composition sont donc respectées, et l'aperçu de la page montre exactement ce que verront les fidèles.
 
 Deux points à connaître :
@@ -123,8 +123,8 @@ Deux points à connaître :
 - Le fichier est une **image figée** tant que l'écran ne change pas. Un décor animé, une vidéo ou un
   script ne s'animeront pas ; les scripts ne sont d'ailleurs pas exécutés.
 - Le rendu se fait avec un navigateur fourni avec l'application. La commande
-  `python -m minbar.backoffice fetch-engine` l'installe sur la machine du direct (environ 280 Mo).
-  Sans lui, les écrans sont dessinés par le moteur de Minbar Live : le direct continue, mais votre
+  `python -m sada.backoffice fetch-engine` l'installe sur la machine du direct (environ 280 Mo).
+  Sans lui, les écrans sont dessinés par le moteur de Sadā : le direct continue, mais votre
   gabarit n'est pas suivi à l'image près.
 
 ---

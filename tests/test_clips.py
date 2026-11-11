@@ -2,9 +2,9 @@
 import json
 import re
 
-from minbar.pipeline import clips as C
-from minbar.pipeline import translate
-from minbar.pipeline.verses import is_formula, recited_arabic, strip_quran_marks
+from sada.pipeline import clips as C
+from sada.pipeline import translate
+from sada.pipeline.verses import is_formula, recited_arabic, strip_quran_marks
 
 VERSE = {"ref": "65:3", "surah_name": "At-Talaaq", "start": 10.0, "end": 14.0, "score": 95.0, "coverage": 0.6,
          "confidence": "sûr", "heard": "إن الله بالغ أمره قد جعل الله لكل شيء قدرا",

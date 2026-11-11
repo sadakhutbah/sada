@@ -1,7 +1,7 @@
 """Presence (motion): pure computation, no camera or ffmpeg."""
 import pytest
 
-from minbar.presence import MotionGate
+from sada.presence import MotionGate
 
 W, H = 20, 10
 

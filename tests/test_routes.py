@@ -15,7 +15,7 @@ def test_le_front_est_servi_a_la_racine(env):
     r = c.get("/")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
-    assert 'id="root"' in r.text and "Minbar Live" in r.text
+    assert 'id="root"' in r.text and "Sadā" in r.text
     assert "/src/main.tsx" not in r.text                     # production build, not the dev server
     asset = re.search(r'src="(/assets/index-[^"]+\.js)"', r.text).group(1)
     assert c.get(asset).status_code == 200

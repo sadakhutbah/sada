@@ -38,8 +38,8 @@ export default function Login({ onLogin }: { onLogin: (s: Session) => void }) {
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-[400px]">
         <div className="mb-5 text-center">
+          <img src="/sada-mark-encre.svg" alt="" className="mx-auto mb-3 h-[64px] w-auto" />
           <p className="font-serif text-[2rem] leading-none text-deeper">{t("app.name")}</p>
-          <p className="mt-1.5 text-[0.78rem] font-semibold uppercase tracking-[0.18em] text-green">{t("app.office")}</p>
         </div>
         <form onSubmit={envoyer} className="rounded-[10px] border border-line bg-white p-6.5">
           <h1 className="mb-4 font-serif text-[1.55rem] font-normal text-deeper">{t("login.title")}</h1>
@@ -50,7 +50,7 @@ export default function Login({ onLogin }: { onLogin: (s: Session) => void }) {
             <Field label={t("login.password")}>
               <input name="password" type="password" autoComplete="current-password" required className={inputClass} />
             </Field>
-            {erreur && <p className="rounded-lg bg-err-bg px-3 py-2 text-[0.9rem] text-[#8a2219]">{erreur}</p>}
+            {erreur && <p className="rounded-lg bg-err-bg px-3 py-2 text-[0.9rem] text-[#7a1f20]">{erreur}</p>}
             <Btn type="submit" disabled={envoi}>{t("login.submit")}</Btn>
           </div>
         </form>

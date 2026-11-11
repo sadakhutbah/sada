@@ -1,6 +1,6 @@
 import wave
 
-from minbar.pipeline.run import transcript_key, transcript_matches
+from sada.pipeline.run import transcript_key, transcript_matches
 
 
 def _wav(path, seconds):
@@ -32,8 +32,8 @@ def test_legacy_cache_checked_on_audio_length(tmp_path):
 
 def test_session_header_follows_kind_and_mosque():
     from types import SimpleNamespace
-    from minbar.pipeline import clips as clipmod
-    from minbar.pipeline.run import session_header
+    from sada.pipeline import clips as clipmod
+    from sada.pipeline.run import session_header
     a = SimpleNamespace(title=clipmod.DEFAULT_TITLE, subtitle="")
     data = {"mosque": "Mosquée Exemple"}
     assert session_header({"kind": "khutba", "title": ""}, data, a) == {"title": clipmod.DEFAULT_TITLE, "subtitle": "Mosquée Exemple"}
@@ -43,7 +43,7 @@ def test_session_header_follows_kind_and_mosque():
 
 
 def test_dominant_language_over_whole_talk():
-    from minbar.pipeline.transcribe import dominant_language
+    from sada.pipeline.transcribe import dominant_language
     seg = lambda s, e, t: {"start": s, "end": e, "text": t}
     talk = [seg(0, 30, "بسم الله الرحمن الرحيم"), seg(30, 600, "Chers frères, aujourd'hui nous parlons de la tawba")]
     assert dominant_language(talk, "ar") == "fr"
@@ -52,7 +52,7 @@ def test_dominant_language_over_whole_talk():
 
 
 def test_small_model_not_picked_by_default(monkeypatch):
-    from minbar.pipeline import transcribe as tr
+    from sada.pipeline import transcribe as tr
     monkeypatch.setattr(tr, "free_vram_mb", lambda: 1900)
     assert tr.pick_model(None, log=lambda *_: None) == ("large-v3-turbo", "cpu", "int8")
     monkeypatch.setattr(tr, "free_vram_mb", lambda: 3000)

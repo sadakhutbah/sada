@@ -263,7 +263,7 @@ export default function Dashboard() {
                       </span>
                     </div>
                     {it.erreur && (
-                      <p className="m-0 mt-0.5 break-words text-[0.85rem] text-[#8a2219]">
+                      <p className="m-0 mt-0.5 break-words text-[0.85rem] text-[#7a1f20]">
                         {sansChemin(it.erreur, t("dashboard.processing.hiddenPath"))}
                       </p>
                     )}
@@ -273,7 +273,7 @@ export default function Dashboard() {
             </ul>
           )}
           {retourTraitement && (
-            <p role="status" className={`m-0 mt-2 text-[0.9rem] ${retourTraitement.ok ? "text-green" : "text-[#8a2219]"}`}>
+            <p role="status" className={`m-0 mt-2 text-[0.9rem] ${retourTraitement.ok ? "text-green" : "text-[#7a1f20]"}`}>
               {retourTraitement.texte}
             </p>
           )}

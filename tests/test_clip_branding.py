@@ -3,7 +3,7 @@ import subprocess
 
 from PIL import Image
 
-from minbar.pipeline import clips as C
+from sada.pipeline import clips as C
 
 
 def _png(path, color=(180, 30, 30), size=(128, 128)):

@@ -62,7 +62,7 @@ function Parcourir({ depart, onChoix, onFermer }: { depart: string; onChoix: (ch
     <div className="fixed inset-0 z-50 grid place-items-center bg-night/50 p-4" role="dialog" aria-modal="true" aria-label={t("settings.folderTitle")}>
       <div className="grid max-h-[85vh] w-full max-w-[640px] grid-rows-[auto_auto_1fr_auto] gap-3 rounded-[10px] border border-line bg-white p-4.5">
         <Title>{t("settings.folderTitle")}</Title>
-        {erreur && <p role="alert" className="m-0 text-[0.9rem] text-[#8a2219]">{erreur}</p>}
+        {erreur && <p role="alert" className="m-0 text-[0.9rem] text-[#7a1f20]">{erreur}</p>}
         {!vue ? (
           <p className="text-muted">{t("common.loading")}</p>
         ) : (
@@ -100,7 +100,7 @@ function Parcourir({ depart, onChoix, onFermer }: { depart: string; onChoix: (ch
                 </ul>
               )}
             </div>
-            {!vue.writable && <p className="m-0 text-[0.85rem] text-[#8a2219]">{t("settings.folderNotWritable")}</p>}
+            {!vue.writable && <p className="m-0 text-[0.85rem] text-[#7a1f20]">{t("settings.folderNotWritable")}</p>}
           </>
         )}
         <div className="flex flex-wrap justify-end gap-2">
@@ -371,7 +371,7 @@ export default function Settings() {
           <input className={inputClass} value={f.mawaqit_url} onChange={maj("mawaqit_url")} placeholder="https://mawaqit.net/fr/…" inputMode="url" />
         </Field>
         <Field label={t("settings.publicUrl")} aide={t("settings.publicUrlHelp")}>
-          <input className={inputClass} value={adresse} placeholder="https://minbar.exemple.org"
+          <input className={inputClass} value={adresse} placeholder="https://sada.exemple.org"
             onChange={(e) => { setAdresse(e.target.value); setMsg(null); }} inputMode="url" />
         </Field>
       </div>
@@ -533,7 +533,7 @@ export default function Settings() {
             {t("settings.modelTest")}
           </Btn>
           {test && (
-            <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#8a2219]" : "text-muted"}`}>{test.texte}</span>
+            <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#7a1f20]" : "text-muted"}`}>{test.texte}</span>
           )}
         </div>
       </div>
@@ -655,7 +655,7 @@ export default function Settings() {
         <div className="grid gap-2.5 sm:grid-cols-[1fr_9rem]">
           <Field label={t("settings.replayBucket")}>
             <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.bucket} spellCheck={false}
-              placeholder="minbar-rediffusions"
+              placeholder="sada-rediffusions"
               onChange={(e) => { setStockage((s) => ({ ...s, bucket: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
           </Field>
           <Field label={t("settings.replayRegion")}>
@@ -692,7 +692,7 @@ export default function Settings() {
           </Btn>
         </div>
         {essaiStockage && (
-          <span role="status" className={`text-[0.88rem] ${essaiStockage.ok ? "text-green" : "text-[#8a2219]"}`}>{essaiStockage.detail}</span>
+          <span role="status" className={`text-[0.88rem] ${essaiStockage.ok ? "text-green" : "text-[#7a1f20]"}`}>{essaiStockage.detail}</span>
         )}
       </div>
     ),
@@ -735,7 +735,7 @@ export default function Settings() {
             </div>
           )}
           {msg && (
-            <p role={msg.ok ? "status" : "alert"} className={`mt-3 mb-0 text-[0.92rem] ${msg.ok ? "text-deep" : "text-[#8a2219]"}`}>{msg.texte}</p>
+            <p role={msg.ok ? "status" : "alert"} className={`mt-3 mb-0 text-[0.92rem] ${msg.ok ? "text-deep" : "text-[#7a1f20]"}`}>{msg.texte}</p>
           )}
         </Card>
       </form>

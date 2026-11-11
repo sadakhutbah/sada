@@ -93,9 +93,8 @@ export default function App() {
         <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
           {/* Brand on two lines: the program, then the mosque below in small text. */}
           <div className="flex min-w-0 items-center gap-2.5">
-            {session.mosque.logo && (
-              <img src={session.mosque.logo} alt="" className="size-[34px] shrink-0 rounded-full border-2 border-leaf object-cover" />
-            )}
+            {/* Identité produit : la marque منبر ; le logo de la mosquée reste dans les écrans live et les clips. */}
+            <img src="/sada-mark-or.svg" alt="" className="h-[26px] w-auto shrink-0" />
             <span className="flex min-w-0 flex-col">
               <span className="font-serif text-[1.3rem] leading-none text-white">{t("app.name")}</span>
               <span className="truncate text-[0.75rem] leading-tight text-night-muted">{session.mosque.name}</span>
@@ -147,9 +146,10 @@ export default function App() {
                 <option key={l.code} value={l.code} className="text-ink">{l.label}</option>
               ))}
             </select>
-            <span className="text-[0.85rem] whitespace-nowrap text-night-link">{session.user.name}</span>
+            {/* Le rôle passe en info-bulle sur grand écran : la barre tient sur une ligne même avec un badge. */}
+            <span className="text-[0.85rem] whitespace-nowrap text-night-link" title={roleLabel}>{session.user.name}</span>
             {roleLabel !== session.user.name && (
-              <span className="text-[0.78rem] whitespace-nowrap text-night-muted">{roleLabel}</span>
+              <span className="text-[0.78rem] whitespace-nowrap text-night-muted min-[1120px]:hidden">{roleLabel}</span>
             )}
             <a
               href="/"
@@ -181,7 +181,7 @@ export default function App() {
         </Routes>
       </main>
       <footer className="p-6 text-center text-[0.8rem] text-muted">
-        {t("app.name")} · {t("footer")} · {session.mosque.name}
+        {t("app.name")} · {session.mosque.name}
       </footer>
     </div>
   );

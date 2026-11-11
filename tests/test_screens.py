@@ -1,6 +1,6 @@
 """Écrans des scènes : textes par défaut, personnalisation par mosquée, aperçu, moteur.
 
-Le défaut vit dans `minbar.screens` — le module avec lequel le moteur dessine : l'interface affiche
+Le défaut vit dans `sada.screens` — le module avec lequel le moteur dessine : l'interface affiche
 donc exactement ce qui partira à l'antenne, et vider un champ ramène au défaut.
 """
 import pytest
@@ -21,7 +21,7 @@ def test_chaque_ecran_annonce_ses_champs_et_son_defaut(env):
 
 
 def test_personnalisation_enregistree_et_relue(env):
-    from minbar.backoffice import db
+    from sada.backoffice import db
     c = client(env, "admin")
     r = c.ecrire("/settings/screens", {"screens": {"avant": {"foot": "  Nous démarrons dans un instant.  "}}},
                  methode="PUT")
@@ -74,7 +74,7 @@ def test_apercu_est_une_vraie_image_du_moteur(env):
 
 
 def test_le_moteur_lit_les_textes_du_back_office(env):
-    from minbar.backoffice import internal
+    from sada.backoffice import internal
     c = client(env, "admin")
     c.ecrire("/settings/screens", {"screens": {"termine": {"foot": "À la semaine prochaine."}}}, methode="PUT")
     d = c.get("/api/v1/internal/screens", headers={internal.HEADER: internal.token()}).json()
@@ -83,7 +83,7 @@ def test_le_moteur_lit_les_textes_du_back_office(env):
 
 
 def test_les_variables_remplacent_et_une_ligne_sans_valeur_disparait():
-    from minbar import screens
+    from sada import screens
 
     t = screens.resolve("avant", {}, {"heure": "13:00"})
     assert t["sub"] == "Début à 13:00"
@@ -96,15 +96,15 @@ def test_les_variables_remplacent_et_une_ligne_sans_valeur_disparait():
 
 
 def test_une_variable_inconnue_reste_visible():
-    from minbar import screens
+    from sada import screens
 
     assert screens.resolve("avant", {"avant": {"foot": "Salut {prénom}"}}, {})["foot"] == "Salut {prénom}"
 
 
 def test_les_ecrans_pleins_se_dessinent_avec_les_textes_personnalises():
     """Rendu réel des six écrans : aucune exception, et le texte part bien dans l'image."""
-    from minbar import scenes
-    from minbar.config import Config
+    from sada import scenes
+    from sada.config import Config
 
     cfg = Config(screen_texts={"avant": {"eyebrow": "Bonjour"}, "priere": {"title": "Prière du vendredi"},
                                "entracte": {"foot": "On revient tout de suite."},

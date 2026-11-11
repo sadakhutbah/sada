@@ -5,13 +5,13 @@ import { initReactI18next } from "react-i18next";
  *  only the labels change. `ar` is planned for Arabic-speaking mosques (right-to-left).
  *  The wording reuses word for word that of the template back-office: it is the reference. */
 const fr = {
-  app: { name: "Minbar Live", office: "back-office" },
+  app: { name: "Sadā" },
+  player: { play: "Lire", pause: "Pause", seek: "Position", back: "Reculer de 10 s", forward: "Avancer de 10 s", mute: "Couper le son", unmute: "Remettre le son", volume: "Volume", speed: "Vitesse de lecture", fullscreen: "Plein écran", exitFullscreen: "Quitter le plein écran" },
   nav: {
     dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", clips: "Clips", publications: "Publication",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu",
   },
   common: { loading: "Chargement…", empty: "Rien à afficher.", save: "Enregistrer", saving: "Enregistrement…", close: "Fermer", error: "Erreur", browse: "Parcourir…" },
-  footer: "back-office",
   login: {
     title: "Connexion", user: "Identifiant", password: "Mot de passe", submit: "Entrer",
     mosque: "Choisir la mosquée", bad: "Identifiant ou mot de passe incorrect.", locked: "Trop de tentatives. Réessayez dans quelques minutes.",
@@ -242,7 +242,7 @@ const fr = {
     accessHint: "Les comptes, les rôles et les mots de passe se gèrent sur la page Comptes.",
     accessGo: "Ouvrir la page Comptes",
     publicUrl: "Adresse publique de cette installation",
-    publicUrlHelp: "L'adresse par laquelle la mosquée ouvre ce back-office (nom de domaine, serveur). Sert dans les liens de documentation. Vide : l'adresse de la machine est utilisée.",
+    publicUrlHelp: "L'adresse par laquelle la mosquée ouvre Sadā (nom de domaine, serveur). Sert dans les liens de documentation. Vide : l'adresse de la machine est utilisée.",
     mawaqit: "Adresse Mawaqit", mawaqitHelp: "Page de la mosquée sur Mawaqit, pour les horaires de prière (facultatif).",
     timezoneHelp: "Nom officiel du fuseau, par exemple Europe/Paris.",
     clipTitleHelp: "Texte affiché en tête des clips publiés.",
@@ -262,7 +262,7 @@ const fr = {
     destNone: "Aucune destination : le direct n'est diffusé nulle part.",
     destExample: "par exemple rtmps://live-api-s.facebook.com:443/rtmp/…",
     inputKicker: "Entrée vidéo",
-    token: "Jeton de commande", tokenHelp: "Facultatif. Sert au back-office à commander le direct. Laissez vide, ou mettez la même valeur que --api-token à l'orchestrateur. Jamais réaffiché : laissez les points pour le conserver.",
+    token: "Jeton de commande", tokenHelp: "Facultatif. Permet à Sadā de commander le direct. Laissez vide, ou mettez la même valeur que --api-token à l'orchestrateur. Jamais réaffiché : laissez les points pour le conserver.",
     save: "Enregistrer les réglages", saved: "Réglages enregistrés.", unsaved: "Modifications non enregistrées.",
     allSaved: "Tout est enregistré.",
     logoTitle: "Logo de la mosquée", logoHint: "Image PNG, JPEG, WebP ou SVG de 2 Mo au maximum. Sans logo, l'emblème neutre est utilisé.",
@@ -296,7 +296,7 @@ const fr = {
     destLabel: "Nom", destUrl: "Adresse RTMP", destEnabled: "Actif", destRemove: "Retirer",
     destAdd: "Ajouter une destination", destNone: "Aucune destination pour l'instant : le direct restera privé.",
     doneKicker: "Étape 3", doneTitle: "C'est prêt",
-    doneBody: "L'entrée et les destinations sont enregistrées. Le moteur les lit au prochain démarrage du direct. Rien ne s'interrompt si le back-office s'arrête.",
+    doneBody: "L'entrée et les destinations sont enregistrées. Le moteur les lit au prochain démarrage du direct. Rien ne s'interrompt si cette interface s'arrête.",
     summary: "Entrée : {{entree}} · {{n}} destination(s) active(s)",
     summaryReplays: "Rediffusions : {{bucket}} (dossier {{prefix}})",
     replayKicker: "Facultatif",
@@ -354,13 +354,13 @@ const fr = {
 };
 
 const en: typeof fr = {
-  app: { name: "Minbar Live", office: "back office" },
+  app: { name: "Sadā" },
+  player: { play: "Play", pause: "Pause", seek: "Position", back: "Back 10 s", forward: "Forward 10 s", mute: "Mute", unmute: "Unmute", volume: "Volume", speed: "Playback speed", fullscreen: "Full screen", exitFullscreen: "Exit full screen" },
   nav: {
     dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", clips: "Clips", publications: "Publishing",
     settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu",
   },
   common: { loading: "Loading…", empty: "Nothing to show.", save: "Save", saving: "Saving…", close: "Close", error: "Error", browse: "Browse…" },
-  footer: "back office",
   login: {
     title: "Sign in", user: "Username", password: "Password", submit: "Sign in",
     mosque: "Choose the mosque", bad: "Wrong username or password.", locked: "Too many attempts. Try again in a few minutes.",
@@ -588,7 +588,7 @@ const en: typeof fr = {
     accessHint: "Accounts, roles and passwords are managed on the Accounts page.",
     accessGo: "Open the Accounts page",
     publicUrl: "Public address of this installation",
-    publicUrlHelp: "The address the mosque uses to open this back office (domain name, server). Used in documentation links. Empty: the machine address is used.",
+    publicUrlHelp: "The address the mosque uses to open Sadā (domain name, server). Used in documentation links. Empty: the machine address is used.",
     mawaqit: "Mawaqit address", mawaqitHelp: "The mosque's page on Mawaqit, for prayer times (optional).",
     timezoneHelp: "Official zone name, for example Europe/Paris.",
     clipTitleHelp: "Text shown at the top of published clips.",
@@ -608,7 +608,7 @@ const en: typeof fr = {
     destNone: "No destination: the live is broadcast nowhere.",
     destExample: "for example rtmps://live-api-s.facebook.com:443/rtmp/…",
     inputKicker: "Video input",
-    token: "Control token", tokenHelp: "Optional. Lets the back office command the live. Leave empty, or set the same value as --api-token on the orchestrator. Never shown again: leave the dots to keep it.",
+    token: "Control token", tokenHelp: "Optional. Lets Sadā command the live. Leave empty, or set the same value as --api-token on the orchestrator. Never shown again: leave the dots to keep it.",
     save: "Save settings", saved: "Settings saved.", unsaved: "Unsaved changes.",
     allSaved: "Everything is saved.",
     logoTitle: "Mosque logo", logoHint: "PNG, JPEG, WebP or SVG image, 2 MB at most. Without a logo, the neutral emblem is used.",
@@ -642,7 +642,7 @@ const en: typeof fr = {
     destLabel: "Name", destUrl: "RTMP address", destEnabled: "On", destRemove: "Remove",
     destAdd: "Add a destination", destNone: "No destination yet: the live stays private.",
     doneKicker: "Step 3", doneTitle: "Ready",
-    doneBody: "Input and destinations are saved. The engine reads them at the next live start. Nothing stops if the back office goes down.",
+    doneBody: "Input and destinations are saved. The engine reads them at the next live start. Nothing stops if this interface goes down.",
     summary: "Input: {{entree}} · {{n}} active destination(s)",
     summaryReplays: "Replays: {{bucket}} (folder {{prefix}})",
     replayKicker: "Optional",
@@ -709,7 +709,7 @@ export function auditActionKey(action: string) {
   return `audit.action_${action.replace(/\./g, "_").replace(/-/g, "_")}`;
 }
 
-const choisi = typeof localStorage !== "undefined" ? localStorage.getItem("minbar.lang") : null;
+const choisi = typeof localStorage !== "undefined" ? localStorage.getItem("sada.lang") : null;
 
 i18n.use(initReactI18next).init({
   resources: { fr: { translation: fr }, en: { translation: en } },
@@ -727,7 +727,7 @@ i18n.use(initReactI18next).init({
 
 export function setLanguage(code: string) {
   i18n.changeLanguage(code);
-  localStorage.setItem("minbar.lang", code);
+  localStorage.setItem("sada.lang", code);
   const lang = LANGUAGES.find((l) => l.code === code);
   document.documentElement.lang = code;
   document.documentElement.dir = lang?.dir ?? "ltr";

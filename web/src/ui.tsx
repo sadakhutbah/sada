@@ -32,9 +32,9 @@ export function Btn({
     plein: "border-deep bg-deep text-white hover:bg-deeper",
     ghost: "border-deep bg-transparent text-deep hover:bg-paper-2",
     leaf: "border-leaf bg-leaf text-night hover:bg-leaf-2",
-    danger: "border-live bg-live text-white hover:bg-[#b42c23]",
+    danger: "border-live bg-live text-white hover:bg-[#7f2122]",
     // Secondary destructive action: visible without stealing the main action's place.
-    dangerGhost: "border-live/50 bg-transparent text-[#b42c23] hover:bg-err-bg",
+    dangerGhost: "border-live/50 bg-transparent text-[#7f2122] hover:bg-err-bg",
     light: "border-white/25 bg-white/10 text-white hover:bg-white/18",
   }[variante];
   // Un bouton inactif se lit comme tel : neutre et plat, pas une couleur d'action délavée.
@@ -56,18 +56,18 @@ export function Btn({
 const PILLS: Record<string, string> = {
   a_valider: "bg-warn-bg text-warn",
   valide: "bg-paper-2 text-deep",
-  rejete: "bg-err-bg text-[#8a2219]",
+  rejete: "bg-err-bg text-[#7a1f20]",
   publie: "bg-deep text-white",
   // Runs after the live: waiting, running, ready, failed.
   attente: "bg-paper-2 text-muted",
   en_cours: "bg-warn-bg text-warn",
-  termine: "bg-[#e9f4e2] text-green",
-  echec: "bg-err-bg text-[#8a2219]",
+  termine: "bg-[#f3ecdc] text-green",
+  echec: "bg-err-bg text-[#7a1f20]",
 };
 
 export function Pill({ statut, label }: { statut: string; label: string }) {
   return (
-    <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-[0.8rem] font-bold ${PILLS[statut] ?? "bg-[#eef0ea] text-muted"}`}>
+    <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-[0.8rem] font-bold ${PILLS[statut] ?? "bg-[#efe8d8] text-muted"}`}>
       {label}
     </span>
   );
@@ -195,4 +195,4 @@ export const toucher =
 export const toucherEnLigne = "max-md:py-[13px] pointer-coarse:py-[13px]";
 
 export const inputClass =
-  "w-full rounded-lg border border-[#bfcbb6] bg-white px-3 py-2.5 text-ink read-only:cursor-default read-only:bg-paper-2 read-only:text-muted disabled:bg-paper-2 disabled:text-muted";
+  "w-full rounded-lg border border-[#cfc6b0] bg-white px-3 py-2.5 text-ink read-only:cursor-default read-only:bg-paper-2 read-only:text-muted disabled:bg-paper-2 disabled:text-muted";

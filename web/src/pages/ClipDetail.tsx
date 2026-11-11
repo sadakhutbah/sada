@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
+import Player from "../Player";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { auditActionKey } from "../i18n";
@@ -68,8 +69,8 @@ export default function ClipDetail() {
         <Fil />
         {erreur ? (
           <div className="rounded-[10px] border border-[#efc9c4] bg-err-bg px-4.5 py-3.5">
-            <p className="m-0 font-semibold text-[#8a2219]">{t("clips.detail.loadError")}</p>
-            <p className="m-0 mt-0.5 text-[0.88rem] text-[#8a2219]/80">{erreur}</p>
+            <p className="m-0 font-semibold text-[#7a1f20]">{t("clips.detail.loadError")}</p>
+            <p className="m-0 mt-0.5 text-[0.88rem] text-[#7a1f20]/80">{erreur}</p>
           </div>
         ) : (
           <div className="grid gap-4 min-[1000px]:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)]">
@@ -156,11 +157,10 @@ function Lecteur({ c, existe, legende, info }:
     <div className="relative min-w-0 overflow-hidden rounded-[10px] bg-night">
       {existe ? (
         <div className="max-md:flex max-md:justify-center">
-        <video
+        <Player
           key={c.version}
-          controls
           preload="metadata"
-          playsInline
+          cadre="max-md:mx-auto max-md:w-auto max-md:max-w-full"
           className="block h-[50vh] max-h-[560px] min-h-[240px] w-full bg-night object-contain max-md:mx-auto max-md:aspect-[9/16] max-md:h-[min(70svh,calc((100vw-2rem)*16/9))] max-md:max-h-none max-md:min-h-0 max-md:w-auto max-md:max-w-full"
           src={`/media/clip/${c.id}.mp4?v=${c.version}#t=0.1`}
         />
@@ -197,7 +197,7 @@ function Lecteur({ c, existe, legende, info }:
 function Partage({ c, legende, info }: { c: any; legende: string; info: (ko: boolean, texte: string) => void }) {
   const { t } = useTranslation();
   const url = `/media/clip/${c.id}.mp4?v=${c.version}`;
-  const nom = `minbar-clip-${c.id}-v${c.version}.mp4`;
+  const nom = `sada-clip-${c.id}-v${c.version}.mp4`;
   const titre = `${t("clips.clip")} ${c.idx} · ${t(`clips.kinds.${c.kind}`)}`;
   const fichiersOk = typeof navigator !== "undefined" && typeof navigator.canShare === "function"
     && navigator.canShare({ files: [new File([""], nom, { type: "video/mp4" })] });
@@ -267,7 +267,7 @@ function Partage({ c, legende, info }: { c: any; legende: string; info: (ko: boo
 
 function Bandeau({ ko, children }: { ko: boolean; children: ReactNode }) {
   return (
-    <p className={`m-0 rounded-lg px-3 py-2 text-[0.88rem] leading-snug ${ko ? "bg-err-bg text-[#8a2219]" : "bg-paper-2 text-deep"}`}>
+    <p className={`m-0 rounded-lg px-3 py-2 text-[0.88rem] leading-snug ${ko ? "bg-err-bg text-[#7a1f20]" : "bg-paper-2 text-deep"}`}>
       {children}
     </p>
   );

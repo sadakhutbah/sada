@@ -49,7 +49,7 @@ function ConnectorForm({ c, onSaved }: { c: any; onSaved: () => void }) {
       </label>
       <div className="flex flex-wrap items-center gap-3">
         <Btn onClick={save} disabled={busy}>{busy ? t("common.saving") : t("common.save")}</Btn>
-        {feedback && <span className={feedback.ok ? "text-deep" : "text-[#b42c23]"} role="status">{feedback.text}</span>}
+        {feedback && <span className={feedback.ok ? "text-deep" : "text-[#7f2122]"} role="status">{feedback.text}</span>}
       </div>
     </div>
   );
@@ -116,7 +116,7 @@ function Notifications({ n, onSaved }: { n: any; onSaved: () => void }) {
           <Btn variante="ghost" disabled={busy || !n.active} onClick={() => run(() => api.testNotifications())}>
             {t("publications.test")}
           </Btn>
-          {feedback && <span className={feedback.ok ? "text-deep" : "text-[#b42c23]"} role="status">{feedback.text}</span>}
+          {feedback && <span className={feedback.ok ? "text-deep" : "text-[#7f2122]"} role="status">{feedback.text}</span>}
         </div>
       </div>
     </Card>

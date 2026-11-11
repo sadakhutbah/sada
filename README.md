@@ -1,4 +1,4 @@
-# Minbar Live
+# Sadā
 
 Diffusion automatique de la khutba et pipeline IA après le live (transcription, versets, traduction, clips). Spécification : `SPEC.md`.
 
@@ -24,24 +24,24 @@ application pourra servir plusieurs mosquées depuis un serveur central.
 
 ```bash
 # 1. Créer la mosquée et le premier administrateur (le mot de passe est demandé au clavier)
-.venv/bin/python -m minbar.backoffice create-admin --username admin --mosque votre-mosquee --mosque-name "Votre mosquée"
+.venv/bin/python -m sada.backoffice create-admin --username admin --mosque votre-mosquee --mosque-name "Votre mosquée"
 
 # 2. Lancer : http://<adresse-du-pc>:8090 (téléphones sur le même réseau)
-make backoffice        # = .venv/bin/python -m minbar.backoffice serve --port 8090
+make backoffice        # = .venv/bin/python -m sada.backoffice serve --port 8090
 ```
 
 Les autres comptes se créent dans **Réglages → Comptes**, ou en ligne de commande :
-`python -m minbar.backoffice create-user --username imam.abdallah --role imam --name "Imam Abdallah"`.
+`python -m sada.backoffice create-user --username imam.abdallah --role imam --name "Imam Abdallah"`.
 
 ### Configurer la mosquée
 
-Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug votre-mosquee --orchestrator-url ...`) :
+Dans **Réglages → Mosquée** (ou `python -m sada.backoffice mosque --slug votre-mosquee --orchestrator-url ...`) :
 
 - **Orchestrateur** : adresse de l'API du live (défaut `http://127.0.0.1:8088`) et jeton éventuel. Les boutons
   +5 min / Janaza / Arrêter / Annuler aujourd'hui du tableau de bord passent par cette API.
 - **Dossiers** : `data/state` (runs), `data/output` (transcriptions, clips) et `data/published` par défaut.
 - **Import automatique** : les nouveaux runs du pipeline sont importés toutes les 60 s (`serve --import-every 0`
-  pour désactiver ; bouton « Importer » dans Khutbas, ou `python -m minbar.backoffice import [--run 20261106_220224]`).
+  pour désactiver ; bouton « Importer » dans Khutbas, ou `python -m sada.backoffice import [--run 20261106_220224]`).
   Les sessions Janaza ne sont pas importées. L'import ne touche jamais aux validations ni aux corrections.
 - **Imam par défaut** des nouvelles khutbas (sinon rattachement à la main sur la page de la khutba).
 - **Connecteurs** : les quatre publient réellement, sur un clip validé par un humain et à la demande.
@@ -58,7 +58,7 @@ Dans **Réglages → Mosquée** (ou `python -m minbar.backoffice mosque --slug v
 
 **Réglages → Écrans** règle les textes affichés sur les écrans pleins — avant-direct, prière, entracte,
 fin, janaza, fin de dars — un écran par sous-onglet, avec l'aperçu que le moteur vient de dessiner à
-droite. Les textes par défaut restent dans `minbar/screens.py` : un champ laissé vide reprend le
+droite. Les textes par défaut restent dans `sada/screens.py` : un champ laissé vide reprend le
 défaut, rappelé en gris dans le champ, et seule la personnalisation de la mosquée est enregistrée
 (table `screen_texts`). L'orchestrateur les relit au lancement du direct
 (`GET /api/v1/internal/screens`).
@@ -86,7 +86,7 @@ qui traîne.
 Chaque page existe aussi en version texte (`…​.md`) pour être collée dans un chat, et en anglais
 sous `/docs/en/<document>` — la traduction est un fichier `docs/<document>.en.md` ; tant qu'il
 manque, la page française est servie avec un avertissement. Le rendu Markdown
-vit dans `minbar/backoffice/docpage.py`, sans dépendance : il échappe le HTML du document et refuse
+vit dans `sada/backoffice/docpage.py`, sans dépendance : il échappe le HTML du document et refuse
 les liens `javascript:`. Les documents sources sont dans `docs/`.
 
 ## Programme : dars et conférences
@@ -121,11 +121,11 @@ une API distante). Sans configuration, l'adresse visée est Ollama sur la machin
 extractif et traductions fixes — et la note Markdown l'indique.
 
 ```bash
-export MINBAR_LLM_ENABLED="1"                          # interrupteur : 0 coupe tout appel, quelle que soit l'URL
-export MINBAR_LLM_URL="http://127.0.0.1:11434/v1"      # racine de l'API (…/v1, …/v1/messages)
-export MINBAR_LLM_MODEL="qwen2.5:7b-instruct"          # nom du modèle côté serveur
-export MINBAR_LLM_PROTOCOL="openai"                    # openai | anthropic (déduit de l'URL sinon)
-export MINBAR_LLM_API_KEY="…"                          # seulement si le serveur en exige une
+export SADA_LLM_ENABLED="1"                          # interrupteur : 0 coupe tout appel, quelle que soit l'URL
+export SADA_LLM_URL="http://127.0.0.1:11434/v1"      # racine de l'API (…/v1, …/v1/messages)
+export SADA_LLM_MODEL="qwen2.5:7b-instruct"          # nom du modèle côté serveur
+export SADA_LLM_PROTOCOL="openai"                    # openai | anthropic (déduit de l'URL sinon)
+export SADA_LLM_API_KEY="…"                          # seulement si le serveur en exige une
 ```
 
 Équivalents en options : `--llm` / `--no-llm` (bascule), `--llm-url`, `--llm-model`, `--llm-protocol`.
@@ -133,7 +133,7 @@ export MINBAR_LLM_API_KEY="…"                          # seulement si le serve
 En pratique, tout se règle depuis le back-office : **Réglages → Modèle de langage** (bouton « Tester la
 connexion » compris). Il écrit `data/llm.json`, que le pipeline relit à chaque lancement ; les variables
 d'environnement et les options de ligne de commande restent prioritaires sur ce fichier. Si le serveur
-exige une clé, elle se pose une fois hors du formulaire : `MINBAR_LLM_API_KEY`, ou la clé `key` du fichier
+exige une clé, elle se pose une fois hors du formulaire : `SADA_LLM_API_KEY`, ou la clé `key` du fichier
 local (droits 600) — le web ne l'écrit jamais. Exemple d'API distante, compatible OpenAI :
 
 ```json
@@ -143,7 +143,7 @@ local (droits 600) — le web ne l'écrit jamais. Exemple d'API distante, compat
 Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-instruct` ou
 `modèle : désactivé (repli sans IA)`). La méthode réellement employée est aussi écrite dans l'en-tête
 des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le
-demander avec `MINBAR_LLM_PROTOCOL=claude-cli`.
+demander avec `SADA_LLM_PROTOCOL=claude-cli`.
 
 ## Mise en route : quatre écrans
 
@@ -184,7 +184,7 @@ autres (`onfail=ignore`).
 - Les clés se créent chez la plateforme (Facebook : diffusion en direct de la page ; YouTube : direct
   activé sur la chaîne). Aucune n'est écrite dans le dépôt ni dans un fichier de configuration.
 - Repli, pour une démonstration ou une machine sans back-office :
-  `MINBAR_RTMP_URLS="rtmps://…/rtmp/<clé>,rtmps://…/live2/<clé>"` (liste séparée par des virgules).
+  `SADA_RTMP_URLS="rtmps://…/rtmp/<clé>,rtmps://…/live2/<clé>"` (liste séparée par des virgules).
 - Instagram ne diffuse pas en direct par RTMP : pour ce réseau, seule la publication de Reels après le
   direct est possible.
 
@@ -204,7 +204,7 @@ les fichiers, avant le premier direct. Il faut enregistrer avant de tester.
   contenu est posé (`video/x-matroska`, `video/mp4`).
 - Un index local (`data/uploads.json`) retient ce qui est déjà parti, avec sa taille et sa date : un
   redémarrage ne renvoie pas deux fois le même fichier, un fichier plus récent si. Les enregistrements
-  **restent sur la machine** — Minbar ne supprime rien.
+  **restent sur la machine** — Sadā ne supprime rien.
 - Les clés ne sont jamais écrites dans le dépôt ; la clé secrète ne revient pas en clair (masque,
   renvoyer le masque = inchangé) et l'audit `rediffusion.configure` ne la contient pas. Le moteur les
   reçoit par l'endpoint interne authentifié (`/internal/storage`), comme les destinations.
@@ -215,14 +215,14 @@ les fichiers, avant le premier direct. Il faut enregistrer avant de tester.
 
 Chaque réglage peut venir de trois endroits, et l'ordre ne change pas d'un réglage à l'autre :
 
-**ligne de commande > variable `MINBAR_<CHAMP>` > fichier `--config` > défaut.**
+**ligne de commande > variable `SADA_<CHAMP>` > fichier `--config` > défaut.**
 
 - La ligne de commande est construite à partir de la configuration elle-même (`--camera-url` pour
   `camera_url`, `--api-port` pour `api_port`…). `--help` liste chaque option avec son défaut et le nom
   de sa variable.
 - Les durées propres à un type de session ne sont pas des options : elles vivent dans deux sections du
   fichier, `khutba` et `dars` (`window_after_min`, `max_s`, `silence_stop_s`, `grace_s`, `ended_hold_s`).
-- La règle est écrite une fois, `minbar.config.pick` ; le réglage du modèle de langage (`minbar/pipeline/llm.py`)
+- La règle est écrite une fois, `sada.config.pick` ; le réglage du modèle de langage (`sada/pipeline/llm.py`)
   passe par la même fonction.
 
 ```yaml
@@ -237,9 +237,9 @@ fin du direct — vers une destination privée. Rien n'est publié, et sans dest
 messages restent dans le journal (`notification (à blanc) : …`).
 
 ```bash
-export MINBAR_NOTIFY_URL="https://discord.com/api/webhooks/…"   # webhook générique {"text": …}
+export SADA_NOTIFY_URL="https://discord.com/api/webhooks/…"   # webhook générique {"text": …}
 # ou
-export MINBAR_TELEGRAM_TOKEN="…" MINBAR_TELEGRAM_CHAT="…"        # bot Telegram
+export SADA_TELEGRAM_TOKEN="…" SADA_TELEGRAM_CHAT="…"        # bot Telegram
 ```
 
 Le jeton Telegram et l'URL du webhook se gardent hors du dépôt (variables d'environnement ou
@@ -269,7 +269,7 @@ presence_hold_s: 8          # un mouvement vaut « présent » pendant 8 s
 presence_pixel_delta: 12    # écart de niveau (0–255) compté comme un vrai changement
 ```
 
-Calibrage (une fois, depuis la caméra réelle) : lancer `python -m minbar.orchestrator --presence motion`,
+Calibrage (une fois, depuis la caméra réelle) : lancer `python -m sada.orchestrator --presence motion`,
 puis `curl -s 127.0.0.1:8088/status` → `presence.score` au repos (0) et quand quelqu'un monte au minbar.
 Le seuil se met à mi-chemin entre les deux. Si la caméra ne donne plus d'image, `presence.present` vaut
 `null` : la machine ignore alors ce signal au lieu de bloquer le démarrage.
@@ -281,7 +281,7 @@ compteur à zéro. Le signal retenu est **le visage de face** : pendant la khutb
 à l'assemblée ; à la prière il se tourne vers la qibla et le minbar n'a plus aucun visage de face.
 
 Un ffmpeg lit la caméra à 5 i/s en 320×180 ; chaque image passe par **YuNet** (modèle ONNX de 232 Ko,
-embarqué dans `minbar/models/`, CPU, sans GPU) sur la zone du minbar. Aucune image n'est écrite, aucune
+embarqué dans `sada/models/`, CPU, sans GPU) sur la zone du minbar. Aucune image n'est écrite, aucune
 identité n'est calculée : seuls un score et un booléen sortent du module.
 
 ```yaml
@@ -311,6 +311,6 @@ tout ensuite.
   ~1 min) produit une nouvelle version, à revalider. Les versets gardent la traduction Hamidullah. Les fichiers du
   pipeline ne sont jamais modifiés : les corrections vivent dans la base, les clips régénérés sont de nouveaux fichiers.
 - Journal : connexions, commandes du live, corrections, validations, publications, réglages (qui, quand, quoi).
-- Base : `data/backoffice/minbar.db` (variable `MINBAR_DB` ou `--db`). Mots de passe argon2id, sessions serveur
+- Base : `data/backoffice/sada.db` (variable `SADA_DB` ou `--db`). Mots de passe argon2id, sessions serveur
   (cookie HttpOnly, SameSite), jeton CSRF, blocage après 5 essais ratés. Derrière HTTPS (serveur central) :
   `serve --secure-cookies`.

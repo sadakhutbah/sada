@@ -1,8 +1,8 @@
 """Glossaire : hotwords pour Whisper et glose française des termes à leur première occurrence."""
 import json
 
-from minbar.pipeline import clips as C
-from minbar.pipeline import glossary as G
+from sada.pipeline import clips as C
+from sada.pipeline import glossary as G
 
 
 def test_normalisation_insensible_casse_accents_apostrophes():
@@ -47,7 +47,7 @@ def test_fichier_de_glossaire_complete_et_remplace(monkeypatch, tmp_path):
         {"term": "tawba", "variants": ["tawba", "taouba"], "fr": "le retour vers Allah"},
         {"term": "khouchou'", "variants": ["khouchou", "khushu"], "fr": "la concentration"},
     ]}, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setenv("MINBAR_GLOSSARY", str(f))
+    monkeypatch.setenv("SADA_GLOSSARY", str(f))
     terms = G.load()
     by = {e["term"]: e for e in terms}
     assert by["tawba"]["fr"] == "le retour vers Allah"       # le fichier gagne
@@ -58,10 +58,10 @@ def test_fichier_de_glossaire_complete_et_remplace(monkeypatch, tmp_path):
 
 
 def test_fichier_absent_ou_illisible_laisse_les_termes_par_defaut(monkeypatch, tmp_path):
-    monkeypatch.setenv("MINBAR_GLOSSARY", str(tmp_path / "absent.json"))
+    monkeypatch.setenv("SADA_GLOSSARY", str(tmp_path / "absent.json"))
     assert len(G.load()) == len(G.default_terms())
     (tmp_path / "casse.json").write_text("{ pas du json", encoding="utf-8")
-    monkeypatch.setenv("MINBAR_GLOSSARY", str(tmp_path / "casse.json"))
+    monkeypatch.setenv("SADA_GLOSSARY", str(tmp_path / "casse.json"))
     assert len(G.load()) == len(G.default_terms())
 
 
@@ -127,7 +127,7 @@ def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
     import faster_whisper
     import wave
 
-    from minbar.pipeline import transcribe as T
+    from sada.pipeline import transcribe as T
 
     monkeypatch.setattr(faster_whisper, "WhisperModel", _Model)
     monkeypatch.setattr(T, "pick_model", lambda prefer, log: ("tiny", "cpu", "int8"))
@@ -144,7 +144,7 @@ def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
 
 
 def test_pas_de_glose_quand_l_orateur_traduit_lui_meme():
-    from minbar.pipeline import glossary as g
+    from sada.pipeline import glossary as g
     terms = [g._entry("tawba", ["taouba"], "le repentir")]
     ws = lambda s: [{"w": x, "s": 0, "e": 0} for x in s.split()]
     a = g.gloss_words(ws("la tawba, et le repentir efface"), terms)

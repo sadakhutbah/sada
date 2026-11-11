@@ -1,5 +1,5 @@
-from minbar.pipeline.arabic import normalize
-from minbar.pipeline.verses import VerseIndex, detect
+from sada.pipeline.arabic import normalize
+from sada.pipeline.verses import VerseIndex, detect
 
 VERSES = [
     {"surah": 112, "ayah": 1, "surah_name": "Al-Ikhlas", "text": "قل هو الله أحد", "fr": "Dis : Il est Allah, Unique."},
@@ -76,7 +76,7 @@ for v in VERSES_FR:
 
 def test_texte_francais_transcrit_est_detecte():
     """The reported case: the recitation transcribed in French (Whisper) yielded no verse."""
-    from minbar.pipeline.verses_fr import FrenchIndex
+    from sada.pipeline.verses_fr import FrenchIndex
 
     idx = VerseIndex(VERSES_FR)
     assert len(idx.fr) > 0 and len(idx.fr) <= len(FrenchIndex(VERSES_FR))
@@ -127,7 +127,7 @@ def test_segment_mixte_ne_double_pas_la_detection():
 
 
 def test_normalisation_francaise():
-    from minbar.pipeline.verses_fr import content_words, norm_fr
+    from sada.pipeline.verses_fr import content_words, norm_fr
 
     assert norm_fr("À QUICONQUE place sa confiance… l'Allah !") == "quiconque place confiance allah"
     assert content_words("Allah a assigné à chaque chose sa mesure") == ["assigne", "chaque", "mesure"]

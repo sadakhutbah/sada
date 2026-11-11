@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from minbar.backoffice.app import create_app
-from minbar.backoffice.internal import token
+from sada.backoffice.app import create_app
+from sada.backoffice.internal import token
 
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("MINBAR_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
+    monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
     app = create_app(db_path=tmp_path / "bo.db")
     with TestClient(app) as c:
         yield c

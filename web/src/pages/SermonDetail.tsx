@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
+import Player from "../Player";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { currentSession } from "../App";
@@ -62,8 +63,8 @@ export default function SermonDetail() {
       <div className="grid gap-3">
         <Retour />
         <div className="rounded-[10px] border border-[#efc9c4] bg-err-bg px-4.5 py-3.5">
-          <p className="m-0 font-semibold text-[#8a2219]">{t("sermons.detail.loadError")}</p>
-          <p className="m-0 mt-0.5 text-[0.88rem] text-[#8a2219]/80">{erreur}</p>
+          <p className="m-0 font-semibold text-[#7a1f20]">{t("sermons.detail.loadError")}</p>
+          <p className="m-0 mt-0.5 text-[0.88rem] text-[#7a1f20]/80">{erreur}</p>
         </div>
       </div>
     );
@@ -121,11 +122,9 @@ export default function SermonDetail() {
         <div className="grid gap-4">
           <div className="overflow-hidden rounded-[10px] bg-night">
             {d.has_video ? (
-              <video
+              <Player
                 ref={video}
-                controls
                 preload="metadata"
-                playsInline
                 onTimeUpdate={(e) => setTps(e.currentTarget.currentTime)}
                 className="block max-h-[50vh] w-full bg-night object-contain"
                 src={`/media/sermon/${k.id}.mp4`}
@@ -250,7 +249,7 @@ function Fait({ label, children }: { label: string; children: ReactNode }) {
 
 function Bandeau({ ko, children }: { ko: boolean; children: ReactNode }) {
   return (
-    <p className={`m-0 mb-2 rounded-lg px-3 py-2 text-[0.88rem] leading-snug ${ko ? "bg-err-bg text-[#8a2219]" : "bg-paper-2 text-deep"}`}>
+    <p className={`m-0 mb-2 rounded-lg px-3 py-2 text-[0.88rem] leading-snug ${ko ? "bg-err-bg text-[#7a1f20]" : "bg-paper-2 text-deep"}`}>
       {children}
     </p>
   );

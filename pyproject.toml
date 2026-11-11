@@ -1,7 +1,7 @@
 [project]
-name = "minbar-live"
+name = "sada"
 version = "0.1.0"
-description = "Minbar Live : diffusion automatique de la khutba + pipeline IA post-live"
+description = "Sadā : diffusion automatique de la khutba + pipeline IA post-live"
 requires-python = ">=3.10"
 dependencies = [
   "requests",
@@ -27,13 +27,13 @@ dependencies = [
   "wordfreq>=3.1.1",
 ]
 [tool.setuptools]
-packages = ["minbar", "minbar.pipeline", "minbar.backoffice"]
+packages = ["sada", "sada.pipeline", "sada.backoffice"]
 [tool.setuptools.package-data]
-"minbar.backoffice" = ["templates/*.html", "static/*", "static/fonts/*"]
-"minbar" = ["models/*.onnx"]
+"sada.backoffice" = ["templates/*.html", "static/*", "static/fonts/*"]
+"sada" = ["models/*.onnx"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.fastapi]
-entrypoint = "minbar.backoffice.asgi:app"
+entrypoint = "sada.backoffice.asgi:app"
 

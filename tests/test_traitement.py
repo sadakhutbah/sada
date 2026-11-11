@@ -3,8 +3,8 @@ import datetime as dt
 import json
 import subprocess
 
-from minbar import runs
-from minbar.backoffice import traitement
+from sada import runs
+from sada.backoffice import traitement
 
 
 def _mosque(tmp_path):
@@ -77,7 +77,7 @@ def test_le_pipeline_recoit_le_logo_et_les_couleurs_de_la_mosquee(tmp_path, monk
          "brand_green": "#1E7A3C", "brand_gold": "#C8A96A"}
     rid = _now_id()
     rd = _run(tmp_path, rid, [{"index": 0, "status": "done", "planned": "13:30"}])
-    from minbar.backoffice import branding
+    from sada.backoffice import branding
     monkeypatch.setattr(branding, "path_for", lambda mosque: png)
     monkeypatch.setattr(traitement.importer, "import_run", lambda c, mo, r, log=print: None)
     vus = []

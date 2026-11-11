@@ -11,7 +11,7 @@ import time
 import pytest
 from PIL import Image
 
-from minbar.gabarit_antenne import ECRANS, AntenneGabarit
+from sada.gabarit_antenne import ECRANS, AntenneGabarit
 
 
 class FauxRendu:
@@ -101,7 +101,7 @@ def test_l_entracte_se_redessine_une_fois_par_seconde(monkeypatch):
     def fausse_heure():
         return next(valeurs["entracte"])
 
-    monkeypatch.setattr("minbar.gabarit_antenne.time.strftime", lambda _f: fausse_heure())
+    monkeypatch.setattr("sada.gabarit_antenne.time.strftime", lambda _f: fausse_heure())
     a._dernieres.clear()
     a.image("entracte")
     a.image("entracte")

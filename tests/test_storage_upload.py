@@ -8,14 +8,14 @@ pytest.importorskip("fastapi")
 from test_backoffice import client, env  # noqa: E402,F401  (conftest fournit le chemin)
 
 BON = {"endpoint": "https://compte.r2.cloudflarestorage.com", "region": "auto",
-       "bucket": "minbar-rediffusions", "access_key": "AKIAEXEMPLE",
+       "bucket": "sada-rediffusions", "access_key": "AKIAEXEMPLE",
        "secret_key": "secret-tres-secret", "prefix": "rediffusions/", "enabled": "1"}
 
 
 # --- validation -------------------------------------------------------------------------------
 
 def test_valeurs_refusees():
-    from minbar.backoffice import storage
+    from sada.backoffice import storage
     cas = [("bucket", {"bucket": ""}), ("bucket", {"bucket": "Majuscule"}), ("bucket", {"bucket": "ab"}),
            ("endpoint", {"endpoint": "compte.r2.cloudflarestorage.com"}),
            ("endpoint", {"endpoint": "https://x.fr/un/chemin"}),
@@ -28,7 +28,7 @@ def test_valeurs_refusees():
 
 
 def test_valeurs_nettoyees():
-    from minbar.backoffice import storage
+    from sada.backoffice import storage
     v = storage.check("https://x.r2.cloudflarestorage.com/ ", "mon-bucket", "", "clips", "AK")
     assert v["endpoint"] == "https://x.r2.cloudflarestorage.com"
     assert v["region"] == "auto" and v["prefix"] == "clips/"
@@ -43,13 +43,13 @@ def test_enregistrement_puis_masque(env):
     r = c.ecrire("/settings/storage", BON, methode="PUT")
     assert r.status_code == 200, r.text
     v = r.json()["storage"]
-    assert v["bucket"] == "minbar-rediffusions" and v["enabled"] is True and v["configured"] is True
+    assert v["bucket"] == "sada-rediffusions" and v["enabled"] is True and v["configured"] is True
     assert v["secret_key"] == "••••••" and v["access_key"] == "AKIAEXEMPLE"
     assert c.get("/api/v1/settings").json()["storage"]["secret_key"] == "••••••"
 
 
 def test_masque_renvoye_garde_le_secret(env):
-    from minbar.backoffice import storage
+    from sada.backoffice import storage
     c = client(env, "admin")
     c.ecrire("/settings/storage", BON, methode="PUT")
     c.ecrire("/settings/storage", {**BON, "secret_key": "••••••", "bucket": "autre-bucket"}, methode="PUT")
@@ -59,7 +59,7 @@ def test_masque_renvoye_garde_le_secret(env):
 
 def test_l_envoi_est_une_option_pas_le_defaut(env):
     """Régler un compartiment ne suffit pas : sans case cochée, rien ne part."""
-    from minbar.backoffice import storage
+    from sada.backoffice import storage
     c = client(env, "admin")
     sans_case = {k: v for k, v in BON.items() if k != "enabled"}
     v = c.ecrire("/settings/storage", sans_case, methode="PUT").json()["storage"]
@@ -72,7 +72,7 @@ def test_l_envoi_est_une_option_pas_le_defaut(env):
 
 
 def test_compartiment_desactive_n_est_pas_lu_par_le_moteur(env):
-    from minbar.backoffice import storage
+    from sada.backoffice import storage
     c = client(env, "admin")
     c.ecrire("/settings/storage", {**BON, "enabled": "0"}, methode="PUT")
     assert storage.effective(env["conn"], env["mid"]) is None
@@ -111,7 +111,7 @@ class FauxClient:
 
 
 def test_envoi_et_index(tmp_path, monkeypatch):
-    from minbar import upload
+    from sada import upload
     fichier = tmp_path / "live_20261110_130000.mkv"
     fichier.write_bytes(b"x" * 2048)
     faux = FauxClient()
@@ -131,7 +131,7 @@ def test_envoi_et_index(tmp_path, monkeypatch):
 
 
 def test_index_survit_au_redemarrage(tmp_path):
-    from minbar import upload
+    from sada import upload
     f = tmp_path / "live_a.mkv"
     f.write_bytes(b"z" * 10)
     idx = upload.Index(tmp_path / "uploads.json")
@@ -140,7 +140,7 @@ def test_index_survit_au_redemarrage(tmp_path):
 
 
 def test_fichier_absent_ou_vide_est_ignore(tmp_path):
-    from minbar import upload
+    from sada import upload
     vide = tmp_path / "live_vide.mkv"
     vide.write_bytes(b"")
     faux = FauxClient()
@@ -151,7 +151,7 @@ def test_fichier_absent_ou_vide_est_ignore(tmp_path):
 
 
 def test_echec_est_raconte_sans_lever(tmp_path):
-    from minbar import upload
+    from sada import upload
     f = tmp_path / "live_b.mkv"
     f.write_bytes(b"k" * 10)
     dits = []
@@ -162,13 +162,13 @@ def test_echec_est_raconte_sans_lever(tmp_path):
 
 
 def test_uploader_sans_cible_n_envoie_rien(tmp_path):
-    from minbar import upload
+    from sada import upload
     up = upload.Uploader(None, index=upload.Index(tmp_path / "u.json"))
     assert up.actif is False and up.envoyer([tmp_path / "x.mkv"]) is None
 
 
 def test_uploader_envoie_en_tache_de_fond(tmp_path, monkeypatch):
-    from minbar import upload
+    from sada import upload
     f = tmp_path / "live_c.mkv"
     f.write_bytes(b"c" * 100)
     faux = FauxClient()
@@ -180,7 +180,7 @@ def test_uploader_envoie_en_tache_de_fond(tmp_path, monkeypatch):
 
 
 def test_repli_quand_le_back_office_repond_vide_ou_tombe():
-    from minbar import upload
+    from sada import upload
     assert upload.from_backoffice("", 0) is None
     assert upload.from_backoffice("http://127.0.0.1:1", 8088, fetch=lambda u, t: {"target": None}) is None
 
@@ -198,8 +198,8 @@ def test_repli_quand_le_back_office_repond_vide_ou_tombe():
 # --- bouton Tester ----------------------------------------------------------------------------
 
 def test_sonde_neutre(env, monkeypatch):
-    from minbar import upload
-    from minbar.backoffice import storage
+    from sada import upload
+    from sada.backoffice import storage
     faux = FauxClient()
     monkeypatch.setattr(upload, "client", lambda target: faux)
     ok, detail = storage.probe({"bucket": "b", "prefix": "r/", "access_key": "a", "secret_key": "s"})
@@ -207,8 +207,8 @@ def test_sonde_neutre(env, monkeypatch):
 
 
 def test_sonde_refus_lisible(env, monkeypatch):
-    from minbar import upload
-    from minbar.backoffice import storage
+    from sada import upload
+    from sada.backoffice import storage
     panne = Exception("An error occurred (SignatureDoesNotMatch) when calling PutObject")
     monkeypatch.setattr(upload, "client", lambda target: FauxClient(panne))
     ok, detail = storage.probe({"bucket": "b", "prefix": "r/", "access_key": "a", "secret_key": "s"})
@@ -216,7 +216,7 @@ def test_sonde_refus_lisible(env, monkeypatch):
 
 
 def test_bouton_tester_utilise_le_secret_enregistre(env, monkeypatch):
-    from minbar import upload
+    from sada import upload
     faux = FauxClient()
     monkeypatch.setattr(upload, "client", lambda target: faux)
     c = client(env, "admin")
@@ -228,9 +228,9 @@ def test_bouton_tester_utilise_le_secret_enregistre(env, monkeypatch):
 # --- endpoint interne -------------------------------------------------------------------------
 
 def test_le_moteur_recoit_le_reglage_en_clair(env):
-    from minbar.backoffice import internal
+    from sada.backoffice import internal
     c = client(env, "admin")
     c.ecrire("/settings/storage", BON, methode="PUT")
     assert c.get("/api/v1/internal/storage").status_code == 403
     d = c.get("/api/v1/internal/storage", headers={internal.HEADER: internal.token()}).json()
-    assert d["target"]["secret_key"] == "secret-tres-secret" and d["target"]["bucket"] == "minbar-rediffusions"
+    assert d["target"]["secret_key"] == "secret-tres-secret" and d["target"]["bucket"] == "sada-rediffusions"

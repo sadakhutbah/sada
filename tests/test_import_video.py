@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from minbar import runs
-from minbar.backoffice import importer, traitement
+from sada import runs
+from sada.backoffice import importer, traitement
 from test_backoffice import client
 
 URL = "/api/v1/imports/video"

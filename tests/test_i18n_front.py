@@ -11,7 +11,7 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parents[1]
 I18N = RACINE / "web" / "src" / "i18n.ts"
 SRC = RACINE / "web" / "src"
-PIPELINE = RACINE / "minbar" / "pipeline"
+PIPELINE = RACINE / "sada" / "pipeline"
 
 
 def _objet(texte: str, i: int) -> tuple[dict, int]:

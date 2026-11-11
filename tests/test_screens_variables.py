@@ -13,7 +13,7 @@ ARABE = "خطبة الجمعة"
 
 
 def test_aucun_texte_arabe_par_defaut(env):
-    from minbar.backoffice import variables_ecran
+    from sada.backoffice import variables_ecran
 
     vides = {slot: "" for slot in variables_ecran.SLOTS}
     assert variables_ecran.lire(env["conn"], env["mid"]) == vides
@@ -22,7 +22,7 @@ def test_aucun_texte_arabe_par_defaut(env):
 
 
 def test_enregistrement_et_relecture(env):
-    from minbar.backoffice import db, variables_ecran
+    from sada.backoffice import db, variables_ecran
 
     c = client(env, "admin")
     r = c.ecrire("/settings/screens/variables",
@@ -43,7 +43,7 @@ def test_enregistrement_et_relecture(env):
 
 
 def test_borne_de_longueur(env):
-    from minbar.backoffice import variables_ecran
+    from sada.backoffice import variables_ecran
 
     c = client(env, "admin")
     r = c.ecrire("/settings/screens/variables",
@@ -57,7 +57,7 @@ def test_borne_de_longueur(env):
 
 
 def test_balises_html_refusees(env):
-    from minbar.backoffice import variables_ecran
+    from sada.backoffice import variables_ecran
 
     c = client(env, "admin")
     for texte in ("<b>خطبة</b>", "<script>alert(1)</script>", "a > b"):
@@ -70,7 +70,7 @@ def test_balises_html_refusees(env):
 
 
 def test_isole_par_mosquee(env):
-    from minbar.backoffice import db, variables_ecran
+    from sada.backoffice import db, variables_ecran
 
     autre = db.create_mosque(env["conn"], "autre-mosquee", "Autre Mosquée")
     variables_ecran.enregistrer(env["conn"], autre, {"arabe_priere": "صلاة"})
@@ -94,7 +94,7 @@ def test_reserve_a_l_admin_et_csrf(env):
 
 
 def test_le_moteur_recoit_logo_nom_et_lignes_arabes(env):
-    from minbar.backoffice import db, internal, variables_ecran
+    from sada.backoffice import db, internal, variables_ecran
 
     c = client(env, "admin")
     c.ecrire("/settings/screens/variables", {"variables": {"arabe_khutba": ARABE}}, methode="PUT")
@@ -114,7 +114,7 @@ def test_le_moteur_recoit_logo_nom_et_lignes_arabes(env):
 
 
 def test_enregistrer_les_ecrans_ne_touche_pas_aux_textes_communs(env):
-    from minbar.backoffice import internal, screens, variables_ecran
+    from sada.backoffice import internal, screens, variables_ecran
 
     c = client(env, "admin")
     c.ecrire("/settings/screens/variables", {"variables": {"arabe_janaza": "صلاة الجنازة"}}, methode="PUT")

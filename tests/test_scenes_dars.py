@@ -3,10 +3,10 @@ import datetime as dt
 
 from PIL import ImageChops
 
-from minbar.config import Config
-from minbar.events import EventInstance
-from minbar.scenes import SCENES, Moment, SceneRenderer
-from minbar.state import SCENE_OF
+from sada.config import Config
+from sada.events import EventInstance
+from sada.scenes import SCENES, Moment, SceneRenderer
+from sada.state import SCENE_OF
 
 NOW = dt.datetime(2026, 11, 10, 19, 10)
 EV = {"kind": "dars", "title": "Tafsir de la sourate Al-Kahf", "speaker": "Imam Abdallah",
@@ -54,7 +54,7 @@ def test_entracte_annonce_un_prochain_cours():
 
 def test_compte_a_rebours_lisible_quelle_que_soit_l_echeance():
     """Un « 4694:43 » ne veut rien dire : au-delà d'une heure, on compte en heures puis en jours."""
-    from minbar.scenes import _countdown
+    from sada.scenes import _countdown
     assert _countdown(43) == "00:43"
     assert _countdown(754) == "12:34"
     assert _countdown(3 * 3600 + 5 * 60) == "3 h 05"

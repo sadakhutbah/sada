@@ -3,27 +3,27 @@
 /* Charte reprise telle quelle du back-office en gabarits : papier, encre verte, feuille, rouge direct.
    Instrument Serif + Source Sans 3 + Amiri. */
 @theme {
-  --color-paper: #faf9f4;
-  --color-paper-2: #f1f4ea;
-  --color-ink: #17261c;
-  --color-muted: #5a695e;
-  --color-line: #d8e0d0;
-  --color-leaf: #8dc63f;
-  --color-leaf-2: #6dae35;
-  --color-green: #2e8b3a;
-  --color-deep: #1e6b35;
-  --color-deeper: #154d27;
-  --color-night: #0f2a19;
-  --color-live: #d7372c;
+  --color-paper: #f7f3ea;
+  --color-paper-2: #efe8d8;
+  --color-ink: #12261e;
+  --color-muted: #5e6b63;
+  --color-line: #ded5c1;
+  --color-leaf: #e2c27a;
+  --color-leaf-2: #cfa95a;
+  --color-green: #3d6b57;
+  --color-deep: #1c3a2e;
+  --color-deeper: #12261e;
+  --color-night: #0b1a14;
+  --color-live: #9e2a2b;
   --color-warn: #b7791f;
   --color-warn-bg: #fbf3e2;
   --color-err-bg: #fbe9e7;
-  --color-night-ink: #e7efe0;
-  --color-night-muted: #a9bba9;
-  --color-night-link: #d5e2cf;
-  --color-dot-off: #6b7c6e;
+  --color-night-ink: #f0ead9;
+  --color-night-muted: #b3b8a6;
+  --color-night-link: #e8dcc0;
+  --color-dot-off: #6b7a70;
   --color-live-off: #f3c7c2;
-  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-serif: "EB Garamond", "Instrument Serif", Georgia, "Times New Roman", serif;
   --font-sans: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-arabic: "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif;
 }

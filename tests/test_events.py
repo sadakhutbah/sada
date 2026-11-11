@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from minbar import events as ev
-from minbar.state import Machine, MachineParams
+from sada import events as ev
+from sada.state import Machine, MachineParams
 
 
 def D(y, m, d):

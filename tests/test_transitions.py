@@ -4,10 +4,10 @@ from pathlib import Path
 
 from PIL import ImageChops
 
-from minbar import transitions as tr
-from minbar.config import Config
-from minbar.encoder import Encoder
-from minbar.scenes import SCENES, Moment, SceneRenderer
+from sada import transitions as tr
+from sada.config import Config
+from sada.encoder import Encoder
+from sada.scenes import SCENES, Moment, SceneRenderer
 
 
 def test_plan_curves():
@@ -57,8 +57,8 @@ def test_encoder_diffuse_vers_plusieurs_destinations(tmp_path):
 
 
 def test_encoder_urls_lues_dans_l_environnement(tmp_path, monkeypatch):
-    """MINBAR_RTMP_URLS: comma-separated, one destination per key, single rule of precedence."""
-    monkeypatch.setenv("MINBAR_RTMP_URLS", "rtmps://a/1, rtmps://b/2")
+    """SADA_RTMP_URLS: comma-separated, one destination per key, single rule of precedence."""
+    monkeypatch.setenv("SADA_RTMP_URLS", "rtmps://a/1, rtmps://b/2")
     cfg = Config.load(None)
     assert cfg.rtmp_urls == ["rtmps://a/1", "rtmps://b/2"]
     assert Config.load(None, rtmp_urls=["rtmps://c/3"]).rtmp_urls == ["rtmps://c/3"]   # flag wins

@@ -10,7 +10,7 @@ from collections import namedtuple
 
 import pytest
 
-from minbar import installer as inst
+from sada import installer as inst
 
 
 def test_un_examen_ne_modifie_rien(tmp_path, monkeypatch):
@@ -29,7 +29,7 @@ def test_une_machine_complete_sort_en_succes():
 
 
 def test_le_navigateur_absent_donne_la_commande_qui_le_prend(tmp_path, monkeypatch):
-    from minbar.backoffice import template_render as tr
+    from sada.backoffice import template_render as tr
 
     monkeypatch.setattr(tr, "EMBEDDED", tmp_path / "vide")
     monkeypatch.setattr(tr, "CHROMIUM_CANDIDATES", ())

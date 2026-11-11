@@ -1,8 +1,8 @@
 """Live commands: all those of the state machine are exposed, with validated parameters."""
 import pytest
 
-from minbar.backoffice import live
-from minbar.state import EXTEND_MINUTES, PICKABLE_SCENES
+from sada.backoffice import live
+from sada.state import EXTEND_MINUTES, PICKABLE_SCENES
 
 MOSQUE = {"orchestrator_url": "http://127.0.0.1:9"}
 

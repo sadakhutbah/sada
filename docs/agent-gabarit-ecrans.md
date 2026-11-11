@@ -1,4 +1,4 @@
-# Écrans Minbar Live — gabarit HTML
+# Écrans Sadā — gabarit HTML
 
 Ce fichier est fait pour être **donné tel quel à un assistant conversationnel** (ChatGPT, Claude,
 Gemini, Le Chat, DeepSeek…). L'assistant vous rend un fichier HTML unique : le gabarit des écrans
@@ -15,7 +15,7 @@ questions, et récupérez le fichier.
 ## Instructions pour l'assistant
 
 Tu es un assistant qui fabrique, pour une mosquée, le gabarit HTML des écrans pleins de son direct.
-Tu produis **un seul fichier HTML autonome**, que la mosquée importera dans Minbar Live. Ce fichier
+Tu produis **un seul fichier HTML autonome**, que la mosquée importera dans Sadā. Ce fichier
 est ce qui s'affiche à l'antenne : le moteur ne fait que le rendre, à 1280 × 720, à chaque changement
 d'écran. Rien n'est recomposé à ta place, donc la mise en page compte autant que le texte.
 
@@ -127,7 +127,7 @@ Si une des valeurs est vide, la ligne concernée disparaît à l'antenne. Ne met
 
 Le back-office lit le fichier pour savoir quels textes remplacer. Le contrat est strict :
 
-- une seule balise `<script type="application/json" id="minbar-screens">` en fin de document ;
+- une seule balise `<script type="application/json" id="sada-screens">` en fin de document ;
 - elle contient un objet JSON valide ;
 - les clés sont **exactement** `avant`, `priere`, `entracte`, `termine`, `janaza`, `dars_fin` (les six,
   même si certains textes sont vides) ;
@@ -139,7 +139,7 @@ Le back-office lit le fichier pour savoir quels textes remplacer. Le contrat est
 Forme exacte attendue :
 
 ```html
-<script type="application/json" id="minbar-screens">
+<script type="application/json" id="sada-screens">
 {
   "avant": {
     "id":    {"eyebrow": "#av-eyebrow", "title": "#av-title", "sub": "#av-sub", "foot": "#av-foot"},
@@ -172,7 +172,7 @@ En CSS : `.ecran { display: none } .ecran[data-actif] { display: flex }`. Pour r
 écran pendant la conception, la mosquée n'a qu'à déplacer `data-actif`. Dans l'aperçu du back-office,
 le fichier est montré tel quel : c'est l'écran marqué `data-actif` qui s'affiche.
 
-C'est **ce fichier** qui est diffusé. À chaque changement d'écran, Minbar Live le rend à 1280 × 720
+C'est **ce fichier** qui est diffusé. À chaque changement d'écran, Sadā le rend à 1280 × 720
 et c'est cette image qui part à l'antenne : couleurs, police et composition sont les tiennes. Deux
 conséquences à garder en tête — la page doit rester lisible à cette taille exacte, et rien ne doit
 dépendre d'une animation ou d'un script (ils ne sont pas exécutés).
@@ -199,8 +199,8 @@ Un seul bloc de code contenant tout le fichier, prêt à enregistrer sous `ecran
 ou trois phrases : ce que tu as choisi, ce qu'il faut remplacer (logo, textes d'exemple), et comment
 vérifier l'écran (ouvrir le fichier dans un navigateur).
 
-Ensuite, dans Minbar Live : Réglages → Écrans → **« Importer un gabarit »**, choisir ce fichier.
-L'import le vérifie, le conserve comme référence et reprend les textes du bloc `#minbar-screens` ;
+Ensuite, dans Sadā : Réglages → Écrans → **« Importer un gabarit »**, choisir ce fichier.
+L'import le vérifie, le conserve comme référence et reprend les textes du bloc `#sada-screens` ;
 il signale ce qu'il ignore et pourquoi (par exemple `avant.title`, que le moteur ne connaît pas).
 Rappelle-le à la mosquée : c'est ton fichier qui s'affiche à l'antenne, pas une recomposition.
 
@@ -260,7 +260,7 @@ Ce n'est pas à recopier tel quel : c'est le squelette minimal que le back-offic
 
 <!-- … entracte, termine, janaza, dars_fin sur le même modèle … -->
 
-<script type="application/json" id="minbar-screens">
+<script type="application/json" id="sada-screens">
 {
   "avant": {
     "id": {"eyebrow": "#av-eyebrow", "title": "#av-title", "sub": "#av-sub", "foot": "#av-foot"},

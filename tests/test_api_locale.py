@@ -1,4 +1,4 @@
-"""Local orchestrator API (minbar.api): JSON only, commands and status."""
+"""Local orchestrator API (sada.api): JSON only, commands and status."""
 import json
 import socket
 import urllib.error
@@ -18,7 +18,7 @@ class FakeOrch:
 
 
 def _serve(token=""):
-    from minbar.api import make_server
+    from sada.api import make_server
     orch = FakeOrch()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))

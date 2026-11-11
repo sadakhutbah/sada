@@ -1,7 +1,7 @@
 """Clip manifest: runs written before the current format can still be imported."""
 import json
 
-from minbar.pipeline.output import SessionOutput, clip_entry
+from sada.pipeline.output import SessionOutput, clip_entry
 
 
 def test_old_manifest_reads_as_current(tmp_path):

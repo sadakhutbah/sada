@@ -1,8 +1,8 @@
 """Back-office and dars: labels, column migration, clip caption."""
 import sqlite3
 
-from minbar.backoffice import db, publish
-from minbar.backoffice.importer import khutba_label
+from sada.backoffice import db, publish
+from sada.backoffice.importer import khutba_label
 
 MOSQUE = {"name": "Mosquée Exemple", "clip_title": "Khutba du vendredi"}
 

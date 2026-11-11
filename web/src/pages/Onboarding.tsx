@@ -200,7 +200,7 @@ export default function Onboarding() {
         <div className="grid gap-2 sm:grid-cols-[1fr_9rem]">
           <Field label={t("settings.replayBucket")}>
             <input className={`${inputClass} font-mono text-[0.85rem]`} value={depot.bucket} spellCheck={false}
-              placeholder="minbar-rediffusions"
+              placeholder="sada-rediffusions"
               onChange={(e) => { setDepot((d) => ({ ...d, bucket: e.target.value })); setEssaiDepot(null); }} />
           </Field>
           <Field label={t("settings.replayRegion")}>
@@ -268,7 +268,7 @@ export default function Onboarding() {
       {etape === 2 && rediffusions}
       {etape === 3 && fin}
 
-      {erreur && <p className="m-0 rounded-lg bg-err-bg px-3 py-2 text-[0.9rem] text-[#8a2219]">{erreur}</p>}
+      {erreur && <p className="m-0 rounded-lg bg-err-bg px-3 py-2 text-[0.9rem] text-[#7a1f20]">{erreur}</p>}
 
       {etape < 3 && (
         <div className="flex items-center gap-2">

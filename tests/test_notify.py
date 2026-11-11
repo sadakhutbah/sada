@@ -1,8 +1,8 @@
 """Notifications to the imam: messages, destinations, network failure with no consequence on the live."""
 import datetime as dt
 
-from minbar.notify import Notifier, message_for, should_send
-from minbar.state import Machine, MachineParams, State
+from sada.notify import Notifier, message_for, should_send
+from sada.state import Machine, MachineParams, State
 
 D = dt.date(2026, 11, 10)
 META = {"kind": "dars", "title": "Tafsir Al-Kahf", "speaker": "Imam Abdallah"}

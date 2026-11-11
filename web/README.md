@@ -15,7 +15,7 @@ Les composants communs (carte, pastille, sélecteur segmenté, champ, bouton) so
     npm run dev      # http://127.0.0.1:5173/ — relais vers le back-office sur 8774
     npm run build    # écrit web/dist, servi par le back-office à la racine
 
-Le back-office se lance en parallèle : `python -m minbar.backoffice --db <base> serve --port 8774`.
+Le back-office se lance en parallèle : `python -m sada.backoffice --db <base> serve --port 8774`.
 
 ## Règles à tenir
 

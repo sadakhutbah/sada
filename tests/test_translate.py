@@ -1,7 +1,7 @@
 """Translation cache: only missing segments go back to the model, cached corrections survive."""
 import json
 
-from minbar.pipeline import translate
+from sada.pipeline import translate
 
 SEGS = [{"start": 0.0, "end": 1.0, "text": "الحمد لله رب العالمين"},
         {"start": 1.0, "end": 2.0, "text": "الله أكبر كبيرا والحمد لله كثيرا"}]

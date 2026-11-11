@@ -1,5 +1,5 @@
-"""Sélection des extraits (minbar.pipeline.select) : candidats par le code, notation, sélection espacée."""
-from minbar.pipeline import select as S
+"""Sélection des extraits (sada.pipeline.select) : candidats par le code, notation, sélection espacée."""
+from sada.pipeline import select as S
 
 
 def seg(start, end, text):

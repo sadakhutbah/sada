@@ -65,7 +65,7 @@ def test_forme_des_reponses(env):
 
 def test_les_clips_arrivent_par_pages(env):
     """Three hundred clips must not be rendered at once: the page asks for twenty, then follows."""
-    from minbar.backoffice import db
+    from sada.backoffice import db
     conn, kid, mid = env["conn"], env["kid"], env["mid"]
     for i in range(3, 28):
         conn.execute("""INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, end, file_path,
@@ -160,7 +160,7 @@ def test_filtre_par_mois(env):
 
 def test_commandes_live_exposees_et_validees(env, monkeypatch):
     """The dashboard lists all commands; a value outside the list is refused before sending."""
-    from minbar.backoffice import live
+    from sada.backoffice import live
     envoyees = []
     live._caches.clear()                # the status cache is global: we leave nothing to the other tests
     monkeypatch.setattr(live, "_call", lambda m, meth, chemin, params=None, timeout=3.0:
@@ -182,7 +182,7 @@ def test_commandes_live_exposees_et_validees(env, monkeypatch):
 
 def test_le_tableau_de_bord_n_envoie_aucun_texte_d_interface(env):
     """Contract: command keys and choice values only, plus a danger flag. Labels are the front's job."""
-    from minbar.state import EXTEND_MINUTES, PICKABLE_SCENES
+    from sada.state import EXTEND_MINUTES, PICKABLE_SCENES
     c = client(env, "admin")
     d = c.get("/api/v1/dashboard").json()
     assert "state_label" not in d["live"] and "sessions" not in d["live"]

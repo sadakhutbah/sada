@@ -1,6 +1,6 @@
 def test_le_resume_ne_demande_plus_les_extraits(monkeypatch):
     """Le résumé ne porte plus les bornes des clips : la sélection est faite à part (select.py)."""
-    from minbar.pipeline import notes as N
+    from sada.pipeline import notes as N
     vu = []
     monkeypatch.setattr(N.llm, "ask_json", lambda prompt, timeout, log: vu.append(prompt) or {"points": []})
     segs = [{"start": 0.0, "end": 6.0, "text": "Bismillah, mes freres."}]
@@ -15,7 +15,7 @@ def test_le_resume_ne_demande_plus_les_extraits(monkeypatch):
 
 def test_transcription_allegee_sans_arabe_ni_phonetique():
     """Lignes arabes retirées, suites phonétiques retirées, la traduction française reste."""
-    from minbar.pipeline.notes import lighten_segments
+    from sada.pipeline.notes import lighten_segments
     segs = [
         {"start": 0.0, "end": 4.0, "text": "أيها المسلمون اتقوا الله"},
         {"start": 4.0, "end": 8.0, "text": "qala anna inna qawluhu, il oublie."},
