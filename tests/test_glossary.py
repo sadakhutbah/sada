@@ -141,3 +141,13 @@ def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
     hw = _Model.last.call["hotwords"]
     assert hw and "tawba" in hw and "khutba" in hw
     assert res["hotwords"] is True and res["segments"][0]["text"] == "La tawba est un retour."
+
+
+def test_pas_de_glose_quand_l_orateur_traduit_lui_meme():
+    from minbar.pipeline import glossary as g
+    terms = [g._entry("tawba", ["taouba"], "le repentir")]
+    ws = lambda s: [{"w": x, "s": 0, "e": 0} for x in s.split()]
+    a = g.gloss_words(ws("la tawba, et le repentir efface"), terms)
+    assert not any(w.get("gloss") for w in a)
+    b = g.gloss_words(ws("la tawba efface les péchés"), terms)
+    assert any(w.get("gloss") for w in b)

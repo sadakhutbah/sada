@@ -172,6 +172,24 @@ def _index(terms: list[dict]) -> dict[str, dict]:
 MAX_TERM_WORDS = 5
 
 
+SELF_TRANSLATION_WINDOW = 12   # mots suivant le terme où l'orateur donne souvent sa traduction
+_STOP = {"le", "la", "les", "l", "de", "des", "du", "d", "un", "une", "et", "ou", "a", "au", "aux", "en"}
+
+
+def _stems(text: str) -> set[str]:
+    words = re.findall(r"[a-zà-öø-ÿ]+", text.lower())
+    return {w[:6] for w in words if w not in _STOP and len(w) >= 3}
+
+
+def _translated_nearby(fr: str, words: list[dict], start: int) -> bool:
+    """Vrai si un mot plein de la traduction (« repentir ») apparaît juste après le terme."""
+    want = _stems(fr)
+    if not want:
+        return False
+    near = " ".join(str(w.get("w") or "") for w in words[start:start + SELF_TRANSLATION_WINDOW])
+    return bool(want & _stems(near))
+
+
 def gloss_words(words: list[dict], terms: list[dict] | None = None) -> list[dict]:
     """Ajoute la traduction d'un terme à sa première occurrence dans le clip.
 
@@ -192,6 +210,9 @@ def gloss_words(words: list[dict], terms: list[dict] | None = None) -> list[dict
             if not e or e["term"] in used:
                 continue
             used.add(e["term"])
+            if _translated_nearby(e["fr"], out, i + n):
+                i += n - 1   # l'orateur traduit lui-même juste après : pas de glose en double
+                break
             out[i + n - 1]["gloss"] = f" ({e['fr']})"   # affichée par `display`, hors découpage des pages
             i += n - 1
             break
