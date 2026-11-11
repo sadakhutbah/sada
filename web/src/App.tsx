@@ -76,6 +76,10 @@ export default function App() {
     setSession(null);
   };
 
+  // Le nom du compte et son rôle portent souvent le même mot (« Administrateur ») : le rôle n'est
+  // affiché que s'il apprend quelque chose.
+  const roleLabel = t(`role.${session.user.role}`, { defaultValue: session.user.role_label });
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="bg-night text-night-ink shadow-[0_1px_0_rgba(0,0,0,0.2)]">
@@ -100,6 +104,7 @@ export default function App() {
             {lien("/settings", "settings", "admin")}
           </nav>
           <div className="flex shrink-0 items-center gap-2.5 border-l border-white/15 pl-3">
+
             <select
               aria-label="Langue"
               value={i18n.language}
@@ -111,7 +116,9 @@ export default function App() {
               ))}
             </select>
             <span className="text-[0.85rem] whitespace-nowrap text-night-link">{session.user.name}</span>
-            <span className="text-[0.78rem] whitespace-nowrap text-night-muted">{t(`role.${session.user.role}`, { defaultValue: session.user.role_label })}</span>
+            {roleLabel !== session.user.name && (
+              <span className="text-[0.78rem] whitespace-nowrap text-night-muted">{roleLabel}</span>
+            )}
             <a
               href="/"
               onClick={deconnexion}

@@ -164,7 +164,7 @@ export default function SermonDetail() {
                       </span>
                       <span className="min-w-0">
                         <span className="block font-semibold text-deep first-letter:uppercase">
-                          {String(t(`clips.kinds.${c.kind}`, { defaultValue: c.kind }))}
+                          {t(`clips.kinds.${c.kind}`)}
                         </span>
                         <span className="block text-[0.84rem] tabular-nums text-muted">
                           {mmss(c.start)}–{mmss(c.end)} · {t("clips.detail.version", { n: c.version })}

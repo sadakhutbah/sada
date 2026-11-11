@@ -85,7 +85,7 @@ const fr = {
     shown: "{{n}} sur {{total}} clips", loadMore: "Afficher les {{n}} suivants",
     statuses: { a_valider: "À valider", valide: "Validé", rejete: "Rejeté", publie: "Publié" },
     statusTabs: { a_valider: "À valider", valide: "Validés", publie: "Publiés", rejete: "Rejetés" },
-    kinds: { verset: "verset", rappel: "rappel", citation: "citation", passage: "passage", conclusion: "conclusion" },
+    kinds: { verset: "verset", rappel: "rappel", citation: "citation", passage: "passage", conclusion: "conclusion", modele: "choix du modèle" },
     detail: {
       extract: "Extrait {{de}}–{{a}} de la khutba ({{s}} s)",
       version: "version {{n}}",
@@ -394,7 +394,7 @@ const en: typeof fr = {
     shown: "{{n}} of {{total}} clips", loadMore: "Show the next {{n}}",
     statuses: { a_valider: "To review", valide: "Approved", rejete: "Rejected", publie: "Published" },
     statusTabs: { a_valider: "To review", valide: "Approved", publie: "Published", rejete: "Rejected" },
-    kinds: { verset: "verse", rappel: "reminder", citation: "quote", passage: "passage", conclusion: "conclusion" },
+    kinds: { verset: "verse", rappel: "reminder", citation: "quote", passage: "passage", conclusion: "conclusion", modele: "model's pick" },
     detail: {
       extract: "Excerpt {{de}}–{{a}} of the sermon ({{s}} s)",
       version: "version {{n}}",
@@ -641,6 +641,13 @@ i18n.use(initReactI18next).init({
   lng: choisi ?? "fr",
   fallbackLng: "fr",
   interpolation: { escapeValue: false },
+  // Repli global : une clé absente des deux langues ne s'affiche jamais telle quelle
+  // (« clips.kinds.modele ») ; on rend le repli local s'il existe, sinon le dernier segment lisible.
+  // En développement, la clé manquante est signalée en console pour qu'on la traduise.
+  parseMissingKeyHandler: (cle: string, repli?: string) => {
+    if (import.meta.env.DEV) console.warn(`i18n : clé manquante « ${cle} »`);
+    return repli ?? (cle.split(".").pop() ?? "").replace(/_/g, " ");
+  },
 });
 
 export function setLanguage(code: string) {
