@@ -9,9 +9,10 @@ from test_backoffice import client, env  # noqa: E402,F401  (conftest provides t
 def test_les_sections_sont_annoncees(env):
     d = client(env, "admin").get("/api/v1/settings").json()
     assert list(d["sections"]) == ["mosque", "logo", "screens", "live", "replays", "folders", "model",
-                                   "connectors", "access"]
+                                   "processing", "connectors", "access"]
     assert d["mosque"]["name"] == "Mosquée Exemple" and d["mosque"]["slug"] == "ma-mosquee"
     assert d["imams"] and d["model"]["label"]
+    assert d["processing"]["clips"] >= 1 and d["processing"]["max"] >= d["processing"]["min"]
 
 
 def test_reglages_reserves_a_l_admin(env):

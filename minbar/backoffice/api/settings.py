@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, Response
 
 from ... import notify
 from ...pipeline import llm
+from ...pipeline import settings as pipeline_settings
 from .. import auth, branding, db, destinations, dirs as dirs_mod, instance, live_input, publish, storage
 from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
@@ -17,7 +18,8 @@ from .common import _mosque, _notification_settings, _ok
 
 router = APIRouter()
 
-SECTIONS = ("mosque", "logo", "screens", "live", "replays", "folders", "model", "connectors", "access")
+SECTIONS = ("mosque", "logo", "screens", "live", "replays", "folders", "model", "processing",
+            "connectors", "access")
 
 
 def _host(ctx) -> str:
@@ -33,6 +35,15 @@ def _model_view() -> dict:
             "protocol": cfg.get("protocol", ""), "has_key": bool(cfg.get("key")),
             "effective": {"url": eff.url, "model": eff.model, "protocol": eff.protocol},
             "label": eff.label()}
+
+
+def _processing_view() -> dict:
+    """Traitement d'après-direct: what is saved, the bounds, and what the pipeline would use."""
+    saved = pipeline_settings.config().get("clips")
+    return {"clips": pipeline_settings.borne(saved if saved not in (None, "") else pipeline_settings.DEFAULT_CLIPS),
+            "effective": pipeline_settings.clip_count(),
+            "default": pipeline_settings.DEFAULT_CLIPS,
+            "min": pipeline_settings.MIN_CLIPS, "max": pipeline_settings.MAX_CLIPS}
 
 
 @router.get("/settings")
@@ -66,7 +77,8 @@ def settings(ctx: CtxDep):
             # Lignes arabes du gabarit : saisies par la mosquée, jamais fournies par le code.
             "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
             "gabarit": gabarit_mod.view(ctx.mosque),
-            "model": _model_view()}
+            "model": _model_view(),
+            "processing": _processing_view()}
 
 
 @router.put("/settings/instance")
@@ -136,6 +148,21 @@ async def model_save(ctx: CtxDep):
              actif=enabled, url=url, modele=model, protocole=proto)
     return _ok("Modèle de langage enregistré. Le pipeline l'applique au prochain lancement (les variables "
                "d'environnement restent prioritaires).", label=llm.settings().label())
+
+
+@router.put("/settings/processing")
+async def processing_save(ctx: CtxDep):
+    """Nombre d'extraits par khutba: écrit dans le fichier que le pipeline lit à son démarrage."""
+    f = await ctx.body()
+    ctx.require("admin")
+    try:
+        n = pipeline_settings.save_config(f.get("clips"))
+    except (TypeError, ValueError) as e:
+        raise Invalid(f"Nombre d'extraits invalide (de {pipeline_settings.MIN_CLIPS} à "
+                      f"{pipeline_settings.MAX_CLIPS}).") from e
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "traitement.configure", "mosque", ctx.mosque["id"],
+             ip=ctx.ip, extraits=n)
+    return _ok("Traitement enregistré : le pipeline l'applique au prochain lancement.", clips=n)
 
 
 @router.put("/settings/live")

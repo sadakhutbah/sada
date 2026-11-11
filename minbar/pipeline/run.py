@@ -18,6 +18,7 @@ from . import clips as clipmod
 from . import notes as notemod
 from . import transcribe as tr
 from . import llm, translate as trmod
+from . import settings as reglages
 from .output import SessionOutput, clip_entry
 from .quran import load_verses
 from .verses import VerseIndex, detect, to_dicts
@@ -104,6 +105,11 @@ def _clip_video(clean: str | None) -> str | None:
     return None
 
 
+def nclips_option(a) -> int:
+    """Extraits par khutba: --no-clips, then --clips, then the setting saved in the back office."""
+    return 0 if a.no_clips else reglages.clip_count(a.clips)
+
+
 def apply_llm_options(a) -> None:
     """The notes/translate modules read the environment: the CLI options fill it once and for all."""
     for env_name, val in (("MINBAR_LLM_URL", a.llm_url), ("MINBAR_LLM_MODEL", a.llm_model),
@@ -132,7 +138,8 @@ def main(argv=None):
     ap.add_argument("--llm-protocol", default=os.environ.get("MINBAR_LLM_PROTOCOL"), choices=["openai", "anthropic", "claude-cli"],
                     help="format d'API (déduit de l'URL si absent)")
     ap.add_argument("--no-clips", action="store_true")
-    ap.add_argument("--clips", type=int, default=3)
+    ap.add_argument("--clips", type=int, default=None,
+                    help=f"extraits par khutba (défaut : réglage du back-office, sinon {reglages.DEFAULT_CLIPS})")
     ap.add_argument("--only-session", type=int)
     ap.add_argument("--clip-source", help="vidéo pour les clips (défaut : enregistrement propre live_*_clean.mkv s'il existe) ; "
                     "suffixe @auto = autre vidéo de la même khutba, alignée par l'audio")
@@ -142,6 +149,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     apply_llm_options(a)
     log(f"modèle : {llm.label() if llm.enabled() else 'désactivé (repli sans IA)'}")
+    nclips = nclips_option(a)
+    log(f"extraits par khutba : {nclips}")
     if tr.setup_env() and not os.environ.get("MINBAR_REEXEC"):
         os.environ["MINBAR_REEXEC"] = "1"
         os.execv(sys.executable, [sys.executable, "-m", "minbar.pipeline.run"] + (argv if argv is not None else sys.argv[1:]))
@@ -149,7 +158,7 @@ def main(argv=None):
     opts = {
         "model": None if a.model == "force" else a.model, "retranscribe": a.model == "force",
         "use_llm": llm.enabled(),
-        "nclips": 0 if a.no_clips else a.clips,
+        "nclips": nclips,
         "crop": {k: float(v) for k, v in (kv.split("=") for kv in a.crop.split(","))} if a.crop else None,
         "header": {"title": a.title, "subtitle": a.subtitle} if a.title else None,
     }

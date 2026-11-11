@@ -169,7 +169,7 @@ const fr = {
   },
   settings: {
     title: "Réglages",
-    tabs: { mosque: "Mosquée", logo: "Logo", screens: "Écrans", live: "Direct", replays: "Rediffusions", folders: "Dossiers", model: "Modèle", connectors: "Publication", access: "Accès" },
+    tabs: { mosque: "Mosquée", logo: "Logo", screens: "Écrans", live: "Direct", replays: "Rediffusions", folders: "Dossiers", model: "Modèle", processing: "Traitement", connectors: "Publication", access: "Accès" },
     screensHint: "Les textes des écrans pleins, un écran par sous-onglet.",
     screensGuide: "Pour un visuel à vous : collez cette adresse dans un assistant (ChatGPT, Claude, Gemini), il rend un fichier HTML.",
     screensGuideCopy: "Copier l'adresse",
@@ -238,6 +238,10 @@ const fr = {
     modelProtocol: "Format d'API", modelAuto: "Détection automatique", modelKeyKept: "Une clé d'API est déjà posée côté serveur.",
     modelTest: "Tester la connexion", modelTesting: "Test en cours…", modelTestSave: "Enregistrez d'abord vos modifications pour tester.",
     modelNow: "Méthode appliquée : {{label}}",
+    processingHint: "Réglages du traitement d'après-direct : ce que le pipeline produit à partir de l'enregistrement, une fois le direct terminé.",
+    clipsCount: "Extraits par khutba",
+    clipsCountHelp: "De {{min}} à {{max}} extraits courts, répartis sur toute la khutba. Appliqué au prochain lancement du pipeline ; les clips déjà produits ne changent pas.",
+    clipsNow: "Valeur en vigueur : {{n}} extrait(s) par khutba.",
   },
   onboarding: {
     step_entree: "Entrée vidéo", step_destinations: "Destinations", step_rediffusions: "Rediffusions", step_fin: "Terminé",
@@ -472,7 +476,7 @@ const en: typeof fr = {
   },
   settings: {
     title: "Settings",
-    tabs: { mosque: "Mosque", logo: "Logo", screens: "Screens", live: "Live", replays: "Replays", folders: "Folders", model: "Model", connectors: "Publishing", access: "Access" },
+    tabs: { mosque: "Mosque", logo: "Logo", screens: "Screens", live: "Live", replays: "Replays", folders: "Folders", model: "Model", processing: "Processing", connectors: "Publishing", access: "Access" },
     screensHint: "Texts of the full-screen slates, one screen per tab.",
     screensGuide: "For your own look: paste this address into an assistant (ChatGPT, Claude, Gemini), it returns an HTML file.",
     screensGuideCopy: "Copy address",
@@ -541,6 +545,10 @@ const en: typeof fr = {
     modelProtocol: "API format", modelAuto: "Automatic detection", modelKeyKept: "An API key is already set on the server.",
     modelTest: "Test the connection", modelTesting: "Testing…", modelTestSave: "Save your changes first to test.",
     modelNow: "Method in use: {{label}}",
+    processingHint: "Post-live processing settings: what the pipeline produces from the recording once the live has ended.",
+    clipsCount: "Clips per sermon",
+    clipsCountHelp: "From {{min}} to {{max}} short clips, spread over the whole sermon. Applied at the next pipeline run; clips already produced do not change.",
+    clipsNow: "Current value: {{n}} clip(s) per sermon.",
   },
   onboarding: {
     step_entree: "Video input", step_destinations: "Destinations", step_rediffusions: "Replays", step_fin: "Done",

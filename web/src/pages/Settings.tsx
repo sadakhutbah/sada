@@ -41,6 +41,7 @@ function depuisServeur(d: any): Record<string, string> {
   for (const k of CHAMPS_MOSQUEE) f[k] = d.mosque[k] ?? "";
   f.enabled = d.model.enabled ? "1" : "0";
   for (const k of ["url", "model", "protocol"]) f[k] = d.model[k] ?? "";
+  f.clips = String(d.processing?.clips ?? 3);
   return f;
 }
 
@@ -235,6 +236,7 @@ export default function Settings() {
       const mosquee: Record<string, string> = {};
       for (const k of CHAMPS_MOSQUEE) mosquee[k] = f[k];
       await api.reglagesMosquee(mosquee);
+      if (f.clips !== avant.clips) await api.traitement(f.clips);
       if (CHAMPS_MODELE.some((k) => f[k] !== avant[k])) {
         const modele: Record<string, string> = {};
         for (const k of CHAMPS_MODELE) modele[k] = f[k];
@@ -531,6 +533,20 @@ export default function Settings() {
             <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#8a2219]" : "text-muted"}`}>{test.texte}</span>
           )}
         </div>
+      </div>
+    ),
+    processing: (
+      <div className="grid gap-3">
+        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.processingHint")}</p>
+        <Field label={t("settings.clipsCount")}
+          aide={t("settings.clipsCountHelp", { min: d.processing?.min ?? 1, max: d.processing?.max ?? 10 })}>
+          <input className={`${inputClass} max-w-[9rem]`} type="number" inputMode="numeric"
+            min={d.processing?.min ?? 1} max={d.processing?.max ?? 10}
+            value={f.clips} onChange={maj("clips")} />
+        </Field>
+        <p className="m-0 text-[0.85rem] text-muted">
+          {t("settings.clipsNow", { n: d.processing?.effective ?? d.processing?.clips ?? 3 })}
+        </p>
       </div>
     ),
     screens: (

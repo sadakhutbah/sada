@@ -10,7 +10,9 @@ enregistrements du direct vers un compartiment de stockage — un réglage facul
 
 Un clip est un **extrait court d'une khutba**, fabriqué après le direct à partir de l'enregistrement.
 Il n'est pas découpé à la main : le traitement d'après-direct repère les passages qui se tiennent
-seuls, les découpe et les sous-titre.
+seuls, les découpe et les sous-titre. Le nombre d'extraits demandés se règle dans
+**Réglages → Traitement** (trois par défaut, de un à dix) ; le réglage s'applique au prochain
+lancement du pipeline, pas aux clips déjà produits.
 
 | Caractère | Ce que cela donne |
 | --- | --- |
@@ -18,7 +20,7 @@ seuls, les découpe et les sous-titre.
 | Durée | de 30 à 90 secondes |
 | Sous-titres | en français seulement, incrustés dans l'image |
 | Musique | aucune |
-| Nombre | trois par défaut, un à trois selon la matière trouvée |
+| Nombre | trois par défaut, réglable de 1 à 10 dans **Réglages → Traitement** |
 | Types | verset, rappel, citation, passage, conclusion |
 | Statut de départ | **À valider** |
 

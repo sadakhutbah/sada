@@ -10,7 +10,8 @@ storage bucket — an optional setting.
 
 A clip is a **short excerpt of a khutba**, made after the live from the recording. It is not cut by
 hand: the post-live processing spots the passages that stand on their own, cuts them and subtitles
-them.
+them. The number of clips requested is set in **Settings → Processing** (three by default, from one
+to ten); the setting applies at the next pipeline run, not to clips already produced.
 
 | Character | What it gives |
 | --- | --- |
@@ -18,7 +19,7 @@ them.
 | Length | from 30 to 90 seconds |
 | Subtitles | in French only, burned into the picture |
 | Music | none |
-| Number | three by default, one to three depending on the material found |
+| Number | three by default, adjustable from 1 to 10 in **Settings → Processing** |
 | Types | verse, reminder, quote, passage, conclusion |
 | Starting status | **To review** |
 

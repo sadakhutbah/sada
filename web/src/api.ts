@@ -121,6 +121,7 @@ export const api = {
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
   adresseInstance: (public_url: string) => ecrire<any>("PUT", "/settings/instance", { public_url }),
   modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),
+  traitement: (clips: string) => ecrire<any>("PUT", "/settings/processing", { clips }),
   testerModele: () => ecrire<any>("POST", "/settings/model/test"),
   creerEvenement: (corps: EventForm) => ecrire<{ ok: boolean; message: string; id: string }>("POST", "/events", corps),
   majEvenement: (id: string, corps: EventForm) =>

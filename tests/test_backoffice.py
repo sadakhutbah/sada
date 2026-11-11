@@ -374,6 +374,45 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
         assert ci.ecrire("/settings/model", {"enabled": "1"}, methode="PUT").status_code == 403
 
 
+def test_nombre_d_extraits_reglable_depuis_le_backoffice(env, tmp_path, monkeypatch):
+    """Réglages → Traitement : le nombre d'extraits écrit dans le fichier que lit le pipeline."""
+    from minbar.pipeline import settings as reglages
+    cfg = tmp_path / "pipeline.json"
+    monkeypatch.setenv("MINBAR_PIPELINE_CONFIG", str(cfg))
+    monkeypatch.delenv("MINBAR_CLIPS", raising=False)
+    c = client(env, "admin")
+    assert c.get("/api/v1/settings").json()["processing"]["clips"] == reglages.DEFAULT_CLIPS
+
+    r = c.ecrire("/settings/processing", {"clips": "5"}, methode="PUT")
+    assert r.status_code == 200, r.text
+    assert json.loads(cfg.read_text())["clips"] == 5
+    assert reglages.clip_count() == 5                       # ce que le pipeline lirait
+    assert reglages.clip_count(7) == 7                      # la ligne de commande reste prioritaire
+    assert c.get("/api/v1/settings").json()["processing"]["clips"] == 5
+
+    assert c.ecrire("/settings/processing", {"clips": "0"}, methode="PUT").json()["clips"] == reglages.MIN_CLIPS
+    assert c.ecrire("/settings/processing", {"clips": "99"}, methode="PUT").json()["clips"] == reglages.MAX_CLIPS
+    assert c.ecrire("/settings/processing", {"clips": "beaucoup"}, methode="PUT").status_code == 422
+    assert json.loads(cfg.read_text())["clips"] == reglages.MAX_CLIPS     # refusé : le fichier n'a pas bougé
+
+    for who in ("imam", "responsable"):
+        assert client(env, who).ecrire("/settings/processing", {"clips": "2"}, methode="PUT").status_code == 403
+
+
+def test_le_pipeline_prend_le_nombre_d_extraits_regle(tmp_path, monkeypatch):
+    """Le pipeline sans --clips suit le réglage du back-office ; --no-clips et --clips restent maîtres."""
+    from argparse import Namespace
+    from minbar.pipeline import run
+    from minbar.pipeline import settings as reglages
+    monkeypatch.setenv("MINBAR_PIPELINE_CONFIG", str(tmp_path / "pipeline.json"))
+    monkeypatch.delenv("MINBAR_CLIPS", raising=False)
+    assert run.nclips_option(Namespace(no_clips=False, clips=None)) == reglages.DEFAULT_CLIPS
+    reglages.save_config(5)
+    assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 5
+    assert run.nclips_option(Namespace(no_clips=False, clips=4)) == 4
+    assert run.nclips_option(Namespace(no_clips=True, clips=None)) == 0
+
+
 def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
     """The “Test” button queries the saved address and reports the failure without breaking the screen."""
     monkeypatch.setenv("MINBAR_LLM_CONFIG", str(tmp_path / "llm.json"))
