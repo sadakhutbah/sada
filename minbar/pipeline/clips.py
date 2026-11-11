@@ -544,8 +544,8 @@ def ass_header(gold: str = GOLD, panel: str = PANEL) -> str:
         f"Style: CardLabel,Montserrat Bold,31,{gold},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,6,0,1,0,0,5,0,0,0,1\n"
         f"Style: CardAr,Noto Naskh Arabic,{AR_CARD_SIZE},&H00E9F1F4,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n"
         f"Style: CardFr,EB Garamond,{FR_CARD_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,-1,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n"
-        "Style: Head,Montserrat Bold,36,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,8,0,1,0,2,8,0,0,0,1\n"
-        f"Style: Head2,Montserrat Bold,32,{gold},&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,3,0,1,0,2,8,0,0,0,1\n\n"
+        f"Style: Head,Montserrat Bold,36,&H00FFFFFF,&H000000FF,{panel[:2]}00{panel[4:]},&H60000000,0,0,0,0,100,100,8,0,1,4,3,8,0,0,0,1\n"
+        f"Style: Head2,Montserrat Bold,32,{gold},&H000000FF,{panel[:2]}00{panel[4:]},&H60000000,0,0,0,0,100,100,3,0,1,4,3,8,0,0,0,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
 
