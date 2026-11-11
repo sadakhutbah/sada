@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from ..text import arabic_ratio
-from . import settings
+from . import glossary, settings
 
 CUDA_LIBS = [str(Path.home() / ".local/share/raphael/cuda12/nvidia" / p / "lib") for p in ("cublas", "cudnn", "cuda_nvrtc")] + ["/usr/lib/wsl/lib"]
 # Order of preference. large-v3 (~3 GB in int8) is only used if free VRAM allows it AND it is cached/downloadable.
@@ -151,7 +151,7 @@ def recover_arabic(model, audio, segs: list[dict], *, sr: int = 16000, log=print
 
 
 def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
-               arabic_retry: bool | None = None) -> dict:
+               arabic_retry: bool | None = None, hotwords: str | None = None) -> dict:
     from faster_whisper import WhisperModel
     name, device, ctype = pick_model(prefer, log)
     log(f"Whisper : {name} sur {device} ({ctype})")
@@ -166,10 +166,14 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
     import numpy as np
     with wave.open(wav, "rb") as w:  # we decode the 16 kHz WAV ourselves (avoids PyAV, which is incompatible here)
         audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
+    # Glossaire des termes islamiques : donné en `hotwords`, il stabilise l'orthographe des
+    # translittérations (tawba plutôt que « taouba » ou un mot français approchant).
+    hw = glossary.hotwords() if hotwords is None else hotwords
     segs_iter, info = model.transcribe(
         audio, multilingual=True, vad_filter=True,
         beam_size=5, condition_on_previous_text=False, temperature=0.0,
         word_timestamps=True,   # timestamped words: the active word is highlighted in the clip subtitles
+        hotwords=hw or None,
     )
     segs = []
     for s in segs_iter:
@@ -181,7 +185,7 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
             log(f"  … {len(segs)} segments, {s.end:.0f}/{info.duration:.0f}s")
     res = {"model": name, "device": device, "compute_type": ctype, "language": info.language,
            "language_probability": round(info.language_probability, 3), "duration": info.duration,
-           "elapsed_s": round(time.time() - t0, 1), "segments": segs}
+           "elapsed_s": round(time.time() - t0, 1), "hotwords": bool(hw), "segments": segs}
     # Une khutba en français peut citer le Coran : dans ce cas seulement, les passages que Whisper
     # a rendus en français incohérent sont retentés en arabe forcé.
     retry = settings.arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)

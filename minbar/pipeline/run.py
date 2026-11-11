@@ -179,7 +179,11 @@ def main(argv=None):
     ap.add_argument("--arabic-retry", action=argparse.BooleanOptionalAction, default=None,
                     help="retranscrire en arabe les citations rendues en français incohérent "
                          "(défaut : MINBAR_ARABIC_RETRY, sinon activé)")
+    ap.add_argument("--glossary", help="glossaire JSON des termes islamiques "
+                                       "(défaut : MINBAR_GLOSSARY, sinon data/glossary.json, sinon le glossaire du code)")
     a = ap.parse_args(argv)
+    if a.glossary:
+        os.environ["MINBAR_GLOSSARY"] = a.glossary
     apply_llm_options(a)
     log(f"modèle : {llm.label() if llm.enabled() else 'désactivé (repli sans IA)'}")
     nclips = nclips_option(a)

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..paths import FONTS
 from ..text import AR_RUN, arabic_ratio, is_arabic, reshaped_view
+from . import glossary as glossmod
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
 
@@ -476,11 +477,12 @@ def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
 
 
 def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, path: str, tr: dict | None = None,
-              header: dict | None = None, rappel: bool = False) -> int:
+              header: dict | None = None, rappel: bool = False, glossary: list[dict] | None = None) -> int:
     """Write the .ass of clip [t0, t1] (session time); return the number of units (subtitle pages + cards).
 
     `rappel`: short clip centred on a verse — the card stays on screen until the end, because it
-    carries the reminder; otherwise it fades out as soon as the speech resumes."""
+    carries the reminder; otherwise it fades out as soon as the speech resumes.
+    `glossary`: terms whose first occurrence gets a French gloss; None = the configured glossary."""
     tr = tr or {}
     vms = shown(matches, ambiguous=True)
     dur = t1 - t0
@@ -535,7 +537,9 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
         cards.append((ca, cb))
     ev += [e for (m, fr, _ca, _cb), (a, b) in zip(specs, cards) for e in _verse_card(m, fr, a, b)]
     words.sort(key=lambda w: w["s"])
+    # « la tawba (le repentir) » : première occurrence du terme dans le clip, glose collée au mot.
     if words:
+        words = glossmod.gloss_words(words, glossary if glossary is not None else glossmod.load())
         words[0]["w"] = words[0]["w"][:1].upper() + words[0]["w"][1:]
     sev = _speech_events(words, cards, dur)
     pages = sum(1 for e in sev if ",Glow," in e)
