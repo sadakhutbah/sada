@@ -26,3 +26,18 @@ def test_fenetres_du_modele_normalisees_puis_terminees():
     fin = C.refine_windows(raw, segs, 60.0)
     assert len(fin) == 1 and abs(fin[0]["end"] - 40.3) < 0.5, fin      # marge audio : +0,3 s
     assert abs(fin[0]["start"]) < 0.5, fin
+
+
+def test_sans_extraits_le_modele_n_en_propose_pas(monkeypatch):
+    """Interrupteur décoché : le prompt ne demande plus d'extraits, et aucun n'est retenu."""
+    from minbar.pipeline import notes as N
+    vu = []
+    monkeypatch.setattr(N.llm, "ask_json", lambda prompt, timeout, log: vu.append(prompt) or {"points": []})
+    segs = [{"start": 0.0, "end": 6.0, "text": "Bismillah, mes freres."}]
+
+    assert N.llm_summary(segs, [], n_clips=0) is not None
+    assert "Ne propose aucun extrait" in vu[0]
+    assert 'Pour "clips"' not in vu[0]
+
+    _, extra = N.build_notes("essai", segs, [], {"duration": 6.0}, use_llm=True, n_clips=0)
+    assert extra["clip_windows"] == []

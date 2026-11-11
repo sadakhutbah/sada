@@ -11,7 +11,9 @@ storage bucket — an optional setting.
 A clip is a **short excerpt of a khutba**, made after the live from the recording. It is not cut by
 hand: the post-live processing spots the passages that stand on their own, cuts them and subtitles
 them. The number of clips requested is set in **Settings → Processing** (three by default, from one
-to ten); the setting applies at the next pipeline run, not to clips already produced.
+to ten); the setting applies at the next pipeline run, not to clips already produced. The
+**Produce clips after the live** checkbox, when cleared, stops the cutting: the transcript, notes
+and verses are still produced, and the number entered is kept for when it is switched back on.
 
 | Character | What it gives |
 | --- | --- |

@@ -41,6 +41,7 @@ def _processing_view() -> dict:
     """Traitement d'après-direct: what is saved, the bounds, and what the pipeline would use."""
     saved = pipeline_settings.config().get("clips")
     return {"clips": pipeline_settings.borne(saved if saved not in (None, "") else pipeline_settings.DEFAULT_CLIPS),
+            "enabled": pipeline_settings.clips_enabled(),
             "effective": pipeline_settings.clip_count(),
             "default": pipeline_settings.DEFAULT_CLIPS,
             "min": pipeline_settings.MIN_CLIPS, "max": pipeline_settings.MAX_CLIPS}
@@ -153,16 +154,17 @@ async def model_save(ctx: CtxDep):
 @router.put("/settings/processing")
 async def processing_save(ctx: CtxDep):
     """Nombre d'extraits par khutba: écrit dans le fichier que le pipeline lit à son démarrage."""
-    f = await ctx.body()
+    f = await ctx.body()                      # body() flattens every value to text
     ctx.require("admin")
+    actif = str(f.get("enabled", "1")).strip().lower() not in ("0", "off", "false", "non", "")
     try:
-        n = pipeline_settings.save_config(f.get("clips"))
+        garde = pipeline_settings.save_config(f.get("clips"), enabled=actif)
     except (TypeError, ValueError) as e:
         raise Invalid(f"Nombre d'extraits invalide (de {pipeline_settings.MIN_CLIPS} à "
                       f"{pipeline_settings.MAX_CLIPS}).") from e
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "traitement.configure", "mosque", ctx.mosque["id"],
-             ip=ctx.ip, extraits=n)
-    return _ok("Traitement enregistré : le pipeline l'applique au prochain lancement.", clips=n)
+             ip=ctx.ip, extraits=garde["clips"], actif=garde["enabled"])
+    return _ok("Traitement enregistré : le pipeline l'applique au prochain lancement.", **garde)
 
 
 @router.put("/settings/live")

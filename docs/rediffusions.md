@@ -12,7 +12,9 @@ Un clip est un **extrait court d'une khutba**, fabriqué après le direct à par
 Il n'est pas découpé à la main : le traitement d'après-direct repère les passages qui se tiennent
 seuls, les découpe et les sous-titre. Le nombre d'extraits demandés se règle dans
 **Réglages → Traitement** (trois par défaut, de un à dix) ; le réglage s'applique au prochain
-lancement du pipeline, pas aux clips déjà produits.
+lancement du pipeline, pas aux clips déjà produits. La case **Produire des extraits après le
+direct**, décochée, arrête le montage : la transcription, les notes et les versets sont quand même
+produits, et le nombre saisi est conservé pour la réactivation.
 
 | Caractère | Ce que cela donne |
 | --- | --- |

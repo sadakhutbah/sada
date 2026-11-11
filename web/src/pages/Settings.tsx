@@ -42,6 +42,7 @@ function depuisServeur(d: any): Record<string, string> {
   f.enabled = d.model.enabled ? "1" : "0";
   for (const k of ["url", "model", "protocol"]) f[k] = d.model[k] ?? "";
   f.clips = String(d.processing?.clips ?? 3);
+  f.clips_enabled = d.processing?.enabled === false ? "0" : "1";
   return f;
 }
 
@@ -236,7 +237,9 @@ export default function Settings() {
       const mosquee: Record<string, string> = {};
       for (const k of CHAMPS_MOSQUEE) mosquee[k] = f[k];
       await api.reglagesMosquee(mosquee);
-      if (f.clips !== avant.clips) await api.traitement(f.clips);
+      if (f.clips !== avant.clips || f.clips_enabled !== avant.clips_enabled) {
+        await api.traitement(f.clips, f.clips_enabled === "1");
+      }
       if (CHAMPS_MODELE.some((k) => f[k] !== avant[k])) {
         const modele: Record<string, string> = {};
         for (const k of CHAMPS_MODELE) modele[k] = f[k];
@@ -538,14 +541,20 @@ export default function Settings() {
     processing: (
       <div className="grid gap-3">
         <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.processingHint")}</p>
+        <label className="flex w-fit items-center gap-1.5 text-[0.9rem] font-semibold">
+          <input type="checkbox" checked={f.clips_enabled === "1"}
+            onChange={(e) => { setF((x) => ({ ...x, clips_enabled: e.target.checked ? "1" : "0" })); setMsg(null); }} />
+          {t("settings.clipsEnabled")}
+        </label>
         <Field label={t("settings.clipsCount")}
           aide={t("settings.clipsCountHelp", { min: d.processing?.min ?? 1, max: d.processing?.max ?? 10 })}>
           <input className={`${inputClass} max-w-[9rem]`} type="number" inputMode="numeric"
-            min={d.processing?.min ?? 1} max={d.processing?.max ?? 10}
+            min={d.processing?.min ?? 1} max={d.processing?.max ?? 10} disabled={f.clips_enabled !== "1"}
             value={f.clips} onChange={maj("clips")} />
         </Field>
         <p className="m-0 text-[0.85rem] text-muted">
-          {t("settings.clipsNow", { n: d.processing?.effective ?? d.processing?.clips ?? 3 })}
+          {t(f.clips_enabled === "1" ? "settings.clipsNow" : "settings.clipsOff", {
+            n: d.processing?.effective ?? d.processing?.clips ?? 3 })}
         </p>
       </div>
     ),

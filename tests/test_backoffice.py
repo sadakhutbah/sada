@@ -395,6 +395,16 @@ def test_nombre_d_extraits_reglable_depuis_le_backoffice(env, tmp_path, monkeypa
     assert c.ecrire("/settings/processing", {"clips": "beaucoup"}, methode="PUT").status_code == 422
     assert json.loads(cfg.read_text())["clips"] == reglages.MAX_CLIPS     # refusé : le fichier n'a pas bougé
 
+    # décoché : plus aucun extrait, mais le nombre saisi reste pour la réactivation
+    r = c.ecrire("/settings/processing", {"clips": "4", "enabled": "0"}, methode="PUT")
+    assert r.status_code == 200 and r.json()["enabled"] is False
+    assert reglages.clip_count() == 0
+    assert reglages.clip_count(2) == 2                       # la ligne de commande reste maîtresse
+    vue = c.get("/api/v1/settings").json()["processing"]
+    assert vue["enabled"] is False and vue["clips"] == 4 and vue["effective"] == 0
+    assert c.ecrire("/settings/processing", {"clips": "4", "enabled": "1"}, methode="PUT").json()["enabled"] is True
+    assert reglages.clip_count() == 4
+
     for who in ("imam", "responsable"):
         assert client(env, who).ecrire("/settings/processing", {"clips": "2"}, methode="PUT").status_code == 403
 
@@ -411,6 +421,12 @@ def test_le_pipeline_prend_le_nombre_d_extraits_regle(tmp_path, monkeypatch):
     assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 5
     assert run.nclips_option(Namespace(no_clips=False, clips=4)) == 4
     assert run.nclips_option(Namespace(no_clips=True, clips=None)) == 0
+    reglages.save_config(5, enabled=False)
+    assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 0
+    monkeypatch.setenv("MINBAR_CLIPS", "6")                   # l'environnement passe avant le fichier
+    assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 6
+    monkeypatch.setenv("MINBAR_CLIPS", "0")
+    assert run.nclips_option(Namespace(no_clips=False, clips=None)) == 0
 
 
 def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):

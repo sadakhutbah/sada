@@ -64,6 +64,15 @@ def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, l
     tr = "\n".join(f"[{fmt_t(s['start'])}] {s['text']}" for s in segments)
     vs = "\n".join(f"- {m['ref']} ({m['surah_name']}) vers {fmt_t(m['start'])}" for m in matches) or "(aucun)"
     n_min = max(2, n_clips)
+    # No clips asked for (back-office switch off): do not make the model choose boundaries it
+    # would take tokens and attention to, the session is only transcribed and summarised.
+    demande_clips = (
+        f"Pour \"clips\" ({n_min} extraits MINIMUM, à publier en vidéo verticale, un par idée forte : une question des fidèles, "
+        "un récit, un rappel, une conclusion) : chacun commence sur une parole qui a du sens sans ce qui "
+        "précède (jamais « et », « donc », « parce que », jamais une phrase inachevée) et finit sur une phrase complète, jamais en "
+        "pleine récitation arabe. Durée de 30 à 75 secondes. Reprends les horodatages de la transcription. "
+        "Si la khutba dure plus de dix minutes, propose-en davantage, répartis sur toute sa longueur.\n\n"
+    ) if n_clips else "Ne propose aucun extrait : le champ \"clips\" reste vide.\n\n"
     prompt = (
         "Voici la transcription automatique (Whisper, avec erreurs possibles) d'une khutba du vendredi, avec horodatage.\n"
         "Produis UNIQUEMENT un objet JSON (sans texte autour) de la forme :\n"
@@ -73,12 +82,8 @@ def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, l
         '"clips": [{"start": "m:ss", "end": "m:ss", "why": "une phrase"}]}\n'
         "Règles : ne rien inventer ; ne pas attribuer à l'imam ce qu'il n'a pas dit ; ne cite aucun verset ni hadith de mémoire ; "
         "les citations doivent être des extraits littéraux (ils seront vérifiés mécaniquement et supprimés sinon).\n"
-        f"Pour \"clips\" ({n_min} extraits MINIMUM, à publier en vidéo verticale, un par idée forte : une question des fidèles, "
-        "un récit, un rappel, une conclusion) : chacun commence sur une parole qui a du sens sans ce qui "
-        "précède (jamais « et », « donc », « parce que », jamais une phrase inachevée) et finit sur une phrase complète, jamais en "
-        "pleine récitation arabe. Durée de 30 à 75 secondes. Reprends les horodatages de la transcription. "
-        "Si la khutba dure plus de dix minutes, propose-en davantage, répartis sur toute sa longueur.\n\n"
-        f"Versets repérés automatiquement (indicatif) :\n{vs}\n\nTRANSCRIPTION :\n{tr}\n"
+        + demande_clips
+        + f"Versets repérés automatiquement (indicatif) :\n{vs}\n\nTRANSCRIPTION :\n{tr}\n"
     )
     d = llm.ask_json(prompt, timeout, log)
     if d:
@@ -188,4 +193,4 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
         L += [f"### {m['ref']} — {m['surah_name']} ({fmt_t(m['start'])})", f"- Entendu (Whisper) : {m['heard']}", f"- Texte du Coran (Tanzil/alquran.cloud, simple-clean) : {m['verse_text']}",
               f"- Traduction (Hamidullah) : {m['verse_fr']}", ""]
     return "\n".join(L), {"summary": summ, "quotes": quotes, "rejected_quotes": rejected,
-                          "clip_windows": clips_from_model(summ.get("clips"), segments)}
+                          "clip_windows": clips_from_model(summ.get("clips"), segments) if n_clips else []}

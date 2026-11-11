@@ -36,22 +36,43 @@ def borne(valeur) -> int:
     return max(MIN_CLIPS, min(MAX_CLIPS, int(valeur)))
 
 
+def clips_enabled() -> bool:
+    """Interrupteur enregistré : la production d'extraits, active par défaut."""
+    return bool(config().get("clips_enabled", True))
+
+
 def clip_count(cli: int | None = None) -> int:
-    """Extraits par khutba : option, puis MINBAR_CLIPS, puis le fichier, puis 3."""
-    raw = pick(cli, os.environ.get("MINBAR_CLIPS"), config().get("clips"), DEFAULT_CLIPS)
+    """Extraits par khutba, 0 signifiant « aucun ».
+
+    Priorité : option de commande, puis MINBAR_CLIPS (0 désactive), puis le fichier (interrupteur
+    puis nombre), puis DEFAULT_CLIPS. Un fichier abîmé laisse le défaut.
+    """
+    raw = pick(cli, os.environ.get("MINBAR_CLIPS"))
+    if raw is not None:
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return DEFAULT_CLIPS
+        return 0 if n <= 0 else borne(n)
+    if not clips_enabled():
+        return 0
     try:
-        return borne(raw)
-    except (TypeError, ValueError):   # fichier abîmé : le pipeline garde son défaut
+        return borne(config().get("clips", DEFAULT_CLIPS))
+    except (TypeError, ValueError):
         return DEFAULT_CLIPS
 
 
-def save_config(clips) -> int:
-    """Écrit le réglage et rend la valeur retenue. Les autres clés du fichier sont conservées."""
+def save_config(clips, enabled=True) -> dict:
+    """Écrit les réglages et rend ce qui a été retenu. Les autres clés du fichier sont conservées.
+
+    Le nombre est gardé même quand on désactive : réactiver retrouve le compte précédent.
+    """
     n = borne(clips)
+    garde = bool(enabled)
     p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    data = {**config(), "clips": n}
+    data = {**config(), "clips": n, "clips_enabled": garde}
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
     os.replace(tmp, p)
-    return n
+    return {"clips": n, "enabled": garde}

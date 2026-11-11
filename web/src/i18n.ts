@@ -241,7 +241,9 @@ const fr = {
     processingHint: "Réglages du traitement d'après-direct : ce que le pipeline produit à partir de l'enregistrement, une fois le direct terminé.",
     clipsCount: "Extraits par khutba",
     clipsCountHelp: "De {{min}} à {{max}} extraits courts, répartis sur toute la khutba. Appliqué au prochain lancement du pipeline ; les clips déjà produits ne changent pas.",
+    clipsEnabled: "Produire des extraits après le direct",
     clipsNow: "Valeur en vigueur : {{n}} extrait(s) par khutba.",
+    clipsOff: "Décoché : la transcription, les notes et les versets sont produits, aucun extrait n'est monté.",
   },
   onboarding: {
     step_entree: "Entrée vidéo", step_destinations: "Destinations", step_rediffusions: "Rediffusions", step_fin: "Terminé",
@@ -548,7 +550,9 @@ const en: typeof fr = {
     processingHint: "Post-live processing settings: what the pipeline produces from the recording once the live has ended.",
     clipsCount: "Clips per sermon",
     clipsCountHelp: "From {{min}} to {{max}} short clips, spread over the whole sermon. Applied at the next pipeline run; clips already produced do not change.",
+    clipsEnabled: "Produce clips after the live",
     clipsNow: "Current value: {{n}} clip(s) per sermon.",
+    clipsOff: "Unchecked: the transcript, notes and verses are still produced, no clip is cut.",
   },
   onboarding: {
     step_entree: "Video input", step_destinations: "Destinations", step_rediffusions: "Replays", step_fin: "Done",

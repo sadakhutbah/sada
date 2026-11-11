@@ -77,8 +77,10 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
                 log(f"clips : {len(wins)} extraits après complément (code : {len(extra_wins)} candidats)")
     if nclips and not wins:
         log("aucun clip publiable (ni rappel de verset ni citation) : rien n'est monté")
-    trs = trmod.translate_session(segs, ms, o.translations, use_llm, log=log,
-                                  only=[(w["start"], w["end"]) for w in wins])
+    # No clips to subtitle: translating the session would burn the model for text nobody reads.
+    trs = (trmod.translate_session(segs, ms, o.translations, use_llm, log=log,
+                                   only=[(w["start"], w["end"]) for w in wins])
+           if nclips else {"seg": {}, "verse_fr": {}})
     if nclips:
         vsrc, voff = src, start
         if clip_video:
@@ -139,7 +141,7 @@ def main(argv=None):
                     help="format d'API (déduit de l'URL si absent)")
     ap.add_argument("--no-clips", action="store_true")
     ap.add_argument("--clips", type=int, default=None,
-                    help=f"extraits par khutba (défaut : réglage du back-office, sinon {reglages.DEFAULT_CLIPS})")
+                    help=f"extraits par khutba (défaut : réglage du back-office, sinon {reglages.DEFAULT_CLIPS}) ; 0 = aucun")
     ap.add_argument("--only-session", type=int)
     ap.add_argument("--clip-source", help="vidéo pour les clips (défaut : enregistrement propre live_*_clean.mkv s'il existe) ; "
                     "suffixe @auto = autre vidéo de la même khutba, alignée par l'audio")
@@ -150,7 +152,7 @@ def main(argv=None):
     apply_llm_options(a)
     log(f"modèle : {llm.label() if llm.enabled() else 'désactivé (repli sans IA)'}")
     nclips = nclips_option(a)
-    log(f"extraits par khutba : {nclips}")
+    log("extraits par khutba : " + (str(nclips) if nclips else "aucun"))
     if tr.setup_env() and not os.environ.get("MINBAR_REEXEC"):
         os.environ["MINBAR_REEXEC"] = "1"
         os.execv(sys.executable, [sys.executable, "-m", "minbar.pipeline.run"] + (argv if argv is not None else sys.argv[1:]))
