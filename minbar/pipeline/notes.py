@@ -10,6 +10,7 @@ from collections import Counter
 from ..text import duration as fmt_t
 from ..text import is_arabic
 from . import llm
+from .select import lighten_segments
 from .verses import shown
 
 STOP = set("le la les de des du un une et en à a au aux que qui qu ce cet cette ces pour par sur dans avec son sa ses leur leurs nous vous ils elles je tu il elle on ne pas plus se est sont être été avoir fait comme mais ou où donc car si très tout tous toute toutes aussi cela ça c d l n s j m y mon ma mes notre nos votre vos dit dire entre sans sous faire peut peuvent mes vos allah".split())
@@ -59,31 +60,21 @@ def extractive_summary(segments: list[dict], n_points: int = 6) -> dict:
     return {"method": "extractif", "theme": "", "points": [p for _, p in pick], "rappels": []}
 
 
-def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, log=print,
-                n_clips: int = 3) -> dict | None:
-    tr = "\n".join(f"[{fmt_t(s['start'])}] {s['text']}" for s in segments)
+def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, log=print) -> dict | None:
+    # Les extraits ne passent plus par ce prompt : ils sont choisis séparément (minbar.pipeline.select).
+    # La transcription allégée (sans lignes arabes ni phonétique) réduit les tokens envoyés au modèle.
+    tr = "\n".join(lighten_segments(segments))
     vs = "\n".join(f"- {m['ref']} ({m['surah_name']}) vers {fmt_t(m['start'])}" for m in matches) or "(aucun)"
-    n_min = max(2, n_clips)
-    # No clips asked for (back-office switch off): do not make the model choose boundaries it
-    # would take tokens and attention to, the session is only transcribed and summarised.
-    demande_clips = (
-        f"Pour \"clips\" ({n_min} extraits MINIMUM, à publier en vidéo verticale, un par idée forte : une question des fidèles, "
-        "un récit, un rappel, une conclusion) : chacun commence sur une parole qui a du sens sans ce qui "
-        "précède (jamais « et », « donc », « parce que », jamais une phrase inachevée) et finit sur une phrase complète, jamais en "
-        "pleine récitation arabe. Durée de 30 à 75 secondes. Reprends les horodatages de la transcription. "
-        "Si la khutba dure plus de dix minutes, propose-en davantage, répartis sur toute sa longueur.\n\n"
-    ) if n_clips else "Ne propose aucun extrait : le champ \"clips\" reste vide.\n\n"
     prompt = (
         "Voici la transcription automatique (Whisper, avec erreurs possibles) d'une khutba du vendredi, avec horodatage.\n"
+        "Les passages en arabe et les citations phonétiques ont été retirés.\n"
         "Produis UNIQUEMENT un objet JSON (sans texte autour) de la forme :\n"
         '{"theme": "une phrase", "points": ["4 à 7 points clés, reformulés brièvement"], '
         '"rappels": ["0 à 4 rappels pratiques pour les fidèles"], '
-        '"citations": ["3 à 6 phrases marquantes de l\'imam, recopiées MOT POUR MOT depuis la transcription, en français, sans modifier un seul mot"], '
-        '"clips": [{"start": "m:ss", "end": "m:ss", "why": "une phrase"}]}\n'
+        '"citations": ["3 à 6 phrases marquantes de l\'imam, recopiées MOT POUR MOT depuis la transcription, en français, sans modifier un seul mot"]}\n'
         "Règles : ne rien inventer ; ne pas attribuer à l'imam ce qu'il n'a pas dit ; ne cite aucun verset ni hadith de mémoire ; "
         "les citations doivent être des extraits littéraux (ils seront vérifiés mécaniquement et supprimés sinon).\n"
-        + demande_clips
-        + f"Versets repérés automatiquement (indicatif) :\n{vs}\n\nTRANSCRIPTION :\n{tr}\n"
+        f"Versets repérés automatiquement (indicatif) :\n{vs}\n\nTRANSCRIPTION :\n{tr}\n"
     )
     d = llm.ask_json(prompt, timeout, log)
     if d:
@@ -91,60 +82,8 @@ def llm_summary(segments: list[dict], matches: list[dict], timeout: int = 420, l
     return d
 
 
-def _parse_ts(s: object) -> float | None:
-    """« m:ss » / « h:mm:ss » / « 83.5 » → secondes. None si illisible."""
-    s = str(s or "").strip().replace(",", ".")
-    if not s:
-        return None
-    try:
-        parts = [float(p) for p in s.split(":")]
-    except ValueError:
-        return None
-    if len(parts) == 1:
-        return parts[0]
-    if len(parts) == 2:
-        return parts[0] * 60 + parts[1]
-    if len(parts) == 3:
-        return parts[0] * 3600 + parts[1] * 60 + parts[2]
-    return None
-
-
-def clips_from_model(proposed: list | None, segments: list[dict],
-                     min_s: float = 10.0, max_s: float | None = None) -> list[dict]:
-    """Fenêtres proposées par le modèle : horodatages lus et calés sur des segments entiers.
-
-    Le modèle ne fait que choisir des horodatages (un appel pour tout le transcript, pas un par clip).
-    Le calage fin — phrase terminée, coupure avant une récitation, durée définitive — revient à
-    clips.refine_windows (snap_window), appelé par le pipeline. Ici on garde tout ce qui est lisible
-    et plausible : plusieurs extraits par khutba est la norme, pas l'exception.
-    """
-    from . import clips as clipmod          # import local : notes ne dépend pas de clips au chargement
-    max_s = max_s if max_s is not None else clipmod.MAX_S + clipmod.FULL_S
-    out: list[dict] = []
-    for c in proposed or []:
-        if not isinstance(c, dict):
-            continue
-        a, b = _parse_ts(c.get("start")), _parse_ts(c.get("end"))
-        if a is None or b is None or b <= a:
-            continue
-        # on ne coupe jamais un segment : les bornes tombent sur ses débuts/fins
-        first = next((x for x in segments if x["end"] > a), None)
-        last = next((x for x in reversed(segments) if x["start"] < b), None)
-        if first is None or last is None or last["end"] <= first["start"]:
-            continue
-        s0, s1 = first["start"], last["end"]
-        if not (min_s <= s1 - s0 <= max_s):
-            continue
-        if any(abs(s0 - o["start"]) < 20 for o in out):     # doublons
-            continue
-        out.append({"kind": "modele", "start": round(s0, 2), "end": round(s1, 2),
-                    "why": str(c.get("why") or "extrait choisi par le modèle").strip()[:200]})
-    return out
-
-
-def build_notes(session_label: str, segments: list[dict], matches: list[dict], meta: dict, use_llm: bool = True, log=print,
-                n_clips: int = 3) -> tuple[str, dict]:
-    summ = llm_summary(segments, matches, log=log, n_clips=n_clips) if use_llm else None
+def build_notes(session_label: str, segments: list[dict], matches: list[dict], meta: dict, use_llm: bool = True, log=print) -> tuple[str, dict]:
+    summ = llm_summary(segments, matches, log=log) if use_llm else None
     fallback = False
     if not summ:
         summ, fallback = extractive_summary(segments), True
@@ -192,5 +131,4 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
     for m in firm:
         L += [f"### {m['ref']} — {m['surah_name']} ({fmt_t(m['start'])})", f"- Entendu (Whisper) : {m['heard']}", f"- Texte du Coran (Tanzil/alquran.cloud, simple-clean) : {m['verse_text']}",
               f"- Traduction (Hamidullah) : {m['verse_fr']}", ""]
-    return "\n".join(L), {"summary": summ, "quotes": quotes, "rejected_quotes": rejected,
-                          "clip_windows": clips_from_model(summ.get("clips"), segments) if n_clips else []}
+    return "\n".join(L), {"summary": summ, "quotes": quotes, "rejected_quotes": rejected}

@@ -76,33 +76,6 @@ def test_quran_marks_and_formulas():
     assert not is_formula("ولنتوقف اليوم عند هذه الآية العظيمة من سورة الطلاق")
 
 
-def _khutba():
-    """A minimal khutba around the test verse: recitation around 200 s, then the explanation."""
-    segs = []
-    t = 0.0
-    while t < 300.0:
-        segs.append({"start": t, "end": t + 3.0, "text": "la patience éclaire le croyant dans l'épreuve"})
-        t += 4.0
-    return segs
-
-
-def test_le_verset_donne_un_rappel_court():
-    v = dict(VERSE, start=200.0, end=204.0)
-    wins = C.select_windows(_khutba(), [v], 600.0, None, 3)
-    premier = wins[0]
-    assert premier["kind"] == "rappel"
-    assert 195.0 <= premier["start"] <= 198.0             # we start just before the recitation
-    assert premier["end"] <= premier["start"] + C.RAPPEL_MAX
-    assert 25.0 <= premier["end"] - premier["start"] <= C.RAPPEL_MAX
-
-
-def test_un_verset_reconnu_par_la_traduction_garde_son_contexte():
-    v = dict(VERSE, start=200.0, end=204.0, ambiguous=True)
-    wins = C.select_windows(_khutba(), [v], 600.0, None, 3)
-    assert wins[0]["kind"] == "verset"
-    assert wins[0]["start"] <= 190.0                       # the preamble stays in the clip
-
-
 def test_le_rappel_garde_sa_carte_jusqu_au_bout(tmp_path):
     p = tmp_path / "r.ass"
     n = C.build_ass(SEGS, [VERSE], 8.0, 18.0, str(p), tr=TR, rappel=True)
@@ -110,6 +83,7 @@ def test_le_rappel_garde_sa_carte_jusqu_au_bout(tmp_path):
     events = _events(p)
     card = [e for e in events if ",CardFr," in e]
     assert card and card[0].split(",")[2].strip() == C._ass_time(10.0)   # the card lasts until the end
+
 
 def test_deux_versets_rapproches_ne_superposent_pas_leurs_cartes(tmp_path):
     """Deux cartes qui se chevauchent se superposaient a l'ecran : la premiere cede la place."""
@@ -125,40 +99,3 @@ def test_deux_versets_rapproches_ne_superposent_pas_leurs_cartes(tmp_path):
                     for e in _events(str(p)) if ",CardLabel," in e))
     assert len(spans) == 2, spans
     assert spans[0][1] <= spans[1][0], f"cartes superposees : {spans}"
-
-
-def test_un_clip_ne_finit_jamais_en_pleine_phrase():
-    """Whisper coupe la phrase sur le segment suivant : le clip doit aller jusqu'a sa fin."""
-    segs = [
-        {"start": 0.0, "end": 6.0, "text": "Premiere phrase d'introduction du discours."},
-        {"start": 60.0, "end": 70.0, "text": "milieu du discours"},
-        {"start": 70.0, "end": 80.0, "text": "fin de la phrase cette fois."},
-    ]
-    q = [(65.0, "un extrait marquant assez long pour qualifier le passage")]
-    segs = segs[:3]
-    # la phrase du milieu se poursuit sur le segment suivant : le clip doit aller jusqu'au point
-    wins = C.select_windows(segs, [], 220.0, q, 1)
-    assert wins, "un clip doit etre propose: %r" % (wins,)
-    fin = [s for s in segs if s["end"] <= wins[0]["end"] + 0.4][-1]
-    assert fin["text"].endswith("."), fin["text"]
-
-
-def test_bornes_du_modele_recalées_sur_les_segments():
-    """Le modèle ne fournit que des horodatages : on ne garde que ceux qui tombent juste."""
-    segs = [{"start": float(i * 5), "end": float(i * 5 + 4), "text": f"phrase {i}."} for i in range(20)]
-    wins = C.refine_windows([{"kind": "modele", "start": 12.0, "end": 42.0}], segs)
-    assert len(wins) == 1 and abs(wins[0]["start"] - 9.8) < 0.5 and abs(wins[0]["end"] - 44.3) < 0.5, wins
-    assert C.refine_windows([{"kind": "modele", "start": 999.0, "end": 1000.0}], segs) == []
-
-
-def test_le_code_complete_les_extraits_manquants_du_modele():
-    """Le modèle en propose un : le code ajoute les autres, sans chevauchement, dans l'ordre."""
-    modele = [{"kind": "modele", "start": 100.0, "end": 160.0}]
-    code = [{"kind": "verset", "start": 120.0, "end": 180.0},     # chevauche l'extrait du modèle
-            {"kind": "citation", "start": 300.0, "end": 360.0},
-            {"kind": "rappel", "start": 500.0, "end": 550.0}]
-    wins = C.merge_windows(modele, code, 3)
-    assert [w["start"] for w in wins] == [100.0, 300.0, 500.0], wins
-    assert len(C.merge_windows(modele, code, 2)) == 2
-    assert len(C.merge_windows(modele, [], 3)) == 1
-

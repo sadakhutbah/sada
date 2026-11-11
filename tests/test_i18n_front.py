@@ -112,7 +112,7 @@ def test_les_deux_langues_ont_les_memes_cles():
 def test_chaque_genre_de_clip_du_serveur_a_un_libelle():
     """« Clip 1 · clips.kinds.modele » : tout genre que le pipeline écrit en base a son libellé."""
     genres = _genres_du_pipeline()
-    assert {"verset", "rappel", "citation", "modele"} <= genres     # l'extraction voit bien le code
+    assert {"extrait"} <= genres                 # l'extraction voit bien le code
     for nom in ("fr", "en"):
         libelles = _langue(nom)["clips"]["kinds"]
         manquants = sorted(g for g in genres if not libelles.get(g))

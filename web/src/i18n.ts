@@ -96,7 +96,7 @@ const fr = {
     shown: "{{n}} sur {{total}} clips", loadMore: "Afficher les {{n}} suivants",
     statuses: { a_valider: "À valider", valide: "Validé", rejete: "Rejeté", publie: "Publié" },
     statusTabs: { a_valider: "À valider", valide: "Validés", publie: "Publiés", rejete: "Rejetés" },
-    kinds: { verset: "verset", rappel: "rappel", citation: "citation", passage: "passage", conclusion: "conclusion", modele: "proposé par le modèle" },
+    kinds: { verset: "verset", rappel: "rappel", citation: "citation", passage: "passage", conclusion: "conclusion", modele: "proposé par le modèle", extrait: "extrait" },
     detail: {
       extract: "Extrait {{de}}–{{a}} de la khutba ({{s}} s)",
       version: "version {{n}}",
@@ -432,7 +432,7 @@ const en: typeof fr = {
     shown: "{{n}} of {{total}} clips", loadMore: "Show the next {{n}}",
     statuses: { a_valider: "To review", valide: "Approved", rejete: "Rejected", publie: "Published" },
     statusTabs: { a_valider: "To review", valide: "Approved", publie: "Published", rejete: "Rejected" },
-    kinds: { verset: "verse", rappel: "reminder", citation: "quote", passage: "passage", conclusion: "conclusion", modele: "model's pick" },
+    kinds: { verset: "verse", rappel: "reminder", citation: "quote", passage: "passage", conclusion: "conclusion", modele: "model's pick", extrait: "excerpt" },
     detail: {
       extract: "Excerpt {{de}}–{{a}} of the sermon ({{s}} s)",
       version: "version {{n}}",
