@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { api, type AgendaEvent, type EventForm, type EventsList } from "../api";
 import { currentSession } from "../App";
 import { Btn, Field, Pill, Segmented, inputClass } from "../ui";
@@ -43,6 +44,7 @@ export default function Dars() {
   const [edition, setEdition] = useState<{ id: string | null; form: EventForm } | null>(null);
   const [aSupprimer, setASupprimer] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; texte: string } | null>(null);
+  const [onglet, setOnglet] = useState("programme");
 
   const charger = () =>
     api.events().then((r) => { setListe(r); setErreur(false); }).catch(() => setErreur(true));
@@ -88,6 +90,29 @@ export default function Dars() {
         </p>
       </header>
 
+      {peutEcrire && (
+        <div className="[&>div]:mb-0">
+          <Segmented
+            valeur={onglet}
+            onChange={(c) => { setOnglet(c); setMessage(null); }}
+            items={[
+              { cle: "programme", label: t("dars.tabs.programme") },
+              { cle: "import", label: t("dars.tabs.import") },
+            ]}
+          />
+        </div>
+      )}
+
+      {/* Import stays mounted while the schedule is shown: switching tabs never interrupts
+          an upload in progress. */}
+      {peutEcrire && (
+        <div className={onglet === "import" ? "" : "hidden"}>
+          <ImportVideo />
+        </div>
+      )}
+
+      {onglet === "programme" && (
+      <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="[&>div]:mb-0">
           <Segmented
@@ -191,7 +216,163 @@ export default function Dars() {
       )}
 
       <p className="m-0 text-[0.85rem] text-muted">{peutEcrire ? t("dars.applyNote") : t("dars.readonly")}</p>
+      </>
+      )}
     </div>
+  );
+}
+
+/** Choices of the import form; labels live in `dars.kinds`. */
+const GENRES = ["dars", "conference", "khutba"] as const;
+
+/** Local ISO date (no UTC shift): today is the default recording date. */
+const aujourdhui = () => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+/** Import of a recorded video (camera off air): a single form. The raw file is sent as-is;
+ *  the server's existing processing takes over and its tracking appears on the dashboard. */
+function ImportVideo() {
+  const { t, i18n } = useTranslation();
+  const [fichier, setFichier] = useState<File | null>(null);
+  const [kind, setKind] = useState("dars");
+  const [titre, setTitre] = useState("");
+  const [intervenant, setIntervenant] = useState("");
+  const [serie, setSerie] = useState("");
+  const [seance, setSeance] = useState("");
+  const [date, setDate] = useState(aujourdhui);
+  const [envoi, setEnvoi] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [erreur, setErreur] = useState("");
+  const [recu, setRecu] = useState(false);
+  const choix = useRef<HTMLInputElement>(null);
+  const requete = useRef<XMLHttpRequest | null>(null);
+  const annule = useRef(false);
+
+  // Closing the page during an upload would silently cut the file: the browser asks first.
+  useEffect(() => {
+    if (!envoi) return;
+    const garde = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", garde);
+    return () => window.removeEventListener("beforeunload", garde);
+  }, [envoi]);
+
+  /** Readable size, in the interface language (Mo / MB, Go / GB). */
+  const taille = (o: number) => {
+    const unite = o >= 1e9 ? "gigabyte" : o >= 1e6 ? "megabyte" : "kilobyte";
+    const diviseur = o >= 1e9 ? 1e9 : o >= 1e6 ? 1e6 : 1e3;
+    return new Intl.NumberFormat(i18n.language, { style: "unit", unit: unite, unitDisplay: "short", maximumFractionDigits: 1 })
+      .format(o / diviseur);
+  };
+
+  const choisir = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFichier(e.target.files?.[0] ?? null);
+    setErreur("");
+    setRecu(false);
+  };
+
+  const envoyer = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (!fichier) { setErreur(t("dars.importNeedFile")); return; }
+    setEnvoi(true); setPct(0); setErreur(""); setRecu(false);
+    annule.current = false;
+    const { xhr, promesse } = api.importerVideo(fichier, {
+      filename: fichier.name, kind, title: titre.trim(), speaker: intervenant.trim(),
+      series: serie.trim(), session_no: seance, date,
+    }, setPct);
+    requete.current = xhr;
+    try {
+      await promesse;
+      setRecu(true);
+      setFichier(null);
+      setTitre(""); setIntervenant(""); setSerie(""); setSeance("");
+      if (choix.current) choix.current.value = "";
+    } catch (e: any) {
+      setErreur(annule.current ? t("dars.importCancelled") : e?.message || t("dars.importError"));
+    } finally {
+      setEnvoi(false);
+      requete.current = null;
+    }
+  };
+
+  return (
+    <form onSubmit={envoyer} className="grid gap-4 rounded-[10px] border border-line bg-white p-4.5">
+      <div className="grid gap-1">
+        <h2 className="m-0 font-serif text-[1.35rem] font-normal text-deeper">{t("dars.importTitle")}</h2>
+        <p className="m-0 text-[0.9rem] text-muted">{t("dars.importHint")}</p>
+      </div>
+
+      {recu && (
+        <p role="status" className="m-0 rounded-lg bg-paper-2 px-3.5 py-2.5 text-[0.92rem] text-deep">
+          {t("dars.importDone")}{" "}
+          <Link to="/" className="font-semibold text-green underline">{t("dars.importGoDashboard")}</Link>
+        </p>
+      )}
+
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        <Field label={t("dars.importFile")} className="sm:col-span-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <input ref={choix} type="file" accept="video/*,.mkv,.mts" className="hidden" onChange={choisir} disabled={envoi} />
+            <Btn variante="ghost" onClick={() => choix.current?.click()} disabled={envoi}>
+              {fichier ? t("dars.importChange") : t("dars.importChoose")}
+            </Btn>
+            {fichier ? (
+              <span className="min-w-0 break-all text-[0.9rem] text-ink">
+                {fichier.name} <span className="text-muted">· {taille(fichier.size)}</span>
+              </span>
+            ) : (
+              <span className="text-[0.9rem] text-muted">{t("dars.importNoFile")}</span>
+            )}
+          </div>
+        </Field>
+        <Field label={t("dars.kind")}>
+          <select className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)} disabled={envoi}>
+            {GENRES.map((k) => <option key={k} value={k}>{t(`dars.kinds.${k}`)}</option>)}
+          </select>
+        </Field>
+        <Field label={t("dars.title_")}>
+          <input className={inputClass} value={titre} onChange={(e) => setTitre(e.target.value)} required maxLength={200} disabled={envoi} />
+        </Field>
+        <Field label={t("dars.speaker")}>
+          <input className={inputClass} value={intervenant} onChange={(e) => setIntervenant(e.target.value)} maxLength={120} disabled={envoi} />
+        </Field>
+        <Field label={t("dars.series")}>
+          <input className={inputClass} value={serie} onChange={(e) => setSerie(e.target.value)} maxLength={200} disabled={envoi} />
+        </Field>
+        <Field label={t("dars.session")}>
+          <input className={inputClass} type="number" min={1} step={1} value={seance} onChange={(e) => setSeance(e.target.value)} disabled={envoi} />
+        </Field>
+        <Field label={t("dars.importDate")}>
+          <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} required disabled={envoi} />
+        </Field>
+      </div>
+
+      {envoi && (
+        <div className="grid gap-2">
+          <div className="h-2 overflow-hidden rounded-full bg-paper-2" role="progressbar"
+            aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t("dars.importSending", { pct })}>
+            <div className="h-full rounded-full bg-leaf transition-[width] duration-150" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[0.88rem] tabular-nums text-muted">{t("dars.importSending", { pct })}</span>
+            <Btn variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.88rem]"
+              onClick={() => { annule.current = true; requete.current?.abort(); }}>
+              {t("dars.importCancel")}
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {erreur && <p role="alert" className="m-0 rounded-lg bg-err-bg px-3.5 py-2.5 text-[0.92rem] text-[#8a2219]">{erreur}</p>}
+
+      <div className="flex flex-wrap gap-2">
+        <Btn type="submit" disabled={envoi || !fichier}>
+          {envoi ? t("dars.importSubmitting") : t("dars.importSubmit")}
+        </Btn>
+      </div>
+    </form>
   );
 }
 

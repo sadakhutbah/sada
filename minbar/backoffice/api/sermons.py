@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from starlette.concurrency import run_in_threadpool
 
-from .. import auth, content, db, importer, traitement
+from .. import auth, content, db, import_video, importer, traitement
 from ..context import CtxDep, Invalid, khutba_or_404, imam_filter
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
@@ -118,6 +118,22 @@ async def traitement_relancer(ctx: CtxDep):
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "traitement.relance", ip=ctx.ip, run=f.get("run"),
              session=f.get("session"))
     return _ok("Traitement remis en file : il démarre dans la minute.")
+
+
+@router.post("/imports/video")
+async def video_import(ctx: CtxDep):
+    """Vidéo enregistrée hors direct, envoyée brute (pas de multipart : plusieurs Go en flux)."""
+    ctx.need_csrf()
+    ctx.require("assign")
+    meta = dict(ctx.request.query_params)
+    try:
+        run = await import_video.recevoir(ctx.mosque, meta, ctx.request.stream(),
+                                          log=lambda m: print("[import]", m, flush=True))
+    except import_video.ImportRefuse as e:
+        raise Invalid(str(e)) from e
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "import.video", ip=ctx.ip, run=run,
+             type=meta.get("kind") or "dars", titre=meta.get("title") or "")
+    return _ok("Vidéo reçue : le traitement démarre, suivez-le au tableau de bord.", run=run)
 
 
 @router.post("/sermons/{kid}/speaker")

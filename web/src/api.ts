@@ -77,6 +77,12 @@ export type Traitement = {
 };
 export type TraitementsList = { items: Traitement[]; actif: boolean };
 
+/** Metadata of an off-air recording imported from a file (the file itself is the body). */
+export type VideoImport = {
+  filename: string; kind: string; title: string; speaker: string; series: string;
+  session_no: string; date: string;
+};
+
 export const api = {
   session: () => demande<Session>("/session"),
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
@@ -154,6 +160,40 @@ export const api = {
     });
   },
   retirerLogo: () => ecrire<{ ok: boolean; message: string }>("DELETE", "/settings/logo"),
+  /** Recorded video (off-air camera): the raw file is the body, never multipart, so a file of
+   *  several GB is streamed. XHR is used for the upload progress; `xhr.abort()` cancels it.
+   *  The server answers the usual `{ok, message}` shape, errors included. */
+  importerVideo: (fichier: File, meta: VideoImport, progression: (pct: number) => void) => {
+    const p = new URLSearchParams({
+      filename: fichier.name, kind: meta.kind, title: meta.title,
+      speaker: meta.speaker, series: meta.series, date: meta.date,
+    });
+    if (meta.session_no) p.set("session_no", meta.session_no);
+    const xhr = new XMLHttpRequest();
+    const promesse = new Promise<{ ok: boolean; message: string; run: string }>((resolve, reject) => {
+      xhr.open("POST", `/api/v1/imports/video?${p.toString()}`);
+      xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      xhr.setRequestHeader("X-CSRF", jeton);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) progression(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+      };
+      xhr.onload = () => {
+        let json: any = null;
+        try { json = JSON.parse(xhr.responseText); } catch { /* not JSON: the status speaks */ }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          progression(100);
+          resolve(json);
+          return;
+        }
+        if (xhr.status === 401) surExpiration?.();
+        reject(new ApiError(xhr.status, (json && (json.message || json.error)) || `${xhr.status} ${xhr.statusText}`));
+      };
+      xhr.onerror = () => reject(new ApiError(0, ""));
+      xhr.onabort = () => reject(new ApiError(0, ""));
+      xhr.send(fichier);
+    });
+    return { xhr, promesse };
+  },
   /** Connector credentials: a secret left empty or masked keeps its stored value server-side. */
   saveConnector: (key: string, enabled: boolean, values: Record<string, string>) =>
     ecrire<any>("POST", `/settings/connectors/${key}`, { ...values, enabled: enabled ? "1" : "0" }),

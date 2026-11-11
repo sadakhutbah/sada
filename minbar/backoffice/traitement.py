@@ -143,6 +143,10 @@ def tour(conn, mosque: dict, log=print) -> int:
     return n
 
 
+def mettre_en_file(run_dir: Path, idx: int) -> None:
+    _maj(run_dir, idx, etat="attente", erreur=None, fin=None)
+
+
 def relancer(mosque: dict, run_id: str, idx: int) -> None:
     rd = db.mosque_dirs(mosque)["state"] / run_id
     if not runs.RUN_RE.match(run_id) or not (rd / runs.SESSIONS).exists():
