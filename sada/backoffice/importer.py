@@ -103,10 +103,10 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
             kind = s.get("kind") or "khutba"
             cur = conn.execute(
                 "INSERT INTO khutbas (mosque_id, run_id, session_index, label, planned, date, start_clock, end_clock, duration_s,"
-                " imam_id, theme, output_dir, recording, start_pos, end_pos, verses_count, kind, title, series, session_no, imported_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " imam_id, speaker, theme, output_dir, recording, start_pos, end_pos, verses_count, kind, title, series, session_no, imported_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (mosque["id"], run_id, idx, label, planned, date, s.get("start_clock"), s.get("end_clock"), duration,
-                 mosque.get("default_imam_id"), _theme(o.notes), str(sdir), rec_path, start, end,
+                 mosque.get("default_imam_id"), (s.get("speaker") or "").strip(), _theme(o.notes), str(sdir), rec_path, start, end,
                  n_verses, kind, s.get("title") or "", s.get("series") or "", s.get("session_no"),
                  db.now_iso()))
             k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", cur.lastrowid)

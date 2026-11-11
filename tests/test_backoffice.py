@@ -723,3 +723,8 @@ def test_import_corrige_la_nature_d_une_seance_deja_importee(env):
     # Un libellé retouché par un humain est conservé.
     env["conn"].execute("UPDATE khutbas SET kind = 'khutba', label = 'Mon libellé' WHERE id = ?", (avant["id"],))
     assert _ajoute_dars(env)["label"] == "Mon libellé"
+
+
+def test_import_garde_l_orateur_saisi(env):
+    """L'orateur saisi à l'import (sessions.json) arrive dans la fiche."""
+    assert _ajoute_dars(env)["speaker"] == "Mosquée Avicenne"
