@@ -7,10 +7,10 @@ import pytest
 
 from minbar.backoffice import db, migrations, models
 
-# colonnes ajoutées après le schéma initial (migrations 2 et 3)
+# colonnes ajoutées après le schéma initial (migrations 2, 3 et 5)
 ADDED = {
     "khutbas": {"kind", "title", "series", "session_no"},
-    "mosques": {"logo_path", "onboarded_at"},
+    "mosques": {"logo_path", "onboarded_at", "brand_green", "brand_gold"},
 }
 
 

@@ -19,9 +19,9 @@ def test_variantes_et_glose_unique_dans_le_clip():
              {"w": "retour.", "s": 0.9, "e": 1.3}, {"w": "Cette", "s": 1.3, "e": 1.5},
              {"w": "tawbah", "s": 1.5, "e": 1.9}, {"w": "libre.", "s": 1.9, "e": 2.3}]
     out = G.gloss_words(words)
-    assert out[1]["w"] == "taouba (le repentir)"
-    assert out[6]["w"] == "tawbah"                      # une seule glose par clip
-    assert words[1]["w"] == "taouba"                    # l'entrée n'est pas modifiée
+    assert G.display(out[1]) == "taouba (le repentir)"
+    assert out[1]["w"] == "taouba" and out[6].get("gloss") is None   # une seule glose par clip
+    assert "gloss" not in words[1]                      # l'entrée n'est pas modifiée
     assert out[1]["s"] == 0.2 and out[1]["e"] == 0.6    # minutage inchangé
 
 
@@ -30,15 +30,15 @@ def test_terme_multi_mots_et_ponctuation_conservee():
              {"w": "in", "s": 0.6, "e": 0.7}, {"w": "sha", "s": 0.7, "e": 0.8},
              {"w": "Allah,", "s": 0.8, "e": 1.2}, {"w": "demain.", "s": 1.2, "e": 1.6}]
     out = G.gloss_words(words)
-    assert out[4]["w"] == "Allah (si Allah le veut),"
-    assert out[5]["w"] == "demain."
+    assert G.display(out[4]) == "Allah (si Allah le veut),"
+    assert G.display(out[5]) == "demain."
 
 
 def test_pas_de_faux_positif_sur_un_mot_francais():
     words = [{"w": "Le", "s": 0, "e": 0.2}, {"w": "sabre", "s": 0.2, "e": 0.6},
              {"w": "et", "s": 0.6, "e": 0.8}, {"w": "le", "s": 0.8, "e": 1.0},
              {"w": "harem", "s": 1.0, "e": 1.4}]
-    assert [w["w"] for w in G.gloss_words(words)] == ["Le", "sabre", "et", "le", "harem"]
+    assert [G.display(w) for w in G.gloss_words(words)] == ["Le", "sabre", "et", "le", "harem"]
 
 
 def test_fichier_de_glossaire_complete_et_remplace(monkeypatch, tmp_path):
@@ -54,7 +54,7 @@ def test_fichier_de_glossaire_complete_et_remplace(monkeypatch, tmp_path):
     assert by["khouchou'"]["fr"] == "la concentration"        # terme ajouté
     assert len(terms) == len(G.default_terms()) + 1
     words = [{"w": "khouchou", "s": 0, "e": 1}]
-    assert G.gloss_words(words)[0]["w"] == "khouchou (la concentration)"
+    assert G.display(G.gloss_words(words)[0]) == "khouchou (la concentration)"
 
 
 def test_fichier_absent_ou_illisible_laisse_les_termes_par_defaut(monkeypatch, tmp_path):
@@ -87,7 +87,8 @@ def test_build_ass_glose_une_fois_sans_casser_les_pages(tmp_path):
     lines = p.read_text(encoding="utf-8").splitlines()
     glow = [l for l in lines if ",Glow," in l]
     assert sum("(le repentir)" in l for l in glow) == 1      # une page, une seule glose
-    assert any("tawba (le repentir)" in l for l in glow)
+    assert any("tawba" in l and "(le repentir)" in l for l in glow)   # sur la page du terme
+    assert all(l.count("\\N") <= 1 for l in glow)            # deux lignes au plus
     sub = [l for l in lines if ",Sub," in l]
     assert sub and all(l.count("\\N") <= 1 for l in sub)      # deux lignes au plus
     # le second passage garde le terme sans glose
@@ -96,7 +97,7 @@ def test_build_ass_glose_une_fois_sans_casser_les_pages(tmp_path):
 
 def test_glossaire_explicite_vide_desactive_la_glose(tmp_path):
     words = [{"w": "tawba", "s": 0, "e": 1}]
-    assert G.gloss_words(words, [])[0]["w"] == "tawba"
+    assert G.display(G.gloss_words(words, [])[0]) == "tawba"
     p = tmp_path / "v.ass"
     C.build_ass([{"start": 0, "end": 2, "text": "tawba", "words": words}], [], 0, 3, str(p), glossary=[])
     assert "(le repentir)" not in p.read_text(encoding="utf-8")

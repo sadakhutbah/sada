@@ -23,7 +23,7 @@ from . import migrations, models
 DEFAULT_DB = paths.BACKOFFICE_DB
 # settings a mosque can change (Settings → Mosque, `python -m minbar.backoffice mosque`)
 MOSQUE_SETTINGS = ("name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token", "state_dir", "output_dir",
-                   "publish_dir", "clip_title", "logo_path")
+                   "publish_dir", "clip_title", "logo_path", "brand_green", "brand_gold")
 MASK = "••••••"                  # value shown in place of a stored secret; sent back as is = unchanged
 
 # schéma SQLAlchemy (source de vérité) et migrations versionnées, réexportés pour introspection

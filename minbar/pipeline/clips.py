@@ -41,6 +41,7 @@ SUB_CHUNK_CHARS = 26       # beyond this: new subtitle « page »
 CARD_BOTTOM = 1920 - 390
 CARD_W = 980
 GOLD = "&H0058C8F2&"       # #F2C858 (BGR)
+PANEL = "&H1016120E"       # verse card panel: near-black, slightly green (BGR, alpha 0x10)
 WHITE = "&H00FFFFFF&"
 WEAK_END = set("de du des la le les l' d' un une et à au aux en que qui qu' pour par sur dans avec sans son sa ses ce cette ces "
                "ne n' se s' leur nos vos mon ma mes ton ta tes notre votre il elle ils elles nous vous on je j' tu y est".split())
@@ -315,7 +316,86 @@ def split_lines(words: list[str]) -> list[list[str]]:
     return [words[:k], words[k:]]
 
 
-def _speech_events(words: list[dict], hide: list[tuple[float, float]], t_end: float) -> list[str]:
+def _display_tokens(ch: list[dict]) -> list[tuple[str, int]]:
+    """Mots affichés (glose comprise) et index du mot horodaté qui les porte."""
+    toks: list[tuple[str, int]] = []
+    for i, w in enumerate(ch):
+        for part in glossmod.display(w).split():
+            toks.append((part, i))
+    return toks
+
+
+def _wrap_tokens(toks: list[tuple[str, int]]) -> list[list[tuple[str, int]]]:
+    """Découpe en lignes qui tiennent dans SUB_MAXW ; deux lignes équilibrées quand c'est possible."""
+    lines: list[list[tuple[str, int]]] = []
+    cur: list[tuple[str, int]] = []
+    for tok in toks:
+        cand = " ".join(t for t, _ in cur + [tok])
+        if cur and _sub_w(cand) > SUB_MAXW:
+            lines.append(cur)
+            cur = [tok]
+        else:
+            cur.append(tok)
+    if cur:
+        lines.append(cur)
+    if len(lines) == 2:
+        best = None
+        for k in range(1, len(toks)):
+            w1 = _sub_w(" ".join(t for t, _ in toks[:k]))
+            w2 = _sub_w(" ".join(t for t, _ in toks[k:]))
+            if w1 > SUB_MAXW or w2 > SUB_MAXW:
+                continue
+            pen = max(w1, w2)
+            if best is None or pen < best[0]:
+                best = (pen, k)
+        if best:
+            k = best[1]
+            lines = [toks[:k], toks[k:]]
+    return lines
+
+
+def _split_chunk(ch: list[dict]) -> int:
+    """Cut point when a page (gloss included) would need three lines."""
+    best = None
+    for k in range(1, len(ch)):
+        w1 = _sub_w(" ".join(glossmod.display(w) for w in ch[:k]))
+        w2 = _sub_w(" ".join(glossmod.display(w) for w in ch[k:]))
+        pen = max(w1, w2)
+        if best is None or pen < best[0]:
+            best = (pen, k)
+    return best[1] if best else 1
+
+
+def _page_events(ch: list[dict], a: float, b: float, gold: str) -> list[str]:
+    toks = _display_tokens(ch)
+    lines = _wrap_tokens(toks)
+    if len(lines) > 2:
+        k = _split_chunk(ch)
+        return (_page_events(ch[:k], a, ch[k]["s"], gold)
+                + _page_events(ch[k:], ch[k]["s"], b, gold))
+    ev = []
+    for i in range(len(ch)):
+        s = a if i == 0 else ch[i]["s"]
+        e = b if i == len(ch) - 1 else ch[i + 1]["s"]
+        if e - s < 0.02:
+            continue
+        rendered = []
+        for ln in lines:
+            parts = []
+            for tok, owner in ln:
+                t = _esc(tok)
+                parts.append(f"{{\\c{gold}}}{t}{{\\c{WHITE}}}" if owner == i else t)
+            rendered.append(" ".join(parts))
+        out = "\\N".join(rendered)
+        tag = "{\\fad(80,0)\\blur0.6}" if i == 0 else "{\\blur0.6}"
+        ev.append(f"Dialogue: 1,{_ass_time(s)},{_ass_time(e)},Sub,,0,0,0,,{tag}{out}")
+    # diffuse dark halo under the page (contrast on a light background without an opaque box)
+    plain = "\\N".join(" ".join(_esc(t) for t, _ in ln) for ln in lines)
+    ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},Glow,,0,0,0,,{{\\fad(80,0)\\blur18}}{plain}")
+    return ev
+
+
+def _speech_events(words: list[dict], hide: list[tuple[float, float]], t_end: float, gold: str = GOLD) -> list[str]:
     """One page = 1-2 lines; one event per active word (word in gold), soft fade-in on each page."""
     ev = []
     chunks = chunk_words(words)
@@ -325,25 +405,7 @@ def _speech_events(words: list[dict], hide: list[tuple[float, float]], t_end: fl
         b = min(nxt, max(ch[-1]["e"] + 0.4, a + 1.0), t_end)
         if b - a < 0.25 or any(x0 - 0.1 < (a + b) / 2 < x1 + 0.1 for x0, x1 in hide):
             continue
-        toks = [w["w"] for w in ch]
-        lines = split_lines(toks)
-        brk = len(lines[0]) if len(lines) > 1 else -1
-        for i in range(len(ch)):
-            s = a if i == 0 else ch[i]["s"]
-            e = b if i == len(ch) - 1 else ch[i + 1]["s"]
-            if e - s < 0.02:
-                continue
-            out = ""
-            for j, tok in enumerate(toks):
-                if j:
-                    out += "\\N" if j == brk else " "
-                t = _esc(tok)
-                out += f"{{\\c{GOLD}}}{t}{{\\c{WHITE}}}" if j == i else t
-            tag = "{\\fad(80,0)\\blur0.6}" if i == 0 else "{\\blur0.6}"
-            ev.append(f"Dialogue: 1,{_ass_time(s)},{_ass_time(e)},Sub,,0,0,0,,{tag}{out}")
-        # diffuse dark halo under the page (contrast on a light background without an opaque box)
-        plain = "\\N".join(" ".join(_esc(t) for t in ln) for ln in lines)
-        ev.append(f"Dialogue: 0,{_ass_time(a)},{_ass_time(b)},Glow,,0,0,0,,{{\\fad(80,0)\\blur18}}{plain}")
+        ev += _page_events(ch, a, b, gold)
     return ev
 
 
@@ -385,7 +447,7 @@ AR_CARD_SIZE = 96
 AR_CARD_FONT = "NotoNaskhArabic-Bold.ttf"
 
 
-def _verse_card(m: dict, fr: str, a: float, b: float) -> list[str]:
+def _verse_card(m: dict, fr: str, a: float, b: float, gold: str = GOLD) -> list[str]:
     """Verse card: panel + label + Arabic (1 line, if it fits) + Hamidullah translation in italics."""
     fr = clean_fr(fr).rstrip()
     inner = CARD_W - 130
@@ -413,12 +475,12 @@ def _verse_card(m: dict, fr: str, a: float, b: float) -> list[str]:
 
     ev = [f"Dialogue: 2,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0, top)}{fad}\\p1}}{_round_rect(CARD_W, h, 34)}",
           # gold rule on the left of the card
-          f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0 + 34, top)}{fad}\\1c{GOLD}\\1a&H00&\\p1}}m 0 0 l {CARD_W - 68} 0 l {CARD_W - 68} 4 l 0 4"]
+          f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0 + 34, top)}{fad}\\1c{gold}\\1a&H00&\\p1}}m 0 0 l {CARD_W - 68} 0 l {CARD_W - 68} 4 l 0 4"]
     y = top + pad_t + lab_h / 2
     label = "CORAN" if m.get("ambiguous") else f"SOURATE {_esc(surah_label(m['surah_name']))}   ·   {m['ref']}"
     ev.append(f"Dialogue: 3,{ta},{tb},CardLabel,,0,0,0,,{{\\an5{pos(W // 2, y)}{fad}}}{label}")
     y += lab_h / 2 + rule_h / 2
-    ev.append(f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an5{pos(W // 2, y)}{fad}\\1c{GOLD}\\1a&H60&\\p1}}m 0 0 l 90 0 l 90 2 l 0 2")
+    ev.append(f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an5{pos(W // 2, y)}{fad}\\1c{gold}\\1a&H60&\\p1}}m 0 0 l 90 0 l 90 2 l 0 2")
     y += rule_h / 2
     if ar:
         y += ar_h / 2
@@ -431,32 +493,64 @@ def _verse_card(m: dict, fr: str, a: float, b: float) -> list[str]:
     return ev
 
 
-def _header(header: dict | None, t_end: float) -> list[str]:
+def _header(header: dict | None, t_end: float, logo: bool = False) -> list[str]:
     if not header:
         return []
     b = min(6.0, t_end)
-    ev = [f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head,,0,0,0,,{{\\an8\\pos(540,118)\\fad(600,800)}}"
+    title_y, sub_y = (258, 308) if logo else (118, 168)   # the logo sits above the title
+    ev = [f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head,,0,0,0,,{{\\an8\\pos(540,{title_y})\\fad(600,800)}}"
           f"{_esc(header.get('title', DEFAULT_TITLE).upper())}"]
     if header.get("subtitle"):
-        ev.append(f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head2,,0,0,0,,{{\\an8\\pos(540,168)\\fad(600,800)}}{_esc(header['subtitle'])}")
+        ev.append(f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head2,,0,0,0,,{{\\an8\\pos(540,{sub_y})\\fad(600,800)}}{_esc(header['subtitle'])}")
     return ev
 
 
-ASS_HEADER = (
-    "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n"
-    "YCbCr Matrix: TV.709\n\n"
-    "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, "
-    "Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-    f"Style: Sub,Montserrat ExtraBold,{SUB_SIZE},&H00FFFFFF,&H000000FF,&H00141414,&H64000000,0,0,0,0,100,100,0,0,1,5,3,2,90,90,{SAFE_BOTTOM},1\n"
-    f"Style: Glow,Montserrat ExtraBold,{SUB_SIZE},&HFF000000,&H000000FF,&H50000000,&HFF000000,0,0,0,0,100,100,0,0,1,20,0,2,90,90,{SAFE_BOTTOM},1\n"
-    "Style: Card,Montserrat,20,&H1016120E,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n"
-    "Style: CardLabel,Montserrat Bold,31,&H0058C8F2,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,6,0,1,0,0,5,0,0,0,1\n"
-    f"Style: CardAr,Noto Naskh Arabic,{AR_CARD_SIZE},&H00E9F1F4,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n"
-    f"Style: CardFr,EB Garamond,{FR_CARD_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,-1,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n"
-    "Style: Head,Montserrat Bold,36,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,8,0,1,0,2,8,0,0,0,1\n"
-    "Style: Head2,Montserrat Bold,32,&H0058C8F2,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,3,0,1,0,2,8,0,0,0,1\n\n"
-    "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-)
+def _ass_colour(value: str | None) -> str | None:
+    """« #F2C858 » (or without #) -> ASS &H00BBGGRR& ; anything else -> None (default kept)."""
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", (value or "").strip())
+    if not m:
+        return None
+    h = m.group(1)
+    return f"&H00{h[4:6]}{h[2:4]}{h[0:2]}&".upper()
+
+
+def brand_colours(brand: dict | None) -> tuple[str, str]:
+    """(gold, card panel) of the clip. Mosque colours when configured, current charter otherwise.
+
+    `brand` comes from the mosque (`brand_green`, `brand_gold`); an invalid value is ignored rather
+    than breaking the render. The panel is the mosque green darkened to keep the ivory text legible.
+    """
+    gold = _ass_colour((brand or {}).get("gold")) or GOLD
+    green = (brand or {}).get("green") or ""
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", green.strip())
+    if not m:
+        return gold, PANEL
+    h = m.group(1)
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    panel = f"&H10{max(6, round(b * 0.22)):02X}{max(6, round(g * 0.22)):02X}{max(6, round(r * 0.22)):02X}&".upper()
+    return gold, panel
+
+
+@lru_cache(maxsize=16)
+def ass_header(gold: str = GOLD, panel: str = PANEL) -> str:
+    return (
+        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n"
+        "YCbCr Matrix: TV.709\n\n"
+        "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, "
+        "Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Sub,Montserrat ExtraBold,{SUB_SIZE},&H00FFFFFF,&H000000FF,&H00141414,&H64000000,0,0,0,0,100,100,0,0,1,5,3,2,90,90,{SAFE_BOTTOM},1\n"
+        f"Style: Glow,Montserrat ExtraBold,{SUB_SIZE},&HFF000000,&H000000FF,&H50000000,&HFF000000,0,0,0,0,100,100,0,0,1,20,0,2,90,90,{SAFE_BOTTOM},1\n"
+        f"Style: Card,Montserrat,20,{panel},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n"
+        f"Style: CardLabel,Montserrat Bold,31,{gold},&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,6,0,1,0,0,5,0,0,0,1\n"
+        f"Style: CardAr,Noto Naskh Arabic,{AR_CARD_SIZE},&H00E9F1F4,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n"
+        f"Style: CardFr,EB Garamond,{FR_CARD_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,-1,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n"
+        "Style: Head,Montserrat Bold,36,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,8,0,1,0,2,8,0,0,0,1\n"
+        f"Style: Head2,Montserrat Bold,32,{gold},&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,3,0,1,0,2,8,0,0,0,1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+
+
+ASS_HEADER = ass_header()
 
 
 def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
@@ -477,13 +571,16 @@ def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
 
 
 def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, path: str, tr: dict | None = None,
-              header: dict | None = None, rappel: bool = False, glossary: list[dict] | None = None) -> int:
+              header: dict | None = None, rappel: bool = False, glossary: list[dict] | None = None,
+              brand: dict | None = None, logo: bool = False) -> int:
     """Write the .ass of clip [t0, t1] (session time); return the number of units (subtitle pages + cards).
 
     `rappel`: short clip centred on a verse — the card stays on screen until the end, because it
     carries the reminder; otherwise it fades out as soon as the speech resumes.
-    `glossary`: terms whose first occurrence gets a French gloss; None = the configured glossary."""
+    `glossary`: terms whose first occurrence gets a French gloss; None = the configured glossary.
+    `brand`: mosque colours ({green, gold}, hex); `logo`: the header leaves room for a logo."""
     tr = tr or {}
+    gold, panel = brand_colours(brand)
     vms = shown(matches, ambiguous=True)
     dur = t1 - t0
     ev: list[str] = []
@@ -535,15 +632,15 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
             pca = cards[-1][0]
             cards[-1] = (pca, max(pca + 1.0, ca - 0.35))
         cards.append((ca, cb))
-    ev += [e for (m, fr, _ca, _cb), (a, b) in zip(specs, cards) for e in _verse_card(m, fr, a, b)]
+    ev += [e for (m, fr, _ca, _cb), (a, b) in zip(specs, cards) for e in _verse_card(m, fr, a, b, gold)]
     words.sort(key=lambda w: w["s"])
     # « la tawba (le repentir) » : première occurrence du terme dans le clip, glose collée au mot.
     if words:
         words = glossmod.gloss_words(words, glossary if glossary is not None else glossmod.load())
         words[0]["w"] = words[0]["w"][:1].upper() + words[0]["w"][1:]
-    sev = _speech_events(words, cards, dur)
+    sev = _speech_events(words, cards, dur, gold)
     pages = sum(1 for e in sev if ",Glow," in e)
-    Path(path).write_text(ASS_HEADER + "\n".join(_header(header, dur) + ev + sev) + "\n", encoding="utf-8")
+    Path(path).write_text(ass_header(gold, panel) + "\n".join(_header(header, dur, logo) + ev + sev) + "\n", encoding="utf-8")
     return pages + len(cards)
 
 
@@ -587,6 +684,37 @@ def gradient_png(path: str) -> str:
     return path
 
 
+LOGO_SIZE = 132
+LOGO_EXT = {".png", ".jpg", ".jpeg", ".webp"}   # pas de SVG : pas de convertisseur dans les dépendances
+
+
+def logo_disc(src: str, dst: str, size: int = LOGO_SIZE, brand: dict | None = None) -> str | None:
+    """Square mosque logo cropped into a white disc with a gold ring, as in the live scenes.
+
+    Returns the PNG path, or None when the file cannot be read (SVG, missing file): the clip is then
+    rendered without a logo instead of failing. The disc keeps the logo readable on any picture.
+    """
+    from PIL import Image, ImageDraw
+    try:
+        im = Image.open(src).convert("RGBA")
+    except Exception:  # noqa: BLE001 — un logo illisible ne doit pas empêcher le clip
+        return None
+    k = size * 2                       # drawn at 2x, overlaid at `size`: clean edges
+    s = min(im.size)
+    im = im.crop(((im.width - s) // 2, (im.height - s) // 2, (im.width + s) // 2, (im.height + s) // 2))
+    im = im.resize((k, k), Image.Resampling.LANCZOS)
+    mask = Image.new("L", (k, k), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, k - 1, k - 1), fill=255)
+    disc = Image.new("RGBA", (k, k), (255, 255, 255, 0))
+    disc.paste(Image.new("RGBA", (k, k), (255, 255, 255, 255)), (0, 0), mask)
+    disc.paste(im, (0, 0), mask)
+    gold = ((brand or {}).get("gold") or "").strip().lstrip("#")
+    r, g, b = (int(gold[i:i + 2], 16) for i in (0, 2, 4)) if re.fullmatch(r"[0-9a-fA-F]{6}", gold) else (242, 200, 88)
+    ImageDraw.Draw(disc).ellipse((2, 2, k - 3, k - 3), outline=(r, g, b, 255), width=max(4, k // 40))
+    disc.save(dst, "PNG")
+    return dst
+
+
 def crop_filter(crop: dict | None) -> str:
     """9:16 crop. crop = {x: horizontal centre (0-1), top, bottom: fractions of the height removed}."""
     c = {"x": 0.5, "top": 0.0, "bottom": 0.0, **(crop or {})}
@@ -596,7 +724,7 @@ def crop_filter(crop: dict | None) -> str:
 
 
 def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=print, crop: dict | None = None,
-                fade_out: float | None = None) -> None:
+                fade_out: float | None = None, logo: str | None = None, brand: dict | None = None) -> None:
     """9:16 crop (1080x1920), gradient veil, burned-in subtitles, normalised original audio (no music).
 
     Both picture and sound fade out at the end: an extract closes on an image that goes out, not on
@@ -610,13 +738,25 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
     fo_a = min(1.5, max(0.45, tail))         # sound: closes over the silence left after the last word
     with tempfile.TemporaryDirectory() as td:
         grad = gradient_png(str(Path(td) / "grad.png"))
+        lg = logo_disc(logo, str(Path(td) / "logo.png"), brand=brand) if logo else None
+        if lg:
+            # Logo above the title during the header only (same 6 s, fades with it), then it leaves
+            # the frame to the subtitles.
+            fade_end = max(0.2, min(6.0, dur) - 0.8)
+            pre = (f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS}[bs];"
+                   f"[2:v]scale={LOGO_SIZE}:{LOGO_SIZE},format=rgba,"
+                   f"fade=t=in:st=0.15:d=0.5:alpha=1,fade=t=out:st={fade_end:.2f}:d=0.7:alpha=1[lg];"
+                   f"[bs][lg]overlay=(main_w-overlay_w)/2:78:format=auto,format=yuv420p,")
+            extra = ["-loop", "1", "-framerate", "25", "-i", lg]
+        else:
+            pre = (f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS},format=yuv420p,")
+            extra = []
         fc = (f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p[cam];"
-              f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS},format=yuv420p,"
-              f"fade=t=out:st={max(0, dur - fo_v):.2f}:d={fo_v:.2f}[v];"
+              f"{pre}fade=t=out:st={max(0, dur - fo_v):.2f}:d={fo_v:.2f}[v];"
               f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
               f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - fo_a):.2f}:d={fo_a:.2f}[a]")
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.2f}", "-t", f"{dur:.2f}", "-i", str(Path(src).resolve()),
-               "-loop", "1", "-framerate", "25", "-i", grad, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
+               "-loop", "1", "-framerate", "25", "-i", grad, *extra, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
                "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
                "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(Path(out).resolve())]
         subprocess.run(cmd, check=True, cwd=str(Path(out).resolve().parent))
@@ -624,7 +764,8 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
 
 
 def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx: int, version: int,
-              video: str, offset: float, outdir: Path, header: dict | None, crop: dict | None, log=print) -> Path:
+              video: str, offset: float, outdir: Path, header: dict | None, crop: dict | None, log=print,
+              logo: str | None = None, brand: dict | None = None) -> Path:
     """Subtitles + render of clip #idx, version `version`, of window w (session time); return the MP4.
 
     offset: position of the session start inside `video` (video_time = session_time + offset)."""
@@ -632,7 +773,8 @@ def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx:
     ass = outdir / f"clip{idx}{v}.ass"
     out = outdir / f"clip{idx}_{w.get('kind') or 'extrait'}{v}_A-VALIDER.mp4"
     build_ass(segments, matches, w["start"], w["end"], str(ass), tr=tr, header=header,
-              rappel=w.get("kind") == "rappel")
+              rappel=w.get("kind") == "rappel", brand=brand,
+              logo=bool(logo) and Path(logo).suffix.lower() in LOGO_EXT)
     last = max((s["end"] for s in segments if s["end"] <= w["end"] + 0.05), default=w["start"])
     if w["end"] - last > 1.5:
         # Safety net for windows stored before the rule: never more than a breath past the last word,
@@ -640,6 +782,11 @@ def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx:
         w = {**w, "end": round(last + 0.8, 2)}
         last = max(s["end"] for s in segments if s["end"] <= w["end"] + 0.05)
     tail = w["end"] - last                       # silence left after the last word
+    extra = {}
+    if logo:
+        extra["logo"] = logo
+    if brand:
+        extra["brand"] = brand
     render_clip(video, offset, w, ass.name, str(out), log, crop=crop,
-                fade_out=min(1.3, max(0.45, tail)))
+                fade_out=min(1.3, max(0.45, tail)), **extra)
     return out

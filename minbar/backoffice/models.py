@@ -39,6 +39,9 @@ mosques = sa.Table(
     # ajoutées après coup (voir migrations 3) : présentes dès la création d'une base neuve
     sa.Column("logo_path", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("onboarded_at", sa.Text, nullable=False, server_default=_d("''")),
+    # couleurs de la mosquée dans les clips (migration 5), vides = charter actuelle
+    sa.Column("brand_green", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("brand_gold", sa.Text, nullable=False, server_default=_d("''")),
 )
 
 users = sa.Table(

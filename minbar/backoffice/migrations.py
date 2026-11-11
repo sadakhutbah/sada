@@ -102,12 +102,21 @@ def _tables_du_modele(conn: sqlite3.Connection) -> None:
     conn.executescript(_create_ddl())
 
 
+def _mosques_couleurs(conn: sqlite3.Connection) -> None:
+    """Migration 5 : couleurs de la mosquée pour l'habillage des clips, ajoutées après coup."""
+    _add_columns(conn, "mosques", (
+        ("brand_green", "TEXT NOT NULL DEFAULT ''"),
+        ("brand_gold", "TEXT NOT NULL DEFAULT ''"),
+    ))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
     Migration(3, "mosques : logo et embarquement (logo_path, onboarded_at)", _mosques_logo),
     Migration(4, "tables des modèles ajoutées après coup (direct, entrées, stockage, textes)",
               _tables_du_modele),
+    Migration(5, "mosques : couleurs des clips (brand_green, brand_gold)", _mosques_couleurs),
 )
 
 LATEST = MIGRATIONS[-1].version

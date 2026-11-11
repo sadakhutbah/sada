@@ -130,10 +130,19 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
         m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", c["mosque_id"])
         data = load(conn, k)
         ver = c["version"] + 1
+        # Même identité que le clip d'origine : logo et couleurs de la mosquée quand ils existent.
+        brand = {k: m[f"brand_{k}"] for k in ("green", "gold") if (m[f"brand_{k}"] or "").strip()}
+        logo = None
+        if (m.get("logo_path") or "").strip():
+            from . import branding
+            p = branding.path_for(m)
+            if p.exists() and p.suffix.lower() in clipmod.LOGO_EXT:
+                logo = str(p)
         out = clipmod.make_clip(data["segments"], data["verses"], data["translations"],
                                 {"start": c["start"], "end": c["end"], "kind": c["kind"]}, c["idx"], ver,
                                 c["video_source"], c["source_offset"], Path(c["file_path"]).parent,
-                                {"title": m["clip_title"], "subtitle": ""}, json.loads(c["crop"]) if c["crop"] else None, log)
+                                {"title": m["clip_title"], "subtitle": ""}, json.loads(c["crop"]) if c["crop"] else None, log,
+                                logo=logo, brand=brand or None)
         conn.execute("UPDATE clips SET file_path = ?, version = ?, needs_regen = 0, regen_state = '', regen_error = '', "
                      f"{REQUEUE}, updated_at = ? WHERE id = ?", (str(out), ver, db.now_iso(), clip_id))
         db.audit(conn, c["mosque_id"], None, "clip.regenere", "clip", clip_id, version=ver, fichier=out.name)

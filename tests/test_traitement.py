@@ -69,6 +69,48 @@ def test_succes_echec_relance(tmp_path, monkeypatch):
     assert items[0]["etat"] == "termine" and items[0]["run"] == rid
 
 
+def test_le_pipeline_recoit_le_logo_et_les_couleurs_de_la_mosquee(tmp_path, monkeypatch):
+    png = tmp_path / "logo.png"
+    from PIL import Image
+    Image.new("RGB", (64, 64), (20, 80, 40)).save(png)
+    m = {**_mosque(tmp_path), "logo_path": "data/backoffice/logos/m.png",
+         "brand_green": "#1E7A3C", "brand_gold": "#C8A96A"}
+    rid = _now_id()
+    rd = _run(tmp_path, rid, [{"index": 0, "status": "done", "planned": "13:30"}])
+    from minbar.backoffice import branding
+    monkeypatch.setattr(branding, "path_for", lambda mosque: png)
+    monkeypatch.setattr(traitement.importer, "import_run", lambda c, mo, r, log=print: None)
+    vus = []
+
+    def reussit(cmd, **kw):
+        vus.append(cmd)
+        _transcrit(tmp_path, rid, 0)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(traitement.subprocess, "run", reussit)
+    traitement.tour(None, m, log=lambda *_: None)
+    cmd = vus[0]
+    assert cmd[cmd.index("--logo") + 1] == str(png)
+    assert cmd[cmd.index("--brand-green") + 1] == "#1E7A3C"
+    assert cmd[cmd.index("--brand-gold") + 1] == "#C8A96A"
+    assert traitement.lire(rd)["0"]["etat"] == "termine"
+
+
+def test_sans_logo_ni_couleurs_aucune_option_d_habillage(tmp_path, monkeypatch):
+    m = _mosque(tmp_path)
+    rid = _now_id()
+    _run(tmp_path, rid, [{"index": 0, "status": "done", "planned": "13:30"}])
+    monkeypatch.setattr(traitement.importer, "import_run", lambda c, mo, r, log=print: None)
+    vus = []
+
+    def reussit(cmd, **kw):
+        vus.append(cmd)
+        _transcrit(tmp_path, rid, 0)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(traitement.subprocess, "run", reussit)
+    traitement.tour(None, m, log=lambda *_: None)
+    assert not {"--logo", "--brand-green", "--brand-gold"} & set(vus[0])
+
+
 def test_reprise_apres_coupure(tmp_path):
     m = _mosque(tmp_path)
     rd = _run(tmp_path, _now_id(), [{"index": 0, "status": "done"}])

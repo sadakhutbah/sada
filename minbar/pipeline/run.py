@@ -51,7 +51,7 @@ def transcript_matches(res: dict, key: dict, wav: str) -> bool:
 def process(src: str, start: float, end: float | None, label: str, outdir: Path, *, model: str | None = None,
             retranscribe: bool = False, use_llm: bool = True, nclips: int = 3, clip_video: str | None = None,
             align: bool = False, crop: dict | None = None, header: dict | None = None,
-            arabic_retry: bool | None = None):
+            arabic_retry: bool | None = None, logo: str | None = None, brand: dict | None = None):
     """src = recording for the audio/transcription; clip_video = clean video (without overlay) for the clips.
 
     clip_video is either aligned with src (same ffmpeg process: same positions), or another video of the same
@@ -121,7 +121,8 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
                     vsrc, voff = src, start
         log(f"clips : vidéo {vsrc}")
         for i, w in enumerate(wins, 1):
-            out = clipmod.make_clip(segs, ms, trs, w, i, 1, vsrc, voff, o.clips, header, crop, log)
+            out = clipmod.make_clip(segs, ms, trs, w, i, 1, vsrc, voff, o.clips, header, crop, log,
+                                    logo=logo, brand=brand)
             manifest.append(clip_entry(w, i, out, vsrc, voff, crop))
         o.write_manifest(manifest)
     return {"segments": len(segs), "verses": len(ms), "clips": manifest}
@@ -179,6 +180,9 @@ def main(argv=None):
     ap.add_argument("--arabic-retry", action=argparse.BooleanOptionalAction, default=None,
                     help="retranscrire en arabe les citations rendues en français incohérent "
                          "(défaut : MINBAR_ARABIC_RETRY, sinon activé)")
+    ap.add_argument("--logo", help="logo de la mosquée (PNG/JPG) dans l'en-tête des clips")
+    ap.add_argument("--brand-green", help="vert de la mosquée (#RRGGBB) ; défaut : couleurs actuelles")
+    ap.add_argument("--brand-gold", help="or de la mosquée (#RRGGBB) ; défaut : couleurs actuelles")
     ap.add_argument("--glossary", help="glossaire JSON des termes islamiques "
                                        "(défaut : MINBAR_GLOSSARY, sinon data/glossary.json, sinon le glossaire du code)")
     a = ap.parse_args(argv)
@@ -197,6 +201,8 @@ def main(argv=None):
         "use_llm": llm.enabled(),
         "nclips": nclips,
         "arabic_retry": a.arabic_retry,
+        "logo": a.logo,
+        "brand": {k: v for k, v in (("green", a.brand_green), ("gold", a.brand_gold)) if v} or None,
         "crop": {k: float(v) for k, v in (kv.split("=") for kv in a.crop.split(","))} if a.crop else None,
         "header": {"title": a.title, "subtitle": a.subtitle} if a.title else None,
     }

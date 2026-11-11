@@ -97,6 +97,17 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
     log(f"{run_dir.name} session {runs.session_number(idx)} : traitement lancé")
     cmd = [sys.executable, "-m", "minbar.pipeline.run", str(run_dir / runs.SESSIONS),
            "--only-session", str(idx), "--out", str(out)]
+    # Identité de la mosquée dans les clips : logo et couleurs, quand ils sont configurés.
+    if (mosque.get("logo_path") or "").strip():
+        from . import branding
+        logo = branding.path_for(mosque)
+        # les clips n'incrustent que les images matricielles : un SVG (sans convertisseur) est ignoré
+        if logo.exists() and logo.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+            cmd += ["--logo", str(logo)]
+    for key, option in (("brand_green", "--brand-green"), ("brand_gold", "--brand-gold")):
+        value = (mosque.get(key) or "").strip()
+        if value:
+            cmd += [option, value]
     try:
         p = subprocess.run(cmd, cwd=paths.ROOT, capture_output=True, text=True, env=_env())
         ok = p.returncode == 0 and SessionOutput(out / run_dir.name / runs.session_dir(idx)).is_transcribed()

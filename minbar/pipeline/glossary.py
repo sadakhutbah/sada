@@ -29,7 +29,7 @@ from .. import paths
 DEFAULT_TERMS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("tawba", ("tawba", "tawbah", "taouba", "taoubah", "tawbat"), "le repentir"),
     ("istighfar", ("istighfar", "istighfare", "istighfar"), "la demande de pardon"),
-    ("taqwa", ("taqwa", "taqwah", "takwa"), "la piété, la crainte d'Allah"),
+    ("taqwa", ("taqwa", "taqwah", "takwa"), "la piété"),
     ("iman", ("iman", "imane", "eemane"), "la foi"),
     ("ihsan", ("ihsan", "ihsane", "ihsaan"), "l'excellence spirituelle"),
     ("sunna", ("sunna", "sunnah", "sounna"), "la tradition prophétique"),
@@ -48,7 +48,7 @@ DEFAULT_TERMS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("dars", ("dars", "darse", "ders"), "le cours"),
     ("rasulullah", ("rasulullah", "rasul allah", "rasoulallah"), "le Messager d'Allah"),
     ("sallallahu alayhi wa sallam", ("sallallahu alayhi wa sallam", "sallallahou alayhi wa sallam",
-                                     "sallallahu alayhi wasallam"), "que la paix et la bénédiction d'Allah soient sur lui"),
+                                     "sallallahu alayhi wasallam"), "paix et bénédiction sur lui"),
     ("subhanallah", ("subhanallah", "subhan allah", "sobhanallah"), "gloire à Allah"),
     ("al-hamdu lillah", ("al-hamdu lillah", "al hamdu lillah", "alhamdulillah", "el hamdoulillah"),
      "louange à Allah"),
@@ -175,9 +175,10 @@ MAX_TERM_WORDS = 5
 def gloss_words(words: list[dict], terms: list[dict] | None = None) -> list[dict]:
     """Ajoute la traduction d'un terme à sa première occurrence dans le clip.
 
-    `words` : les mots du clip (horodatés) ; les dicts ne sont pas modifiés. La glose est collée au
-    dernier mot du terme (« tawba (le repentir) ») : elle apparaît avec le mot surligné, à son
-    minutage, et le découpage en pages la prend en compte comme du texte normal.
+    `words` : les mots du clip (horodatés) ; les dicts ne sont pas modifiés. La glose est posée sur
+    le dernier mot du terme (`gloss`), affichée par `display` : elle apparaît avec le mot surligné,
+    à son minutage, mais ne pèse pas sur le découpage en pages (une glose ne crée pas une page
+    d'un seul mot).
     """
     terms = terms if terms is not None else load()
     idx = _index(terms)
@@ -191,11 +192,18 @@ def gloss_words(words: list[dict], terms: list[dict] | None = None) -> list[dict
             if not e or e["term"] in used:
                 continue
             used.add(e["term"])
-            last = out[i + n - 1]
-            raw = str(last.get("w") or "")
-            core = raw.rstrip(_PUNCT)
-            last["w"] = core + f" ({e['fr']})" + raw[len(core):]   # ponctuation conservée après la glose
+            out[i + n - 1]["gloss"] = f" ({e['fr']})"   # affichée par `display`, hors découpage des pages
             i += n - 1
             break
         i += 1
     return out
+
+
+def display(word: dict) -> str:
+    """Texte du mot avec sa glose éventuelle, ponctuation finale conservée après la parenthèse."""
+    raw = str(word.get("w") or "")
+    g = word.get("gloss")
+    if not g:
+        return raw
+    core = raw.rstrip(_PUNCT)
+    return core + g + raw[len(core):]
