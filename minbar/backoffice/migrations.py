@@ -92,10 +92,22 @@ def _mosques_logo(conn: sqlite3.Connection) -> None:
     ))
 
 
+def _tables_du_modele(conn: sqlite3.Connection) -> None:
+    """Migration 4 : rattrape les tables et index ajoutés aux modèles après le schéma initial.
+
+    Un `CREATE ... IF NOT EXISTS`, donc sans effet sur une base déjà complète : la migration existe
+    pour les bases qui ont enregistré la version 1 avant que ces tables n'apparaissent dans les
+    modèles (`live_targets`, `live_input`, `storage`, `screen_texts`), où plus rien ne les créait.
+    """
+    conn.executescript(_create_ddl())
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
     Migration(3, "mosques : logo et embarquement (logo_path, onboarded_at)", _mosques_logo),
+    Migration(4, "tables des modèles ajoutées après coup (direct, entrées, stockage, textes)",
+              _tables_du_modele),
 )
 
 LATEST = MIGRATIONS[-1].version

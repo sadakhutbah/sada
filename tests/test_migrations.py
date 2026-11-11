@@ -116,6 +116,33 @@ def test_refus_d_une_base_plus_recente_que_le_code(tmp_path):
         db.init(path)
 
 
+def test_table_ajoutee_apres_coup_est_creee_sur_une_base_ancienne(tmp_path):
+    """Base déjà en version 1..3 mais sans les tables récentes : la migration 4 les rattrape.
+
+    Cas réel : une base locale créée avant `live_targets` répondait 500 sur /settings.
+    """
+    path = tmp_path / "ancienne_v3.db"
+    db.init(path)
+    conn = db.connect(path)
+    try:
+        for t in ("live_targets", "live_input", "storage", "screen_texts"):
+            conn.execute(f"DROP TABLE IF EXISTS {t}")
+        conn.execute("DELETE FROM schema_migrations WHERE version >= 4")
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.init(path)
+    conn = db.connect(path)
+    try:
+        assert {"live_targets", "live_input", "storage", "screen_texts"} <= table_names(conn)
+        assert applied_versions(conn)[-1] == migrations.LATEST
+        assert "live_targets_mosque" in {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'")}
+    finally:
+        conn.close()
+
+
 def test_le_schema_des_modeles_est_applique_via_les_migrations(tmp_path):
     """Le schéma produit par `init` (migration 1) est bien celui décrit par les modèles SQLAlchemy."""
     path = tmp_path / "modele.db"
