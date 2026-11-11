@@ -28,6 +28,26 @@ def log(m):
     print(f"[pipeline] {m}", flush=True)
 
 
+def transcript_key(src: str, start: float, end: float | None) -> dict:
+    """What a cached transcript was made from: reused only for the same recording and the same range."""
+    return {"recording": str(Path(src).resolve()), "start": round(float(start or 0), 2),
+            "end": None if end is None else round(float(end), 2)}
+
+
+def transcript_matches(res: dict, key: dict, wav: str) -> bool:
+    """A transcript from another range would put every subtitle at the wrong moment of the clips."""
+    if "source" in res:
+        return res["source"] == key
+    # Older transcripts carry no source: the audio length is the only witness left.
+    try:
+        import wave
+        with wave.open(wav) as w:
+            seconds = w.getnframes() / w.getframerate()
+        return abs(seconds - float(res.get("duration") or -1)) < 1.0
+    except Exception:
+        return False
+
+
 def process(src: str, start: float, end: float | None, label: str, outdir: Path, *, model: str | None = None,
             retranscribe: bool = False, use_llm: bool = True, nclips: int = 3, clip_video: str | None = None,
             align: bool = False, crop: dict | None = None, header: dict | None = None):
@@ -42,7 +62,14 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
     log(f"[{label}] extraction audio {start:.1f}→{end}")
     tr.extract_audio(src, wav, start, end)
     res = o.read(o.transcript, None) if not retranscribe else None
-    res = res or tr.transcribe(wav, str(o.transcript), model, log)
+    key = transcript_key(src, start, end)
+    if res and not transcript_matches(res, key, wav):
+        log(f"[{label}] transcription en cache faite sur un autre extrait : retranscription")
+        res = None
+    if not res:
+        res = tr.transcribe(wav, str(o.transcript), model, log)
+        res["source"] = key
+        o.write(o.transcript, res)
     segs = res["segments"]
     o.transcript_md.write_text("# Transcription — " + label + "\n\n" + "\n".join(f"- **[{fmt_t(s['start'])}]** {s['text']}" for s in segs), encoding="utf-8")
     log("chargement du Coran + index")
