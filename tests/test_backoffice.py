@@ -233,6 +233,15 @@ def test_la_fiche_d_un_clip_porte_la_video_et_les_libelles(env):
 
     r = c.get(f"/media/clip/{cid}.mp4")
     assert r.status_code == 200 and r.content[4:12] == b"ftypmp42"
+    assert "attachment" not in r.headers.get("content-disposition", "")
+
+    # Téléchargement depuis le téléphone : pièce jointe, nom neutre, même contenu.
+    t = c.get(f"/media/clip/{cid}.mp4?download=1")
+    assert t.status_code == 200 and t.content == r.content
+    assert t.headers["content-type"] == "video/mp4"
+    cd = t.headers["content-disposition"]
+    assert cd.startswith("attachment") and f"minbar-clip-{cid}-v" in cd and "/" not in cd
+    assert client(env).get(f"/media/clip/{cid}.mp4?download=1").status_code == 401
 
 
 def test_imam_voit_ses_khutbas_seulement(env):
@@ -646,3 +655,71 @@ def test_cli_cree_admin_et_imam(tmp_path, monkeypatch, capsys):
     assert [(u["username"], u["role"]) for u in us] == [("chef", "admin"), ("imam", "imam")]
     assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "ma-mosquee"
     assert auth.authenticate(conn, "chef", PW)
+
+
+# ------------------------------------------------------------------ khutbas / dars séparés
+
+DARS_RUN = "20261110_151315"
+
+
+def _ajoute_dars(env, kind: str | None = "dars") -> dict:
+    """Importe une seconde séance enregistrée ; `kind` tel que l'écrit l'orchestrateur dans sessions.json."""
+    tmp = env["tmp"]
+    f = tmp / "state" / DARS_RUN / "sessions.json"
+    if not f.exists():
+        make_run(tmp, run=DARS_RUN)
+    d = json.loads(f.read_text())
+    d["sessions"][0] = {k: v for k, v in d["sessions"][0].items() if k not in ("kind", "title", "speaker")}
+    if kind:
+        d["sessions"][0].update(kind=kind, title="Explication de la Lamiyyah al-Wardi (2)", speaker="Mosquée Avicenne")
+    f.write_text(json.dumps(d))
+    m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    importer.import_run(env["conn"], m, DARS_RUN, extract_video=False, log=lambda *a: None)
+    return db.one(env["conn"], "SELECT * FROM khutbas WHERE run_id = ?", DARS_RUN)
+
+
+def test_listes_khutbas_et_dars_separees(env):
+    dars = _ajoute_dars(env)
+    assert dars["kind"] == "dars" and dars["label"].startswith("Dars — ")
+    c = client(env, "admin")
+
+    tout = c.get("/api/v1/sermons").json()
+    assert tout["total"] == 2                                      # sans filtre : rien ne change
+
+    kh = c.get("/api/v1/sermons?kind=khutba").json()
+    assert [k["kind"] for k in kh["items"]] == ["khutba"] and kh["total"] == 1
+    assert kh["pending"] == 1                                      # le compteur suit la nature
+
+    da = c.get("/api/v1/sermons?kind=dars").json()
+    assert [k["id"] for k in da["items"]] == [dars["id"]] and da["total"] == 1 and da["pending"] == 1
+
+    assert c.get("/api/v1/sermons?kind=dars&pending=1").json()["total"] == 1
+    assert c.get("/api/v1/sermons?kind=conference").json()["total"] == 0
+    assert c.get("/api/v1/sermons?kind=dars,conference").json()["total"] == 1
+    assert c.get("/api/v1/sermons/mois?kind=dars").json()["items"] == [{"mois": "2026-11", "n": 1}]
+    assert c.get("/api/v1/sermons?kind=n_importe_quoi").status_code == 422
+
+    # Une séance d'avant la colonne `kind` (vide) reste une khutba.
+    env["conn"].execute("UPDATE khutbas SET kind = '' WHERE id = ?", (env["kid"],))
+    assert c.get("/api/v1/sermons?kind=khutba").json()["total"] == 1
+
+    d = c.get("/api/v1/dashboard").json()["counts"]
+    assert d["sermons"] == 1 and d["dars"] == 1
+
+
+def test_import_corrige_la_nature_d_une_seance_deja_importee(env):
+    """Séance importée comme khutba, puis l'orchestrateur précise « dars » : la réimportation range
+    la séance dans les dars et refait le libellé automatique, sans toucher aux clips."""
+    avant = _ajoute_dars(env, kind=None)
+    assert avant["kind"] == "khutba" and avant["label"].startswith("Session 1")
+    clips = db.all_(env["conn"], "SELECT id, status FROM clips WHERE khutba_id = ?", avant["id"])
+
+    apres = _ajoute_dars(env)
+    assert apres["id"] == avant["id"] and apres["kind"] == "dars"
+    assert apres["title"] == "Explication de la Lamiyyah al-Wardi (2)"
+    assert apres["label"] == "Dars — Explication de la Lamiyyah al-Wardi (2)"
+    assert db.all_(env["conn"], "SELECT id, status FROM clips WHERE khutba_id = ?", avant["id"]) == clips
+
+    # Un libellé retouché par un humain est conservé.
+    env["conn"].execute("UPDATE khutbas SET kind = 'khutba', label = 'Mon libellé' WHERE id = ?", (avant["id"],))
+    assert _ajoute_dars(env)["label"] == "Mon libellé"

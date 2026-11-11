@@ -17,10 +17,14 @@ def dashboard(ctx: CtxDep):
     where, args = imam_filter(ctx)
     recent = db.all_(ctx.conn, f"SELECT k.*, u.display_name imam FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "
                                f"WHERE {where} ORDER BY k.date DESC, k.run_id DESC, k.session_index LIMIT 6", *args)
-    total = db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k WHERE {where}", *args)["n"]
+    # Chaque compteur renvoie vers sa page : les khutbas d'un côté, les dars enregistrés de l'autre.
+    par_genre = {r["g"]: r["n"] for r in db.all_(
+        ctx.conn, f"SELECT COALESCE(NULLIF(k.kind, ''), 'khutba') g, COUNT(*) n FROM khutbas k WHERE {where} GROUP BY g", *args)}
+    total = par_genre.get("khutba", 0)
     cmds = db.all_(ctx.conn, "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
                              "WHERE a.mosque_id = ? AND a.action LIKE 'live.%' ORDER BY a.id DESC LIMIT 5", ctx.mosque["id"])
-    return {"counts": {"pending": count_clips(ctx, "a_valider"), "ready": count_clips(ctx, "valide"), "sermons": total},
+    return {"counts": {"pending": count_clips(ctx, "a_valider"), "ready": count_clips(ctx, "valide"), "sermons": total,
+                       "dars": par_genre.get("dars", 0)},
             "recent": recent, "live": live_status(ctx), "commands": cmds,
             # Commands offered: keys derived from the engine, plus the values they accept and a
             # danger flag. Every label is built by the front end from i18n.

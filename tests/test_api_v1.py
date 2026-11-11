@@ -43,7 +43,7 @@ def test_connexion_api_mauvais_mot_de_passe(env):
 def test_forme_des_reponses(env):
     c = client(env, "admin")
     d = c.get("/api/v1/dashboard").json()
-    assert set(d["counts"]) == {"pending", "ready", "sermons"}
+    assert set(d["counts"]) == {"pending", "ready", "sermons", "dars"}
     assert isinstance(d["recent"], list)
     assert "ok" in d["live"]
 

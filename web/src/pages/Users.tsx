@@ -14,6 +14,7 @@ export default function Users() {
       <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("users.title")}</h1>
       <Card>
       {!d ? <p className="text-muted">{t("common.loading")}</p> : (
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse text-[0.95rem]">
           <thead>
             <tr>
@@ -34,6 +35,7 @@ export default function Users() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
       </Card>
     </div>

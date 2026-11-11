@@ -41,10 +41,11 @@ export function Btn({
   const apparence = reste.disabled
     ? "cursor-not-allowed border-line bg-paper-2 text-muted"
     : `cursor-pointer ${styles}`;
+  // Au doigt (téléphone, tablette), jamais moins de 44 px, même quand l'appelant compacte le bouton.
   return (
     <button
       type="button"          /* default inside a form; callers pass type="submit" where needed */
-      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[9px] border px-4 py-2.5 font-semibold ${apparence} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[9px] border px-4 py-2.5 font-semibold ${apparence} ${className} max-md:min-h-11! pointer-coarse:min-h-11!`}
       {...reste}
     >
       {children}
@@ -83,14 +84,15 @@ export function Tabs({
   onChange: (cle: string) => void;
 }) {
   return (
-    <div className="mb-3.5 flex flex-wrap gap-2">
+    // Téléphone : une seule ligne qui défile dans son propre conteneur, jamais la page.
+    <div className="mb-3.5 flex flex-wrap gap-2 max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none]">
       {items.map((it) => (
         <button
           key={it.cle}
           type="button"          /* a tab never submits the form around it */
           onClick={() => onChange(it.cle)}
           disabled={it.eteint}
-          className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[0.93rem] font-semibold ${
+          className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[0.93rem] font-semibold max-md:min-h-11 pointer-coarse:min-h-11 ${
             it.eteint ? "cursor-not-allowed border-line bg-white/60 text-muted/60" : "cursor-pointer"
           } ${
             valeur === it.cle
@@ -122,14 +124,14 @@ export function Segmented({
   onChange: (cle: string) => void;
 }) {
   return (
-    <div className="mb-3 inline-flex flex-wrap gap-0.5 rounded-[9px] border border-line bg-paper-2 p-[3px]">
+    <div className="mb-3 inline-flex max-w-full flex-wrap gap-0.5 rounded-[9px] border border-line bg-paper-2 p-[3px] max-md:flex max-md:w-fit max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none]">
       {items.map((it) => (
         <button
           key={it.cle}
           type="button"          /* a tab never submits the form around it */
           onClick={() => onChange(it.cle)}
           disabled={it.eteint}
-          className={`inline-flex min-h-8 items-center gap-1.5 rounded-[7px] border-0 px-3.5 py-1 text-[0.88rem] font-semibold ${
+          className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border-0 px-3.5 py-1 text-[0.88rem] font-semibold max-md:min-h-11 max-md:px-3 pointer-coarse:min-h-11 ${
             it.eteint ? "cursor-not-allowed text-muted/60" : "cursor-pointer"
           } ${
             valeur === it.cle
@@ -170,6 +172,7 @@ export const tdClass = "border-b border-line px-2 py-2.5 align-middle [tr:last-c
 /** Simple table, no sortable header: the last row keeps no border. */
 export function Table({ entetes, children }: { entetes: string[]; children: ReactNode }) {
   return (
+    <div className="overflow-x-auto">
     <table className="w-full border-collapse text-[0.95rem]">
       <thead>
         <tr>
@@ -180,8 +183,16 @@ export function Table({ entetes, children }: { entetes: string[]; children: Reac
       </thead>
       <tbody>{children}</tbody>
     </table>
+    </div>
   );
 }
+
+/** Lien ou petit bouton texte placé seul (élément de grille ou de rangée flex) : au doigt, une zone
+ *  de toucher d'au moins 44 px de haut, sans changer l'apparence à la souris. */
+export const toucher =
+  "max-md:inline-flex max-md:min-h-11 max-md:items-center pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center";
+/** Lien au fil d'une phrase : le rembourrage vertical agrandit la zone sans déplacer la ligne. */
+export const toucherEnLigne = "max-md:py-[13px] pointer-coarse:py-[13px]";
 
 export const inputClass =
   "w-full rounded-lg border border-[#bfcbb6] bg-white px-3 py-2.5 text-ink read-only:cursor-default read-only:bg-paper-2 read-only:text-muted disabled:bg-paper-2 disabled:text-muted";

@@ -15,14 +15,31 @@ from .common import _a_table, _ok
 
 router = APIRouter()
 
+#: Natures de séance qu'on peut lister séparément : la page Khutbas demande `khutba`, la page Dars `dars`.
+GENRES = ("khutba", "dars", "conference")
+#: Une séance importée avant la colonne `kind` est une khutba.
+GENRE_SQL = "COALESCE(NULLIF(k.kind, ''), 'khutba')"
+
+
+def _filtre_genre(where: str, args: tuple, kind: str) -> tuple[str, tuple]:
+    """Restreint à une ou plusieurs natures de séance (`kind=dars` ou `kind=dars,conference`) ;
+    vide = toutes, valeur inconnue refusée."""
+    genres = [g for g in (x.strip().lower() for x in (kind or "").split(",")) if g]
+    if not genres:
+        return where, args
+    inconnus = [g for g in genres if g not in GENRES]
+    if inconnus:
+        raise Invalid(f"kind inconnu : {', '.join(inconnus)}")
+    return f"{where} AND {GENRE_SQL} IN ({', '.join('?' * len(genres))})", (*args, *genres)
+
 
 @router.get("/sermons/mois")
-def sermon_months(ctx: CtxDep):
+def sermon_months(ctx: CtxDep, kind: str = ""):
     """The months containing khutbas, from the most recent to the oldest, with their count.
 
     The period selector is built on what the mosque actually has: no empty month,
     no calendar to browse, and no date to guess."""
-    where, args = imam_filter(ctx)
+    where, args = _filtre_genre(*imam_filter(ctx), kind)
     items = db.all_(ctx.conn, f"SELECT substr(k.date, 1, 7) mois, COUNT(*) n FROM khutbas k "
                               f"LEFT JOIN users u ON u.id = k.imam_id "
                               f"WHERE {where} AND k.date IS NOT NULL AND k.date != '' "
@@ -31,15 +48,17 @@ def sermon_months(ctx: CtxDep):
 
 
 @router.get("/sermons")
-def sermons(ctx: CtxDep, q: str = "", mois: str = "", pending: int = 0,
+def sermons(ctx: CtxDep, q: str = "", mois: str = "", pending: int = 0, kind: str = "",
             limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)):
     """Khutbas, from the most recent to the oldest.
 
     A mosque accumulates years of khutbas: the list can be searched (`q` on the passage, the theme
     and the imam), restricted to a month (`mois` in YYYY-MM format, chosen from the list of existing
     months), filtered (`pending`: only those awaiting validation) and paginated.
-    The filtered total is returned so that the front knows whether pages remain, without guessing."""
-    where, args = imam_filter(ctx)
+    The filtered total is returned so that the front knows whether pages remain, without guessing.
+    `kind` (khutba, dars, conference) sépare les listes : un dars ne doit jamais apparaître parmi
+    les khutbas, ni l'inverse ; le compteur « à valider » suit la même nature."""
+    where, args = _filtre_genre(*imam_filter(ctx), kind)
     if q.strip():
         motif = f"%{q.strip()}%"
         where += " AND (k.label LIKE ? OR k.theme LIKE ? OR u.display_name LIKE ?)"
@@ -52,7 +71,7 @@ def sermons(ctx: CtxDep, q: str = "", mois: str = "", pending: int = 0,
     total = (db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "
                               f"WHERE {where}", *args) or {"n": 0})["n"]
     # The tabs count on the user's scope, not on the displayed page.
-    perimetre, perimetre_args = imam_filter(ctx)
+    perimetre, perimetre_args = _filtre_genre(*imam_filter(ctx), kind)
     en_attente = (db.one(ctx.conn, f"SELECT COUNT(DISTINCT k.id) n FROM khutbas k "
                                    f"JOIN clips c ON c.khutba_id = k.id AND c.status = 'a_valider' "
                                    f"WHERE {perimetre}", *perimetre_args) or {"n": 0})["n"]

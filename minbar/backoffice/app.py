@@ -195,10 +195,15 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         return FileResponse(k["video_path"], media_type="video/mp4")
 
     @app.get("/media/clip/{cid}.mp4")
-    def media_clip(cid: int, ctx: CtxDep):
+    def media_clip(cid: int, ctx: CtxDep, download: bool = False):
+        """``?download=1`` : même fichier, mêmes droits, mais servi en pièce jointe (bouton
+        « Télécharger » du téléphone). Le nom ne reprend jamais le chemin sur la machine."""
         c, _ = clip_or_404(ctx, cid)
         if not Path(c["file_path"]).exists():
             raise NotFound()
+        if download:
+            return FileResponse(c["file_path"], media_type="video/mp4",
+                                filename=f"minbar-clip-{cid}-v{c['version']}.mp4")
         return FileResponse(c["file_path"], media_type="video/mp4")
 
     # ---------------------------------------------------------- interface logo

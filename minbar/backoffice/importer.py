@@ -112,8 +112,20 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
             k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", cur.lastrowid)
             res["khutbas_new"] += 1
             db.audit(conn, mosque["id"], None, "import.khutba", "khutba", k["id"], run=run_id, session=runs.session_number(idx))
-        elif k["verses_count"] != n_verses:            # derived field: refreshed (no human data touched)
-            conn.execute("UPDATE khutbas SET verses_count = ? WHERE id = ?", (n_verses, k["id"]))
+        else:
+            if k["verses_count"] != n_verses:          # derived field: refreshed (no human data touched)
+                conn.execute("UPDATE khutbas SET verses_count = ? WHERE id = ?", (n_verses, k["id"]))
+            # La nature (khutba / dars / conférence) vient de sessions.json : une séance importée avant
+            # que l'orchestrateur la renseigne, ou avant la colonne, resterait sinon « khutba » et
+            # apparaîtrait dans la mauvaise liste. Le libellé n'est recalculé que s'il était automatique.
+            kind = s.get("kind") or "khutba"
+            if (k["kind"] or "khutba") != kind:
+                ancien = khutba_label(dict(s, index=idx, kind=k["kind"] or "khutba", title=k["title"] or ""))
+                label = khutba_label(dict(s, index=idx)) if k["label"] == ancien else k["label"]
+                conn.execute("UPDATE khutbas SET kind = ?, title = ?, series = ?, session_no = ?, label = ? WHERE id = ?",
+                             (kind, k["title"] or s.get("title") or "", k["series"] or s.get("series") or "",
+                              k["session_no"] if k["session_no"] is not None else s.get("session_no"), label, k["id"]))
+                k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", k["id"])
         if extract_video and not (k["video_path"] and Path(k["video_path"]).exists()):
             v = _extract_video(rec_path, start, end, o.video, log)
             if v:

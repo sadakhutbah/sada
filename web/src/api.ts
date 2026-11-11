@@ -93,8 +93,9 @@ export const api = {
   relancerTraitement: (run: string, session: number) =>
     ecrire<{ ok: boolean; message: string }>("POST", "/traitements/relancer", { run, session }),
   /** Search, filter and paging are done by the server: the list grows over the years. */
-  sermons: (opts: { q?: string; mois?: string; pending?: boolean; limit?: number; offset?: number } = {}) => {
+  sermons: (opts: { q?: string; mois?: string; pending?: boolean; limit?: number; offset?: number; kind?: string } = {}) => {
     const p = new URLSearchParams();
+    if (opts.kind) p.set("kind", opts.kind);
     if (opts.q) p.set("q", opts.q);
     if (opts.mois) p.set("mois", opts.mois);
     if (opts.pending) p.set("pending", "1");
@@ -105,7 +106,7 @@ export const api = {
       `/sermons${qs ? `?${qs}` : ""}`);
   },
   /** The months that contain khutbas: the period picker is based on them. */
-  sermonsMois: () => demande<{ items: { mois: string; n: number }[] }>("/sermons/mois"),
+  sermonsMois: (kind = "") => demande<{ items: { mois: string; n: number }[] }>(`/sermons/mois${kind ? `?kind=${kind}` : ""}`),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
   clips: (status = "", limit = 20, offset = 0) => {
     const p = new URLSearchParams({ limit: String(limit), offset: String(offset) });

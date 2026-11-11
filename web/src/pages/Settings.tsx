@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { liste } from "../format";
-import { Btn, Card, Field, Tabs, Title, inputClass } from "../ui";
+import { Btn, Card, Field, Tabs, Title, inputClass, toucher, toucherEnLigne } from "../ui";
 
 type Message = { ok: boolean; texte: string } | null;
 
@@ -407,7 +407,7 @@ export default function Settings() {
         <p className="m-0 text-[0.82rem] leading-[1.5] text-muted">
           {t("settings.orchDoc")}{" "}
           <a href="/docs/orchestrateur" target="_blank" rel="noreferrer"
-            className="font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
+            className={`${toucherEnLigne} font-semibold text-deep underline decoration-line decoration-1 underline-offset-4`}>
             {t("settings.orchDocLink")}
           </a>
         </p>
@@ -571,13 +571,13 @@ export default function Settings() {
                 <div className="flex max-w-[68ch] flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.84rem] leading-[1.5] text-muted">
                   <span>{t("settings.screensHint")}</span>
                   <a href={lienHumain} target="_blank" rel="noreferrer"
-                    className="font-semibold text-deep underline decoration-line decoration-1 underline-offset-4">
+                    className={`${toucher} font-semibold text-deep underline decoration-line decoration-1 underline-offset-4`}>
                     {t("settings.screensHelpOpen")}
                   </a>
                 </div>
                 {/* Discret, à côté du mode d'emploi : le fichier rendu par l'assistant s'importe ici. */}
                 <button type="button" disabled={importe}
-                  className="shrink-0 border-0 bg-transparent p-0 text-[0.78rem] font-semibold leading-[1.5] text-deep underline decoration-line decoration-1 underline-offset-4 hover:text-green disabled:cursor-not-allowed disabled:text-muted disabled:no-underline"
+                  className={`${toucher} shrink-0 border-0 bg-transparent p-0 text-[0.78rem] font-semibold leading-[1.5] text-deep underline decoration-line decoration-1 underline-offset-4 hover:text-green disabled:cursor-not-allowed disabled:text-muted disabled:no-underline`}
                   onClick={() => gabaritFichier.current?.click()}>
                   {importe ? t("settings.screensImporting") : t("settings.screensImport")}
                 </button>
@@ -588,12 +588,12 @@ export default function Settings() {
                 <p className="m-0 text-[0.82rem] text-muted">{t("settings.screensGuide")}</p>
                 {lienAgent && (
                   <a href={lienAgent} target="_blank" rel="noreferrer"
-                    className="break-all font-mono text-[0.78rem] text-deep underline decoration-line decoration-1 underline-offset-4">
+                    className={`${toucher} break-all font-mono text-[0.78rem] text-deep underline decoration-line decoration-1 underline-offset-4`}>
                     {lienAgent}
                   </a>
                 )}
                 <button type="button"
-                  className="ml-auto shrink-0 rounded-[6px] border border-line bg-white px-2 py-1 text-[0.78rem] font-semibold text-deep hover:bg-paper-2"
+                  className={`${toucher} ml-auto shrink-0 rounded-[6px] border border-line bg-white px-2 py-1 text-[0.78rem] font-semibold text-deep hover:bg-paper-2`}
                   onClick={() => { navigator.clipboard.writeText(lienAgent).then(() => setMsg({ ok: true, texte: t("settings.screensGuideCopied") })).catch(() => setMsg({ ok: false, texte: t("settings.screensGuideCopyFail") })); }}>
                   {t("settings.screensGuideCopy")}
                 </button>
@@ -702,13 +702,13 @@ export default function Settings() {
   contenu.connectors = (
     <div className="grid gap-2 max-w-[520px] text-[0.95rem]">
       <p className="m-0 text-muted">{t("settings.connectorsHint")}</p>
-      <Link className="w-fit font-semibold text-deep underline" to="/publications">{t("settings.connectorsGo")}</Link>
+      <Link className={`${toucher} w-fit font-semibold text-deep underline`} to="/publications">{t("settings.connectorsGo")}</Link>
     </div>
   );
   contenu.access = (
     <div className="grid gap-2 max-w-[520px] text-[0.95rem]">
       <p className="m-0 text-muted">{t("settings.accessHint")}</p>
-      <Link className="w-fit font-semibold text-deep underline" to="/users">{t("settings.accessGo")}</Link>
+      <Link className={`${toucher} w-fit font-semibold text-deep underline`} to="/users">{t("settings.accessGo")}</Link>
     </div>
   );
 

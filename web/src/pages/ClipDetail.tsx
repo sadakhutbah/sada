@@ -73,7 +73,7 @@ export default function ClipDetail() {
           </div>
         ) : (
           <div className="grid gap-4 min-[1000px]:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)]">
-            <div className="h-[50vh] max-h-[560px] min-h-[240px] animate-pulse rounded-[10px] bg-night/85" />
+            <div className="h-[50vh] max-h-[560px] min-h-[240px] min-w-0 animate-pulse rounded-[10px] bg-night/85 max-md:h-[min(70svh,calc((100vw-2rem)*16/9))] max-md:max-h-none max-md:min-h-0" />
             <Card><p className="m-0 text-muted">{t("common.loading")}</p></Card>
           </div>
         )}
@@ -98,9 +98,9 @@ export default function ClipDetail() {
       </header>
 
       <div className="grid items-start gap-4 min-[1000px]:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)]">
-        <Lecteur c={c} existe={oui(d.exists)} />
+        <Lecteur c={c} existe={oui(d.exists)} legende={d.caption ?? ""} info={(ko, texte) => setMessage({ ko, texte })} />
 
-        <Card className="grid gap-3 min-[1000px]:sticky min-[1000px]:top-4 min-[1000px]:max-h-[calc(100vh-2rem)] min-[1000px]:overflow-y-auto">
+        <Card className="grid min-w-0 gap-3 min-[1000px]:sticky min-[1000px]:top-4 min-[1000px]:max-h-[calc(100vh-2rem)] min-[1000px]:overflow-y-auto">
           <Segmented
             valeur={ongletActif}
             onChange={(cle) => { setOnglet(cle); setMessage(null); }}
@@ -129,7 +129,7 @@ export default function ClipDetail() {
 /** Breadcrumb: back to the queue, then the original khutba. */
 function Fil({ sermon, langue }: { sermon?: any; langue?: string }) {
   const { t } = useTranslation();
-  const lien = "text-deep underline decoration-leaf underline-offset-4 hover:text-deeper";
+  const lien = "text-deep underline decoration-leaf underline-offset-4 hover:text-deeper max-md:py-[13px] pointer-coarse:py-[13px]";
   return (
     <p className="m-0 text-[0.85rem] text-muted">
       <Link to="/clips" className={lien}>← {t("clips.title")}</Link>
@@ -145,23 +145,28 @@ function Fil({ sermon, langue }: { sermon?: any; langue?: string }) {
   );
 }
 
-/** Video stage: night background, fixed capped height, whole image (contain) whatever the format. */
-function Lecteur({ c, existe }: { c: any; existe: boolean }) {
+/** Video stage: night background, fixed capped height, whole image (contain) whatever the format.
+ *  Téléphone : cadre 9:16 centré, au plus 70 % de la hauteur d'écran ; `#t=0.1` fait afficher la
+ *  première image par Safari iOS au lieu d'un rectangle noir (aucune vignette côté serveur). */
+function Lecteur({ c, existe, legende, info }:
+  { c: any; existe: boolean; legende: string; info: (ko: boolean, texte: string) => void }) {
   const { t } = useTranslation();
   const enCours = c.regen_state === "en_cours";
   return (
-    <div className="relative overflow-hidden rounded-[10px] bg-night">
+    <div className="relative min-w-0 overflow-hidden rounded-[10px] bg-night">
       {existe ? (
+        <div className="max-md:flex max-md:justify-center">
         <video
           key={c.version}
           controls
           preload="metadata"
           playsInline
-          className="block h-[50vh] max-h-[560px] min-h-[240px] w-full bg-night object-contain"
-          src={`/media/clip/${c.id}.mp4?v=${c.version}`}
+          className="block h-[50vh] max-h-[560px] min-h-[240px] w-full bg-night object-contain max-md:mx-auto max-md:aspect-[9/16] max-md:h-[min(70svh,calc((100vw-2rem)*16/9))] max-md:max-h-none max-md:min-h-0 max-md:w-auto max-md:max-w-full"
+          src={`/media/clip/${c.id}.mp4?v=${c.version}#t=0.1`}
         />
+        </div>
       ) : (
-        <div className="grid h-[50vh] max-h-[560px] min-h-[240px] place-items-center px-6 text-center">
+        <div className="grid h-[50vh] max-h-[560px] min-h-[240px] place-items-center px-6 text-center max-md:h-[min(70svh,calc((100vw-2rem)*16/9))] max-md:max-h-none max-md:min-h-0">
           <p className="m-0 text-[0.95rem] text-night-muted">{t("clips.detail.noFile")}</p>
         </div>
       )}
@@ -177,6 +182,85 @@ function Lecteur({ c, existe }: { c: any; existe: boolean }) {
         </span>
         <span>{t("clips.detail.version", { n: c.version })}</span>
       </div>
+      {existe && <Partage c={c} legende={legende} info={info} />}
+    </div>
+  );
+}
+
+/** Partager / Télécharger depuis le téléphone.
+ *  Partager : feuille de partage du système avec le fichier mp4 lui-même (Instagram, TikTok, WhatsApp,
+ *  « Enregistrer la vidéo ») quand le navigateur sait partager un fichier ; sinon le lien de la fiche,
+ *  sinon le lien copié. La légende proposée est copiée au passage (les applis ignorent souvent le texte).
+ *  Le fichier est chargé à l'avance : Safari iOS refuse navigator.share() s'il arrive après une
+ *  longue attente réseau, le geste de l'utilisateur étant alors « expiré ».
+ *  Télécharger : même fichier, servi en pièce jointe (?download=1), avec la session en cours. */
+function Partage({ c, legende, info }: { c: any; legende: string; info: (ko: boolean, texte: string) => void }) {
+  const { t } = useTranslation();
+  const url = `/media/clip/${c.id}.mp4?v=${c.version}`;
+  const nom = `minbar-clip-${c.id}-v${c.version}.mp4`;
+  const titre = `${t("clips.clip")} ${c.idx} · ${t(`clips.kinds.${c.kind}`)}`;
+  const fichiersOk = typeof navigator !== "undefined" && typeof navigator.canShare === "function"
+    && navigator.canShare({ files: [new File([""], nom, { type: "video/mp4" })] });
+  const [fichier, setFichier] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (!fichiersOk) return;
+    let annule = false;
+    setFichier(null);
+    fetch(url, { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => { if (!annule) setFichier(new File([b], nom, { type: "video/mp4" })); })
+      .catch(() => { /* repli : partage du lien */ });
+    return () => { annule = true; };
+  }, [url, nom, fichiersOk]);
+
+  const copierLegende = () => {
+    const texte = legende.trim();
+    if (!texte || !navigator.clipboard) return false;
+    navigator.clipboard.writeText(texte).catch(() => {});
+    return true;
+  };
+
+  const partager = async () => {
+    const legendeCopiee = copierLegende();
+    try {
+      if (fichier && navigator.canShare?.({ files: [fichier] })) {
+        await navigator.share({ files: [fichier], title: titre });
+      } else if (typeof navigator.share === "function") {
+        await navigator.share({ title: titre, text: legende.trim() || undefined, url: location.href });
+      } else {
+        await navigator.clipboard.writeText(location.href);
+        info(false, t("clips.detail.linkCopied"));
+        return;
+      }
+      if (legendeCopiee) info(false, t("clips.detail.captionCopied"));
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;      // feuille de partage refermée : rien à dire
+      info(true, t("clips.detail.shareFailed", { e: e?.message ?? String(e) }));
+    }
+  };
+
+  const bouton = "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[9px] border px-4 py-2.5 font-semibold no-underline sm:flex-none";
+  return (
+    <div className="flex gap-2 border-t border-white/10 px-3.5 py-2.5">
+      <button
+        type="button"
+        onClick={partager}
+        disabled={fichiersOk && !fichier}
+        className={`${bouton} cursor-pointer border-leaf bg-leaf text-night hover:bg-leaf-2 disabled:cursor-wait disabled:border-white/25 disabled:bg-white/10 disabled:text-night-ink`}
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 13V3M6.5 6.5 10 3l3.5 3.5M5 10H4v7h12v-7h-1" />
+        </svg>
+        {fichiersOk && !fichier ? t("clips.detail.sharePreparing") : t("clips.detail.share")}
+      </button>
+      <a href={`${url}&download=1`} download={nom}
+        className={`${bouton} border-white/25 bg-white/10 text-white hover:bg-white/18`}>
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 3v10M6.5 9.5 10 13l3.5-3.5M4 16h12" />
+        </svg>
+        {t("clips.detail.download")}
+      </a>
     </div>
   );
 }

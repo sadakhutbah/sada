@@ -22,8 +22,18 @@ function jour(iso?: string | null): Date | null {
 
 const majuscule = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** Page Khutbas : uniquement les khutbas (les dars enregistrés sont sur la page Dars). */
 export default function Sermons() {
-  const { t, i18n } = useTranslation();
+  return <ListeSeances genre="khutba" />;
+}
+
+/** Liste des séances enregistrées d'une nature (`genre`, transmis tel quel à l'API : "khutba",
+ *  "dars,conference"…). `textes` : espace i18n dont les phrases remplacent celles des khutbas
+ *  (accords, « aucune khutba »…) ; `titre` faux quand la page qui l'accueille a déjà le sien. */
+export function ListeSeances({ genre, textes = "sermons", titre = true }: { genre: string; textes?: string; titre?: boolean }) {
+  const { t: tBase, i18n } = useTranslation();
+  const t = ((cle: string, o?: any) =>
+    cle.startsWith("sermons.") && i18n.exists(`${textes}.${cle.slice(8)}`, o) ? tBase(`${textes}.${cle.slice(8)}` as any, o) : tBase(cle as any, o)) as unknown as typeof tBase;
   const [saisie, setSaisie] = useState("");
   const [recherche, setRecherche] = useState("");   // debounced version of the input
   const [filtre, setFiltre] = useState("toutes");
@@ -36,8 +46,8 @@ export default function Sermons() {
 
   // The offered months are those that actually contain khutbas, with their count.
   useEffect(() => {
-    api.sermonsMois().then((r) => setMoisDispos(r.items)).catch(() => setMoisDispos([]));
-  }, []);
+    api.sermonsMois(genre).then((r) => setMoisDispos(r.items)).catch(() => setMoisDispos([]));
+  }, [genre]);
 
   // The server is not queried on every keystroke.
   useEffect(() => {
@@ -50,7 +60,7 @@ export default function Sermons() {
     let vivant = true;
     setCharge(true);
     setItems(null);
-    api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE })
+    api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE, kind: genre })
       .then((r) => {
         if (!vivant) return;
         setItems(r.items);
@@ -60,12 +70,12 @@ export default function Sermons() {
       .catch(() => vivant && setItems([]))
       .finally(() => vivant && setCharge(false));
     return () => { vivant = false; };
-  }, [recherche, mois, filtre]);
+  }, [recherche, mois, filtre, genre]);
 
   /** Next page: khutbas are appended, they do not replace. */
   const plus = () => {
     setCharge(true);
-    api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE, offset: items?.length ?? 0 })
+    api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE, offset: items?.length ?? 0, kind: genre })
       .then((r) => {
         setItems((v) => [...(v ?? []), ...r.items]);
         setTotal(r.total);
@@ -92,7 +102,7 @@ export default function Sermons() {
       {/* Header: the title, then what we are looking at in one figure. A single reading line. */}
       <div className="grid gap-4">
         <header className="grid gap-1">
-          <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("sermons.title")}</h1>
+          {titre && <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("sermons.title")}</h1>}
           {/* Reserved height: the title does not jump when the count disappears during a load. */}
           <p className="m-0 min-h-[1.45rem] text-[0.95rem] text-muted">
             {items ? (
@@ -144,7 +154,7 @@ export default function Sermons() {
           {/* Period: the months when the mosque actually preached, not an empty calendar. */}
           <div className="w-[11.5rem] shrink-0">
             <select
-              className={`${inputClass} h-11 w-full cursor-pointer text-[0.92rem]`}
+              className={`${inputClass} h-11 w-full cursor-pointer select-chevron text-[0.92rem]`}
               value={mois}
               onChange={(e) => setMois(e.target.value)}
               aria-label={t("sermons.month")}
@@ -156,7 +166,7 @@ export default function Sermons() {
             </select>
           </div>
 
-          <div className="shrink-0 [&>div]:mb-0">
+          <div className="max-w-full min-w-0 shrink-0 [&>div]:mb-0">
             <Segmented
               valeur={filtre}
               onChange={setFiltre}
@@ -219,7 +229,7 @@ export default function Sermons() {
               <ul className="m-0 list-none divide-y divide-line/80 p-0">
                 {lignes.map((k) => (
                   <li key={k.id}>
-                    <LigneKhutba k={k} langue={i18n.language} />
+                    <LigneKhutba k={k} langue={i18n.language} t={t} />
                   </li>
                 ))}
               </ul>
@@ -250,8 +260,7 @@ export default function Sermons() {
 
 /** A khutba: the date in the margin, set off by a rule; passage · imam, then the theme;
  *  on the right what awaits an action (clips to review), otherwise the clip count. */
-function LigneKhutba({ k, langue }: { k: any; langue: string }) {
-  const { t } = useTranslation();
+function LigneKhutba({ k, langue, t }: { k: any; langue: string; t: ReturnType<typeof useTranslation>["t"] }) {
   const d = jour(k.date);
   const fmt = (o: Intl.DateTimeFormatOptions) => (d ? new Intl.DateTimeFormat(langue, o).format(d).replace(".", "") : "");
   const pending = Number(k.pending) || 0;

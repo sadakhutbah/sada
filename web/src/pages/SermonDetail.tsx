@@ -95,7 +95,7 @@ export default function SermonDetail() {
     <div className="grid gap-5">
       {/* Header: the passage and the date, the theme as a lead, then the facts in one line. */}
       <header className="grid gap-3">
-        <Retour />
+        <Retour kind={k.kind} />
         <div>
           <Kicker>{k.label}</Kicker>
           <h1 className="m-0 font-serif text-[2.2rem] font-normal leading-[1.05] text-deeper first-letter:uppercase">
@@ -227,12 +227,13 @@ export default function SermonDetail() {
   );
 }
 
-/** Back to the khutba list. */
-function Retour() {
+/** Back to the list the session belongs to: khutbas, or the recorded dars. */
+function Retour({ kind }: { kind?: string }) {
   const { t } = useTranslation();
+  const dars = kind === "dars" || kind === "conference";
   return (
-    <Link to="/khutbas" className="justify-self-start text-[0.85rem] text-deep underline decoration-leaf underline-offset-4 hover:text-deeper">
-      ← {t("nav.sermons")}
+    <Link to={dars ? "/dars" : "/khutbas"} className="justify-self-start text-[0.85rem] text-deep underline decoration-leaf underline-offset-4 hover:text-deeper max-md:py-[13px] pointer-coarse:py-[13px]">
+      ← {t(dars ? "nav.dars" : "nav.sermons")}
     </Link>
   );
 }

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type AgendaEvent, type EventForm, type EventsList } from "../api";
 import { currentSession } from "../App";
 import { Btn, Field, Pill, Segmented, inputClass } from "../ui";
+import { ListeSeances } from "./Sermons";
 
 /** Dars and conference agenda: the schedule the orchestrator reads, as an editable list.
  *  A single surface for the list; a single form, split into tabs (Event / Time),
@@ -44,7 +45,8 @@ export default function Dars() {
   const [edition, setEdition] = useState<{ id: string | null; form: EventForm } | null>(null);
   const [aSupprimer, setASupprimer] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; texte: string } | null>(null);
-  const [onglet, setOnglet] = useState("programme");
+  // Ce qu'on vient chercher d'abord : les dars enregistrés. Puis le programme, puis l'import.
+  const [onglet, setOnglet] = useState("enregistres");
 
   const charger = () =>
     api.events().then((r) => { setListe(r); setErreur(false); }).catch(() => setErreur(true));
@@ -90,18 +92,19 @@ export default function Dars() {
         </p>
       </header>
 
-      {peutEcrire && (
-        <div className="[&>div]:mb-0">
-          <Segmented
-            valeur={onglet}
-            onChange={(c) => { setOnglet(c); setMessage(null); }}
-            items={[
-              { cle: "programme", label: t("dars.tabs.programme") },
-              { cle: "import", label: t("dars.tabs.import") },
-            ]}
-          />
-        </div>
-      )}
+      <div className="max-w-full min-w-0 [&>div]:mb-0">
+        <Segmented
+          valeur={onglet}
+          onChange={(c) => { setOnglet(c); setMessage(null); }}
+          items={[
+            { cle: "enregistres", label: t("dars.tabs.recorded") },
+            { cle: "programme", label: t("dars.tabs.programme") },
+            ...(peutEcrire ? [{ cle: "import", label: t("dars.tabs.import") }] : []),
+          ]}
+        />
+      </div>
+
+      {onglet === "enregistres" && <ListeSeances genre="dars,conference" textes="dars.recorded" titre={false} />}
 
       {/* Import stays mounted while the schedule is shown: switching tabs never interrupts
           an upload in progress. */}
@@ -114,7 +117,7 @@ export default function Dars() {
       {onglet === "programme" && (
       <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="[&>div]:mb-0">
+        <div className="max-w-full min-w-0 [&>div]:mb-0">
           <Segmented
             valeur={filtre}
             onChange={setFiltre}

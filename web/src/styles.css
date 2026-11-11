@@ -51,8 +51,35 @@
     outline-offset: 1px;
   }
 
+  /* Une grille sans colonnes déclarées crée une piste « auto » qui s'élargit au min-content de son
+     contenu (onglets, tableaux) : sur téléphone, toute la page devenait plus large que l'écran.
+     Piste bornée par défaut ; les utilitaires grid-cols-* (couche utilities) l'emportent. */
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Champs de saisie : au doigt, jamais moins de 44 px de haut. */
+  @media (pointer: coarse), (max-width: 767px) {
+    input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),
+    select,
+    textarea {
+      min-height: 44px;
+    }
+  }
+
   ::selection {
     background: var(--color-leaf);
     color: var(--color-night);
   }
+}
+
+/* Liste déroulante dessinée par nous : le rendu natif de WebKit coupait le texte d'un select de 44 px. */
+@utility select-chevron {
+  appearance: none;
+  padding-block: 0;
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path d='M5 7.5 10 12.5 15 7.5' fill='none' stroke='%233d4a3a' stroke-width='1.8'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 18px;
 }

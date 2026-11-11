@@ -82,7 +82,9 @@ export default function Audit() {
         ) : d.items.length === 0 ? (
           <p className="m-0 text-muted">{t("common.empty")}</p>
         ) : (
-          <table className="w-full border-collapse text-[0.93rem]">
+          // Téléphone : le tableau défile dans la carte (l'adresse IP, peu utile, est masquée).
+          <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[0.93rem] max-sm:[&_tr>*:nth-child(5)]:hidden">
             <thead>
               <tr>
                 {[t("audit.when"), t("audit.who"), t("audit.action"), t("audit.object"), t("audit.ip")].map((h) => (
@@ -113,6 +115,7 @@ export default function Audit() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 

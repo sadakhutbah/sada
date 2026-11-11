@@ -181,11 +181,11 @@ export default function Dashboard() {
           <div className="mt-3 flex flex-wrap items-center gap-2.5">
             <label className="text-[0.92rem] text-night-muted" htmlFor="scene-live">{t(`dashboard.cmd.${scene.key}`)}</label>
             <select id="scene-live" value={choixScene} onChange={(e) => setChoixScene(e.target.value)}
-                    className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white">
+                    className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white max-md:min-h-11 pointer-coarse:min-h-11">
               <option value="" className="text-ink">{t("dashboard.sceneChoose")}</option>
               {scene.choices.map((valeur: string) => <option key={valeur} value={valeur} className="text-ink">{t(`dashboard.choice.${valeur}`)}</option>)}
             </select>
-            <Btn variante="light" disabled={occupe || !choixScene} className="min-h-9 px-3 py-1.5 text-[0.9rem]"
+            <Btn variante="light" disabled={occupe || !choixScene} className="min-h-9 px-3 py-1.5 text-[0.9rem] max-md:min-h-11 pointer-coarse:min-h-11"
                  onClick={() => envoyer(scene, { valeur: choixScene })}>{t("dashboard.sceneApply")}</Btn>
           </div>
         )}
@@ -198,11 +198,11 @@ export default function Dashboard() {
               {t("dashboard.janaza")}
             </summary>
             <div className="mt-2.5 grid max-w-[420px] gap-2">
-              <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted"
+              <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted max-md:min-h-11 pointer-coarse:min-h-11"
                      placeholder={t("dashboard.janazaName")} value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)} />
-              <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted"
+              <input className="rounded-md border border-white/25 bg-white/10 px-2.5 py-1.5 text-[0.9rem] text-white placeholder:text-night-muted max-md:min-h-11 pointer-coarse:min-h-11"
                      placeholder={t("dashboard.janazaInfo")} value={mention} maxLength={60} onChange={(e) => setMention(e.target.value)} />
-              <Btn variante="leaf" disabled={occupe} className="min-h-9 w-fit px-3 py-1.5 text-[0.9rem]"
+              <Btn variante="leaf" disabled={occupe} className="min-h-9 w-fit px-3 py-1.5 text-[0.9rem] max-md:min-h-11 pointer-coarse:min-h-11"
                    onClick={() => envoyer(janaza, { name: nom.trim(), info: mention.trim() })}>
                 {t("dashboard.janazaSend")}
               </Btn>
@@ -217,6 +217,7 @@ export default function Dashboard() {
           // “Ready to publish” only appears to those who can publish, as in the templates.
           ...(peutPublier ? [{ k: "dashboard.ready", n: d.counts.ready, to: "/publications" }] : []),
           { k: "dashboard.sermons", n: d.counts.sermons, to: "/khutbas" },
+          ...(d.counts.dars ? [{ k: "dashboard.dars", n: d.counts.dars, to: "/dars" }] : []),
         ].map((s) => (
           <Link key={s.k} to={s.to} className="no-underline">
             <Card className="h-full transition-colors hover:border-leaf">
@@ -254,7 +255,7 @@ export default function Dashboard() {
                         {peutAssigner && (it.etat === "echec" || it.etat === "termine") && (
                           <Btn variante={it.etat === "echec" ? "dangerGhost" : "ghost"}
                                disabled={relanceEnCours === cle}
-                               className="min-h-8 px-2.5 py-1 text-[0.85rem]"
+                               className="min-h-8 px-2.5 py-1 text-[0.85rem] max-md:min-h-11 pointer-coarse:min-h-11"
                                onClick={() => relancer(it)}>
                             {t("dashboard.processing.relaunch")}
                           </Btn>
