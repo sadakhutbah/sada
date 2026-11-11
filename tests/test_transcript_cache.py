@@ -28,3 +28,15 @@ def test_legacy_cache_checked_on_audio_length(tmp_path):
     wav = _wav(tmp_path / "a.wav", 4)
     assert transcript_matches({"duration": 4.0}, key, wav)
     assert not transcript_matches({"duration": 9.0}, key, wav)
+
+
+def test_session_header_follows_kind_and_mosque():
+    from types import SimpleNamespace
+    from minbar.pipeline import clips as clipmod
+    from minbar.pipeline.run import session_header
+    a = SimpleNamespace(title=clipmod.DEFAULT_TITLE, subtitle="")
+    data = {"mosque": "Mosquée Exemple"}
+    assert session_header({"kind": "khutba", "title": ""}, data, a) == {"title": clipmod.DEFAULT_TITLE, "subtitle": "Mosquée Exemple"}
+    assert session_header({"kind": "dars", "title": "Explication"}, data, a)["title"] == "Explication"
+    assert session_header({"kind": "conference", "title": ""}, data, a)["title"] == "Conférence"
+    assert session_header({"kind": "dars"}, data, SimpleNamespace(title="Forcé", subtitle="x")) == {"title": "Forcé", "subtitle": "x"}

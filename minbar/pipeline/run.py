@@ -212,10 +212,22 @@ def main(argv=None):
         if not live:
             log(f"session {s['index']} ({s['planned']}) ignorée : aucun enregistrement")
             continue
+        sopts = dict(opts, header=session_header(s, data, a)) if opts["header"] else opts
         r = process(live, s["start_pos"], s["end_pos"], f"{runs.session_dir(s['index'])}_{s['planned'].replace(':', 'h')}",
                     out / data["run_id"] / runs.session_dir(s["index"]),
-                    clip_video=forced or _clip_video(clean), **opts)
+                    clip_video=forced or _clip_video(clean), **sopts)
         log(f"session {s['index']} : {r['segments']} segments, {r['verses']} versets, {len(r['clips'])} clips")
+
+
+def session_header(s: dict, data: dict, a) -> dict:
+    """Clip header of a session: its own kind and title (a dars imported is not a « Khutba du vendredi »),
+    and the mosque as subtitle so the clip carries the mosque's identity. --title/--subtitle still win."""
+    from ..events import kind_label
+    kind = s.get("kind") or "khutba"
+    title = a.title
+    if title == clipmod.DEFAULT_TITLE:
+        title = (s.get("title") or "").strip() or (clipmod.DEFAULT_TITLE if kind == "khutba" else kind_label(kind))
+    return {"title": title, "subtitle": a.subtitle or (data.get("mosque") or "")}
 
 
 if __name__ == "__main__":
