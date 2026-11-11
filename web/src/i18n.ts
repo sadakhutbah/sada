@@ -85,7 +85,7 @@ const fr = {
     shown: "{{n}} sur {{total}} clips", loadMore: "Afficher les {{n}} suivants",
     statuses: { a_valider: "À valider", valide: "Validé", rejete: "Rejeté", publie: "Publié" },
     statusTabs: { a_valider: "À valider", valide: "Validés", publie: "Publiés", rejete: "Rejetés" },
-    kinds: { verset: "verset", rappel: "rappel", citation: "citation", passage: "passage", conclusion: "conclusion", modele: "choix du modèle" },
+    kinds: { verset: "verset", rappel: "rappel", citation: "citation", passage: "passage", conclusion: "conclusion", modele: "proposé par le modèle" },
     detail: {
       extract: "Extrait {{de}}–{{a}} de la khutba ({{s}} s)",
       version: "version {{n}}",
