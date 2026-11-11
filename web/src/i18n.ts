@@ -46,6 +46,17 @@ const fr = {
       stop: "Arrêter le live maintenant ?",
       cancel: "Annuler tout le live d'aujourd'hui ? Les sessions à venir ne seront pas diffusées.",
     },
+    // Runs after the live: the server sends the state key, the labels live here.
+    processing: {
+      title: "Traitement après direct",
+      empty: "Aucun traitement récent. Le traitement démarre seul à la fin de chaque khutba.",
+      duration: "durée {{d}}",
+      relaunch: "Relancer",
+      relaunched: "Relance demandée.",
+      relaunchFailed: "Relance impossible : {{message}}",
+      hiddenPath: "fichier",
+      state: { attente: "en attente", en_cours: "transcription en cours", termine: "extraits prêts", echec: "échec" },
+    },
   },
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
@@ -354,6 +365,16 @@ const en: typeof fr = {
     confirm: {
       stop: "Stop the live now?",
       cancel: "Cancel today's whole live? Upcoming sessions will not be streamed.",
+    },
+    processing: {
+      title: "Processing after the live",
+      empty: "No recent run. Processing starts on its own at the end of every sermon.",
+      duration: "length {{d}}",
+      relaunch: "Relaunch",
+      relaunched: "Relaunch requested.",
+      relaunchFailed: "Could not relaunch: {{message}}",
+      hiddenPath: "file",
+      state: { attente: "waiting", en_cours: "transcribing", termine: "clips ready", echec: "failed" },
     },
   },
   sermons: {

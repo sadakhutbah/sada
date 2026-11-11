@@ -27,10 +27,11 @@ def _ffmpeg() -> str | None:
     exe = shutil.which("ffmpeg")
     if exe:
         return exe
-    bin_ = Path(__file__).resolve().parents[2] / "tools" / "bin"
-    for name in ("ffmpeg.exe", "ffmpeg"):
-        if (bin_ / name).exists():
-            return str(bin_ / name)
+    # A user service does not inherit the login PATH: also look in the usual user folder.
+    for bin_ in (Path(__file__).resolve().parents[2] / "tools" / "bin", Path.home() / ".local" / "bin"):
+        for name in ("ffmpeg.exe", "ffmpeg"):
+            if (bin_ / name).exists():
+                return str(bin_ / name)
     return None
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from starlette.concurrency import run_in_threadpool
 
-from .. import auth, content, db, importer
+from .. import auth, content, db, importer, traitement
 from ..context import CtxDep, Invalid, khutba_or_404, imam_filter
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
@@ -99,6 +99,25 @@ async def do_import(ctx: CtxDep):
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "import.manuel", ip=ctx.ip, run=run or "tous", khutbas=nk, clips=nc)
     return _ok(f"Import : {len(res)} run(s) parcouru(s), {nk} khutba(s) et {nc} clip(s) ajoutés.",
                khutbas=nk, clips=nc)
+
+
+@router.get("/traitements")
+async def traitements(ctx: CtxDep):
+    items = await run_in_threadpool(traitement.liste, ctx.mosque)
+    return {"items": items, "actif": any(i["etat"] in ("attente", "en_cours") for i in items)}
+
+
+@router.post("/traitements/relancer")
+async def traitement_relancer(ctx: CtxDep):
+    f = await ctx.body()
+    ctx.require("assign")
+    try:
+        traitement.relancer(ctx.mosque, str(f.get("run") or ""), int(f.get("session")))
+    except (FileNotFoundError, ValueError, TypeError) as e:
+        raise Invalid(f"Relance impossible : {e}") from e
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "traitement.relance", ip=ctx.ip, run=f.get("run"),
+             session=f.get("session"))
+    return _ok("Traitement remis en file : il démarre dans la minute.")
 
 
 @router.post("/sermons/{kid}/speaker")

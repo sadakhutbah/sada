@@ -1,10 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { api } from "../api";
+import { api, ApiError, type Traitement } from "../api";
 import { currentSession } from "../App";
-import { Btn, Card, Kicker, Title } from "../ui";
+import { Btn, Card, Kicker, Pill, Title } from "../ui";
 import { dateFr, horloge, mmss } from "../format";
+
+/** Length of a run, when it has both ends: minutes:seconds. */
+function duree(it: Traitement): string {
+  if (!it.debut || !it.fin) return "";
+  const s = (Date.parse(it.fin) - Date.parse(it.debut)) / 1000;
+  return Number.isFinite(s) && s >= 0 ? mmss(s) : "";
+}
+
+/** The server's error may quote a machine path (recording, output folder): the screen never shows
+ *  one. `mot` is the stand-in word, translated by the caller. */
+function sansChemin(texte: string, mot: string): string {
+  return texte
+    .replace(/[A-Za-z]:\\[^\s"']+/g, mot)
+    .replace(/\/(?:home|mnt|tmp|var|usr|opt|srv|root|data)\/[^\s"',;:)]*/g, mot)
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 /** Dashboard: same order and same blocks as the template back-office.
  *  Live card, then the three counters, then the latest khutbas and the latest commands. */
@@ -18,10 +35,46 @@ export default function Dashboard() {
   const [choixScene, setChoixScene] = useState("");
   const [nom, setNom] = useState("");
   const [mention, setMention] = useState("");
+  /** null = panel hidden (no route yet on this back end). */
+  const [traitements, setTraitements] = useState<Traitement[] | null>(null);
+  const [relanceEnCours, setRelanceEnCours] = useState<string | null>(null);
+  const [retourTraitement, setRetourTraitement] = useState<{ ok: boolean; texte: string } | null>(null);
+  const [tourTraitements, setTourTraitements] = useState(0);
+  const traitementsRef = useRef<Traitement[] | null>(null);
 
   useEffect(() => {
     api.dashboard().then(setD).catch(() => setErreur(true));
   }, []);
+
+  /** Runs after the live, polled fast (10 s) while one waits or runs, slowly (60 s) otherwise.
+   *  An older back end does not serve the route yet: 404 keeps the panel hidden, without an error. */
+  useEffect(() => {
+    let vivant = true;
+    let minuteur = 0;
+    const boucle = async () => {
+      let items = traitementsRef.current;
+      try {
+        const r = await api.traitements();
+        if (!vivant) return;
+        items = Array.isArray(r?.items) ? r.items : [];
+        traitementsRef.current = items;
+        setTraitements(items);
+      } catch (e) {
+        if (!vivant) return;
+        if (e instanceof ApiError && e.status === 404) {
+          traitementsRef.current = null;
+          setTraitements(null);
+          minuteur = window.setTimeout(boucle, 60_000);   // retries once the route exists
+          return;
+        }
+        // Any other hiccup: keep the last known list and try again shortly.
+      }
+      const enCours = items?.some((i) => i.etat === "attente" || i.etat === "en_cours") ?? false;
+      minuteur = window.setTimeout(boucle, enCours ? 10_000 : 60_000);
+    };
+    boucle();
+    return () => { vivant = false; window.clearTimeout(minuteur); };
+  }, [tourTraitements]);
 
   /** Label of a command or choice: the translation is the only source. The server sends stable
    *  keys and values, never interface text. */
@@ -45,10 +98,36 @@ export default function Dashboard() {
     }
   }
 
+  /** Asks the server to run one processing again (failed or finished run). */
+  async function relancer(it: Traitement) {
+    const cle = `${it.run}:${it.session}`;
+    setRelanceEnCours(cle);
+    setRetourTraitement(null);
+    const mot = t("dashboard.processing.hiddenPath");
+    try {
+      const r = await api.relancerTraitement(it.run, it.session);
+      setRetourTraitement({ ok: true, texte: sansChemin(r?.message || t("dashboard.processing.relaunched"), mot) });
+      setTourTraitements((n) => n + 1);            // reads the queue again right away
+    } catch (e: any) {
+      // The server's own message is already user-facing ("Relance impossible : …"): keep it,
+      // and fall back to our sentence only when it has none.
+      const brut = String(e?.message ?? "").trim();
+      setRetourTraitement({
+        ok: false,
+        texte: brut
+          ? sansChemin(brut, mot)
+          : t("dashboard.processing.relaunchFailed", { message: t("common.error") }),
+      });
+    } finally {
+      setRelanceEnCours(null);
+    }
+  }
+
   if (erreur) return <p className="py-16 text-center text-muted">{t("common.error")}</p>;
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
 
   const peutPublier = currentSession()?.user.permissions.includes("publish") ?? false;
+  const peutAssigner = currentSession()?.user.permissions.includes("assign") ?? false;
   const v = d.live ?? {};
   const commandes: any[] = d.live_commands ?? [];
   const scene = commandes.find((c) => c.key === "scene");
@@ -147,6 +226,58 @@ export default function Dashboard() {
           </Link>
         ))}
       </div>
+
+      {/* Runs after the live: stays hidden when this back end does not serve the route. */}
+      {traitements && (
+        <Card>
+          <Title>{t("dashboard.processing.title")}</Title>
+          {traitements.length === 0 ? (
+            <p className="m-0 text-[0.95rem] text-muted">{t("dashboard.processing.empty")}</p>
+          ) : (
+            <ul className="m-0 grid list-none p-0">
+              {traitements.map((it) => {
+                const dureeTxt = duree(it);
+                const cle = `${it.run}:${it.session}`;
+                return (
+                  <li key={cle} className="border-b border-line py-2 last:border-0 last:pb-0">
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <span className="text-[0.95rem] font-semibold text-ink">
+                        {it.label}
+                        <span className="font-normal text-muted">
+                          {" · "}{dateFr(it.date, i18n.language)}
+                          {dureeTxt && ` · ${t("dashboard.processing.duration", { d: dureeTxt })}`}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <Pill statut={it.etat}
+                              label={t(`dashboard.processing.state.${it.etat}`, { defaultValue: it.etat })} />
+                        {peutAssigner && (it.etat === "echec" || it.etat === "termine") && (
+                          <Btn variante={it.etat === "echec" ? "dangerGhost" : "ghost"}
+                               disabled={relanceEnCours === cle}
+                               className="min-h-8 px-2.5 py-1 text-[0.85rem]"
+                               onClick={() => relancer(it)}>
+                            {t("dashboard.processing.relaunch")}
+                          </Btn>
+                        )}
+                      </span>
+                    </div>
+                    {it.erreur && (
+                      <p className="m-0 mt-0.5 break-words text-[0.85rem] text-[#8a2219]">
+                        {sansChemin(it.erreur, t("dashboard.processing.hiddenPath"))}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {retourTraitement && (
+            <p role="status" className={`m-0 mt-2 text-[0.9rem] ${retourTraitement.ok ? "text-green" : "text-[#8a2219]"}`}>
+              {retourTraitement.texte}
+            </p>
+          )}
+        </Card>
+      )}
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-4">
         <Card>

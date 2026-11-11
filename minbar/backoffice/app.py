@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import paths
 from ..paths import ASSETS
-from . import auth, branding, content, db, docpage, gabarit, importer, live
+from . import auth, branding, content, db, docpage, gabarit, importer, live, traitement
 from . import screens as screens_mod
 from .api import router as api_router
 from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
@@ -82,6 +82,8 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         conn = db.connect(db_path)
         try:
             for m in db.all_(conn, "SELECT * FROM mosques WHERE auto_import = 1"):
+                m = dict(m)
+                traitement.tour(conn, m, log=lambda msg: print("[traitement]", msg, flush=True))
                 importer.scan(conn, m, log=lambda msg: print("[import]", msg, flush=True))
         except Exception as e:  # noqa: BLE001
             print("[import] erreur :", e, flush=True)
@@ -89,13 +91,20 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             conn.close()
 
     def importer_loop():
+        # Premier tour tout de suite, en fond : un traitement long ne retarde pas le démarrage.
+        import_all()
         while not stop.wait(auto_import_s):
             import_all()
 
     @asynccontextmanager
     async def lifespan(app):
         if auto_import_s:
-            import_all()
+            c = db.connect(db_path)
+            try:
+                for m in db.all_(c, "SELECT * FROM mosques WHERE auto_import = 1"):
+                    traitement.reprendre(dict(m))
+            finally:
+                c.close()
             threading.Thread(target=importer_loop, daemon=True, name="auto-import").start()
 
         def chauffe_statut():

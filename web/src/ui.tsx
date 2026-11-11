@@ -57,6 +57,11 @@ const PILLS: Record<string, string> = {
   valide: "bg-paper-2 text-deep",
   rejete: "bg-err-bg text-[#8a2219]",
   publie: "bg-deep text-white",
+  // Runs after the live: waiting, running, ready, failed.
+  attente: "bg-paper-2 text-muted",
+  en_cours: "bg-warn-bg text-warn",
+  termine: "bg-[#e9f4e2] text-green",
+  echec: "bg-err-bg text-[#8a2219]",
 };
 
 export function Pill({ statut, label }: { statut: string; label: string }) {

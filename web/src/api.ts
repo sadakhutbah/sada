@@ -68,10 +68,24 @@ export type EventForm = Record<
   string
 >;
 
+/** One processing run after the live: transcription, then the clips. The server sends stable
+ *  keys (`etat`) and free data (label, dates, error), never interface text. */
+export type Traitement = {
+  run: string; session: number; label: string; date: string;
+  etat: "attente" | "en_cours" | "termine" | "echec";
+  debut: string | null; fin: string | null; erreur: string | null;
+};
+export type TraitementsList = { items: Traitement[]; actif: boolean };
+
 export const api = {
   session: () => demande<Session>("/session"),
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
   dashboard: () => demande<any>("/dashboard"),
+  /** Runs after the live, newest first (ten at most). Absent backend: the call answers 404 and the
+   *  panel stays hidden. */
+  traitements: () => demande<TraitementsList>("/traitements"),
+  relancerTraitement: (run: string, session: number) =>
+    ecrire<{ ok: boolean; message: string }>("POST", "/traitements/relancer", { run, session }),
   /** Search, filter and paging are done by the server: the list grows over the years. */
   sermons: (opts: { q?: string; mois?: string; pending?: boolean; limit?: number; offset?: number } = {}) => {
     const p = new URLSearchParams();
