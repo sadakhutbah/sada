@@ -40,3 +40,20 @@ def test_session_header_follows_kind_and_mosque():
     assert session_header({"kind": "dars", "title": "Explication"}, data, a)["title"] == "Explication"
     assert session_header({"kind": "conference", "title": ""}, data, a)["title"] == "Conférence"
     assert session_header({"kind": "dars"}, data, SimpleNamespace(title="Forcé", subtitle="x")) == {"title": "Forcé", "subtitle": "x"}
+
+
+def test_dominant_language_over_whole_talk():
+    from minbar.pipeline.transcribe import dominant_language
+    seg = lambda s, e, t: {"start": s, "end": e, "text": t}
+    talk = [seg(0, 30, "بسم الله الرحمن الرحيم"), seg(30, 600, "Chers frères, aujourd'hui nous parlons de la tawba")]
+    assert dominant_language(talk, "ar") == "fr"
+    assert dominant_language([seg(0, 600, "الحمد لله رب العالمين")], "ar") == "ar"
+    assert dominant_language([], "ar") == "ar"
+
+
+def test_small_model_not_picked_by_default(monkeypatch):
+    from minbar.pipeline import transcribe as tr
+    monkeypatch.setattr(tr, "free_vram_mb", lambda: 1900)
+    assert tr.pick_model(None, log=lambda *_: None) == ("large-v3-turbo", "cpu", "int8")
+    monkeypatch.setattr(tr, "free_vram_mb", lambda: 3000)
+    assert tr.pick_model(None, log=lambda *_: None)[1] == "cuda"

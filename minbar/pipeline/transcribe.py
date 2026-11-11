@@ -58,10 +58,24 @@ def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
         return ("medium", "cpu", "int8")
     cands = [m for m in MODELS if prefer in (None, m[0])] or MODELS
     for name, need in cands:
+        if name == "small" and prefer != "small":
+            break   # small rate l'arabe et boucle : mieux vaut large-v3-turbo sur CPU, plus lent
         if free is not None and free >= need + 300:
             return (name, "cuda", "int8")
     # not enough VRAM (shared GPU): int8 CPU with the best reasonable model
     return ("large-v3-turbo" if prefer in (None, "large-v3-turbo", "large-v3") else prefer, "cpu", "int8")
+
+
+def dominant_language(segs: list[dict], detected: str) -> str:
+    """Langue du discours sur toute la durée. `info.language` ne regarde que les 30 premières
+    secondes : un cours en français qui s'ouvre sur une récitation passe pour de l'arabe."""
+    import re
+    arabic = re.compile(r"[\u0600-\u06FF]")
+    ar = sum(max(0.0, s["end"] - s["start"]) for s in segs if arabic.search(s.get("text") or ""))
+    total = sum(max(0.0, s["end"] - s["start"]) for s in segs)
+    if not total:
+        return detected
+    return "ar" if ar / total >= 0.5 else ("fr" if detected == "ar" else detected)
 
 
 def _text_of(pieces) -> str:
@@ -171,7 +185,10 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
     hw = glossary.hotwords() if hotwords is None else hotwords
     segs_iter, info = model.transcribe(
         audio, multilingual=True, vad_filter=True,
-        beam_size=5, condition_on_previous_text=False, temperature=0.0,
+        beam_size=5, condition_on_previous_text=False,
+        # repli en température : une boucle de répétition (« إذا كنت مرحباً » x30) dépasse le seuil de
+        # compression et le segment est retenté au lieu d'être gardé tel quel
+        temperature=(0.0, 0.2, 0.4), compression_ratio_threshold=2.4,
         word_timestamps=True,   # timestamped words: the active word is highlighted in the clip subtitles
         hotwords=hw or None,
     )
@@ -189,7 +206,7 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
     # Une khutba en français peut citer le Coran : dans ce cas seulement, les passages que Whisper
     # a rendus en français incohérent sont retentés en arabe forcé.
     retry = settings.arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
-    if retry and info.language != "ar":
+    if retry and dominant_language(segs, info.language) != "ar":
         res["arabic_recovered"] = recover_arabic(model, audio, segs, log=log, max_segments=RETRY_MAX,
                                                  min_prob=DETECT_MIN_PROB, margin=RETRY_MARGIN)
     Path(out_json).write_text(json.dumps(res, ensure_ascii=False, indent=1))
