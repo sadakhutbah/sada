@@ -41,6 +41,26 @@ def clips_enabled() -> bool:
     return bool(config().get("clips_enabled", True))
 
 
+def _flag(raw, default: bool = True) -> bool:
+    if raw is None or raw == "":
+        return default
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ("1", "true", "yes", "on", "oui")
+
+
+def arabic_retry_enabled(cli: bool | None = None) -> bool:
+    """Rattrapage des passages arabes mal transcrits, actif par défaut.
+
+    Priorité : option de commande, puis MINBAR_ARABIC_RETRY, puis le fichier de réglages
+    (`arabic_retry`), puis True.
+    """
+    raw = pick(cli, os.environ.get("MINBAR_ARABIC_RETRY"))
+    if raw is not None:
+        return _flag(raw)
+    return _flag(config().get("arabic_retry"), True)
+
+
 def clip_count(cli: int | None = None) -> int:
     """Extraits par khutba, 0 signifiant « aucun ».
 

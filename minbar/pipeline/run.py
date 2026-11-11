@@ -50,7 +50,8 @@ def transcript_matches(res: dict, key: dict, wav: str) -> bool:
 
 def process(src: str, start: float, end: float | None, label: str, outdir: Path, *, model: str | None = None,
             retranscribe: bool = False, use_llm: bool = True, nclips: int = 3, clip_video: str | None = None,
-            align: bool = False, crop: dict | None = None, header: dict | None = None):
+            align: bool = False, crop: dict | None = None, header: dict | None = None,
+            arabic_retry: bool | None = None):
     """src = recording for the audio/transcription; clip_video = clean video (without overlay) for the clips.
 
     clip_video is either aligned with src (same ffmpeg process: same positions), or another video of the same
@@ -67,7 +68,7 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
         log(f"[{label}] transcription en cache faite sur un autre extrait : retranscription")
         res = None
     if not res:
-        res = tr.transcribe(wav, str(o.transcript), model, log)
+        res = tr.transcribe(wav, str(o.transcript), model, log, arabic_retry=arabic_retry)
         res["source"] = key
         o.write(o.transcript, res)
     segs = res["segments"]
@@ -175,6 +176,9 @@ def main(argv=None):
     ap.add_argument("--crop", help="recadrage 9:16 : x=0.52,top=0,bottom=0.15 (fractions ; bottom = bandeau incrusté à exclure)")
     ap.add_argument("--title", default=clipmod.DEFAULT_TITLE)
     ap.add_argument("--subtitle", default="", help="ligne sous le titre des clips (ex. mosquée · date)")
+    ap.add_argument("--arabic-retry", action=argparse.BooleanOptionalAction, default=None,
+                    help="retranscrire en arabe les citations rendues en français incohérent "
+                         "(défaut : MINBAR_ARABIC_RETRY, sinon activé)")
     a = ap.parse_args(argv)
     apply_llm_options(a)
     log(f"modèle : {llm.label() if llm.enabled() else 'désactivé (repli sans IA)'}")
@@ -188,6 +192,7 @@ def main(argv=None):
         "model": None if a.model == "force" else a.model, "retranscribe": a.model == "force",
         "use_llm": llm.enabled(),
         "nclips": nclips,
+        "arabic_retry": a.arabic_retry,
         "crop": {k: float(v) for k, v in (kv.split("=") for kv in a.crop.split(","))} if a.crop else None,
         "header": {"title": a.title, "subtitle": a.subtitle} if a.title else None,
     }
