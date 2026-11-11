@@ -80,3 +80,20 @@ def duration(sec: float) -> str:
     """mm:ss, or h:mm:ss beyond one hour."""
     s = int(round(float(sec)))
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"
+
+
+# Arabic written in Latin letters by Whisper (« wa'alha an alati lahwin ») : a well-scored segment
+# escapes the log-probability test, so the share of transliterated words is measured as well.
+_TRANSLIT_WORDS = frozenset("""wa wal fa fi bi li la lam lan ma man min an anna inna innahu qala qawluhu
+qal huwa hiya hum alayhi alayha alaihi allati alladhi alladhina kana kanat yaqul yuqal lahu lahou
+ila illa ala ya ayyuha tum thumma idha idhan bihi biha minhu anha anhu ma'a wala walha lahwin""".split())
+_TRANSLIT_SHAPE = re.compile(r"^(?:[aeiu][lrnsdtz]-\w+|(?!(?:l|d|j|n|s|m|t|c|qu|jusqu|lorsqu|puisqu|presqu)')\w+'\w+|\w*(?:q[aiy]|kh|gh|dh|aa|ii|uu)\w*)$")
+FRENCH_HINT = frozenset("le la les de des du un une et est que qui ce il elle on tu je vous nous pas dans sur pour avec".split())
+
+
+
+
+def is_translit_word(word: str) -> bool:
+    """Word of Arabic written in Latin letters (« qawluhu », « al-ghada », « na'imul »)."""
+    w = word.strip(".,;:!?«»\"()").lower().replace("’", "'")
+    return bool(w) and w not in FRENCH_HINT and (w in _TRANSLIT_WORDS or bool(_TRANSLIT_SHAPE.match(w)))

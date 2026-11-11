@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from ..paths import FONTS
-from ..text import AR_RUN, arabic_ratio, is_arabic, reshaped_view
+from ..text import AR_RUN, arabic_ratio, is_arabic, is_translit_word, reshaped_view
 from . import glossary as glossmod
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
@@ -553,6 +553,32 @@ def ass_header(gold: str = GOLD, panel: str = PANEL) -> str:
 ASS_HEADER = ass_header()
 
 
+def drop_translit_runs(words: list[dict], run: int = 2) -> list[dict]:
+    """Retire les suites d’au moins `run` mots d'arabe écrit en lettres latines.
+
+    Whisper glisse parfois une citation arabe phonétique au milieu du français (« walha an alati
+    lahwin ») : illisible pour le public, et l'orateur la traduit presque toujours juste après.
+    Les mots isolés (« dunya », « fitna ») restent : la glose les explique."""
+    from wordfreq import zipf_frequency
+
+    def foreign(w: str) -> bool:   # arabe translittéré, ou mot absent du français courant
+        bare = w.strip(".,;:!?«»\"()").lower().replace("’", "'")
+        return bool(bare) and (is_translit_word(w) or zipf_frequency(bare, "fr") < 2.3)
+
+    out: list[dict] = []
+    i = 0
+    while i < len(words):
+        j = i
+        while j < len(words) and foreign(words[j]["w"]):
+            j += 1
+        if j - i >= run and sum(is_translit_word(w["w"]) for w in words[i:j]) >= 1:
+            i = j
+            continue
+        out.extend(words[i:max(j, i + 1)])
+        i = max(j, i + 1)
+    return out
+
+
 def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
     """What the clips show for a segment (and what the back-office offers to correct):
     speech      French speech: the segment text;
@@ -634,6 +660,7 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
         cards.append((ca, cb))
     ev += [e for (m, fr, _ca, _cb), (a, b) in zip(specs, cards) for e in _verse_card(m, fr, a, b, gold)]
     words.sort(key=lambda w: w["s"])
+    words = drop_translit_runs(words)
     # « la tawba (le repentir) » : première occurrence du terme dans le clip, glose collée au mot.
     if words:
         words = glossmod.gloss_words(words, glossary if glossary is not None else glossmod.load())
