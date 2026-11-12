@@ -1,7 +1,7 @@
 <div dir="rtl">
 
 <p align="center">
-  <img src="web/public/sada-mark-encre.svg" alt="صدى" width="96">
+  <img src="web/public/sada-mark-or.svg" alt="صدى" width="96">
 </p>
 
 <h1 align="center">صدى · Sadā</h1>

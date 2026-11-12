@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/public/sada-mark-encre.svg" alt="Sadā" width="96">
+  <img src="web/public/sada-mark-or.svg" alt="Sadā" width="96">
 </p>
 
 <h1 align="center">Sadā · صدى</h1>
