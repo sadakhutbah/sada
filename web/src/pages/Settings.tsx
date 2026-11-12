@@ -56,7 +56,8 @@ function Parcourir({ depart, onChoix, onFermer }: { depart: string; onChoix: (ch
     setErreur("");
     api.folders(chemin).then(setVue).catch((e) => setErreur(e.message));
   };
-  useEffect(() => { ouvrir(depart); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // First listing: the error is still empty, only the answer is awaited.
+  useEffect(() => { api.folders(depart).then(setVue).catch((e) => setErreur(e.message)); }, [depart]);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-night/50 p-4" role="dialog" aria-modal="true" aria-label={t("settings.folderTitle")}>

@@ -56,10 +56,12 @@ export function ListeSeances({ genre, textes = "sermons", titre = true }: { genr
   }, [saisie]);
 
   // First page: on every change of search or filter.
+  const requete = JSON.stringify([recherche, mois, filtre, genre]);
+  const [requeteVue, setRequeteVue] = useState<string | null>(null);
+  if (requeteVue !== requete) { setRequeteVue(requete); setCharge(true); setItems(null); }
+
   useEffect(() => {
     let vivant = true;
-    setCharge(true);
-    setItems(null);
     api.sermons({ q: recherche, mois, pending: filtre === "a_valider", limit: TAILLE, kind: genre })
       .then((r) => {
         if (!vivant) return;

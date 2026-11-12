@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, onUnauthorized, setCsrf, type Session } from "./api";
@@ -16,40 +16,39 @@ import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Onboarding from "./pages/Onboarding";
-
-let sessionCourante: Session | null = null;
-export const currentSession = () => sessionCourante;
+import { setCurrentSession } from "./session";
 
 export default function App() {
   const { t, i18n } = useTranslation();
   const [session, setSession] = useState<Session | null>(null);
   const [pret, setPret] = useState(false);
   const navigate = useNavigate();
-  const [demarragePropose, setDemarragePropose] = useState(false);
+  const demarragePropose = useRef(false);
   // Menu compact sur téléphone : refermé à chaque changement de page.
   const [menuOuvert, setMenuOuvert] = useState(false);
   const { pathname } = useLocation();
-  useEffect(() => setMenuOuvert(false), [pathname]);
+  const [pageVue, setPageVue] = useState(pathname);
+  if (pageVue !== pathname) { setPageVue(pathname); setMenuOuvert(false); }
 
   useEffect(() => {
     api.session()
-      .then((s) => { sessionCourante = s; setCsrf(s.csrf); setSession(s); })
-      .catch(() => { sessionCourante = null; setSession(null); })
+      .then((s) => { setCurrentSession(s); setCsrf(s.csrf); setSession(s); })
+      .catch(() => { setCurrentSession(null); setSession(null); })
       .finally(() => setPret(true));
-    onUnauthorized(() => { sessionCourante = null; setSession(null); });
+    onUnauthorized(() => { setCurrentSession(null); setSession(null); });
   }, []);
 
   // First login: the three-step wizard is opened once, then everything lives in Settings.
   useEffect(() => {
-    if (!session || demarragePropose) return;
+    if (!session || demarragePropose.current) return;
     if (session.mosque?.needs_onboarding && session.user.permissions.includes("admin")) {
-      setDemarragePropose(true);
+      demarragePropose.current = true;
       navigate("/demarrage", { replace: true });
     }
-  }, [session, demarragePropose, navigate]);
+  }, [session, navigate]);
 
   if (!pret) return <p className="px-4 py-16 text-center text-muted">{t("common.loading")}</p>;
-  if (!session) return <Login onLogin={(s) => { sessionCourante = s; setCsrf(s.csrf); setSession(s); }} />;
+  if (!session) return <Login onLogin={(s) => { setCurrentSession(s); setCsrf(s.csrf); setSession(s); }} />;
 
   const lien = (to: string, cle: string, perm?: string, compte?: number) =>
     perm && !session.user.permissions.includes(perm) ? null : (
@@ -76,7 +75,7 @@ export default function App() {
   const deconnexion = async (e: React.MouseEvent) => {
     e.preventDefault();
     await api.logout().catch(() => {});
-    sessionCourante = null;
+    setCurrentSession(null);
     setCsrf("");
     setSession(null);
   };

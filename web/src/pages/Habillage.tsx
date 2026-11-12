@@ -368,7 +368,11 @@ function Nombre({ label, valeur, min, max, onChange }:
   { label: string; valeur: number; min: number; max: number; onChange: (v: number) => void }) {
   // The text typed is kept as is (an empty field, “1.”) and the number follows the server once saved.
   const [texte, setTexte] = useState(String(valeur));
-  useEffect(() => { setTexte((x) => (Number(x) === valeur && x !== "" ? x : String(valeur))); }, [valeur]);
+  const [valeurVue, setValeurVue] = useState(valeur);
+  if (valeurVue !== valeur) {
+    setValeurVue(valeur);
+    setTexte((x) => (Number(x) === valeur && x !== "" ? x : String(valeur)));
+  }
   return (
     <Field label={label}>
       <input className={`${inputClass} max-w-[9rem] tabular-nums`} type="number" inputMode="decimal" min={min} max={max} step={0.5}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Btn, Field, inputClass } from "./ui";
+import { ecrireInstant, lireInstant } from "./instant";
 
 /** Clip chosen by hand: bounds (in the khutba's time), type and title.
  *  Used to create a clip on the khutba sheet and to move the bounds of a clip (proposed by the model
@@ -8,14 +9,6 @@ import { Btn, Field, inputClass } from "./ui";
  *  everything again (bounds, duration, recording); here we only spare a pointless round trip. */
 
 export type ValeursClip = { start: number; end: number; title: string; kind: string };
-
-/** "1:05.4", "65.4" or "65,4" -> seconds; NaN when unreadable. */
-export function lireInstant(v: string): number {
-  const m = v.trim().replace(",", ".").match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
-  return m ? Number(m[1] ?? 0) * 60 + Number(m[2]) : NaN;
-}
-
-export const ecrireInstant = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
 export default function FormulaireClip({ mode, initial, kinds, min, max, duree, ici, ecouter, occupe, onSubmit }: {
   mode: "creer" | "ajuster";

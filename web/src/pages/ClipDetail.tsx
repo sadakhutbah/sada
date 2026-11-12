@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import Player from "../Player";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { auditActionKey } from "../i18n";
 import { Btn, Card, Field, Kicker, Pill, Segmented, inputClass } from "../ui";
-import FormulaireClip, { ecrireInstant, lireInstant } from "../ClipBounds";
+import FormulaireClip from "../ClipBounds";
+import { ecrireInstant, lireInstant } from "../instant";
 import { dateFr, mmss } from "../format";
 
 /** Sheet for a clip: review screen.
@@ -32,15 +33,14 @@ export default function ClipDetail() {
   const [message, setMessage] = useState<Message>(null);
   const [occupe, setOccupe] = useState(false);
 
-  const recharger = () =>
-    api.clip(cid).then((r) => { setD(r); setErreur(null); }).catch((e) => setErreur(e?.message ?? String(e)));
+  const recharger = useCallback(() =>
+    api.clip(cid).then((r) => { setD(r); setErreur(null); }).catch((e) => setErreur(e?.message ?? String(e))), [cid]);
 
-  useEffect(() => {
-    setD(null);
-    setMessage(null);
-    setOnglet("decision");
-    recharger();
-  }, [cid]);
+  // Another clip: the sheet restarts from scratch.
+  const [cidVu, setCidVu] = useState(cid);
+  if (cidVu !== cid) { setCidVu(cid); setD(null); setMessage(null); setOnglet("decision"); }
+
+  useEffect(() => { recharger(); }, [recharger]);
 
   // Regeneration: the video is rebuilt on the server (about a minute), the sheet refreshes itself.
   const enCours = d?.clip?.regen_state === "en_cours";
@@ -48,7 +48,7 @@ export default function ClipDetail() {
     if (!enCours) return;
     const minuteur = window.setTimeout(recharger, 4000);
     return () => window.clearTimeout(minuteur);
-  }, [enCours, d]);
+  }, [enCours, d, recharger]);
 
   const agir: Agir = async (action, succes) => {
     setOccupe(true);
@@ -205,15 +205,16 @@ function Partage({ c, legende, info }: { c: any; legende: string; info: (ko: boo
   const titre = `${t("clips.clip")} ${c.idx} · ${t(`clips.kinds.${c.kind}`)}`;
   const fichiersOk = typeof navigator !== "undefined" && typeof navigator.canShare === "function"
     && navigator.canShare({ files: [new File([""], nom, { type: "video/mp4" })] });
-  const [fichier, setFichier] = useState<File | null>(null);
+  // The file downloaded for sharing is tied to its URL: a new version is never shared with the old file.
+  const [telecharge, setTelecharge] = useState<{ url: string; fichier: File } | null>(null);
+  const fichier = telecharge?.url === url ? telecharge.fichier : null;
 
   useEffect(() => {
     if (!fichiersOk) return;
     let annule = false;
-    setFichier(null);
     fetch(url, { credentials: "same-origin" })
       .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
-      .then((b) => { if (!annule) setFichier(new File([b], nom, { type: "video/mp4" })); })
+      .then((b) => { if (!annule) setTelecharge({ url, fichier: new File([b], nom, { type: "video/mp4" }) }); })
       .catch(() => { /* repli : partage du lien */ });
     return () => { annule = true; };
   }, [url, nom, fichiersOk]);

@@ -21,13 +21,19 @@ export default function Clips() {
   const [charge, setCharge] = useState(false);
   const debut = useRef(0);
 
-  useEffect(() => {
-    let vivant = true;
-    debut.current = 0;
+  // New tab: the list restarts empty right away, then the first page is fetched.
+  const [statutVu, setStatutVu] = useState<string | null>(null);
+  if (statutVu !== statut) {
+    setStatutVu(statut);
     setData(null);
     setItems([]);
     setTotal(0);
     setCharge(true);
+  }
+
+  useEffect(() => {
+    let vivant = true;
+    debut.current = 0;
     api.clips(statut, TAILLE, 0).then((r) => {
       if (!vivant) return;
       setData(r);

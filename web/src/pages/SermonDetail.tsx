@@ -4,7 +4,7 @@ import FormulaireClip from "../ClipBounds";
 import Player from "../Player";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
-import { currentSession } from "../App";
+import { currentSession } from "../session";
 import { Btn, Card, Field, Kicker, Pill, Segmented, Title, inputClass } from "../ui";
 import { dateFr, mmss } from "../format";
 

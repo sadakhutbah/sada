@@ -16,8 +16,12 @@ export default function Audit() {
   const [d, setD] = useState<{ items: any[]; total: number; actions: string[] } | null>(null);
   const [erreur, setErreur] = useState(false);
 
+  // New page or filter: the previous result is dropped at once (no stale rows while loading).
+  const cle = `${page}|${action}`;
+  const [cleVue, setCleVue] = useState(cle);
+  if (cleVue !== cle) { setCleVue(cle); setD(null); }
+
   useEffect(() => {
-    setD(null);
     api.audit(page, TAILLE, action).then(setD).catch(() => setErreur(true));
   }, [page, action]);
 

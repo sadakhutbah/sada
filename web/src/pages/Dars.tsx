@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api, type AgendaEvent, type EventForm, type EventsList } from "../api";
-import { currentSession } from "../App";
+import { currentSession } from "../session";
 import { Btn, Field, Pill, Segmented, inputClass } from "../ui";
 import { ListeSeances } from "./Sermons";
 
