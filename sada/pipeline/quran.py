@@ -1,7 +1,7 @@
 """Quran text (api.alquran.cloud: quran-simple-clean + fr.hamidullah translation), cached."""
 from __future__ import annotations
+
 import json
-from pathlib import Path
 
 import requests
 

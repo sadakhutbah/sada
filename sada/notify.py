@@ -9,8 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import urllib.request
-from pathlib import Path
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from .i18n import _, translate
 from .state import Machine, State
@@ -28,7 +27,7 @@ def should_send(state: State, m: Machine, now: dt.datetime) -> bool:
     return state is not State.ARMED or (m.session is not None and m.session > now)
 
 
-def message_for(state: State, m: Machine) -> Optional[str]:
+def message_for(state: State, m: Machine) -> str | None:
     """Text to send to the imam for this state change; None if nothing to say."""
     ref = m.session.strftime("%H:%M") if m.session else "—"
     quoi = translate(KIND_NOUNS.get(m.kind, "the {kind}"), kind=m.kind)
@@ -123,7 +122,7 @@ def _backoffice_settings(backoffice_url: str, api_port, fetch: Callable[[str, st
         return None
     from urllib.parse import urlencode
 
-    from .backoffice.internal import HEADER, token
+    from .backoffice.internal import token
 
     url = backoffice_url.rstrip("/") + "/api/v1/internal/notification-settings?" + urlencode({"port": api_port or 0})
     try:

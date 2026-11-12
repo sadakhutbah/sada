@@ -11,9 +11,9 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..context import ConnDep, Ctx, CtxDep, PRE_COOKIE
+from ..context import PRE_COOKIE, ConnDep, Ctx, CtxDep
+from . import agenda, audit, clips, dashboard, habillage, internal, publications, sermons, session, settings, users
 from .common import PERMISSIONS
-from . import agenda, audit, clips, dashboard, habillage, internal, publications, session, settings, sermons, users
 
 __all__ = ["router", "Ctx", "CtxDep", "ConnDep", "PRE_COOKIE", "PERMISSIONS"]
 

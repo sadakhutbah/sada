@@ -143,8 +143,9 @@ def from_backoffice(backoffice_url: str, api_port: int, fetch=None, log=None) ->
     log = log or (lambda _m: None)
     if not backoffice_url:
         return {}
-    from .backoffice.internal import token
     from urllib.parse import urlencode
+
+    from .backoffice.internal import token
 
     url = backoffice_url.rstrip("/") + "/api/v1/internal/screens?" + urlencode({"port": api_port or 0})
     try:

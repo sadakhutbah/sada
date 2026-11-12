@@ -151,8 +151,8 @@ def etat(conn, k: dict, m: dict) -> dict:
         "has_source": source(k) is not None,
         "has_logo": logo is not None,
         "mosque": m.get("name") or "",
-        "colors": {"green": "#%02X%02X%02X" % rendu.couleurs(brand)["green"],
-                   "gold": "#%02X%02X%02X" % rendu.couleurs(brand)["gold"]},
+        "colors": {"green": "#{:02X}{:02X}{:02X}".format(*rendu.couleurs(brand)["green"]),
+                   "gold": "#{:02X}{:02X}{:02X}".format(*rendu.couleurs(brand)["gold"])},
     }
 
 

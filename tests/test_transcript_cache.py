@@ -32,6 +32,7 @@ def test_legacy_cache_checked_on_audio_length(tmp_path):
 
 def test_session_header_follows_kind_and_mosque():
     from types import SimpleNamespace
+
     from sada.pipeline import clips as clipmod
     from sada.pipeline.run import session_header
     a = SimpleNamespace(title=clipmod.DEFAULT_TITLE, subtitle="")
@@ -44,7 +45,8 @@ def test_session_header_follows_kind_and_mosque():
 
 def test_dominant_language_over_whole_talk():
     from sada.pipeline.transcribe import dominant_language
-    seg = lambda s, e, t: {"start": s, "end": e, "text": t}
+    def seg(s, e, t):
+        return {"start": s, "end": e, "text": t}
     talk = [seg(0, 30, "بسم الله الرحمن الرحيم"), seg(30, 600, "Chers frères, aujourd'hui nous parlons de la tawba")]
     assert dominant_language(talk, "ar") == "fr"
     assert dominant_language([seg(0, 600, "الحمد لله رب العالمين")], "ar") == "ar"

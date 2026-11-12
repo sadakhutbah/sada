@@ -12,17 +12,19 @@ Arabic goes through libraqm (shaping of joined letters + RTL direction); otherwi
 (the overlays of the mobile Facebook app occupy the corners and the bottom of the image).
 """
 from __future__ import annotations
+
 import datetime as dt
 import functools
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from . import screens
 from .paths import FONTS
-from .text import JOURS, french_date, shaped, is_arabic_char, RAQM
+from .text import JOURS, RAQM, french_date, is_arabic_char, shaped
 
 if TYPE_CHECKING:                       # for annotations only
     from .events import EventInstance
@@ -67,7 +69,7 @@ def _font(path: str, size: int):
     return ImageFont.truetype(path, size, layout_engine=layout)
 
 
-def _strong(ch: str) -> Optional[bool]:
+def _strong(ch: str) -> bool | None:
     """True = Arabic, False = Latin (strong), None = neutral (space, punctuation, digits)."""
     if is_arabic_char(ch) and ch.isalpha():
         return True
@@ -153,7 +155,7 @@ class SceneRenderer:
         self.panel = _mix(self.dark, (6, 18, 12), 0.55)
         self._logo = Image.open(cfg.logo).convert("RGBA") if cfg.logo else None
         self._logo_cache: dict[int, Image.Image] = {}
-        self._bg_cache: Optional[Image.Image] = None
+        self._bg_cache: Image.Image | None = None
         self._medal_cache: dict[tuple, Image.Image] = {}
         self.s = self.H / 720  # scale factor (mockup at 1280x720)
 
@@ -199,7 +201,7 @@ class SceneRenderer:
         img.putalpha(mask)
         return img.resize((size, size), Image.Resampling.LANCZOS)
 
-    def medallion(self, d: int, ring: int = 2, pad: Optional[int] = None) -> Image.Image:
+    def medallion(self, d: int, ring: int = 2, pad: int | None = None) -> Image.Image:
         """White disc + logo + gold ring, with a soft shadow (size d + shadow margin)."""
         pad = max(2, d // 30) if pad is None else pad
         key = (d, ring, pad)
@@ -294,7 +296,7 @@ class SceneRenderer:
         ws = [d.textlength(ch, font=font) for ch in text]
         total = sum(ws) + track * (len(text) - 1)
         x = cx - total / 2
-        for ch, w in zip(text, ws):
+        for ch, w in zip(text, ws, strict=False):
             d.text((x, y), ch, font=font, fill=fill, anchor="ls")
             x += w + track
 
@@ -333,7 +335,7 @@ class SceneRenderer:
             up, down = max(up, -b[1]), max(down, b[3])
         return up, down
 
-    def txt(self, screen: str, m: "Moment", **variables) -> dict[str, str]:
+    def txt(self, screen: str, m: Moment, **variables) -> dict[str, str]:
         """Texts of a screen for this instant: defaults of sada.screens, mosque overrides, variables."""
         vals = screens.variables(m, title=self.cfg.title, mosque=self.cfg.mosque_name, **variables)
         return screens.resolve(screen, getattr(self.cfg, "screen_texts", None), vals)
@@ -409,7 +411,7 @@ class SceneRenderer:
             y = base + down
         return img
 
-    def _fit(self, d, text: str, font, path: str, size: int, max_w: Optional[int] = None):
+    def _fit(self, d, text: str, font, path: str, size: int, max_w: int | None = None):
         """Shrinks the size if the text overflows the usable area (10 % margins)."""
         max_w = max_w or int(self.W * 0.8)
         while size > 12 and self._width(d, text, font) > max_w:
@@ -419,18 +421,18 @@ class SceneRenderer:
 
     # --- scenes -------------------------------------------------------------
     # Each scene renders its content layer (transparent) from the displayed instant (Moment).
-    def _avant(self, m: "Moment") -> Image.Image:
+    def _avant(self, m: Moment) -> Image.Image:
         t = self.txt("avant", m, heure=_hm(m.planned) if m.planned else "")
         return self._full_content(self.cfg.title, t["sub"], "", t["foot"],
                                   eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
 
-    def _priere(self, m: "Moment") -> Image.Image:
+    def _priere(self, m: Moment) -> Image.Image:
         t = self.txt("priere", m)
         return self._full_content(t["title"], t["sub"], "", t["foot"],
                                   eyebrow=t["eyebrow"] or (french_date(m.now) if m.now else ""),
                                   arabic=AR_JUMUA)
 
-    def _entracte(self, m: "Moment") -> Image.Image:
+    def _entracte(self, m: Moment) -> Image.Image:
         nxt = m.next_event
         t = self.txt("entracte", m, heure=_hm(nxt.starts) if nxt is not None and nxt.kind != "khutba"
                      else (_hm(m.planned) if m.planned else ""),
@@ -445,7 +447,7 @@ class SceneRenderer:
                                       t["foot"], eyebrow=t["eyebrow"])
         return self._full_content(t["title"], "", "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
 
-    def _termine(self, m: "Moment") -> Image.Image:
+    def _termine(self, m: Moment) -> Image.Image:
         t = self.txt("termine", m)
         return self._full_content(t["title"], t["sub"], "", t["foot"],
                                   eyebrow=t["eyebrow"], arabic=AR_JAZAKUM)
@@ -456,11 +458,11 @@ class SceneRenderer:
         ImageDraw.Draw(sh).rounded_rectangle([box[0], box[1] + o, box[2], box[3] + o], radius, fill=(0, 0, 0, 110))
         img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(self.px(10))))
 
-    def _khutba(self, m: "Moment") -> Image.Image:
+    def _khutba(self, m: Moment) -> Image.Image:
         """Khutba banner: meeting title, mosque name, Arabic title."""
         return self._banner(self.cfg.title, self.cfg.mosque_name, AR_KHUTBA)
 
-    def _dars(self, m: "Moment") -> Image.Image:
+    def _dars(self, m: Moment) -> Image.Image:
         """Banner of a dars or a conference: title, speaker, series and session."""
         ev = m.event
         if ev is None:
@@ -474,7 +476,7 @@ class SceneRenderer:
         arabic = AR_CONF if ev.get("kind") == "conference" else AR_DARS
         return self._banner(ev.get("title") or "Dars", "  ·  ".join(bits), arabic)
 
-    def _dars_fin(self, m: "Moment") -> Image.Image:
+    def _dars_fin(self, m: Moment) -> Image.Image:
         """End screen of a dars: thanks and announcement of the next class."""
         nxt = m.next_event
         t = self.txt("dars_fin", m,
@@ -529,7 +531,7 @@ class SceneRenderer:
             text = text[:-1]
         return text.rstrip() + "…"
 
-    def _janaza(self, m: "Moment") -> Image.Image:
+    def _janaza(self, m: Moment) -> Image.Image:
         """Full screen dedicated to the funeral prayer: sober, without camera or banner.
 
         The record entered in the dashboard appears only if it was (family consent):
@@ -542,7 +544,7 @@ class SceneRenderer:
         return self._full_content(name or t["title"], sub, "", t["foot"],
                                   eyebrow=t["eyebrow"], arabic=AR_JANAZA)
 
-    def content(self, scene: str, m: "Moment") -> Image.Image:
+    def content(self, scene: str, m: Moment) -> Image.Image:
         """Content layer of the scene; the encoder lays it over the shared background if the scene is a full screen.
 
         A full screen is returned already composited on its background: the transition then reveals an opaque
@@ -562,11 +564,11 @@ class Moment:
     """What the scenes show: the time, the planned session, the name of the deceased (Janaza, with the family's
     consent), and for a dars the current class (`event`) or the next one (`next_event`)."""
     now: dt.datetime
-    planned: Optional[dt.datetime] = None
-    janaza_name: Optional[str] = None
-    janaza_info: Optional[str] = None   # note under the name (age, standing…), same family consent
-    event: Optional[dict] = None        # dars / conference in progress: title, speaker, series, session_no, kind
-    next_event: Optional["EventInstance"] = None   # next occurrence, for the end screen and the interlude
+    planned: dt.datetime | None = None
+    janaza_name: str | None = None
+    janaza_info: str | None = None   # note under the name (age, standing…), same family consent
+    event: dict | None = None        # dars / conference in progress: title, speaker, series, session_no, kind
+    next_event: EventInstance | None = None   # next occurrence, for the end screen and the interlude
 
 
 @dataclass(frozen=True)

@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401
+from test_backoffice import client  # noqa: E402,F401
 
 SCREENS = ("avant", "priere", "entracte", "termine", "janaza", "dars_fin")
 

@@ -25,8 +25,7 @@ from wordfreq import zipf_frequency
 
 from ..i18n import _
 from ..text import duration as fmt_t
-from ..text import is_arabic
-from ..text import is_translit_word
+from ..text import is_arabic, is_translit_word
 from . import clips as clipmod
 from . import llm
 from .transcribe import is_loop
@@ -318,9 +317,9 @@ def score_candidates(cands: list[dict], segments: list[dict], use_llm: bool = Tr
         results = [run(t) for t in texts]
 
     scored = 0
-    for batch_cands, batch_texts, res in zip(batches, texts, results):
+    for batch_cands, batch_texts, res in zip(batches, texts, results, strict=False):
         parsed = res if isinstance(res, list) else [None] * len(batch_cands)
-        for c, _t, pr in zip(batch_cands, batch_texts, parsed):
+        for c, _t, pr in zip(batch_cands, batch_texts, parsed, strict=False):
             if pr is not None:
                 c["note"], c["titre"] = pr
                 c["method"] = llm.settings().label()

@@ -3,12 +3,13 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest provides the path)
+from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
 
 
 def _png(w=64, h=64, color=(15, 42, 25)) -> bytes:
-    from PIL import Image
     import io
+
+    from PIL import Image
 
     buf = io.BytesIO()
     Image.new("RGB", (w, h), color).save(buf, "PNG")

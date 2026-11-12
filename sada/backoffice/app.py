@@ -21,8 +21,18 @@ from ..paths import ASSETS
 from . import auth, branding, content, db, docpage, gabarit, habillage, importer, live, traitement
 from . import screens as screens_mod
 from .api import router as api_router
-from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
-                      clip_or_404, khutba_or_404, live_status)
+from .context import (
+    ConnDep,
+    CtxDep,
+    Forbidden,
+    Invalid,
+    LoginRequired,
+    NotFound,
+    _sec,
+    clip_or_404,
+    khutba_or_404,
+    live_status,
+)
 
 HERE = Path(__file__).resolve().parent
 FRONT = HERE.parent.parent / "web" / "dist"

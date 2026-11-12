@@ -1,11 +1,10 @@
 """Live destinations set from the back office: masking, validation, internal endpoint, engine side."""
-import json
 
 import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest provides the path)
+from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
 
 FB = "rtmps://live-api-s.facebook.com:443/rtmp/CLE-FB"
 YT = "rtmps://a.rtmp.youtube.com/live2/CLE-YT"

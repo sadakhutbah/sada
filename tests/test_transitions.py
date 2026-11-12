@@ -19,8 +19,8 @@ def test_plan_curves():
     mid = p.values(tr.FOND_DUR / 2)
     assert 0.4 < mid["fond"] < 0.6                            # crossfade camera <-> full screen
     steps = [p.values(i / 50)["a_b"] for i in range(int(tr.TOTAL * 50) + 2)]
-    assert all(b >= a for a, b in zip(steps, steps[1:]))      # monotonic entry, without jumps
-    assert max(b - a for a, b in zip(steps, steps[1:])) < 0.15
+    assert all(b >= a for a, b in zip(steps, steps[1:], strict=False))      # monotonic entry, without jumps
+    assert max(b - a for a, b in zip(steps, steps[1:], strict=False)) < 0.15
     q = tr.plan("b", old_full=True, new_full=True)            # full screen -> full screen: the background stays
     assert all(q.values(t / 10)["fond"] == 1 for t in range(12))
     assert q.values(tr.IN_START)["y_a"] == tr.SLIDE_Y and q.values(tr.TOTAL)["y_a"] == 0

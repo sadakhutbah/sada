@@ -1,5 +1,6 @@
 """Jumu'a times from Mawaqit, with a local cache (fallback if the site is unreachable)."""
 from __future__ import annotations
+
 import json
 import re
 import time
@@ -74,7 +75,7 @@ def prayer_times(d: dict) -> dict:
     """
     names = ("fajr", "dhuhr", "asr", "maghrib", "isha")
     raw = d.get("times") or []
-    return {n: t for n, t in zip(names, raw) if t}
+    return {n: t for n, t in zip(names, raw, strict=False) if t}
 
 
 def _finish(d: dict) -> dict:

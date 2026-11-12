@@ -14,11 +14,10 @@ import datetime as dt
 import json
 import sqlite3
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .. import defaults, paths
 from ..i18n import _
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 from . import migrations, models
 
 DEFAULT_DB = paths.BACKOFFICE_DB
@@ -34,7 +33,7 @@ LATEST_VERSION = migrations.LATEST
 
 
 def now_iso() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
 
 def connect(path: str | Path) -> sqlite3.Connection:

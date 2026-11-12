@@ -22,7 +22,7 @@ def path_for(mosque: dict) -> Path:
 
 
 def version(mosque: dict) -> str:
-    return f"{mosque['id']}-{abs(hash((mosque.get('logo_path') or ''))) % 0xFFFFFF:x}"
+    return f"{mosque['id']}-{abs(hash(mosque.get('logo_path') or '')) % 0xFFFFFF:x}"
 
 
 def url(mosque: dict | None) -> str:

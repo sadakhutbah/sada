@@ -9,8 +9,6 @@ alors aucune ligne : rien n'est inventé à la place de la mosquée.
 """
 from __future__ import annotations
 
-import re
-
 from ..i18n import _
 from . import branding, db
 

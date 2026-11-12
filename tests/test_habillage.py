@@ -71,7 +71,7 @@ def test_bandeau_dans_la_video_et_jamais_au_dela():
 # ------------------------------------------------------------------ ASS
 
 def _dialogues(ass: str) -> list[str]:
-    return [l for l in ass.splitlines() if l.startswith("Dialogue:")]
+    return [ligne for ligne in ass.splitlines() if ligne.startswith("Dialogue:")]
 
 
 def test_ass_complet_tous_elements():
@@ -87,9 +87,9 @@ def test_ass_complet_tous_elements():
     # doré de la mosquée (BGR) dans le filet et la barre
     assert "&H0050BEE8&" in d
     # le bandeau commence après le carton (5 s) + son instant d'apparition (2 s)
-    assert any(l.startswith("Dialogue: 3,0:00:07.00,") for l in _dialogues(ass))
+    assert any(ligne.startswith("Dialogue: 3,0:00:07.00,") for ligne in _dialogues(ass))
     # la barre couvre toute la vidéo, pas les cartons
-    assert any(l.startswith("Dialogue: 3,0:00:05.00,0:01:05.00,") for l in _dialogues(ass))
+    assert any(ligne.startswith("Dialogue: 3,0:00:05.00,0:01:05.00,") for ligne in _dialogues(ass))
 
 
 def test_ass_elements_coupes_absents():
@@ -97,7 +97,7 @@ def test_ass_elements_coupes_absents():
     d = "\n".join(_dialogues(ass))
     assert "Le tafsir" not in d and "MOSQUÉE EXEMPLE" not in d and "mosquee.fr" not in d
     assert "Cheikh Abdallah" in d
-    assert any(l.startswith("Dialogue: 3,0:00:02.00,") for l in _dialogues(ass))   # sans carton : 2 s
+    assert any(ligne.startswith("Dialogue: 3,0:00:02.00,") for ligne in _dialogues(ass))   # sans carton : 2 s
     rien = h.build_ass(opts(intro_on=False, lower_on=False, outro_on=False), CADRE, MOSQUEE)
     assert _dialogues(rien) == []
 
@@ -109,7 +109,7 @@ def test_ass_echappe_les_accolades():
 
 def test_titre_arabe_en_naskh():
     ass = h.build_ass(opts(title="تفسير سورة الكهف"), CADRE, MOSQUEE)
-    assert any(",TitreAr," in l for l in _dialogues(ass))
+    assert any(",TitreAr," in ligne for ligne in _dialogues(ass))
 
 
 def test_video_verticale_garde_ses_proportions():
@@ -295,7 +295,8 @@ def test_api_apercu_puis_rendu(env, video):
 
 
 def test_rendu_interrompu_marque_en_echec(env):
-    from sada.backoffice import db, habillage as bo
+    from sada.backoffice import db
+    from sada.backoffice import habillage as bo
     conn = env["conn"]
     conn.execute("INSERT INTO habillages (mosque_id, khutba_id, status, updated_at) VALUES (?, ?, 'en_cours', 'x')",
                  (env["mid"], env["kid"]))

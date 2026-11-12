@@ -10,6 +10,7 @@
 Cache: translations.json; re-running does not call the LLM again. Read and edit this cache: segment_fr, verse_fr, with_correction.
 """
 from __future__ import annotations
+
 import copy
 import hashlib
 import json
@@ -105,7 +106,7 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
                 if not ok:
                     log(_("translation: Hamidullah excerpt not literal for {key}, full translation kept", key=k))
     # known ritual formulas: fixed translation when the LLM is unavailable
-    for i, s in ar:
+    for _i, s in ar:
         k = _seg_key(s["text"])
         fr = formula_fr(s["text"]) if k not in cache["seg"] else None
         if fr:

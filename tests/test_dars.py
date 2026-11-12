@@ -1,9 +1,8 @@
 """Dars and conferences: dedicated entry, soft ending, end screen, no mixing with the khutba."""
 import datetime as dt
+from dataclasses import replace
 
 import pytest
-
-from dataclasses import replace
 
 from sada.state import Machine, MachineParams, Signals, State
 

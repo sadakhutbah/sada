@@ -12,8 +12,9 @@ This module also decides what is SHOWN as a verse (shown / for_display): ritual 
 (ta'awwudh, basmala…), which fuzzy detection brings close to 16:98, 64:1…, are not verses.
 """
 from __future__ import annotations
+
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 
 from rapidfuzz import fuzz, process
 
@@ -63,11 +64,13 @@ class VerseIndex:
             if len(w) < MIN_VERSE_WORDS:
                 continue
             if len(w) <= win:
-                self.keys.append(" ".join(w)); self.owner.append(vi)
+                self.keys.append(" ".join(w))
+                self.owner.append(vi)
             else:
                 for i in range(len(w) - win + 1):
-                    self.keys.append(" ".join(w[i:i + win])); self.owner.append(vi)
-        for k, o in zip(self.keys, self.owner):
+                    self.keys.append(" ".join(w[i:i + win]))
+                    self.owner.append(vi)
+        for k, o in zip(self.keys, self.owner, strict=False):
             self.key_owners.setdefault(k, set()).add(o)
 
     def search(self, windows: list[str], thresh: float = THRESH):
@@ -109,13 +112,15 @@ def _detect_ar(segments: list[dict], index: VerseIndex, thresh: float = THRESH, 
         if len(words) < index.win:
             # short segment: a single window if enough words
             if len(words) >= MIN_VERSE_WORDS:
-                wins.append(" ".join(words)); meta.append((seg, " ".join(words)))
+                wins.append(" ".join(words))
+                meta.append((seg, " ".join(words)))
             continue
         for i in range(len(words) - index.win + 1):
-            wins.append(" ".join(words[i:i + index.win])); meta.append((seg, " ".join(words[i:i + index.win])))
+            wins.append(" ".join(words[i:i + index.win]))
+            meta.append((seg, " ".join(words[i:i + index.win])))
     hits = index.search(wins, thresh)
     groups: dict = {}
-    for (seg, w), h in zip(meta, hits):
+    for (seg, w), h in zip(meta, hits, strict=False):
         if not h:
             continue
         sc, vi, key = h
@@ -130,7 +135,8 @@ def _detect_ar(segments: list[dict], index: VerseIndex, thresh: float = THRESH, 
             if it[0]["start"] - cur[-1][0]["end"] <= gap_s:
                 cur.append(it)
             else:
-                clusters.append(cur); cur = [it]
+                clusters.append(cur)
+                cur = [it]
         clusters.append(cur)
         for cl in clusters:
             owners = cl[0][3]
@@ -183,13 +189,14 @@ def _detect_fr(segments: list[dict], index: VerseIndex, thresh: float = THRESH_F
         if len(words) >= n:
             step = 2 if len(words) > 3 * n else 1      # hybrid: fine step, then double step over long passages
             for k in range(0, len(words) - n + 1, step):
-                wins.append(" ".join(words[k:k + n])); spans.append((usable[i], usable[j - 1]))
+                wins.append(" ".join(words[k:k + n]))
+                spans.append((usable[i], usable[j - 1]))
         i = j
     if not wins:
         return []
     hits = fr_.search(wins, thresh)
     best: dict[int, tuple] = {}
-    for (a, b), h in zip(spans, hits):
+    for (a, b), h in zip(spans, hits, strict=False):
         if not h:
             continue
         sc, vi, key = h

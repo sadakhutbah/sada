@@ -19,7 +19,7 @@ def test_candidats_fenetres_propres_non_chevauchantes():
         assert 30.0 <= w["end"] - w["start"] <= 75.0, w
         assert S.clean_window_text(segs, w["start"], w["end"]).rstrip().endswith(".")
     # pas de chevauchement, ordre chronologique
-    for a, b in zip(wins, wins[1:]):
+    for a, b in zip(wins, wins[1:], strict=False):
         assert a["end"] <= b["start"] + 1.0
 
 
@@ -86,7 +86,7 @@ def test_repli_sans_modele(monkeypatch):
     wins = S.select_clips(segs, 160.0, 3, use_llm=False, log=logs.append)
     assert 1 <= len(wins) <= 3
     assert all(w["method"] == "heuristique" for w in wins)
-    assert any("candidates" in l for l in logs) and any("kept" in l for l in logs)
+    assert any("candidates" in ligne for ligne in logs) and any("kept" in ligne for ligne in logs)
 
     # modèle indisponible : chaque lot retombe sur l'heuristique, rien ne lève
     monkeypatch.setattr(S.llm, "ask_json", lambda prompt, timeout, log: None)

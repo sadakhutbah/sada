@@ -21,7 +21,7 @@ TR["verse_fr"]["65:3@10.0"] = "Allah atteint ce qu'Il Se propose, et Allah a ass
 
 
 def _events(path):
-    return [l for l in open(path, encoding="utf-8").read().splitlines() if l.startswith("Dialogue:")]
+    return [ligne for ligne in open(path, encoding="utf-8").read().splitlines() if ligne.startswith("Dialogue:")]
 
 
 def test_french_only_and_verse_card(tmp_path):
@@ -40,7 +40,8 @@ def test_french_only_and_verse_card(tmp_path):
     assert any(",CardFr," in e and "Allah atteint" in e for e in ev)
     # during the card: no speech subtitle
     def t(s):
-        h, m, x = s.split(":"); return int(h) * 3600 + int(m) * 60 + float(x)
+        h, m, x = s.split(":")
+        return int(h) * 3600 + int(m) * 60 + float(x)
     for e in subs:
         a, b = t(e.split(",")[1]), t(e.split(",")[2])
         assert not (10.5 < (a + b) / 2 < 14.0)

@@ -4,10 +4,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from test_backoffice import client
 
 from sada import runs
 from sada.backoffice import importer, traitement
-from test_backoffice import client
 
 URL = "/api/v1/imports/video"
 

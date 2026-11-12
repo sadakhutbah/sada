@@ -6,11 +6,10 @@ mechanism), "to validate", audit, then publication once validated.
 from pathlib import Path
 
 import pytest
+from test_backoffice import client, clip_ids  # noqa: F401
 
 from sada.backoffice import content, db
 from sada.pipeline import clips as clipmod
-
-from test_backoffice import client, clip_ids, env  # noqa: F401
 
 
 @pytest.fixture

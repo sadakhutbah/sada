@@ -6,21 +6,23 @@
     python -m sada.pipeline.run --llm-url http://127.0.0.1:8000/v1 --llm-model mistral-small
 """
 from __future__ import annotations
+
 import argparse
 import json
 import os
 import sys
 from pathlib import Path
 
-from ..i18n import _
 from .. import paths, runs
+from ..i18n import _
 from ..text import duration as fmt_t
 from . import clips as clipmod
+from . import llm
 from . import notes as notemod
 from . import select as selmod
-from . import transcribe as tr
-from . import llm, translate as trmod
 from . import settings as reglages
+from . import transcribe as tr
+from . import translate as trmod
 from .output import SessionOutput, clip_entry
 from .quran import load_verses
 from .verses import VerseIndex, detect, to_dicts

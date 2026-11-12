@@ -6,9 +6,6 @@ dessin du moteur, et une image n'est jamais réécrite sans raison.
 """
 from __future__ import annotations
 
-import time
-
-import pytest
 from PIL import Image
 
 from sada.gabarit_antenne import ECRANS, AntenneGabarit

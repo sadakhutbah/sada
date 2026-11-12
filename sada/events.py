@@ -24,9 +24,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Optional
 
 from .i18n import _
 from .text import JOURS
@@ -64,8 +64,8 @@ class EventInstance:
     title: str = ""
     speaker: str = ""
     series: str = ""
-    session: Optional[int] = None
-    max_min: Optional[float] = None
+    session: int | None = None
+    max_min: float | None = None
     publish: bool = True
     uid: str = ""
 
@@ -82,8 +82,8 @@ class EventInstance:
 @dataclass
 class Recurrence:
     weekday: int
-    time: Optional[str] = None
-    after: Optional[str] = None
+    time: str | None = None
+    after: str | None = None
     offset_min: float = 0.0
 
 
@@ -94,12 +94,12 @@ class Event:
     title: str = ""
     speaker: str = ""
     series: str = ""
-    session: Optional[int] = None
-    max_min: Optional[float] = None
+    session: int | None = None
+    max_min: float | None = None
     publish: bool = True
-    date: Optional[dt.date] = None
-    time: Optional[dt.time] = None
-    recurrence: Optional[Recurrence] = None
+    date: dt.date | None = None
+    time: dt.time | None = None
+    recurrence: Recurrence | None = None
     uid: str = ""
 
     def occurs_on(self, day: dt.date) -> bool:
@@ -107,7 +107,7 @@ class Event:
             return self.date == day
         return self.recurrence is not None and self.recurrence.weekday == day.weekday()
 
-    def starts_on(self, day: dt.date, times: Mapping[str, object] | None = None) -> Optional[dt.datetime]:
+    def starts_on(self, day: dt.date, times: Mapping[str, object] | None = None) -> dt.datetime | None:
         """Start time on that day, or None if it cannot be computed (prayer missing)."""
         if not self.occurs_on(day):
             return None
@@ -125,7 +125,7 @@ class Event:
             return _as_datetime(day, base) + dt.timedelta(minutes=float(rec.offset_min or 0))
         return None
 
-    def instance(self, day: dt.date, times: Mapping[str, object] | None = None) -> Optional[EventInstance]:
+    def instance(self, day: dt.date, times: Mapping[str, object] | None = None) -> EventInstance | None:
         start = self.starts_on(day, times)
         if start is None:
             return None
@@ -195,7 +195,7 @@ def loads(text: str) -> list[Event]:
     return [_parse(raw, i) for i, raw in enumerate(items)]
 
 
-def load(path: str | Path) -> tuple[list[Event], Optional[str]]:
+def load(path: str | Path) -> tuple[list[Event], str | None]:
     """(events, readable error). A missing file is not an error: the programme is empty."""
     p = Path(path)
     if not p.exists():

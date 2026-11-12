@@ -8,15 +8,14 @@ mosque's reference and shown in an iframe, same origin only.
 from __future__ import annotations
 
 import datetime as dt
-import re
 import json
 import os
 import re
 from pathlib import Path
 
-from ..i18n import _
 from .. import paths
 from .. import screens as base
+from ..i18n import _
 
 # The repository's data folder; tests point this elsewhere.
 DIR = paths.DATA / "screens"
@@ -52,7 +51,7 @@ def view(mosque: dict) -> dict:
         "url": f"/screens/{mosque['slug']}/ecrans{EXT}?v={int(st.st_mtime)}",
         "name": f"ecrans{EXT}",
         "size": st.st_size,
-        "imported_at": dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc).isoformat(timespec="seconds"),
+        "imported_at": dt.datetime.fromtimestamp(st.st_mtime, dt.UTC).isoformat(timespec="seconds"),
     }
 
 
@@ -101,7 +100,7 @@ def pour_ecran(page: str, ecran: str) -> str:
     if ecran not in ECRANS:
         return page
     sans = re.sub(r"\s+data-actif(?=[\s>])", "", page)
-    motif = re.compile(r"<[a-zA-Z][^>]*data-ecran=\"%s\"[^>]*>" % re.escape(ecran))
+    motif = re.compile(rf"<[a-zA-Z][^>]*data-ecran=\"{re.escape(ecran)}\"[^>]*>")
     m = motif.search(sans)
     if not m:
         return page                      # écran absent du fichier : on ne devine pas

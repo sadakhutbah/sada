@@ -4,6 +4,7 @@ Strict rule: a quote is accepted only if it is a literal substring of a transcri
 (checked in code, no blind trust in the LLM). The summary is always labelled « generated, to be validated ».
 """
 from __future__ import annotations
+
 import re
 from collections import Counter
 
@@ -39,7 +40,7 @@ def find_quote(quote: str, segments: list[dict]) -> dict | None:
         if q in _norm_ws(s["text"]):
             return s
     # quote spanning two consecutive segments
-    for a, b in zip(segments, segments[1:]):
+    for a, b in zip(segments, segments[1:], strict=False):
         if q in _norm_ws(a["text"] + " " + b["text"]):
             return a
     return None
@@ -104,7 +105,7 @@ def build_notes(session_label: str, segments: list[dict], matches: list[dict], m
                 quotes.append((seg["start"], p))
     quotes.sort()
     L = [f"# Notes de khutba — {session_label}", "",
-         f"> ⚠️ **Brouillon généré automatiquement — À VALIDER** par l'imam ou un responsable avant toute diffusion.",
+         "> ⚠️ **Brouillon généré automatiquement — À VALIDER** par l'imam ou un responsable avant toute diffusion.",
          f"> Résumé : méthode **{summ.get('method')}**{' (repli : modèle indisponible)' if fallback and use_llm else ''}. "
          f"Les citations ci-dessous sont des extraits littéraux du transcript ({len(quotes)} vérifiées, {rejected} rejetées car non littérales).", ""]
     firm = shown(matches)

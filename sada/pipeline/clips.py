@@ -11,15 +11,16 @@ Rendering (ASS burned in by libass):
 - Discreet header for the first seconds (khutba, mosque, date); gradient veil at the bottom for legibility.
 """
 from __future__ import annotations
+
 import re
 import subprocess
 import tempfile
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 
-from ..paths import FONTS
-from ..text import AR_RUN, arabic_ratio, is_arabic, is_translit_word, reshaped_view
 from ..i18n import _
+from ..paths import FONTS
+from ..text import AR_RUN, is_arabic, is_translit_word, reshaped_view
 from . import glossary as glossmod
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
@@ -42,13 +43,13 @@ WEAK_END = set("de du des la le les l' d' un une et à au aux en que qui qu' pou
                "ne n' se s' leur nos vos mon ma mes ton ta tes notre votre il elle ils elles nous vous on je j' tu y est".split())
 
 
-@lru_cache(maxsize=None)
+@cache
 def _font(name: str, size: int):
     from PIL import ImageFont
     return ImageFont.truetype(str(FONTS / name), size)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _ass_ratio(name: str) -> float:
     """libass sizes the font on its line height (ascent+descent), not on the em:
     ASS size = em size * ratio (Montserrat 1.22; Noto Naskh 1.70; EB Garamond 1.31)."""
@@ -100,7 +101,7 @@ def interpolate_words(text: str, a: float, b: float) -> list[dict]:
         return []
     weights = [len(w) + 1.5 for w in words]
     tot, t, out = sum(weights), a, []
-    for w, k in zip(words, weights):
+    for w, k in zip(words, weights, strict=False):
         d = (b - a) * k / tot
         out.append({"w": w, "s": t, "e": t + d})
         t += d
@@ -124,7 +125,8 @@ def chunk_words(words: list[dict], max_chars: int = SUB_CHUNK_CHARS) -> list[lis
                     # do not end a page on « de », « la », « et »…: those words move to the next page
                     while len(cur) > 1 and len(carry) < 2 and cur[-1]["w"].lower() in WEAK_END:
                         carry.insert(0, cur.pop())
-                chunks.append(cur); cur = carry
+                chunks.append(cur)
+                cur = carry
         cur.append(w)
     if cur:
         chunks.append(cur)
@@ -256,7 +258,8 @@ def wrap_px(text: str, font_file: str, size: int, maxw: float) -> list[str]:
             continue
         t = f"{cur} {w}".strip()
         if cur and text_width(t, font_file, size) > maxw:
-            lines.append(cur); cur = w
+            lines.append(cur)
+            cur = w
         else:
             cur = t
     if cur:
@@ -477,7 +480,8 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                     if not t or not (t0 <= w["s"] < t1):
                         continue
                     if words and (t[0] in "’-" or words[-1]["w"].endswith(("’", "-"))) and (w["s"] - t0) - words[-1]["e"] < 0.3:
-                        words[-1]["w"] += t; words[-1]["e"] = w["e"] - t0   # « d » + « ’Allah » -> « d’Allah »
+                        words[-1]["w"] += t
+                        words[-1]["e"] = w["e"] - t0   # « d » + « ’Allah » -> « d’Allah »
                     else:
                         words.append({"w": t, "s": w["s"] - t0, "e": w["e"] - t0})
             else:
@@ -485,12 +489,12 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
     # Deux cartes qui se chevauchent se superposeraient illisiblement : la plus ancienne cède
     # la place juste avant l'apparition de la suivante.
     cards.clear()
-    for m, fr, ca, cb in specs:
+    for _m, _fr, ca, cb in specs:
         if cards and ca < cards[-1][1] - 0.05:
             pca = cards[-1][0]
             cards[-1] = (pca, max(pca + 1.0, ca - 0.35))
         cards.append((ca, cb))
-    ev += [e for (m, fr, _ca, _cb), (a, b) in zip(specs, cards) for e in _verse_card(m, fr, a, b, gold)]
+    ev += [e for (m, fr, _ca, _cb), (a, b) in zip(specs, cards, strict=False) for e in _verse_card(m, fr, a, b, gold)]
     words.sort(key=lambda w: w["s"])
     words = drop_translit_runs(words)
     # « la tawba (le repentir) » : première occurrence du terme dans le clip, glose collée au mot.

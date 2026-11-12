@@ -18,9 +18,9 @@ session (the planned session if it is waiting, otherwise a manual session); the 
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
-from typing import Callable, Optional
 
 from .i18n import _
 
@@ -117,19 +117,19 @@ class SessionRec:
     index: int
     planned: str                        # "HH:MM"; "manuel@HH:MM" or "janaza@HH:MM" outside the programme
     status: str = "pending"             # pending | live | done | skipped | janaza
-    recording: Optional[int] = None     # number of the recording that contains start_pos / end_pos
-    start_pos: Optional[float] = None   # offset (s) in the recording
-    end_pos: Optional[float] = None
-    start_clock: Optional[str] = None
-    end_clock: Optional[str] = None
-    end_reason: Optional[str] = None
+    recording: int | None = None     # number of the recording that contains start_pos / end_pos
+    start_pos: float | None = None   # offset (s) in the recording
+    end_pos: float | None = None
+    start_clock: str | None = None
+    end_clock: str | None = None
+    end_reason: str | None = None
     kind: str = "khutba"                # khutba | dars | conference
     title: str = ""
     speaker: str = ""
     series: str = ""
-    session_no: Optional[int] = None
+    session_no: int | None = None
 
-    def event(self) -> Optional[dict]:
+    def event(self) -> dict | None:
         """Event carried by the session (None for an ordinary khutba); same shape as EventInstance.as_event()."""
         if self.kind == "khutba":
             return None
@@ -166,21 +166,21 @@ class Machine:
             self.records.append(SessionRec(i, s.strftime("%H:%M"), kind=m.get("kind") or "khutba",
                                            title=m.get("title", ""), speaker=m.get("speaker", ""),
                                            series=m.get("series", ""), session_no=m.get("session_no")))
-        self.live: Optional[SessionRec] = None   # open session (khutba or janaza)
+        self.live: SessionRec | None = None   # open session (khutba or janaza)
         self.entered_t = 0.0
-        self.entered_now: Optional[dt.datetime] = None
-        self.grace_until: Optional[float] = None
-        self.grace_reason: Optional[str] = None
+        self.entered_now: dt.datetime | None = None
+        self.grace_until: float | None = None
+        self.grace_reason: str | None = None
         self.extend_until_t: float = 0.0
-        self.janaza_name: Optional[str] = None   # janaza record: name of the deceased and note (family consent)
-        self.janaza_info: Optional[str] = None
-        self.paused_from: Optional[State] = None
-        self.cut: tuple[Optional[SessionRec], State] | tuple[None, None] = (None, None)  # session cut by the prayer
+        self.janaza_name: str | None = None   # janaza record: name of the deceased and note (family consent)
+        self.janaza_info: str | None = None
+        self.paused_from: State | None = None
+        self.cut: tuple[SessionRec | None, State] | tuple[None, None] = (None, None)  # session cut by the prayer
         self.last_reason = ""
 
     # ------------------------------------------------------------------ helpers
     @property
-    def scene(self) -> Optional[str]:
+    def scene(self) -> str | None:
         return SCENE_OF[self.state]
 
     @property
@@ -188,12 +188,12 @@ class Machine:
         return self.scene is not None
 
     @property
-    def session(self) -> Optional[dt.datetime]:
+    def session(self) -> dt.datetime | None:
         """Time of the planned session in progress or upcoming."""
         return self.sessions[self.idx] if self.idx < len(self.sessions) else None
 
     @property
-    def rec(self) -> Optional[SessionRec]:
+    def rec(self) -> SessionRec | None:
         return self.records[self.idx] if self.idx < len(self.sessions) else None
 
     def _go(self, new: State, sig: Signals, reason: str) -> None:

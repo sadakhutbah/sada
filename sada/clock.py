@@ -3,6 +3,7 @@
 The speed can change at runtime (the orchestrator resets it to 1x during the khutba,
 because the simulated camera, for its part, runs in real time)."""
 from __future__ import annotations
+
 import datetime as dt
 import threading
 import time

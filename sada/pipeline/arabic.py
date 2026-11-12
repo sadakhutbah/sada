@@ -1,5 +1,6 @@
 """Arabic normalisation (without diacritics) to compare a transcript with the Quranic text."""
 from __future__ import annotations
+
 import re
 import unicodedata
 

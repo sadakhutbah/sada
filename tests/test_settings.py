@@ -3,7 +3,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest provides the path)
+from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
 
 
 def test_les_sections_sont_annoncees(env):
@@ -216,6 +216,7 @@ def test_endpoint_interne_des_notifications(env, monkeypatch, tmp_path):
 def test_notifier_reads_backoffice_settings(env, monkeypatch, tmp_path):
     """Without a destination in the orchestrator config, from_config falls back to the on-screen setting."""
     from types import SimpleNamespace
+
     from sada import notify
     from sada.backoffice import internal
     monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))

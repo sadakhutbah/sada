@@ -62,7 +62,7 @@ class MotionGate:
             base = y * self.width
             row_a = frame[base + x0:base + x1]
             row_b = prev[base + x0:base + x1]
-            for a, b in zip(row_a, row_b):
+            for a, b in zip(row_a, row_b, strict=False):
                 if a - b > self.pixel_delta or b - a > self.pixel_delta:
                     changed += 1
         self.last_score = changed / float((x1 - x0) * (y1 - y0))

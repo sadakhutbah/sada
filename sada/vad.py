@@ -5,6 +5,7 @@ and a sliding one-second window is kept: "voice" if the share of voiced frames >
 Exposes voice_run / silence_run (real consecutive seconds of voice / of non-voice).
 """
 from __future__ import annotations
+
 import collections
 import shutil
 import subprocess

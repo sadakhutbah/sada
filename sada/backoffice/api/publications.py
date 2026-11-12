@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from .. import db, dirs as dirs_mod, publish
+from .. import db, publish
+from .. import dirs as dirs_mod
 from ..context import CtxDep
 from .common import _a_table, _notification_settings
 

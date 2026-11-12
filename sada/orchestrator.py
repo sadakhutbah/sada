@@ -3,30 +3,30 @@
     python -m sada.orchestrator --sim-start 12:12 --sim-speed 40
 """
 from __future__ import annotations
+
 import argparse
 import datetime as dt
 import io
 import logging
-import os
 import signal
 import sys
 import threading
 import time
 from pathlib import Path
 
-from . import events as events_mod
 from PIL import Image
 
 from . import destinations, gabarit_antenne, mawaqit, notify, runs, screens, source, upload
+from . import events as events_mod
 from .api import make_server
 from .clock import SimClock, parse_hhmm
-from .i18n import _
 from .config import Config
 from .encoder import Encoder
+from .faces import FaceGate, FaceMonitor, yunet_detector
+from .i18n import _
+from .presence import MotionGate, PresenceMonitor
 from .scenes import SCENES, Moment, SceneRenderer
 from .state import Machine, SessionParams, Signals
-from .faces import FaceGate, FaceMonitor, yunet_detector
-from .presence import MotionGate, PresenceMonitor
 from .vad import VadMonitor
 
 log = logging.getLogger("sada")

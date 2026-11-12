@@ -10,9 +10,10 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from .. import db, destinations, gabarit, internal, live_input, storage, variables_ecran as variables_mod
-from .. import screens as screens_mod
 from ...i18n import _
+from .. import db, destinations, gabarit, internal, live_input, storage
+from .. import screens as screens_mod
+from .. import variables_ecran as variables_mod
 from ..context import ConnDep
 
 router = APIRouter()

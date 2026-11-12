@@ -65,7 +65,6 @@ def test_forme_des_reponses(env):
 
 def test_les_clips_arrivent_par_pages(env):
     """Three hundred clips must not be rendered at once: the page asks for twenty, then follows."""
-    from sada.backoffice import db
     conn, kid, mid = env["conn"], env["kid"], env["mid"]
     for i in range(3, 28):
         conn.execute("""INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, end, file_path,

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from test_backoffice import client, csrf, login  # noqa: F401
 
 from sada.backoffice import instance
-from test_backoffice import client, csrf, env, login  # noqa: F401
 
 
 def test_sans_reglage_l_adresse_vient_de_la_requete(monkeypatch, tmp_path):

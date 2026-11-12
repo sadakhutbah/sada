@@ -4,7 +4,6 @@ The interface is the React front end: every route tested here is an `/api/v1` JS
 (plus media and live), exactly what the browser calls.
 """
 import json
-import re
 import socket
 from pathlib import Path
 
@@ -421,6 +420,7 @@ def test_nombre_d_extraits_reglable_depuis_le_backoffice(env, tmp_path, monkeypa
 def test_le_pipeline_prend_le_nombre_d_extraits_regle(tmp_path, monkeypatch):
     """Le pipeline sans --clips suit le réglage du back-office ; --no-clips et --clips restent maîtres."""
     from argparse import Namespace
+
     from sada.pipeline import run
     from sada.pipeline import settings as reglages
     monkeypatch.setenv("SADA_PIPELINE_CONFIG", str(tmp_path / "pipeline.json"))

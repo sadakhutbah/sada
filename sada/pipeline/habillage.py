@@ -23,8 +23,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..paths import FONTS
 from ..i18n import _
+from ..paths import FONTS
 from ..text import is_arabic
 from . import clips as clipmod
 
@@ -536,15 +536,18 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
             if not apercu:
                 fc.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={c.o:.3f}[oa]")
     if c.i:
-        segments_v.append("[iv]"); segments_a.append("[ia]")
-    segments_v.append("[v0]"); segments_a.append("[a0]")
+        segments_v.append("[iv]")
+        segments_a.append("[ia]")
+    segments_v.append("[v0]")
+    segments_a.append("[a0]")
     if c.o:
-        segments_v.append("[ov]"); segments_a.append("[oa]")
+        segments_v.append("[ov]")
+        segments_a.append("[oa]")
     k = len(segments_v)
     if apercu:
         fc.append("".join(segments_v) + f"concat=n={k}:v=1:a=0[cv]")
     else:
-        fc.append("".join(v + a for v, a in zip(segments_v, segments_a)) + f"concat=n={k}:v=1:a=1[cv][ca]")
+        fc.append("".join(v + a for v, a in zip(segments_v, segments_a, strict=False)) + f"concat=n={k}:v=1:a=1[cv][ca]")
 
     courant = "cv"
     poses = []

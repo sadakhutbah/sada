@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest provides the path)
+from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
 
 
 def test_le_front_est_servi_a_la_racine(env):

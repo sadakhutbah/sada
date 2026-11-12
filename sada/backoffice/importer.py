@@ -14,7 +14,8 @@ from pathlib import Path
 from .. import runs
 from ..events import kind_label
 from ..i18n import _
-from ..pipeline import notes, verses as verses_mod
+from ..pipeline import notes
+from ..pipeline import verses as verses_mod
 from ..pipeline.output import SessionOutput
 from . import db
 

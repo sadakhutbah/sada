@@ -10,10 +10,10 @@ from ... import notify
 from ...i18n import _
 from ...pipeline import llm
 from ...pipeline import settings as pipeline_settings
-from .. import auth, branding, db, destinations, dirs as dirs_mod, instance, live_input, publish, storage
+from .. import auth, branding, db, destinations, instance, live_input, publish, storage, variables_ecran
+from .. import dirs as dirs_mod
 from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
-from .. import variables_ecran
 from ..context import CtxDep, Invalid, NotFound
 from .common import _mosque, _notification_settings, _ok
 

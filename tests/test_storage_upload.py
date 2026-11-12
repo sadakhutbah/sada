@@ -5,7 +5,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401  (conftest fournit le chemin)
+from test_backoffice import client  # noqa: E402,F401  (conftest fournit le chemin)
 
 BON = {"endpoint": "https://compte.r2.cloudflarestorage.com", "region": "auto",
        "bucket": "sada-rediffusions", "access_key": "AKIAEXEMPLE",

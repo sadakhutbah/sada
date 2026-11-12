@@ -149,7 +149,7 @@ def rendre(markdown: str) -> str:
 
         # Filet — inutile juste avant un titre : le titre porte déjà son filet
         if re.fullmatch(r"(-{3,}|\*{3,})", nue):
-            suivant = next((l.strip() for l in lignes[i + 1:] if l.strip()), "")
+            suivant = next((ligne.strip() for ligne in lignes[i + 1:] if ligne.strip()), "")
             if not suivant.startswith("#"):
                 blocs.append("<hr>")
             i += 1

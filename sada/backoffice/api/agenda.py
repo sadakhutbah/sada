@@ -6,7 +6,6 @@ import re
 import secrets
 import threading
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
 

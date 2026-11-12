@@ -19,7 +19,7 @@ from __future__ import annotations
 import contextvars
 import json
 import os
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 LOCALES = Path(__file__).resolve().parent / "locales"
@@ -56,7 +56,7 @@ def normalize(value: str | None) -> str | None:
     return None
 
 
-@lru_cache(maxsize=None)
+@cache
 def catalog(lang: str) -> dict[str, str]:
     out: dict[str, str] = {}
     d = LOCALES / lang

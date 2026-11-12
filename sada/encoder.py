@@ -12,18 +12,19 @@ Changing scene = writing the content into the inactive layer then animating it (
 slide-in, audio fade of the mic. The ffmpeg process is never restarted: the stream is not interrupted.
 """
 from __future__ import annotations
+
 import datetime as dt
 import os
 import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 import zmq
 from PIL import Image
 
-from . import source, transitions as tr
+from . import source
+from . import transitions as tr
 from .i18n import _
 
 
@@ -55,14 +56,14 @@ class Encoder:
         self.levels: dict[str, float] = {"fond": 1.0, "a_a": 1.0, "x_a": 0.0, "y_a": 0.0,
                                          "a_b": 0.0, "x_b": 0.0, "y_b": 0.0}
         self.active = "a"                    # layer of the displayed content
-        self.shown: Optional[tuple] = None   # (scene key, layer): content shown or coming in
+        self.shown: tuple | None = None   # (scene key, layer): content shown or coming in
         self.full = True
         self.vol = 0.0                       # mic level (0..1), target of the last fade
         self._mx = threading.Lock()          # protects pending / shown
         self._anim = threading.Lock()        # one transition at a time
         self._pending = None
         self._ev = threading.Event()
-        self._worker: Optional[threading.Thread] = None
+        self._worker: threading.Thread | None = None
         self.proc: subprocess.Popen | None = None
         self.out_time = 0.0       # position (s) in the current recording, from -progress
         self.restarts = 0
@@ -70,18 +71,18 @@ class Encoder:
         self.mic_on = False
         self.wanted = False
         # one recording per ffmpeg launch: (live_*.mkv, live_*_clean.mkv or None)
-        self.recordings: list[tuple[str, Optional[str]]] = []
+        self.recordings: list[tuple[str, str | None]] = []
         self._log_file = None
 
     # ------------------------------------------------------------------- command
-    def new_recording(self) -> tuple[str, Optional[str]]:
+    def new_recording(self) -> tuple[str, str | None]:
         c = self.cfg
         Path(c.record_dir).mkdir(parents=True, exist_ok=True)
         stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         rec = str(Path(c.record_dir) / f"live_{stamp}.mkv")
         return rec, (str(Path(c.record_dir) / f"live_{stamp}_clean.mkv") if c.record_clean else None)
 
-    def ffmpeg_cmd(self, rec: str, clean: Optional[str]) -> list[str]:
+    def ffmpeg_cmd(self, rec: str, clean: str | None) -> list[str]:
         c = self.cfg
         copy = bool(clean and c.clean_copy)
         L = {k: f"{v:g}" for k, v in self.levels.items()}
@@ -290,7 +291,7 @@ class Encoder:
     _TARGET = {"fond": "colorchannelmixer@fond aa", "a_a": "colorchannelmixer@ca aa", "a_b": "colorchannelmixer@cb aa",
                "x_a": "overlay@ca x", "y_a": "overlay@ca y", "x_b": "overlay@cb x", "y_b": "overlay@cb y"}
 
-    def _animate(self, p: "tr.Plan") -> int:
+    def _animate(self, p: tr.Plan) -> int:
         """Plays the transition frame by frame, paced on the stream (and not on the wall clock).
 
         One REQ socket per channel (background, outgoing content, incoming content, position): the zmq filter (REP)

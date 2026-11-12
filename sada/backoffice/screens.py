@@ -102,7 +102,7 @@ def valeurs_apercu(mosque: dict, screen: str) -> dict[str, str]:
     donc un cours plausible, exactement comme le fait l'image du moteur, pour que les deux aperçus
     montrent le même texte.
     """
-    now = dt.datetime.now(dt.timezone.utc).astimezone(db.timezone(mosque))
+    now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque))
     nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf",
                                kind="dars")
     moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
@@ -124,7 +124,7 @@ def preview(mosque: dict, payload, screen: str) -> bytes:
     cfg = Config(title=mosque.get("clip_title") or "", mosque_name=mosque.get("name") or "",
                  logo=str(logo) if logo and (mosque.get("logo_path") or "").strip() else "",
                  screen_texts=clean)
-    now = dt.datetime.now(dt.timezone.utc).astimezone(db.timezone(mosque))
+    now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque))
     # Stand-in for the next class: the preview announces a plausible one instead of a blank line.
     nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf",
                               kind="dars")

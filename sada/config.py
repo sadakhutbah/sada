@@ -6,6 +6,7 @@ when it is neither None nor an empty string, so an unset flag never erases the f
 
 The state-machine settings (schedule, signals) are those of MachineParams."""
 from __future__ import annotations
+
 import json
 import os
 from dataclasses import MISSING, dataclass, field, fields, replace
@@ -112,7 +113,7 @@ class Config(MachineParams):
     backoffice_url: str = "http://127.0.0.1:8090"
 
     @classmethod
-    def load(cls, path: str | None = None, **overrides) -> "Config":
+    def load(cls, path: str | None = None, **overrides) -> Config:
         """Effective configuration, one setting at a time: flag > environment > file > default."""
         data = json.loads(Path(path).read_text()) if path else {}
         vals = {}

@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client, env  # noqa: E402,F401
+from test_backoffice import client  # noqa: E402,F401
 
 
 def test_chaque_ecran_annonce_ses_champs_et_son_defaut(env):
@@ -61,8 +61,9 @@ def test_ecrans_reserves_a_l_admin(env):
 
 
 def test_apercu_est_une_vraie_image_du_moteur(env):
-    from PIL import Image
     from io import BytesIO
+
+    from PIL import Image
 
     c = client(env, "admin")
     r = c.ecrire("/settings/screens/preview", {"screen": "avant", "screens": {"avant": {"foot": "Dans un instant."}}})

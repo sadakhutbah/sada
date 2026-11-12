@@ -1,5 +1,6 @@
 """faster-whisper transcription (int8 GPU when VRAM allows, int8 CPU otherwise) with per-segment timestamps."""
 from __future__ import annotations
+
 import json
 import os
 import re
@@ -73,7 +74,6 @@ def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
 def dominant_language(segs: list[dict], detected: str) -> str:
     """Langue du discours sur toute la durée. `info.language` ne regarde que les 30 premières
     secondes : un cours en français qui s'ouvre sur une récitation passe pour de l'arabe."""
-    import re
     arabic = re.compile(r"[\u0600-\u06FF]")
     ar = sum(max(0.0, s["end"] - s["start"]) for s in segs if arabic.search(s.get("text") or ""))
     total = sum(max(0.0, s["end"] - s["start"]) for s in segs)
@@ -238,6 +238,7 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
         name, device, ctype = ("large-v3-turbo" if name.startswith("large") else name), "cpu", "int8"
         model = WhisperModel(name, device=device, compute_type=ctype, cpu_threads=8)
     import wave
+
     import numpy as np
     with wave.open(wav, "rb") as w:  # we decode the 16 kHz WAV ourselves (avoids PyAV, which is incompatible here)
         audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0

@@ -19,7 +19,7 @@ STOP = {
     "par", "pour", "que", "qui", "quoi", "qu", "ce", "cette", "ces", "cet", "il", "elle", "ils", "elles", "on",
     "nous", "vous", "je", "tu", "se", "sa", "son", "ses", "leur", "leurs", "est", "sont", "etait", "ete", "ont",
     "avec", "sans", "ne", "pas", "plus", "tout", "tous", "toute", "toutes", "bien", "aussi", "comme", "ainsi",
-    "vers", "chez", "y", "en", "puis", "mais", "donc", "si", "alors", "dont", "ou", "duquel",
+    "vers", "chez", "y", "puis", "mais", "donc", "si", "alors", "dont", "duquel",
     # verb « to say »: ubiquitous in a khutba that announces its quotations, never decisive
     "dit", "dis", "dire", "disent", "declare", "declaree", "raconte", "relate", "mentionne", "rappelle",
 }
@@ -67,10 +67,12 @@ class FrenchIndex:
                 continue                     # translation missing or too short: not usable
             self.usable.add(vi)
             if len(words) <= win:
-                self.keys.append(" ".join(words)); self.owner.append(vi)
+                self.keys.append(" ".join(words))
+                self.owner.append(vi)
             else:
                 for i in range(len(words) - win + 1):
-                    self.keys.append(" ".join(words[i:i + win])); self.owner.append(vi)
+                    self.keys.append(" ".join(words[i:i + win]))
+                    self.owner.append(vi)
 
     def __len__(self) -> int:
         return len(self.keys)

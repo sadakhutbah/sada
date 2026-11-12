@@ -85,14 +85,14 @@ def test_build_ass_glose_une_fois_sans_casser_les_pages(tmp_path):
     p = tmp_path / "g.ass"
     C.build_ass(segs, [], 0.0, 8.0, str(p))
     lines = p.read_text(encoding="utf-8").splitlines()
-    glow = [l for l in lines if ",Glow," in l]
-    assert sum("(le repentir)" in l for l in glow) == 1      # une page, une seule glose
-    assert any("tawba" in l and "(le repentir)" in l for l in glow)   # sur la page du terme
-    assert all(l.count("\\N") <= 1 for l in glow)            # deux lignes au plus
-    sub = [l for l in lines if ",Sub," in l]
-    assert sub and all(l.count("\\N") <= 1 for l in sub)      # deux lignes au plus
+    glow = [ligne for ligne in lines if ",Glow," in ligne]
+    assert sum("(le repentir)" in ligne for ligne in glow) == 1      # une page, une seule glose
+    assert any("tawba" in ligne and "(le repentir)" in ligne for ligne in glow)   # sur la page du terme
+    assert all(ligne.count("\\N") <= 1 for ligne in glow)            # deux lignes au plus
+    sub = [ligne for ligne in lines if ",Sub," in ligne]
+    assert sub and all(ligne.count("\\N") <= 1 for ligne in sub)      # deux lignes au plus
     # le second passage garde le terme sans glose
-    assert any("La tawba efface" in l for l in glow)
+    assert any("La tawba efface" in ligne for ligne in glow)
 
 
 def test_glossaire_explicite_vide_desactive_la_glose(tmp_path):
@@ -124,8 +124,9 @@ class _Model:
 
 
 def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
-    import faster_whisper
     import wave
+
+    import faster_whisper
 
     from sada.pipeline import transcribe as T
 
@@ -146,7 +147,8 @@ def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
 def test_pas_de_glose_quand_l_orateur_traduit_lui_meme():
     from sada.pipeline import glossary as g
     terms = [g._entry("tawba", ["taouba"], "le repentir")]
-    ws = lambda s: [{"w": x, "s": 0, "e": 0} for x in s.split()]
+    def ws(s):
+        return [{"w": x, "s": 0, "e": 0} for x in s.split()]
     a = g.gloss_words(ws("la tawba, et le repentir efface"), terms)
     assert not any(w.get("gloss") for w in a)
     b = g.gloss_words(ws("la tawba efface les péchés"), terms)

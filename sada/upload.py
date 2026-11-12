@@ -10,8 +10,8 @@ from __future__ import annotations
 import datetime
 import json
 import threading
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Callable, Iterable
 
 from . import paths
 from .i18n import _

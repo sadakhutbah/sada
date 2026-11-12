@@ -7,6 +7,7 @@ POST /<command>?name=...|min=...    Machine.COMMANDS commands (e.g. /extend?min=
 JSON only: the control screen is the back-office dashboard, there is no page served here.
 """
 from __future__ import annotations
+
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

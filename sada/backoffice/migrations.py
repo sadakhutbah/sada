@@ -20,9 +20,9 @@ bases existantes auxquelles il manque des colonnes.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.schema import CreateIndex, CreateTable
@@ -157,7 +157,7 @@ def _applied_versions(conn: sqlite3.Connection) -> set[int]:
 
 def init(path: str | Path) -> None:
     """Crée / met à jour la base `path` vers la dernière version connue du code."""
-    from .db import connect, now_iso      # import tardif : évite le cycle db <-> migrations
+    from .db import connect, now_iso  # import tardif : évite le cycle db <-> migrations
 
     conn = connect(path)
     try:

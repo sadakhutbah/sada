@@ -32,7 +32,7 @@ def test_sans_destination_tout_part_au_journal():
     n = Notifier(log=logs.append)
     assert n.enabled is False and n.destination == "à blanc"
     assert n.send("bonjour") is False
-    assert any("dry run" in l and "bonjour" in l for l in logs)
+    assert any("dry run" in ligne and "bonjour" in ligne for ligne in logs)
 
 
 def test_webhook_envoie_le_texte():
@@ -60,7 +60,7 @@ def test_echec_reseau_ne_leve_pas():
 
     n = Notifier(webhook="https://exemple.test/hook", log=logs.append, post=boom)
     assert n.send("x") is False
-    assert any("notification not sent" in l for l in logs)
+    assert any("notification not sent" in ligne for ligne in logs)
 
 
 def test_notify_state_ignore_les_etats_sans_message():
