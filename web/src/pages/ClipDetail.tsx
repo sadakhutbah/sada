@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { auditActionKey } from "../i18n";
 import { Btn, Card, Field, Kicker, Pill, Segmented, inputClass } from "../ui";
+import FormulaireClip, { ecrireInstant, lireInstant } from "../ClipBounds";
 import { dateFr, mmss } from "../format";
 
 /** Sheet for a clip: review screen.
@@ -92,8 +93,9 @@ export default function ClipDetail() {
         <Fil sermon={d.sermon} langue={i18n.language} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="m-0 font-serif text-[1.9rem] font-normal leading-[1.1] text-deeper">
-            {t("clips.clip")} {c.idx} · {t(`clips.kinds.${c.kind}`)}
+            {t("clips.clip")} {c.idx} · {c.title || t(`clips.kinds.${c.kind}`)}
           </h1>
+          {c.origin === "manuel" && <span className="text-[0.85rem] text-muted">{t("clipForm.manual")}</span>}
           <Pill statut={c.status} label={t(`clips.statuses.${c.status}`)} />
         </div>
       </header>
@@ -108,6 +110,7 @@ export default function ClipDetail() {
             items={[
               { cle: "decision", label: t("clips.detail.decision") },
               { cle: "sous-titres", label: t("clips.detail.subtitles") },
+              { cle: "bornes", label: t("clipForm.boundsTab") },
               { cle: "publication", label: t("clips.detail.publish"), eteint: !peutPublier },
               { cle: "historique", label: t("clips.detail.history") },
             ]}
@@ -119,6 +122,7 @@ export default function ClipDetail() {
             <Decision c={c} d={d} occupe={occupe} agir={agir} versPublication={() => setOnglet("publication")} />
           )}
           {ongletActif === "sous-titres" && <SousTitres d={d} occupe={occupe} agir={agir} />}
+          {ongletActif === "bornes" && <Bornes d={d} occupe={occupe} agir={agir} />}
           {ongletActif === "publication" && <Publication d={d} occupe={occupe} agir={agir} />}
           {ongletActif === "historique" && <Historique d={d} />}
         </Card>
@@ -490,13 +494,37 @@ function SousTitres({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }
   );
 }
 
-/** "1:05.4", "65.4" or "65,4" -> seconds; NaN when unreadable. */
-function lireInstant(v: string): number {
-  const m = v.trim().replace(",", ".").match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
-  return m ? Number(m[1] ?? 0) * 60 + Number(m[2]) : NaN;
+/** Bounds of the clip, in the khutba's time. "Here" reads the clip being played (moving the end
+ *  earlier, the start later); to look further, the khutba video opens with this clip ready to adjust. */
+function Bornes({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }) {
+  const { t } = useTranslation();
+  const c = d.clip;
+  const lim = d.clip_limits ?? { min: 5, max: 180, duration: null };
+  if (!oui(d.can_adjust)) {
+    const why = c.status === "publie" ? t("clipForm.frozen")
+      : c.regen_state === "en_cours" ? t("clipForm.rendering") : (d.regenerate_reason || t("clipForm.frozen"));
+    return <p className="m-0 text-[0.9rem] text-muted">{why}</p>;
+  }
+  return (
+    <div className="grid gap-3">
+      <p className="m-0 text-[0.88rem] tabular-nums text-ink">
+        {t("clipForm.current", { de: ecrireInstant(c.start), a: ecrireInstant(c.end) })}
+      </p>
+      {oui(d.sermon_video) && (
+        <Link className="text-[0.9rem]" to={`/sermons/${d.sermon.id}?clip=${c.id}`}>{t("clipForm.onKhutba")}</Link>
+      )}
+      <FormulaireClip
+        key={`${c.id}-${c.version}`}
+        mode="ajuster"
+        initial={{ start: c.start, end: c.end, title: c.title ?? "", kind: c.kind }}
+        kinds={[]} min={lim.min} max={lim.max} duree={lim.duration}
+        ici={() => c.start + (document.querySelector("video")?.currentTime ?? 0)}
+        occupe={occupe}
+        onSubmit={(v) => agir(() => api.bornesClip(c.id, v.start, v.end, v.title), t("clipForm.savedOk"))}
+      />
+    </div>
+  );
 }
-
-const ecrireInstant = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
 /** Adds a subtitle at a precise instant of the clip (a passage the transcription skipped).
  *  Times are read in the clip; "Here" takes the current position of the player. */

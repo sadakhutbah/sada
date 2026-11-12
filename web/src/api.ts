@@ -129,6 +129,12 @@ export const api = {
   importer: (run = "") => ecrire<any>("POST", "/import", { run }),
   decision: (cid: number, decision: string, reason = "") => ecrire<any>("POST", `/clips/${cid}/decision`, { decision, reason }),
   regenerer: (cid: number) => ecrire<any>("POST", `/clips/${cid}/regenerate`),
+  /** Clip chosen by hand on the khutba video (bounds in session time, seconds). */
+  creerClip: (kid: number, start: number, end: number, kind: string, title: string) =>
+    ecrire<{ id: number; message: string }>("POST", `/sermons/${kid}/clips`,
+      { start: start.toFixed(2), end: end.toFixed(2), kind, title }),
+  bornesClip: (cid: number, start: number, end: number, title: string) =>
+    ecrire<any>("POST", `/clips/${cid}/bounds`, { start: start.toFixed(2), end: end.toFixed(2), title }),
   publier: (cid: number, connector: string, caption = "") =>
     ecrire<any>("POST", `/clips/${cid}/publish`, { connector, caption }),
   correction: (kid: number, seg: number, field: string, value: string) =>

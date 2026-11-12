@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import FormulaireClip from "../ClipBounds";
 import Player from "../Player";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
@@ -23,6 +24,11 @@ export default function SermonDetail() {
   const [onglet, setOnglet] = useState("transcription");
   const [message, setMessage] = useState<Message>(null);
   const [tps, setTps] = useState(0); // playback position, to highlight the current passage
+  const nav = useNavigate();
+  // ?clip=<id>: arriving from a clip sheet to move its bounds on the khutba video
+  const [params, setParams] = useSearchParams();
+  const ajuste = Number(params.get("clip")) || null;
+  useEffect(() => { if (ajuste) setOnglet("clip"); }, [ajuste]);
   const video = useRef<HTMLVideoElement | null>(null);
 
   const perms = currentSession()?.user.permissions ?? [];
@@ -84,13 +90,19 @@ export default function SermonDetail() {
 
   const k = d.sermon;
   const clipsAValider = d.clips.filter((c: any) => c.status === "a_valider").length;
-  const ongletActif = onglet === "rattachement" && !peutAssigner ? "transcription" : onglet;
+  const mc = d.manual_clip ?? { allowed: false, reason: "", kinds: [] };
+  const peutClip = peutCorriger && (mc.allowed || mc.reason);
+  const clipAjuste = ajuste ? d.clips.find((c: any) => c.id === ajuste) : null;
+  const ongletActif =
+    (onglet === "rattachement" && !peutAssigner) || (onglet === "clip" && !peutClip) ? "transcription" : onglet;
   const onglets = [
     { cle: "transcription", label: t("sermons.detail.transcript"), compte: d.transcript.length },
     { cle: "versets", label: t("sermons.detail.verses"), compte: d.verses.length },
     { cle: "notes", label: t("sermons.detail.notes") },
+    ...(peutClip ? [{ cle: "clip", label: t(clipAjuste ? "clipForm.adjustTab" : "clipForm.newTab") }] : []),
     ...(peutAssigner ? [{ cle: "rattachement", label: t("sermons.detail.assignment") }] : []),
   ];
+  const ici = d.has_video ? () => video.current?.currentTime ?? tps : null;
 
   return (
     <div className="grid gap-5">
@@ -162,8 +174,9 @@ export default function SermonDetail() {
                         {c.idx}
                       </span>
                       <span className="min-w-0">
-                        <span className="block font-semibold text-deep first-letter:uppercase">
-                          {t(`clips.kinds.${c.kind}`)}
+                        <span className="block truncate font-semibold text-deep first-letter:uppercase">
+                          {c.title || t(`clips.kinds.${c.kind}`)}
+                          {c.origin === "manuel" && <span className="ml-2 text-[0.78rem] font-normal text-muted">{t("clipForm.manual")}</span>}
                         </span>
                         <span className="block text-[0.84rem] tabular-nums text-muted">
                           {mmss(c.start)}–{mmss(c.end)} · {t("clips.detail.version", { n: c.version })}
@@ -187,7 +200,10 @@ export default function SermonDetail() {
             <Segmented
               items={onglets}
               valeur={ongletActif}
-              onChange={(cle) => { setOnglet(cle); setMessage(null); }}
+              onChange={(cle) => {
+                setOnglet(cle); setMessage(null);
+                if (ajuste && cle !== "clip") setParams({}, { replace: true });
+              }}
             />
           </div>
           {message && <Bandeau ko={message.ko}>{message.texte}</Bandeau>}
@@ -209,6 +225,49 @@ export default function SermonDetail() {
                 <div className="whitespace-pre-wrap text-[0.95rem] leading-relaxed text-ink">{d.notes}</div>
               ) : (
                 <Vide>{t("sermons.detail.noNotes")}</Vide>
+              )
+            )}
+            {ongletActif === "clip" && peutClip && (
+              !mc.allowed ? (
+                <Vide>{t("clipForm.impossible", { why: mc.reason })}</Vide>
+              ) : clipAjuste ? (
+                <div className="grid gap-3">
+                  <p className="m-0 text-[0.9rem] font-semibold text-deep">
+                    {t("clips.clip")} {clipAjuste.idx} · {t(`clips.kinds.${clipAjuste.kind}`)}
+                    {" · "}<Link to={`/clips/${clipAjuste.id}`}>{t("clipForm.backToClip")}</Link>
+                  </p>
+                  <FormulaireClip
+                    key={`ajuste-${clipAjuste.id}-${clipAjuste.version}`}
+                    mode="ajuster"
+                    initial={{ start: clipAjuste.start, end: clipAjuste.end, title: clipAjuste.title ?? "", kind: clipAjuste.kind }}
+                    kinds={mc.kinds} min={mc.min} max={mc.max} duree={mc.duration}
+                    ici={ici} ecouter={d.has_video ? aller : undefined}
+                    onSubmit={async (v) => {
+                      setMessage(null);
+                      try {
+                        await api.bornesClip(clipAjuste.id, v.start, v.end, v.title);
+                        nav(`/clips/${clipAjuste.id}`);
+                      } catch (e: any) {
+                        setMessage({ texte: e?.message ?? t("common.error"), ko: true });
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <FormulaireClip
+                  mode="creer"
+                  kinds={mc.kinds} min={mc.min} max={mc.max} duree={mc.duration}
+                  ici={ici} ecouter={d.has_video ? aller : undefined}
+                  onSubmit={async (v) => {
+                    setMessage(null);
+                    try {
+                      const r = await api.creerClip(kid, v.start, v.end, v.kind, v.title);
+                      nav(`/clips/${r.id}`);
+                    } catch (e: any) {
+                      setMessage({ texte: e?.message ?? t("common.error"), ko: true });
+                    }
+                  }}
+                />
               )
             )}
             {ongletActif === "rattachement" && peutAssigner && (
