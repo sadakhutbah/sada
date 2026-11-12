@@ -26,7 +26,8 @@ indiquez l'accepter en ajoutant à sa description la ligne :
 1. Vous déclarez être l'auteur de votre contribution, ou avoir le droit de la soumettre, et qu'elle ne
    contient pas de code soumis à une licence incompatible.
 2. Vous conservez le droit d'auteur sur votre contribution.
-3. Vous accordez au mainteneur du projet Sadā une licence mondiale, perpétuelle, gratuite, non exclusive
+3. Vous accordez à l'auteur et mainteneur de Sadā (Nabil, @Bilnaa), ainsi qu'à toute structure à laquelle il
+   transmettrait le projet, une licence mondiale, perpétuelle, gratuite, non exclusive
    et irrévocable d'utiliser, reproduire, modifier, distribuer et sous-licencier votre contribution,
    y compris sous d'autres conditions que l'AGPL-3.0 (par exemple pour la version hébergée).
 4. Vous accordez la même licence sur les brevets que vous détenez et qui seraient nécessairement

@@ -3,7 +3,7 @@
 Diffusion automatique de la khutba et pipeline IA après le live (transcription, versets, traduction, clips). Spécification : `SPEC.md`.
 
 Deux façons de l'utiliser : **auto-hébergé** sur l'ordinateur de la mosquée (ce dépôt), ou **version hébergée**
-proposée par l'association Sadā, où la mosquée se connecte directement sans rien installer.
+proposée par le projet, où la mosquée se connecte directement sans rien installer.
 
 ```bash
 make setup     # .venv + dépendances (uv)
