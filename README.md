@@ -2,6 +2,9 @@
 
 Diffusion automatique de la khutba et pipeline IA après le live (transcription, versets, traduction, clips). Spécification : `SPEC.md`.
 
+Deux façons de l'utiliser : **auto-hébergé** sur l'ordinateur de la mosquée (ce dépôt), ou **version hébergée**
+proposée par l'association Sadā, où la mosquée se connecte directement sans rien installer.
+
 ```bash
 make setup     # .venv + dépendances (uv)
 make test      # tests automatisés
@@ -314,3 +317,10 @@ tout ensuite.
 - Base : `data/backoffice/sada.db` (variable `SADA_DB` ou `--db`). Mots de passe argon2id, sessions serveur
   (cookie HttpOnly, SameSite), jeton CSRF, blocage après 5 essais ratés. Derrière HTTPS (serveur central) :
   `serve --secure-cookies`.
+
+## Licence
+
+Sadā est un logiciel libre sous licence [GNU AGPL-3.0](LICENSE) : vous pouvez l'utiliser, le modifier et
+l'héberger, à condition de publier sous la même licence le code de toute version modifiée mise à disposition,
+y compris en service en ligne. Les polices embarquées gardent leur propre licence (SIL OFL, voir `assets/fonts/`).
+Pour contribuer : `CONTRIBUTING.md`.
