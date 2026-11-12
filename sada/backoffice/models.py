@@ -145,6 +145,20 @@ corrections = sa.Table(
     sa.UniqueConstraint("khutba_id", "seg_index", "field"),
 )
 
+# Sous-titres ajoutés à la main à un instant précis (passage que la transcription a sauté, souvent de
+# l'arabe) : appliqués en mémoire comme les corrections, les fichiers du pipeline restent intacts.
+added_subtitles = sa.Table(
+    "added_subtitles", metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("khutba_id", sa.Integer, sa.ForeignKey("khutbas.id"), nullable=False),
+    sa.Column("start", sa.Float, nullable=False),
+    sa.Column("end", sa.Float, nullable=False),
+    sa.Column("text", sa.Text, nullable=False),
+    sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("created_at", sa.Text, nullable=False),
+)
+
 connectors = sa.Table(
     "connectors", metadata,
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False, primary_key=True),
@@ -242,5 +256,5 @@ sa.Index("khutbas_mosque", khutbas.c.mosque_id, khutbas.c.date)
 sa.Index("live_targets_mosque", live_targets.c.mosque_id)
 
 # tables métier, dans l'ordre de création (dépendances : FK)
-TABLES = (mosques, users, auth_sessions, khutbas, clips, corrections, connectors,
+TABLES = (mosques, users, auth_sessions, khutbas, clips, corrections, added_subtitles, connectors,
           notifications, live_targets, live_input, storage, screen_texts, publications, audit)

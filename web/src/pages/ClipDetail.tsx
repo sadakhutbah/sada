@@ -429,11 +429,11 @@ function SousTitres({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }
   const modifiable = oui(d.can_validate);
   const initial = (r: any) => (r.field === "fr" ? r.fr ?? "" : r.text);
 
-  if (!lignes.length) return <p className="m-0 text-[0.9rem] text-muted">{t("clips.detail.noSubtitles")}</p>;
-
   return (
     <div className="grid gap-2">
       <p className="m-0 text-[0.82rem] leading-snug text-muted">{t("clips.detail.subtitlesHelp")}</p>
+      {modifiable && <AjoutSousTitre d={d} occupe={occupe} agir={agir} />}
+      {!lignes.length && <p className="m-0 text-[0.9rem] text-muted">{t("clips.detail.noSubtitles")}</p>}
       <ul className="m-0 grid list-none p-0">
         {lignes.map((r: any) => {
           const valeur = saisie[r.i] ?? initial(r);
@@ -446,6 +446,21 @@ function SousTitres({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }
                 {oui(r.corrected) && (
                   <span className="rounded-full bg-paper-2 px-1.5 font-semibold text-deep">{t("clips.detail.corrected")}</span>
                 )}
+                {r.added ? (
+                  <>
+                    <span className="rounded-full bg-paper-2 px-1.5 font-semibold text-deep">{t("clips.detail.added")}</span>
+                    {modifiable && (
+                      <button
+                        type="button"
+                        className="ml-auto cursor-pointer border-0 bg-transparent p-0 text-[0.76rem] text-deep underline underline-offset-2 disabled:opacity-50"
+                        disabled={occupe}
+                        onClick={() => agir(() => api.retirerSousTitre(d.sermon.id, r.added), t("clips.detail.removed"))}
+                      >
+                        {t("clips.detail.remove")}
+                      </button>
+                    )}
+                  </>
+                ) : null}
               </p>
               <p className="m-0 text-[0.92rem] leading-snug" dir="auto">{r.text}</p>
               {r.verse?.fr ? <p className="m-0 text-[0.85rem] leading-snug text-muted" dir="auto">{r.verse.fr}</p> : null}
@@ -471,6 +486,59 @@ function SousTitres({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** "1:05.4", "65.4" or "65,4" -> seconds; NaN when unreadable. */
+function lireInstant(v: string): number {
+  const m = v.trim().replace(",", ".").match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  return m ? Number(m[1] ?? 0) * 60 + Number(m[2]) : NaN;
+}
+
+const ecrireInstant = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
+
+/** Adds a subtitle at a precise instant of the clip (a passage the transcription skipped).
+ *  Times are read in the clip; "Here" takes the current position of the player. */
+function AjoutSousTitre({ d, occupe, agir }: { d: any; occupe: boolean; agir: Agir }) {
+  const { t } = useTranslation();
+  const [debut, setDebut] = useState("");
+  const [fin, setFin] = useState("");
+  const [texte, setTexte] = useState("");
+  const ici = () => (document.querySelector("video")?.currentTime ?? 0);
+  const a = lireInstant(debut), b = lireInstant(fin);
+  const pret = !Number.isNaN(a) && !Number.isNaN(b) && b > a && texte.trim().length > 0;
+  const ajouter = () =>
+    agir(async () => {
+      await api.ajouterSousTitre(d.sermon.id, d.clip.start + a, d.clip.start + b, texte);
+      setDebut(""); setFin(""); setTexte("");
+    }, t("clips.detail.addedOk"));
+
+  const instant = (valeur: string, poser: (v: string) => void, label: string) => (
+    <div className="flex min-w-0 items-center gap-1">
+      <input aria-label={label} placeholder={label} className={`${inputClass} py-1.5 text-[0.88rem] tabular-nums`}
+             value={valeur} onChange={(e) => poser(e.target.value)} />
+      <Btn variante="ghost" className="min-h-9 shrink-0 px-2 py-1 text-[0.8rem]" onClick={() => poser(ecrireInstant(ici()))}>
+        {t("clips.detail.here")}
+      </Btn>
+    </div>
+  );
+
+  return (
+    <div className="grid gap-1.5 rounded-[10px] border border-line bg-paper-2/60 p-2.5">
+      <p className="m-0 text-[0.8rem] font-semibold text-deep">{t("clips.detail.addTitle")}</p>
+      <div className="grid grid-cols-2 gap-1.5">
+        {instant(debut, setDebut, t("clips.detail.start"))}
+        {instant(fin, setFin, t("clips.detail.end"))}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <input aria-label={t("clips.detail.addText")} placeholder={t("clips.detail.addText")} dir="auto"
+               className={`${inputClass} py-1.5 text-[0.88rem]`} value={texte} onChange={(e) => setTexte(e.target.value)} />
+        <Btn variante={pret ? "plein" : "ghost"} className="min-h-9 shrink-0 px-3 py-1 text-[0.85rem]"
+             disabled={occupe || !pret} onClick={ajouter}>
+          {t("clips.detail.add")}
+        </Btn>
+      </div>
     </div>
   );
 }

@@ -133,6 +133,9 @@ export const api = {
     ecrire<any>("POST", `/clips/${cid}/publish`, { connector, caption }),
   correction: (kid: number, seg: number, field: string, value: string) =>
     ecrire<any>("POST", `/sermons/${kid}/revisions`, { seg: String(seg), field, value }),
+  ajouterSousTitre: (kid: number, start: number, end: number, text: string) =>
+    ecrire<any>("POST", `/sermons/${kid}/subtitles`, { start: String(start), end: String(end), text }),
+  retirerSousTitre: (kid: number, sid: number) => ecrire<any>("POST", `/sermons/${kid}/subtitles/${sid}/delete`),
   intervenant: (kid: number, imam_id: string, speaker: string) =>
     ecrire<any>("POST", `/sermons/${kid}/speaker`, { imam_id, speaker }),
   motDePasse: (current: string, nouveau: string, confirm: string) =>

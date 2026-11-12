@@ -28,6 +28,10 @@ def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
             db.all_(conn, "SELECT * FROM corrections WHERE khutba_id = ?", khutba_id)}
 
 
+def added(conn, khutba_id: int) -> list[dict]:
+    return db.all_(conn, "SELECT * FROM added_subtitles WHERE khutba_id = ? ORDER BY start", khutba_id)
+
+
 def load(conn, k: dict) -> dict:
     """Transcription + verses + translations of the khutba, corrections applied."""
     o = SessionOutput(k["output_dir"])
@@ -36,6 +40,8 @@ def load(conn, k: dict) -> dict:
     trans = o.read(o.translations, translate.empty())
     ms = o.read(o.verses, [])
     corr = corrections(conn, k["id"])
+    for i, s in enumerate(segs):
+        s["_i"] = i                          # original index: corrections are keyed on it
     for (i, field), c in corr.items():
         if i >= len(segs):
             continue
@@ -44,6 +50,10 @@ def load(conn, k: dict) -> dict:
             segs[i].pop("words", None)       # word-level timestamps lost: build_ass interpolates proportionally
         elif field == "fr":
             trans = translate.with_correction(trans, segs[i], c["value"])
+    # Hand-added subtitles join the timeline as French speech segments (no word timestamps).
+    for a in added(conn, k["id"]):
+        segs.append({"start": a["start"], "end": a["end"], "text": a["text"], "_added": a["id"]})
+    segs.sort(key=lambda s: (s["start"], s["end"]))
     return {"segments": segs, "translations": trans, "verses": ms, "corrections": corr,
             "duration": tr.get("duration"), "model": tr.get("model"), "language": tr.get("language")}
 
@@ -52,8 +62,14 @@ def transcript_rows(data: dict, t0: float = 0.0, t1: float | None = None) -> lis
     """Rows to display: original text, French subtitle shown in the clips, verse if any, correctable field."""
     vms = verses.shown(data["verses"], ambiguous=True)
     rows = []
-    for i, s in enumerate(data["segments"]):
+    for s in data["segments"]:
         if t1 is not None and not (s["end"] > t0 and s["start"] < t1):
+            continue
+        i = s.get("_i", -1)
+        if s.get("_added"):
+            rows.append({"i": -s["_added"], "added": s["_added"], "start": s["start"], "end": s["end"],
+                         "rel": max(0.0, s["start"] - t0), "text": s["text"], "arabic": False, "coran": False,
+                         "verse": None, "fr": s["text"], "field": None, "corrected": False})
             continue
         sub = clipmod.subtitle(s, vms, data["translations"])
         m = sub.get("verse")
@@ -74,7 +90,8 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
     Returns the number of affected clips."""
     value = " ".join(value.split())
     data = load(conn, k)
-    if not (0 <= seg_index < len(data["segments"])):
+    seg = next((s for s in data["segments"] if s.get("_i") == seg_index), None)
+    if seg is None:
         raise ValueError("segment inconnu")
     row = next((r for r in transcript_rows(data) if r["i"] == seg_index), None)
     if row is None or row["field"] != field:
@@ -90,17 +107,61 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
                  "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (khutba_id, seg_index, field) DO UPDATE SET "
                  "value = excluded.value, user_id = excluded.user_id, created_at = excluded.created_at",
                  (k["mosque_id"], k["id"], seg_index, field, original, value, user["id"], db.now_iso()))
-    seg = data["segments"][seg_index]
+    hit = _requeue(conn, k, seg["start"], seg["end"])
+    db.audit(conn, k["mosque_id"], user["id"], "correction." + ("sous-titre" if field == "text" else "traduction"),
+             "khutba", k["id"], ip=ip, segment=seg_index, avant=current, apres=value, clips=[c["id"] for c in hit])
+    return len(hit)
+
+
+def _requeue(conn, k: dict, start: float, end: float) -> list[dict]:
+    """Clips covering [start, end] must be regenerated (and validated again)."""
     hit = db.all_(conn, "SELECT id, status FROM clips WHERE khutba_id = ? AND start < ? AND \"end\" > ? AND status != 'rejete'",
-                  k["id"], seg["end"], seg["start"])
+                  k["id"], end, start)
     for c in hit:
         if c["status"] == "publie":
             # already published: we do not rewrite history; the corrected version (v+1) goes through validation again
             conn.execute("UPDATE clips SET needs_regen = 1, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
         else:
             conn.execute(f"UPDATE clips SET needs_regen = 1, {REQUEUE}, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
-    db.audit(conn, k["mosque_id"], user["id"], "correction." + ("sous-titre" if field == "text" else "traduction"),
-             "khutba", k["id"], ip=ip, segment=seg_index, avant=current, apres=value, clips=[c["id"] for c in hit])
+    return hit
+
+
+MIN_ADDED, MAX_ADDED = 0.3, 30.0
+
+
+def add_subtitle(conn, k: dict, start: float, end: float, text: str, user: dict, ip=None) -> int:
+    """Adds a French subtitle at a precise instant (session time), for a passage the transcription missed.
+    Refused over a passage that already shows something (subtitle, translation, verse card): correct it instead.
+    Returns the number of clips to regenerate."""
+    text = " ".join((text or "").split())
+    if not text:
+        raise ValueError("texte vide")
+    start, end = round(float(start), 2), round(float(end), 2)
+    if start < 0 or not (MIN_ADDED <= end - start <= MAX_ADDED):
+        raise ValueError(f"durée invalide : entre {MIN_ADDED:g} et {MAX_ADDED:g} s")
+    data = load(conn, k)
+    dur = data.get("duration")
+    if dur and end > dur + 0.5:
+        raise ValueError("au-delà de la fin de l'enregistrement")
+    for r in transcript_rows(data, start, end):
+        if r.get("added") or r["fr"] or r["verse"]:
+            raise ValueError(f"ce moment porte déjà un sous-titre ({r['start']:.1f}–{r['end']:.1f} s) : corrigez-le plutôt")
+    cur = conn.execute("INSERT INTO added_subtitles (mosque_id, khutba_id, start, \"end\", text, user_id, created_at) "
+                       "VALUES (?,?,?,?,?,?,?)", (k["mosque_id"], k["id"], start, end, text, user["id"], db.now_iso()))
+    hit = _requeue(conn, k, start, end)
+    db.audit(conn, k["mosque_id"], user["id"], "correction.ajout", "khutba", k["id"], ip=ip,
+             ajout=cur.lastrowid, debut=start, fin=end, apres=text, clips=[c["id"] for c in hit])
+    return len(hit)
+
+
+def remove_subtitle(conn, k: dict, sid: int, user: dict, ip=None) -> int:
+    a = db.one(conn, "SELECT * FROM added_subtitles WHERE id = ? AND khutba_id = ?", sid, k["id"])
+    if not a:
+        raise ValueError("sous-titre ajouté inconnu")
+    conn.execute("DELETE FROM added_subtitles WHERE id = ?", (sid,))
+    hit = _requeue(conn, k, a["start"], a["end"])
+    db.audit(conn, k["mosque_id"], user["id"], "correction.retrait", "khutba", k["id"], ip=ip,
+             ajout=sid, avant=a["text"], clips=[c["id"] for c in hit])
     return len(hit)
 
 

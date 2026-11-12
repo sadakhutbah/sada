@@ -117,6 +117,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(4, "tables des modèles ajoutées après coup (direct, entrées, stockage, textes)",
               _tables_du_modele),
     Migration(5, "mosques : couleurs des clips (brand_green, brand_gold)", _mosques_couleurs),
+    Migration(6, "sous-titres ajoutés à un instant précis (added_subtitles)", _tables_du_modele),
 )
 
 LATEST = MIGRATIONS[-1].version

@@ -546,6 +546,50 @@ def test_correction_traduction_et_verset_protege(env):
     assert corr["original"].startswith("Chers frères, aujourd'hui") and corr["user_id"] == u["id"]
 
 
+def test_sous_titre_ajoute_a_un_instant_precis(env, monkeypatch):
+    """A passage the transcription skipped gets a subtitle at a chosen instant, then reaches the clip."""
+    conn = env["conn"]
+    k = db.one(conn, "SELECT * FROM khutbas")
+    tr = Path(k["output_dir"]) / "transcript.json"
+    data = json.loads(tr.read_text())
+    data["segments"] = data["segments"][:2]          # 9–20 s: nothing transcribed (Arabic skipped)
+    tr.write_text(json.dumps(data))
+    c = client(env, "imam")
+    cid1, cid2 = clip_ids(env)[:2]
+    # over a passage that already shows something: refused (correct it instead)
+    r = c.ecrire(f"/sermons/{env['kid']}/subtitles", {"start": "2", "end": "3", "text": "doublon"})
+    assert r.status_code == 422 and not db.all_(conn, "SELECT * FROM added_subtitles")
+    r = c.ecrire(f"/sermons/{env['kid']}/subtitles", {"start": "15,5", "end": "18", "text": "  Ô Allah,  accorde-nous la patience. "})
+    assert r.json()["to_regenerate"] == 1
+    a = db.one(conn, "SELECT * FROM added_subtitles")
+    assert (a["start"], a["end"], a["text"]) == (15.5, 18.0, "Ô Allah, accorde-nous la patience.")
+    assert db.one(conn, "SELECT needs_regen FROM clips WHERE id = ?", cid2)["needs_regen"] == 1
+    assert db.one(conn, "SELECT needs_regen FROM clips WHERE id = ?", cid1)["needs_regen"] == 0
+    rows = c.get(f"/api/v1/clips/{cid2}").json()["segments"]
+    ajout = next(x for x in rows if x.get("added"))
+    assert ajout["rel"] == pytest.approx(3.5) and ajout["fr"].startswith("Ô Allah")
+    # corrections stay keyed on the original segments despite the insertion
+    content.save_correction(conn, k, 0, "text", "Chers frères, parlons de patience.", db.one(conn, "SELECT * FROM users WHERE username = 'imam'"))
+    assert content.transcript_rows(content.load(conn, k))[0]["fr"] == "Chers frères, parlons de patience."
+    # the regenerated clip carries the added subtitle
+    from sada.pipeline import clips as clipmod
+    seen = {}
+
+    def fake_render(src, off, w, ass, out, log=print, crop=None, fade_out=None):
+        seen["ass"] = (Path(out).parent / ass).read_text()
+        Path(out).write_bytes(b"clip v2")
+    monkeypatch.setattr(clipmod, "render_clip", fake_render)
+    monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
+    c.ecrire(f"/clips/{cid2}/regenerate")
+    assert "accorde-nous" in seen["ass"]
+    # removal
+    c.ecrire(f"/sermons/{env['kid']}/subtitles/{a['id']}/delete")
+    assert not db.all_(conn, "SELECT * FROM added_subtitles")
+    assert not any(x.get("added") for x in c.get(f"/api/v1/clips/{cid2}").json()["segments"])
+    acts = [x["action"] for x in db.all_(conn, "SELECT action FROM audit WHERE action LIKE 'correction.%' ORDER BY id")]
+    assert "correction.ajout" in acts and "correction.retrait" in acts
+
+
 def test_rejet_avec_motif(env):
     c = client(env, "responsable")
     cid = clip_ids(env)[1]

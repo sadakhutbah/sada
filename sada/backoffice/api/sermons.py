@@ -179,3 +179,30 @@ async def sermon_correction(kid: int, ctx: CtxDep):
                                 ctx.user, ctx.ip)
     return _ok("Correction enregistrée" + (f" ; {n} clip(s) à régénérer puis revalider." if n else "."),
                to_regenerate=n)
+
+
+def _nombre(v: str, nom: str) -> float:
+    try:
+        return float(str(v).replace(",", "."))
+    except ValueError:
+        raise ValueError(f"{nom} invalide") from None
+
+
+@router.post("/sermons/{kid}/subtitles")
+async def sermon_subtitle_add(kid: int, ctx: CtxDep):
+    """Adds a subtitle at a precise instant (session time, in seconds)."""
+    f = await ctx.body()
+    ctx.require("validate")
+    k = khutba_or_404(ctx, kid)
+    n = content.add_subtitle(ctx.conn, k, _nombre(f.get("start", ""), "début"), _nombre(f.get("end", ""), "fin"),
+                             f.get("text", ""), ctx.user, ctx.ip)
+    return _ok("Sous-titre ajouté" + (f" ; {n} clip(s) à régénérer puis revalider." if n else "."), to_regenerate=n)
+
+
+@router.post("/sermons/{kid}/subtitles/{sid}/delete")
+async def sermon_subtitle_remove(kid: int, sid: int, ctx: CtxDep):
+    await ctx.body()
+    ctx.require("validate")
+    k = khutba_or_404(ctx, kid)
+    n = content.remove_subtitle(ctx.conn, k, sid, ctx.user, ctx.ip)
+    return _ok("Sous-titre retiré" + (f" ; {n} clip(s) à régénérer puis revalider." if n else "."), to_regenerate=n)
