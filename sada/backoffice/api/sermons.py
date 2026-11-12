@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .. import auth, content, db, import_video, importer, traitement
 from ..context import CtxDep, Invalid, khutba_or_404, imam_filter
+from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
 from .common import _a_table, _ok
@@ -29,7 +30,7 @@ def _filtre_genre(where: str, args: tuple, kind: str) -> tuple[str, tuple]:
         return where, args
     inconnus = [g for g in genres if g not in GENRES]
     if inconnus:
-        raise Invalid(f"kind inconnu : {', '.join(inconnus)}")
+        raise Invalid(_("unknown kind: {kinds}", kinds=", ".join(inconnus)))
     return f"{where} AND {GENRE_SQL} IN ({', '.join('?' * len(genres))})", (*args, *genres)
 
 
@@ -123,11 +124,11 @@ async def do_import(ctx: CtxDep):
         else:
             res = await run_in_threadpool(importer.scan, ctx.conn, ctx.mosque)
     except (FileNotFoundError, ValueError) as e:
-        raise Invalid(f"Import impossible : {e}") from e
+        raise Invalid(_("Import failed: {error}", error=e)) from e
     nk, nc = sum(r["khutbas_new"] for r in res), sum(r["clips_new"] for r in res)
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "import.manuel", ip=ctx.ip, run=run or "tous", khutbas=nk, clips=nc)
-    return _ok(f"Import : {len(res)} run(s) parcouru(s), {nk} khutba(s) et {nc} clip(s) ajoutés.",
-               khutbas=nk, clips=nc)
+    return _ok(_("Import: {runs} run(s) scanned, {khutbas} khutba(s) and {clips} clip(s) added.",
+                 runs=len(res), khutbas=nk, clips=nc), khutbas=nk, clips=nc)
 
 
 @router.get("/traitements")
@@ -143,10 +144,10 @@ async def traitement_relancer(ctx: CtxDep):
     try:
         traitement.relancer(ctx.mosque, str(f.get("run") or ""), int(f.get("session")))
     except (FileNotFoundError, ValueError, TypeError) as e:
-        raise Invalid(f"Relance impossible : {e}") from e
+        raise Invalid(_("Retry failed: {error}", error=e)) from e
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "traitement.relance", ip=ctx.ip, run=f.get("run"),
              session=f.get("session"))
-    return _ok("Traitement remis en file : il démarre dans la minute.")
+    return _ok(_("Processing queued again: it starts within a minute."))
 
 
 @router.post("/imports/video")
@@ -162,7 +163,7 @@ async def video_import(ctx: CtxDep):
         raise Invalid(str(e)) from e
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "import.video", ip=ctx.ip, run=run,
              type=meta.get("kind") or "dars", titre=meta.get("title") or "")
-    return _ok("Vidéo reçue : le traitement démarre, suivez-le au tableau de bord.", run=run)
+    return _ok(_("Video received: processing starts, follow it on the dashboard."), run=run)
 
 
 @router.post("/sermons/{kid}/speaker")
@@ -177,7 +178,7 @@ async def sermon_speaker(kid: int, ctx: CtxDep):
     ctx.conn.execute("UPDATE khutbas SET imam_id = ?, speaker = ? WHERE id = ?", (iid, speaker, k["id"]))
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "khutba.imam", "khutba", k["id"], ip=ctx.ip,
              imam=iid, intervenant=speaker or None)
-    return _ok("Khutba mise à jour.")
+    return _ok(_("Khutba updated."))
 
 
 @router.post("/sermons/{kid}/revisions")
@@ -187,15 +188,15 @@ async def sermon_correction(kid: int, ctx: CtxDep):
     k = khutba_or_404(ctx, kid)
     n = content.save_correction(ctx.conn, k, int(f.get("seg", "-1")), f.get("field", ""), f.get("value", ""),
                                 ctx.user, ctx.ip)
-    return _ok("Correction enregistrée" + (f" ; {n} clip(s) à régénérer puis revalider." if n else "."),
-               to_regenerate=n)
+    return _ok(_("Correction saved; {n} clip(s) to regenerate then validate again.", n=n) if n
+               else _("Correction saved."), to_regenerate=n)
 
 
 def _nombre(v: str, nom: str) -> float:
     try:
         return float(str(v).replace(",", "."))
     except ValueError:
-        raise ValueError(f"{nom} invalide") from None
+        raise ValueError(_("Invalid {field} (a number of seconds is expected).", field=nom)) from None
 
 
 @router.post("/sermons/{kid}/subtitles")
@@ -204,9 +205,10 @@ async def sermon_subtitle_add(kid: int, ctx: CtxDep):
     f = await ctx.body()
     ctx.require("validate")
     k = khutba_or_404(ctx, kid)
-    n = content.add_subtitle(ctx.conn, k, _nombre(f.get("start", ""), "début"), _nombre(f.get("end", ""), "fin"),
+    n = content.add_subtitle(ctx.conn, k, _nombre(f.get("start", ""), _("start")), _nombre(f.get("end", ""), _("end")),
                              f.get("text", ""), ctx.user, ctx.ip)
-    return _ok("Sous-titre ajouté" + (f" ; {n} clip(s) à régénérer puis revalider." if n else "."), to_regenerate=n)
+    return _ok(_("Subtitle added; {n} clip(s) to regenerate then validate again.", n=n) if n
+               else _("Subtitle added."), to_regenerate=n)
 
 
 @router.post("/sermons/{kid}/subtitles/{sid}/delete")
@@ -215,4 +217,5 @@ async def sermon_subtitle_remove(kid: int, sid: int, ctx: CtxDep):
     ctx.require("validate")
     k = khutba_or_404(ctx, kid)
     n = content.remove_subtitle(ctx.conn, k, sid, ctx.user, ctx.ip)
-    return _ok("Sous-titre retiré" + (f" ; {n} clip(s) à régénérer puis revalider." if n else "."), to_regenerate=n)
+    return _ok(_("Subtitle removed; {n} clip(s) to regenerate then validate again.", n=n) if n
+               else _("Subtitle removed."), to_regenerate=n)

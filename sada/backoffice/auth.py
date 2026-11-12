@@ -9,10 +9,22 @@ import time
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
+from ..i18n import _
 from . import db
 
 ROLES = ("admin", "responsable", "imam")
-ROLE_LABELS = {"admin": "Administrateur", "responsable": "Responsable", "imam": "Imam"}
+# Source labels: the request's language is applied by `role_label` / `role_labels`.
+ROLE_LABELS = {"admin": "Administrator", "responsable": "Manager", "imam": "Imam"}
+
+
+def role_label(role: str) -> str:
+    """Label of a role, in the request's language."""
+    return _(ROLE_LABELS.get(role, role))
+
+
+def role_labels() -> dict[str, str]:
+    """Every role label, in the request's language."""
+    return {r: role_label(r) for r in ROLE_LABELS}
 
 # Permission matrix: a single source of truth, tested (tests/test_backoffice.py).
 #   live        : drive the live (live.COMMANDS) — SPEC 5.0 ter: imam and responsables
@@ -46,7 +58,7 @@ def can(user: dict | None, perm: str) -> bool:
 
 def hash_password(pw: str) -> str:
     if len(pw) < MIN_PASSWORD:
-        raise ValueError(f"mot de passe trop court ({MIN_PASSWORD} caractères minimum)")
+        raise ValueError(_("password too short ({min_chars} characters minimum)", min_chars=MIN_PASSWORD))
     return _ph.hash(pw)
 
 
@@ -82,11 +94,11 @@ def imam_id(conn, mosque_id: int, value) -> int | None:
 def create_user(conn, mosque_id: int, username: str, password: str, role: str, display_name: str = "") -> int:
     username = username.strip()
     if role not in ROLES:
-        raise ValueError(f"rôle inconnu : {role}")
+        raise ValueError(_("unknown role: {role}", role=role))
     if not username or len(username) > 64 or any(c.isspace() for c in username):
-        raise ValueError("identifiant invalide (sans espace, 64 caractères max)")
+        raise ValueError(_("invalid username (no space, 64 characters max)"))
     if db.one(conn, "SELECT id FROM users WHERE username = ?", username):
-        raise ValueError(f"l'identifiant « {username} » existe déjà")
+        raise ValueError(_("the username “{username}” already exists", username=username))
     cur = conn.execute("INSERT INTO users (mosque_id, username, display_name, password_hash, role, created_at) "
                        "VALUES (?,?,?,?,?,?)",
                        (mosque_id, username, display_name.strip() or username, hash_password(password), role, db.now_iso()))

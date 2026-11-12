@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 
 from .. import runs
+from ..i18n import _
 from ..state import EXTEND_MINUTES, PICKABLE_SCENES, Machine
 
 # Commands offered on the dashboard: derived from the engine, in its display order. No copy of the
@@ -39,7 +40,7 @@ class OrchestratorError(Exception):
 def _call(mosque: dict, method: str, path: str, params: dict | None = None, timeout: float = 3.0) -> dict:
     base = (mosque.get("orchestrator_url") or "").rstrip("/")
     if not base:
-        raise OrchestratorError("adresse de l'orchestrateur non configurée")
+        raise OrchestratorError(_("orchestrator address not configured"))
     url = f"{base}/{path}" + (("?" + urllib.parse.urlencode(params)) if params else "")
     req = urllib.request.Request(url, method=method, data=b"" if method == "POST" else None)
     if mosque.get("orchestrator_token"):
@@ -48,9 +49,9 @@ def _call(mosque: dict, method: str, path: str, params: dict | None = None, time
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode() or "{}")
     except urllib.error.HTTPError as e:
-        raise OrchestratorError(f"orchestrateur : erreur HTTP {e.code}") from e
+        raise OrchestratorError(_("orchestrator: HTTP error {code}", code=e.code)) from e
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise OrchestratorError("orchestrateur injoignable (le live n'est pas lancé sur cette machine ?)") from e
+        raise OrchestratorError(_("orchestrator unreachable (is the live not started on this machine?)")) from e
 
 
 def status(mosque: dict, timeout: float = 3.0) -> dict:
@@ -122,13 +123,13 @@ def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = N
     A value outside the allowed list is refused here, before any network call. A command never
     goes through the status cache: it leaves immediately."""
     if cmd not in COMMANDS:
-        raise OrchestratorError("commande inconnue")
+        raise OrchestratorError(_("unknown command"))
     permises = choices(cmd)
     params = {}
     if permises:
         valeur = valeur or (permises[0] if cmd == "extend" else None)    # extend: first value by default
         if valeur not in permises:
-            raise ValueError(f"valeur invalide pour « {cmd} »")
+            raise ValueError(_("invalid value for “{command}”", command=cmd))
         params[_VARIED[cmd][0]] = valeur
     if cmd == "janaza":
         if arg:

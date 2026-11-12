@@ -14,6 +14,8 @@ import datetime as dt
 import json
 import urllib.request
 
+from .i18n import _
+
 # Screens whose text block is free: key of the scene in scenes.SCENES.
 SCREENS = ("avant", "priere", "entracte", "termine", "janaza", "dars_fin")
 
@@ -148,32 +150,33 @@ def from_backoffice(backoffice_url: str, api_port: int, fetch=None, log=None) ->
     try:
         data = (fetch or _http_get)(url, token()) or {}
     except Exception as e:                        # noqa: BLE001 — the live never waits on the back office
-        log(f"Écrans : réglages du back-office injoignables ({e}) — textes par défaut conservés")
+        log(_("Screens: back-office settings unreachable ({error}) — default texts kept", error=e))
         return {}
     textes = data.get("screens") or {}
     if not isinstance(textes, dict):
         return {}
     changes = sum(len(v) for v in textes.values() if isinstance(v, dict))
-    log(f"Écrans : {changes} texte(s) personnalisé(s) lu(s) dans le back-office" if changes
-        else "Écrans : aucun texte personnalisé, textes par défaut")
+    log(_("Screens: {count} custom text(s) read from the back office", count=changes) if changes
+        else _("Screens: no custom text, default texts"))
     return textes
 
 
 def check(saved: dict) -> dict[str, dict[str, str]]:
     """Validates a payload from the interface (unknown screen or slot refused, length capped)."""
     if not isinstance(saved, dict):
-        raise ValueError("un objet {écran: {champ: texte}} est attendu")
+        raise ValueError(_("an object mapping screens to their fields is expected"))
     out: dict[str, dict[str, str]] = {}
     for screen, changed in saved.items():
         if screen not in DEFAULTS:
-            raise ValueError(f"écran inconnu : {screen}")
+            raise ValueError(_("unknown screen: {screen}", screen=screen))
         if not isinstance(changed, dict):
-            raise ValueError(f"écran {screen} : objet attendu")
+            raise ValueError(_("screen {screen}: an object is expected", screen=screen))
         for slot, text in changed.items():
             if slot not in DEFAULTS[screen]:
-                raise ValueError(f"champ inconnu : {screen}.{slot}")
+                raise ValueError(_("unknown field: {field}", field=f"{screen}.{slot}"))
             texte = "" if text is None else str(text).strip().replace("\n", " ")
             if len(texte) > MAX_LEN:
-                raise ValueError(f"{screen}.{slot} : {MAX_LEN} caractères au maximum")
+                raise ValueError(_("{field}: {max} characters at most",
+                                   field=f"{screen}.{slot}", max=MAX_LEN))
             out.setdefault(screen, {})[slot] = texte
     return out

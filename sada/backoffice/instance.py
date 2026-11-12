@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 
+from ..i18n import _
 from ..paths import DATA
 
 
@@ -38,7 +39,7 @@ def public_url() -> str:
 def enregistrer(public_url: str) -> str:
     valeur = (public_url or "").strip().rstrip("/")
     if valeur and not (valeur.startswith("http://") or valeur.startswith("https://")):
-        raise ValueError("adresse publique attendue en http:// ou https://")
+        raise ValueError(_("public address must be http:// or https://"))
     data = lire()
     data["public_url"] = valeur
     f = _file()

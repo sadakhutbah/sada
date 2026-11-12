@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
+from ...i18n import _
 from .. import habillage
 from ..context import CtxDep, Invalid, NotFound, khutba_or_404
 from .common import _ok
@@ -34,7 +35,7 @@ async def habillage_apercu(kid: int, ctx: CtxDep):
         await run_in_threadpool(habillage.apercu, ctx.conn, k, ctx.mosque, brut.get("options") or {})
     except (ValueError, RuntimeError) as e:
         raise Invalid(habillage.sans_chemin(str(e))) from e
-    return _ok("Aperçu à jour.", **_vue(ctx, k))
+    return _ok(_("Preview up to date."), **_vue(ctx, k))
 
 
 @router.post("/sermons/{kid}/habillage")
@@ -47,8 +48,8 @@ async def habillage_lancer(kid: int, ctx: CtxDep):
                          ctx.ip, background=ctx.request.app.state.regen_background)
     except ValueError as e:
         raise Invalid(str(e)) from e
-    return _ok("Rendu lancé : la vidéo habillée sera prête dans quelques minutes, cette page suit l'avancement.",
-               **_vue(ctx, k))
+    return _ok(_("Rendering started: the dressed video will be ready in a few minutes, this page follows "
+                 "the progress."), **_vue(ctx, k))
 
 
 @router.get("/sermons/{kid}/habillage/apercu.jpg")

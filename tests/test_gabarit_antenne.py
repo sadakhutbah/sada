@@ -61,7 +61,7 @@ def test_sans_fichier_importe_le_dessin_du_moteur_reste(monkeypatch):
     assert a.charger("http://bo", 0) is False
     assert a.actif is False
     assert a.image("avant") is None
-    assert any("aucun fichier importé" in m for m in appels)
+    assert any("no file imported" in m for m in appels)
 
 
 def test_le_fichier_importe_est_bien_lu_et_signale(monkeypatch):
@@ -71,7 +71,7 @@ def test_le_fichier_importe_est_bien_lu_et_signale(monkeypatch):
     assert a.charger("http://bo", 0) is True
     assert a.actif is True
     assert a._variables["arabe_khutba"] == "خطبة"
-    assert any("ce fichier sera affiché à l'antenne" in m for m in appels)
+    assert any("this file will be shown on air" in m for m in appels)
 
 
 def test_un_back_office_muet_n_empeche_pas_le_direct():
@@ -82,7 +82,7 @@ def test_un_back_office_muet_n_empeche_pas_le_direct():
     a = AntenneGabarit(object(), FauxRendu, fetch=tombe, log_fn=appels.append)
     assert a.charger("http://bo", 0) is False
     assert a.image("avant") is None
-    assert any("injoignable" in m for m in appels)
+    assert any("unreachable" in m for m in appels)
 
 
 def test_un_ecran_qui_ne_change_pas_n_est_pas_redessine(monkeypatch):
@@ -126,7 +126,7 @@ def test_trois_echecs_de_suite_ramenent_au_dessin_du_moteur(monkeypatch):
     assert a.image("priere") is None
     assert a.image("priere") is None
     assert a.actif is False
-    assert any("trois échecs" in m for m in appels)
+    assert any("three failures" in m for m in appels)
 
 
 def test_la_fermeture_ferme_le_navigateur_de_rendu(monkeypatch):

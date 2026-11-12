@@ -7,6 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from ..i18n import _
 from ..text import arabic_ratio, is_translit_word
 from . import glossary, settings
 
@@ -56,7 +57,7 @@ def extract_audio(src: str, dst: str, start: float = 0.0, end: float | None = No
 def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
     """-> (model, device, compute_type)."""
     free = free_vram_mb()
-    log(f"VRAM libre : {free} Mo")
+    log(_("Free VRAM: {mb} MB", mb=free))
     if prefer == "cpu":
         return ("medium", "cpu", "int8")
     cands = [m for m in MODELS if prefer in (None, m[0])] or MODELS
@@ -127,7 +128,7 @@ def redo_loops(model, audio, segs: list[dict], *, sr: int = 16000, log=print) ->
                                          word_timestamps=True, vad_filter=False)
             pieces = list(it)
         except Exception as e:  # noqa: BLE001
-            log(f"  reprise impossible sur {seg['start']:.1f}s : {e}")
+            log(_("  retry impossible at {seconds:.1f}s: {error}", seconds=seg["start"], error=e))
             continue
         text = _text_of(pieces)
         if not text or is_loop(text):
@@ -138,7 +139,7 @@ def redo_loops(model, audio, segs: list[dict], *, sr: int = 16000, log=print) ->
         if words:
             seg["words"] = words
         done += 1
-        log(f"  boucle reprise à {seg['start']:.1f}s : {text[:60]}")
+        log(_("  loop recovered at {seconds:.1f}s: {heard}", seconds=seg["start"], heard=text[:60]))
     return done
 
 
@@ -193,7 +194,7 @@ def recover_arabic(model, audio, segs: list[dict], *, sr: int = 16000, log=print
             try:
                 lang, prob = model.detect_language(chunk)[:2]
             except Exception as e:  # noqa: BLE001 — une détection qui échoue ne doit pas perdre la transcription
-                log(f"  détection de langue impossible sur {seg['start']:.1f}s : {e}")
+                log(_("  language detection impossible at {seconds:.1f}s: {error}", seconds=seg["start"], error=e))
                 continue
             if lang != "ar" or prob < min_prob:
                 continue
@@ -202,7 +203,7 @@ def recover_arabic(model, audio, segs: list[dict], *, sr: int = 16000, log=print
                                          temperature=0.0, word_timestamps=True, vad_filter=False)
             pieces = list(it)
         except Exception as e:  # noqa: BLE001
-            log(f"  retranscription arabe impossible sur {seg['start']:.1f}s : {e}")
+            log(_("  Arabic retranscription impossible at {seconds:.1f}s: {error}", seconds=seg["start"], error=e))
             continue
         text = _text_of(pieces)
         if arabic_ratio(text) < 0.5:
@@ -216,9 +217,10 @@ def recover_arabic(model, audio, segs: list[dict], *, sr: int = 16000, log=print
         if words:
             seg["words"] = words
         replaced += 1
-        log(f"  passage arabe récupéré à {seg['start']:.1f}s : {text[:60]}")
+        log(_("  Arabic passage recovered at {seconds:.1f}s: {heard}", seconds=seg["start"], heard=text[:60]))
     if replaced:
-        log(f"passages arabes retranscrits : {replaced} (sur {tried} segments examinés)")
+        log(_("Arabic passages retranscribed: {replaced} (out of {tried} segments examined)",
+              replaced=replaced, tried=tried))
     return replaced
 
 
@@ -226,12 +228,13 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
                arabic_retry: bool | None = None, hotwords: str | None = None) -> dict:
     from faster_whisper import WhisperModel
     name, device, ctype = pick_model(prefer, log)
-    log(f"Whisper : {name} sur {device} ({ctype})")
+    log(_("Whisper: {model} on {device} ({compute_type})", model=name, device=device, compute_type=ctype))
     t0 = time.time()
     try:
         model = WhisperModel(name, device=device, compute_type=ctype, cpu_threads=8 if device == "cpu" else 4)
     except Exception as e:  # noqa
-        log(f"Échec chargement {name}/{device} : {e} -> repli CPU int8")
+        log(_("Loading {model}/{device} failed: {error} -> fallback to CPU int8",
+              model=name, device=device, error=e))
         name, device, ctype = ("large-v3-turbo" if name.startswith("large") else name), "cpu", "int8"
         model = WhisperModel(name, device=device, compute_type=ctype, cpu_threads=8)
     import wave
@@ -270,5 +273,5 @@ def transcribe(wav: str, out_json: str, prefer: str | None = None, log=print,
         res["arabic_recovered"] = recover_arabic(model, audio, segs, log=log, max_segments=RETRY_MAX,
                                                  min_prob=DETECT_MIN_PROB, margin=RETRY_MARGIN)
     Path(out_json).write_text(json.dumps(res, ensure_ascii=False, indent=1))
-    log(f"Transcription : {len(segs)} segments en {res['elapsed_s']} s")
+    log(_("Transcription: {count} segments in {seconds} s", count=len(segs), seconds=res["elapsed_s"]))
     return res

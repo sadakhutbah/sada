@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..paths import FONTS
 from ..text import AR_RUN, arabic_ratio, is_arabic, is_translit_word, reshaped_view
+from ..i18n import _
 from . import glossary as glossmod
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
@@ -521,7 +522,7 @@ def align_offset(session_wav: str, video: str, probe_at: float = 30.0, probe_len
     x = _pcm(video, sr=sr)
     q = _pcm(session_wav, probe_at, probe_len, sr=sr)
     if len(q) < sr or len(x) <= len(q):
-        raise ValueError("audio trop court pour l'alignement")
+        raise ValueError(_("Audio too short for the alignment."))
     n = 1 << (len(x) + len(q) - 1).bit_length()
     c = np.fft.irfft(np.fft.rfft(x, n) * np.conj(np.fft.rfft(q, n)), n)[: len(x) - len(q)]
     k = int(c.argmax())

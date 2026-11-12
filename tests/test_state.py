@@ -114,7 +114,7 @@ def test_two_sessions_full_cycle():
     assert m.state == State.ENDED
     d.run(21, voice=False)
     assert m.state == State.STOPPED and not m.stream_on
-    seq = [l for l in logs if l.startswith("ÉTAT")]
+    seq = [l for l in logs if l.startswith("STATE")]
     names = [l.split("→")[1].split()[0] for l in seq]
     assert names == ["ARMED", "BEFORE", "KHUTBA", "PRAYER", "INTERMISSION", "KHUTBA", "PRAYER", "ENDED", "STOPPED"]
     assert [r.status for r in m.records] == ["done", "done"]
@@ -150,7 +150,7 @@ def test_manual_override_suspends_auto():
 def test_scene_command_and_unknown():
     m, _ = mk()
     d = Drv(m, at(12, 0))
-    assert "inconnue" in m.command("scene", d.sig(), "disco")
+    assert "unknown scene" in m.command("scene", d.sig(), "disco")
     m.command("scene", d.sig(), "entracte")
     assert m.state == State.INTERMISSION and m.stream_on and m.scene == "entracte"
 
@@ -243,7 +243,7 @@ def test_stop_while_off_air_does_not_start_the_stream():
 def test_extend_with_bad_duration_answers():
     m, _ = mk()
     d = Drv(m, at(12, 29))
-    assert "invalide" in m.command("extend", d.sig(), "abc")
+    assert "invalid duration" in m.command("extend", d.sig(), "abc")
 
 
 def test_session_spanning_an_encoder_restart_keeps_its_first_file():
@@ -278,7 +278,7 @@ def test_after_stop_no_session_is_left_pending():
 def test_resume_without_pause_does_nothing():
     m, _ = mk()
     d = Drv(m, at(12, 0))
-    assert "pas en pause" in m.command("resume", d.sig())
+    assert "not paused" in m.command("resume", d.sig())
     assert m.state == State.IDLE and len(m.records) == 2
 
 
@@ -322,7 +322,7 @@ def test_nothing_comes_back_after_fin():
     d = Drv(m, at(12, 0))
     m.command("stop", d.sig())
     assert m.status()["next_session"] is None
-    assert "aucune session" in m.command("skip", d.sig())
+    assert "no session to skip" in m.command("skip", d.sig())
 
 
 def test_auto_after_janaza_hands_back_the_next_session():

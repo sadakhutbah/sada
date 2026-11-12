@@ -25,8 +25,8 @@ def test_adresses_refusees():
     assert d.check("")[1]                       # empty
     assert "rtmp" in d.check("https://exemple.fr/live")[1]
     assert d.check(FB) == (FB, "")
-    assert "serveur" in d.check("rtmps:///rtmp/cle")[1]
-    assert "clé" in d.check("rtmps://a.rtmp.youtube.com/")[1]      # nothing after the host
+    assert "server" in d.check("rtmps:///rtmp/cle")[1]
+    assert "key" in d.check("rtmps://a.rtmp.youtube.com/")[1]      # nothing after the host
 
 
 # --- screen side ------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def test_refus_expliques(env):
     r = c.ecrire("/settings/live", {"targets": [{"label": "x", "url": "https://exemple.fr/live"}]}, methode="PUT")
     assert r.status_code == 422 and "rtmp" in r.json()["message"]
     r = c.ecrire("/settings/live", {"targets": [{"url": FB}, {"url": FB}]}, methode="PUT")
-    assert r.status_code == 422 and "déjà" in r.json()["message"]
+    assert r.status_code == 422 and "already" in r.json()["message"]
     r = c.ecrire("/settings/live", {"targets": [{"url": FB}] * 7}, methode="PUT")
     assert r.status_code == 422 and "6" in r.json()["message"]
     # nothing was written by a refused save

@@ -13,6 +13,8 @@ import urllib.request
 from typing import Callable
 from urllib.parse import urlencode
 
+from .i18n import _
+
 Fetch = Callable[[str, str], dict]
 
 
@@ -35,11 +37,11 @@ def from_backoffice(backoffice_url: str, api_port: int, fetch: Fetch | None = No
     try:
         data = (fetch or _http_get)(url, token()) or {}
     except Exception as e:                        # noqa: BLE001 — any failure: keep the local setting
-        log(f"Direct : destinations du back-office injoignables ({e}) — configuration locale conservée")
+        log(_("Live: back-office destinations unreachable ({error}) — local setting kept", error=e))
         return []
     urls = [str(u).strip() for u in (data.get("urls") or []) if str(u).strip()]
     if urls:
-        log(f"Direct : {len(urls)} destination(s) lue(s) dans le back-office")
+        log(_("Live: {count} destination(s) read from the back office", count=len(urls)))
     else:
-        log("Direct : aucune destination enregistrée dans le back-office — configuration locale conservée")
+        log(_("Live: no destination saved in the back office — local setting kept"))
     return urls

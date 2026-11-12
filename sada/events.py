@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Optional
 
+from .i18n import _
 from .text import JOURS
 
 KINDS = {"khutba", "dars", "conference"}
@@ -43,7 +44,7 @@ def parse_hhmm(value: str) -> dt.time:
     h, m = str(value).strip().split(":")[:2]
     h, m = int(h), int(m)
     if not (0 <= h < 24 and 0 <= m < 60):
-        raise ValueError(f"heure invalide : {value!r}")
+        raise ValueError(_("invalid time: {value}", value=repr(value)))
     return dt.time(h, m)
 
 
@@ -139,28 +140,31 @@ def uid_of(raw: Mapping, idx: int) -> str:
 
 
 def _parse(raw: dict, idx: int) -> Event:
-    where = f"événement #{idx + 1}" + (f" ({raw.get('title')!r})" if raw.get("title") else "")
+    where = _("event #{index}", index=idx + 1) + (f" ({raw.get('title')!r})" if raw.get("title") else "")
     if not isinstance(raw, dict):
-        raise ValueError(f"{where} : objet JSON attendu")
+        raise ValueError(_("{where}: a JSON object is expected", where=where))
     kind = str(raw.get("kind", "dars")).strip().lower()
     if kind not in KINDS:
-        raise ValueError(f"{where} : type inconnu {kind!r} (attendu : {sorted(KINDS)})")
+        raise ValueError(_("{where}: unknown type {kind} (expected: {valid})",
+                           where=where, kind=repr(kind), valid=sorted(KINDS)))
     title = str(raw.get("title", "")).strip()
     if not title:
-        raise ValueError(f"{where} : titre manquant")
+        raise ValueError(_("{where}: title missing", where=where))
     rec = None
     if raw.get("recurrence"):
         r = raw["recurrence"]
         if not isinstance(r, dict):
-            raise ValueError(f"{where} : « recurrence » doit être un objet")
+            raise ValueError(_("{where}: “recurrence” must be an object", where=where))
         wd = str(r.get("weekday", "")).strip().lower()
         if wd not in JOURS:
-            raise ValueError(f"{where} : jour de récurrence inconnu {wd!r} (attendu : {JOURS})")
+            raise ValueError(_("{where}: unknown recurrence weekday {weekday} (expected: {valid})",
+                               where=where, weekday=repr(wd), valid=JOURS))
         after = str(r.get("after", "")).strip().lower() or None
         if after and after not in PRAYERS:
-            raise ValueError(f"{where} : prière inconnue {after!r} (attendu : {PRAYERS})")
+            raise ValueError(_("{where}: unknown prayer {prayer} (expected: {valid})",
+                               where=where, prayer=repr(after), valid=PRAYERS))
         if not after and not r.get("time"):
-            raise ValueError(f"{where} : une récurrence demande « time » ou « after »")
+            raise ValueError(_("{where}: a recurrence needs “time” or “after”", where=where))
         rec = Recurrence(weekday=JOURS.index(wd), time=r.get("time"), after=after,
                          offset_min=float(r.get("offset_min", 0) or 0))
     date = time = None
@@ -168,12 +172,12 @@ def _parse(raw: dict, idx: int) -> Event:
         try:
             date = dt.date.fromisoformat(str(raw["date"]))
         except ValueError as e:
-            raise ValueError(f"{where} : date invalide {raw['date']!r}") from e
+            raise ValueError(_("{where}: invalid date {date}", where=where, date=repr(raw["date"]))) from e
         if not raw.get("time"):
-            raise ValueError(f"{where} : une date demande aussi une heure")
+            raise ValueError(_("{where}: a date also needs a time", where=where))
         time = parse_hhmm(raw["time"])
     if date is None and rec is None:
-        raise ValueError(f"{where} : ni « date » ni « recurrence »")
+        raise ValueError(_("{where}: neither “date” nor “recurrence”", where=where))
     session = raw.get("session")
     return Event(raw=raw, kind=kind, title=title, speaker=str(raw.get("speaker", "") or "").strip(),
                  series=str(raw.get("series", "") or "").strip(),
@@ -187,7 +191,7 @@ def loads(text: str) -> list[Event]:
     data = json.loads(text or "{}")
     items = data.get("events", []) if isinstance(data, dict) else data
     if not isinstance(items, list):
-        raise ValueError("« events » doit être une liste")
+        raise ValueError(_("“events” must be a list"))
     return [_parse(raw, i) for i, raw in enumerate(items)]
 
 
@@ -199,7 +203,7 @@ def load(path: str | Path) -> tuple[list[Event], Optional[str]]:
     try:
         return loads(p.read_text(encoding="utf-8")), None
     except (ValueError, json.JSONDecodeError) as e:
-        return [], f"programme illisible ({p}) : {e}"
+        return [], _("programme unreadable ({path}): {error}", path=p, error=e)
 
 
 def parse(raw: dict, idx: int = 0) -> Event:
@@ -220,7 +224,7 @@ def read_raw(path: str | Path) -> list[dict]:
         data = json.loads(p.read_text(encoding="utf-8") or "{}")
         items = data.get("events", []) if isinstance(data, dict) else data
         if not isinstance(items, list):
-            raise ValueError("« events » doit être une liste")
+            raise ValueError(_("“events” must be a list"))
         for i, raw in enumerate(items):
             _parse(raw, i)
     except (ValueError, OSError) as e:

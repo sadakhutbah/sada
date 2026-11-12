@@ -46,9 +46,9 @@ def test_vider_un_champ_ramene_au_defaut(env):
 def test_refus_d_un_ecran_ou_d_un_champ_inconnu(env):
     c = client(env, "admin")
     r = c.ecrire("/settings/screens", {"screens": {"apres": {"foot": "x"}}}, methode="PUT")
-    assert r.status_code == 422 and "écran inconnu" in r.json()["message"]
+    assert r.status_code == 422 and "unknown screen" in r.json()["message"]
     r = c.ecrire("/settings/screens", {"screens": {"avant": {"haut": "x"}}}, methode="PUT")
-    assert r.status_code == 422 and "champ inconnu" in r.json()["message"]
+    assert r.status_code == 422 and "unknown field" in r.json()["message"]
     r = c.ecrire("/settings/screens", {"screens": {"avant": {"foot": "x" * 200}}}, methode="PUT")
     assert r.status_code == 422 and "160" in r.json()["message"]
     assert c.get("/api/v1/settings").json()["screens"]["avant"]["foot"]["value"] == ""   # rien n'a bougé

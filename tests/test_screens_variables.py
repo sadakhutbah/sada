@@ -66,7 +66,7 @@ def test_balises_html_refusees(env):
         assert "HTML" in r.json()["message"]
     assert variables_ecran.lire(env["conn"], env["mid"])["arabe_khutba"] == ""
     r = c.ecrire("/settings/screens/variables", {"variables": {"inconnu": "x"}}, methode="PUT")
-    assert r.status_code == 422 and "champ inconnu" in r.json()["message"]
+    assert r.status_code == 422 and "unknown field" in r.json()["message"]
 
 
 def test_isole_par_mosquee(env):

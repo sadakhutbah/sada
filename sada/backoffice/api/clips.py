@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from ...i18n import _
 from .. import content, db, publish
 from ..context import Ctx, CtxDep, clip_or_404, imam_filter, khutba_or_404
 from .common import _a_table, _ok
@@ -79,34 +80,36 @@ def clip(cid: int, ctx: CtxDep):
 async def clip_decision(cid: int, ctx: CtxDep):
     f = await ctx.body()
     ctx.require("validate")
-    c, _ = clip_or_404(ctx, cid)
+    c, _k = clip_or_404(ctx, cid)
     if f.get("decision") == "rouvrir":
         content.reopen(ctx.conn, c, ctx.user, ctx.ip)
-        return _ok("Clip remis dans la file de validation.", status="a_valider")
+        return _ok(_("Clip put back in the validation queue."), status="a_valider")
     content.decide(ctx.conn, c, f.get("decision", ""), ctx.user, f.get("reason", ""), ctx.ip)
-    return _ok("Clip validé." if f.get("decision") == "valide" else "Clip rejeté.", status=f.get("decision"))
+    return _ok(_("Clip validated.") if f.get("decision") == "valide" else _("Clip rejected."),
+               status=f.get("decision"))
 
 
 @router.post("/clips/{cid}/regenerate")
 async def clip_regenerate(cid: int, ctx: CtxDep):
     await ctx.body()
     ctx.require("validate")
-    c, _ = clip_or_404(ctx, cid)
+    c, _k = clip_or_404(ctx, cid)
     content.start_regeneration(ctx.conn, ctx.request.app.state.db_path, c, ctx.user, ctx.ip,
                                background=ctx.request.app.state.regen_background)
-    return _ok("Régénération lancée (environ une minute) : la fiche se met à jour toute seule.", regen_state="en_cours")
+    return _ok(_("Regeneration started (about a minute): the sheet updates by itself."), regen_state="en_cours")
 
 
 @router.post("/clips/{cid}/publish")
 async def clip_publish(cid: int, ctx: CtxDep):
     f = await ctx.body()
     ctx.require("publish")
-    c, _ = clip_or_404(ctx, cid)
+    c, _k = clip_or_404(ctx, cid)
     res = await run_in_threadpool(publish.publish, ctx.conn, c, f.get("connector", ""), ctx.user,
                                   f.get("caption", ""), ctx.ip)
     if not res.ok:
-        return JSONResponse({"error": "refusé", "message": f"Publication refusée : {res.message}"}, status_code=422)
-    return _ok(f"Publié : {res.location}", location=res.location)
+        return JSONResponse({"error": _("refused"), "message": _("Publication refused: {reason}", reason=res.message)},
+                            status_code=422)
+    return _ok(_("Published: {location}", location=res.location), location=res.location)
 
 
 @router.post("/sermons/{kid}/clips")
@@ -118,7 +121,7 @@ async def clip_create(kid: int, ctx: CtxDep):
     cid = content.create_clip(ctx.conn, ctx.request.app.state.db_path, k, f.get("start", ""), f.get("end", ""),
                               f.get("kind", ""), f.get("title", ""), ctx.user, ctx.ip,
                               background=ctx.request.app.state.regen_background)
-    return _ok("Clip créé : rendu en cours (environ une minute), puis il attend la validation.", id=cid)
+    return _ok(_("Clip created: rendering now (about a minute), then it waits for validation."), id=cid)
 
 
 @router.post("/clips/{cid}/bounds")
@@ -129,5 +132,5 @@ async def clip_bounds(cid: int, ctx: CtxDep):
     c, k = clip_or_404(ctx, cid)
     content.adjust_clip(ctx.conn, ctx.request.app.state.db_path, c, k, f.get("start", ""), f.get("end", ""),
                         f.get("title"), ctx.user, ctx.ip, background=ctx.request.app.state.regen_background)
-    return _ok("Bornes enregistrées : le clip est rendu à nouveau, puis il repasse par la validation.",
+    return _ok(_("Bounds saved: the clip is rendered again, then it goes back through validation."),
                regen_state="en_cours")

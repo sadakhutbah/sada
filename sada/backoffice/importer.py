@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .. import runs
 from ..events import kind_label
+from ..i18n import _
 from ..pipeline import notes, verses as verses_mod
 from ..pipeline.output import SessionOutput
 from . import db
@@ -41,7 +42,7 @@ def _extract_video(rec: str | None, start: float | None, end: float | None, out:
         return str(out)
     ffmpeg = _ffmpeg()
     if not rec or start is None or not Path(rec).exists() or not ffmpeg:
-        log(f"extraction vidéo impossible ({rec}) : ffmpeg ou enregistrement absent")
+        log(_("video extraction impossible ({recording}): ffmpeg or recording missing", recording=rec))
         return None
     dur = (end - start) if end else None
     cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.2f}", "-i", rec]
@@ -49,10 +50,10 @@ def _extract_video(rec: str | None, start: float | None, end: float | None, out:
                                                      "-movflags", "+faststart", str(out)]
     try:
         subprocess.run(cmd, check=True, timeout=600, capture_output=True)
-        log(f"vidéo de la session -> {out}")
+        log(_("session video -> {path}", path=out))
         return str(out)
     except Exception as e:  # noqa: BLE001
-        log(f"extraction vidéo impossible ({rec}) : {e}")
+        log(_("video extraction impossible ({recording}): {error}", recording=rec, error=e))
         out.unlink(missing_ok=True)
         return None
 
@@ -74,7 +75,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
     dirs = db.mosque_dirs(mosque)
     out = dirs["output"] / run_id
     if not runs.RUN_RE.match(run_id) or not out.is_dir():
-        raise FileNotFoundError(f"run introuvable : {out}")
+        raise FileNotFoundError(_("run not found: {path}", path=out))
     sj = dirs["state"] / run_id / runs.SESSIONS
     data = runs.load(sj) if sj.exists() else {}
     recs = {s["index"]: s for s in data.get("sessions", [])}
@@ -155,5 +156,5 @@ def scan(conn, mosque: dict, extract_video: bool = True, log=print) -> list[dict
             try:
                 results.append(import_run(conn, mosque, d.name, extract_video, log))
             except Exception as e:  # noqa: BLE001
-                log(f"import {d.name} : {e}")
+                log(_("import {run}: {error}", run=d.name, error=e))
     return results

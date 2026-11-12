@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..events import kind_label
+from ..i18n import _
 from . import db, social
 
 
@@ -60,9 +61,9 @@ class Connector:
         settings = json.loads(row["settings"]) if row else {}
         missing = [f for f in self.required if not str(settings.get(f, "")).strip()]
         if missing:
-            return False, "désactivé : identifiants absents (" + ", ".join(missing) + ")"
+            return False, _("disabled: missing credentials ({missing})", missing=", ".join(missing))
         if not (row["enabled"] if row else self.enabled_by_default):
-            return False, "désactivé par l'administrateur"
+            return False, _("disabled by the administrator")
         return True, ""
 
     def publish(self, item: Item, settings: dict) -> Result:   # pragma: no cover - interface
@@ -71,10 +72,11 @@ class Connector:
 
 class LocalFolder(Connector):
     key = "local"
-    label = "Dossier local"
-    description = "Copie le clip validé et sa fiche (légende, versets, validation) dans un dossier de la machine."
+    label = "Local folder"
+    description = ("Copies the approved clip and its record (caption, verses, approval) into a folder on "
+                   "this machine.")
     fields = ("path",)
-    labels = {"path": "Dossier"}
+    labels = {"path": "Folder"}
     enabled_by_default = True
 
     def defaults(self, mosque):
@@ -83,49 +85,49 @@ class LocalFolder(Connector):
 
     def publish(self, item: Item, settings: dict) -> Result:
         out = social.archive(item, settings.get("path") or db.mosque_dirs(item.mosque)["publish"])
-        return Result(True, str(out), "copié dans le dossier de publication")
+        return Result(True, str(out), _("copied to the publication folder"))
 
 
 class FacebookPage(Connector):
-    key, label = "facebook", "Page Facebook"
-    description = "Publie le clip en vidéo sur la page de la mosquée (API Graph)."
+    key, label = "facebook", "Facebook page"
+    description = "Publishes the clip as a video on the mosque's page (Graph API)."
     fields = required = ("page_id", "page_token")
     secret = ("page_token",)
-    labels = {"page_id": "Identifiant de la page", "page_token": "Jeton d'accès de la page"}
+    labels = {"page_id": "Page ID", "page_token": "Page access token"}
 
     def publish(self, item: Item, settings: dict) -> Result:
         where = social.facebook(item, settings)
-        return Result(True, where, "vidéo publiée sur la page")
+        return Result(True, where, _("video published on the page"))
 
 
 class YouTube(Connector):
     key, label = "youtube", "YouTube"
-    description = "Envoie le clip sur la chaîne de la mosquée (API YouTube Data, jeton d'actualisation OAuth)."
+    description = "Sends the clip to the mosque's channel (YouTube Data API, OAuth refresh token)."
     fields = ("channel_id", "client_id", "client_secret", "refresh_token", "privacy_status", "category_id")
     required = ("client_id", "client_secret", "refresh_token")
     secret = ("client_secret", "refresh_token")
-    labels = {"channel_id": "Identifiant de la chaîne", "client_id": "Identifiant client OAuth",
-              "client_secret": "Secret client OAuth", "refresh_token": "Jeton d'actualisation",
-              "privacy_status": "Visibilité (public, unlisted, private)", "category_id": "Catégorie (27 = éducation)"}
+    labels = {"channel_id": "Channel ID", "client_id": "OAuth client ID",
+              "client_secret": "OAuth client secret", "refresh_token": "Refresh token",
+              "privacy_status": "Visibility (public, unlisted, private)", "category_id": "Category (27 = education)"}
 
     def defaults(self, mosque):
         return {"privacy_status": "public", "category_id": "27"}
 
     def publish(self, item: Item, settings: dict) -> Result:
         where = social.youtube(item, settings)
-        return Result(True, where, "vidéo publiée sur la chaîne")
+        return Result(True, where, _("video published on the channel"))
 
 
 class Instagram(Connector):
     key, label = "instagram", "Instagram"
-    description = ("Publie le clip en Reel sur le compte professionnel ; l'API récupère la vidéo depuis"
-                   " l'adresse publique du dossier de publication.")
+    description = ("Publishes the clip as a Reel on the professional account; the API fetches the video "
+                   "from the publication folder's public address.")
     fields = ("ig_user_id", "access_token", "public_base_url", "folder")
     required = ("ig_user_id", "access_token", "public_base_url")
     secret = ("access_token",)
-    labels = {"ig_user_id": "Identifiant du compte professionnel", "access_token": "Jeton d'accès",
-              "public_base_url": "Adresse publique du dossier de publication",
-              "folder": "Dossier de publication (archivage avant envoi)"}
+    labels = {"ig_user_id": "Professional account ID", "access_token": "Access token",
+              "public_base_url": "Public address of the publication folder",
+              "folder": "Publication folder (archived before sending)"}
 
     def defaults(self, mosque):
         return {"folder": db.local_folder_default(mosque)}
@@ -137,12 +139,12 @@ class Instagram(Connector):
         settings = json.loads(row["settings"]) if row else {}
         base = str(settings.get("public_base_url") or "").strip()
         if not base.startswith(("http://", "https://")):
-            return False, "désactivé : l'adresse publique du dossier doit être une URL http(s)"
+            return False, _("disabled: the folder's public address must be an http(s) URL")
         return True, ""
 
     def publish(self, item: Item, settings: dict) -> Result:
         where = social.instagram(item, settings)
-        return Result(True, where, "Reel publié sur le compte")
+        return Result(True, where, _("Reel published on the account"))
 
 
 CONNECTORS: dict[str, Connector] = {c.key: c for c in (LocalFolder(), FacebookPage(), YouTube(), Instagram())}
@@ -167,9 +169,11 @@ def connector_rows(conn, mosque: dict) -> list[dict]:
         ok, why = c.availability(r)
         settings = json.loads(r["settings"]) if r else {}
         shown = {f: (db.MASK if f in c.secret and settings.get(f) else settings.get(f, "")) for f in c.fields}
-        out.append({"key": key, "label": c.label, "description": c.description, "available": ok, "why": why,
+        out.append({"key": key, "label": _(c.label), "description": _(c.description), "available": ok,
+                    "why": why,
                     "enabled": bool(r["enabled"]) if r else c.enabled_by_default,
-                    "fields": [{"name": f, "label": c.labels.get(f, f), "value": shown[f], "secret": f in c.secret,
+                    "fields": [{"name": f, "label": _(c.labels.get(f, f)), "value": shown[f],
+                                "secret": f in c.secret,
                                 "placeholder": _short(c.defaults(mosque).get(f, ""))} for f in c.fields]})
     return out
 
@@ -190,7 +194,7 @@ def default_caption(khutba: dict, mosque: dict, verses: list[str]) -> str:
 def can_publish(clip: dict) -> tuple[bool, str]:
     """Absolute rule: only a clip validated by a human, in its validated version, gets published."""
     if clip["status"] not in ("valide", "publie") or clip["needs_regen"] or not clip["decided_by"]:
-        return False, "clip non validé : publication refusée"
+        return False, _("clip not approved: publication refused")
     return True, ""
 
 
@@ -208,7 +212,7 @@ def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=N
         return res
 
     if c is None:
-        return record("refuse", Result(False, "", "connecteur inconnu"))
+        return record("refuse", Result(False, "", _("unknown connector")))
     ok, why = can_publish(clip)
     if not ok:
         return record("refuse", Result(False, "", why))
@@ -217,7 +221,7 @@ def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=N
     if not ok:
         return record("refuse", Result(False, "", why))
     if not Path(clip["file_path"]).exists():
-        return record("erreur", Result(False, "", "fichier du clip introuvable"))
+        return record("erreur", Result(False, "", _("clip file not found")))
     k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", clip["khutba_id"])
     m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", clip["mosque_id"])
     v = db.one(conn, "SELECT display_name FROM users WHERE id = ?", clip["decided_by"])
@@ -225,7 +229,7 @@ def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=N
     try:
         res = c.publish(item, json.loads(row["settings"]) if row else {})
     except Exception as e:  # noqa: BLE001
-        res = Result(False, "", f"erreur : {e}")
+        res = Result(False, "", _("error: {error}", error=e))
     if res.ok:
         conn.execute("UPDATE clips SET status = 'publie', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"]))
         return record("publie", res)

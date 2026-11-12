@@ -146,28 +146,28 @@ and the engine does not wait for the network.
 | Message in the log | Probable cause | What to do |
 | --- | --- | --- |
 | `Le compartiment n'existe pas (nom ou compte).` | wrongly entered name, or wrong account | check the name and the service address |
-| `Clé d'accès inconnue du service.` | wrong or deleted key identifier | create a key again and enter it |
-| `Clé secrète refusée (signature invalide).` | wrong secret, or key copied only in part | enter the secret again in full |
-| `Le service refuse l'écriture : droits du jeton insuffisants.` | read-only key, or limited rights | give the write and delete rights |
-| `Service injoignable : vérifiez l'adresse et le réseau.` | wrong service address, or network down | check the address, without a path, and the connection |
-| `Délai dépassé en joignant le service.` | slow network or blocked service | try again at the next live |
+| `Access key unknown to the service.` | wrong or deleted key identifier | create a key again and enter it |
+| `Secret key refused (invalid signature).` | wrong secret, or key copied only in part | enter the secret again in full |
+| `The service refuses the write: the token's rights are insufficient.` | read-only key, or limited rights | give the write and delete rights |
+| `Service unreachable: check the address and the network.` | wrong service address, or network down | check the address, without a path, and the connection |
+| `Timeout while connecting to the service.` | slow network or blocked service | try again at the next live |
 | `Nom de compartiment invalide pour ce service.` | capitals, spaces, underscores | rename in lower case, digits, dots and dashes |
-| `Certificat refusé : vérifiez l'adresse (https).` | service certificate, or address in `http://` | use the service's `https://` address |
+| `Certificate refused: check the address (https).` | service certificate, or address in `http://` | use the service's `https://` address |
 
 What is not sent is not lost: the files stay on the machine. The local index notes only the
 successful uploads, so a failed file is taken again at the next live stop. A file already sent and
 unchanged is skipped, which avoids using the connection twice.
 
 If the back office is unreachable at startup, the log says
-`réglage du compartiment injoignable … — envoi désactivé` : the live runs normally, without upload.
+`bucket settings unreachable (…) — uploads disabled`: the live runs normally, without upload.
 
 ## 7. What the administrator must check
 
 | Point | What you should see |
 | --- | --- |
 | The box | **Send the replays** ticked, then settings saved |
-| The test | `Écriture acceptée dans « … » (…)` |
-| The first upload | in the log, `envoi de … vers compartiment/rediffusions/…`, then `envoyée` |
+| The test | `Write accepted in "…" (…)` |
+| The first upload | in the log, `sending … to bucket/rediffusions/…`, then `sent` |
 | The files | in the bucket, under the prefix, with the same name as on the machine |
 | The sizes | not zero; a 0-byte file is ignored and reported |
 | The originals | still present on the machine |

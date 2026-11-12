@@ -19,6 +19,7 @@ import threading
 from pathlib import Path
 
 from .. import paths, runs
+from ..i18n import _
 from ..pipeline.output import SessionOutput
 from . import db, importer
 
@@ -94,7 +95,7 @@ def a_traiter(mosque: dict, now: dt.datetime | None = None) -> list[tuple[Path, 
 def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
     out = db.mosque_dirs(mosque)["output"]
     _maj(run_dir, idx, etat="en_cours", debut=_now(), fin=None, erreur=None)
-    log(f"{run_dir.name} session {runs.session_number(idx)} : traitement lancé")
+    log(_("{run} session {session}: processing started", run=run_dir.name, session=runs.session_number(idx)))
     cmd = [sys.executable, "-m", "sada.pipeline.run", str(run_dir / runs.SESSIONS),
            "--only-session", str(idx), "--out", str(out)]
     # Identité de la mosquée dans les clips : logo et couleurs, quand ils sont configurés.
@@ -116,10 +117,11 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
         importer.import_run(conn, mosque, run_dir.name, log=log)
     except Exception as e:  # noqa: BLE001 — l'échec est montré dans le back-office
         _maj(run_dir, idx, etat="echec", fin=_now(), erreur=str(e)[:300])
-        log(f"{run_dir.name} session {runs.session_number(idx)} : échec : {e}")
+        log(_("{run} session {session}: failed: {error}", run=run_dir.name,
+                   session=runs.session_number(idx), error=e))
         return False
     _maj(run_dir, idx, etat="termine", fin=_now(), erreur=None)
-    log(f"{run_dir.name} session {runs.session_number(idx)} : extraits prêts")
+    log(_("{run} session {session}: clips ready", run=run_dir.name, session=runs.session_number(idx)))
     return True
 
 
@@ -134,7 +136,7 @@ def _env() -> dict:
 
 def _resume_erreur(sortie: str, code: int) -> str:
     lignes = [ligne.strip() for ligne in (sortie or "").splitlines() if ligne.strip()]
-    return lignes[-1] if lignes else f"le traitement s'est arrêté (code {code})"
+    return lignes[-1] if lignes else _("processing stopped (code {code})", code=code)
 
 
 def reprendre(mosque: dict) -> None:
@@ -161,13 +163,13 @@ def mettre_en_file(run_dir: Path, idx: int) -> None:
 def relancer(mosque: dict, run_id: str, idx: int) -> None:
     rd = db.mosque_dirs(mosque)["state"] / run_id
     if not runs.RUN_RE.match(run_id) or not (rd / runs.SESSIONS).exists():
-        raise FileNotFoundError("direct introuvable")
+        raise FileNotFoundError(_("live not found"))
     data = runs.load(rd / runs.SESSIONS)
     s = next((s for s in data.get("sessions", []) if s.get("index") == idx), None)
     if s is None or not runs.is_done(s) or not runs.produces_content(s):
-        raise ValueError("cette session ne se traite pas")
+        raise ValueError(_("this session is not processed"))
     if lire(rd).get(str(idx), {}).get("etat") == "en_cours":
-        raise ValueError("traitement déjà en cours")
+        raise ValueError(_("processing already in progress"))
     _maj(rd, idx, etat="attente", erreur=None, fin=None)
 
 

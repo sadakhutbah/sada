@@ -96,5 +96,5 @@ def test_une_dependance_reparee_debloque_la_suite(monkeypatch, capsys):
     monkeypatch.setattr(inst, "examen", faux_examen)
     assert inst.install(["--oui"]) == 0
     sortie = capsys.readouterr().out
-    assert "en place" in sortie and "prête" in sortie
+    assert "in place" in sortie and "ready" in sortie
 

@@ -44,11 +44,11 @@ def test_poussee_ne_demande_pas_d_adresse(env):
 
 def test_adresse_de_camera_refusee(env):
     c = client(env, "admin")
-    for url, mot in (("https://exemple.fr/cam", "rtsp"), ("rtsp://", "serveur"), ("rtsp://a b/cam", "espace")):
+    for url, mot in (("https://exemple.fr/cam", "rtsp"), ("rtsp://", "server"), ("rtsp://a b/cam", "space")):
         r = c.ecrire("/settings/input", {"mode": "camera", "url": url}, methode="PUT")
         assert r.status_code == 422 and mot in r.json()["message"], (url, r.text)
     r = c.ecrire("/settings/input", {"mode": "autre"}, methode="PUT")
-    assert r.status_code == 422 and "caméra" in r.json()["message"]
+    assert r.status_code == 422 and "camera" in r.json()["message"]
 
 
 def test_camera_enregistree_puis_relue(env):

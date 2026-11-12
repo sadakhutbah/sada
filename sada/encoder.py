@@ -24,6 +24,7 @@ import zmq
 from PIL import Image
 
 from . import source, transitions as tr
+from .i18n import _
 
 
 def _zmq_esc(port: int) -> str:
@@ -133,8 +134,9 @@ class Encoder:
 
     def _spawn(self):
         rec, clean = self.new_recording()
-        self.log("ENCODEUR : démarrage ffmpeg -> " + " , ".join(self.cfg.rtmp_urls) + "  | enreg. " + rec
-                 + (f"  | propre {clean}" if clean else ""))
+        self.log(_("ENCODER: starting ffmpeg -> {targets}  | recording {recording}{clean}",
+                   targets=" , ".join(self.cfg.rtmp_urls), recording=rec,
+                   clean=f"  | clean {clean}" if clean else ""))
         if self._log_file:
             self._log_file.close()
         self._log_file = open(self.run_dir / "encoder.log", "ab")
@@ -160,7 +162,8 @@ class Encoder:
                     return
                 if self.proc and self.proc.poll() is not None:
                     self.restarts += 1
-                    self.log(f"ENCODEUR : ffmpeg arrêté (code {self.proc.returncode}), reprise automatique #{self.restarts}")
+                    self.log(_("ENCODER: ffmpeg stopped (code {code}), automatic restart #{count}",
+                               code=self.proc.returncode, count=self.restarts))
                     time.sleep(2.0)
                     self._spawn()     # the restarted graph resumes from the current state (levels, vol)
 
@@ -177,7 +180,7 @@ class Encoder:
         if self._log_file:
             self._log_file.close()
             self._log_file = None
-        self.log("ENCODEUR : arrêté")
+        self.log(_("ENCODER: stopped"))
 
     def alive(self) -> bool:
         return bool(self.proc and self.proc.poll() is None)
@@ -280,7 +283,8 @@ class Encoder:
                 p = tr.plan(src, self.full, job[1], scale=self.cfg.height / 720)
                 frames = self._animate(p)
                 self.active, self.full = dst, job[1]
-                self.log(f"TRANSITION -> {job[0]} (calque {dst}, {frames} images)")
+                self.log(_("TRANSITION -> {scene} (layer {layer}, {frames} frames)",
+                           scene=job[0], layer=dst, frames=frames))
 
     # ZeroMQ channel (port) per animated parameter: one zmq filter per channel on the camera chain
     _TARGET = {"fond": "colorchannelmixer@fond aa", "a_a": "colorchannelmixer@ca aa", "a_b": "colorchannelmixer@cb aa",
@@ -332,7 +336,7 @@ class Encoder:
                         else:
                             send(s, socks[s], idx[s])
                     if socks and time.monotonic() - quiet_since > 2.0:
-                        self.log("TRANSITION : ffmpeg ne répond plus, état final posé pour la relance")
+                        self.log(_("TRANSITION: ffmpeg no longer answers, final state set for the restart"))
                         break
             finally:
                 for s in socks:
@@ -362,11 +366,12 @@ class Encoder:
             try:
                 s.send_string(msg)
                 rep = s.recv_string()
-                self.log(f"ZMQ « {msg} » -> {rep.strip()}")
+                self.log(_("ZMQ “{message}” -> {reply}", message=msg, reply=rep.strip()))
                 return
             except Exception as e:  # noqa
-                self.log(f"ZMQ essai {attempt + 1} échoué ({msg}) : {e}")
+                self.log(_("ZMQ attempt {attempt} failed ({message}): {error}",
+                           attempt=attempt + 1, message=msg, error=e))
             finally:
                 s.close()
             time.sleep(1.0)
-        self.log(f"ZMQ « {msg} » abandonné : aucune réponse du graphe audio")
+        self.log(_("ZMQ “{message}” abandoned: no answer from the audio graph", message=msg))

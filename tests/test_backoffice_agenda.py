@@ -63,8 +63,8 @@ def test_modification_et_suppression(env, prog):
 
 
 @pytest.mark.parametrize("champ, valeur, mot", [
-    ("title", "", "titre"), ("kind", "khutba", "Type"), ("weekday", "lundy", "jour"),
-    ("after", "fajr", "prière"), ("session", "x", "séance"), ("max_min", "-3", "positive"),
+    ("title", "", "title"), ("kind", "khutba", "type"), ("weekday", "lundy", "weekday"),
+    ("after", "fajr", "prayer"), ("session", "x", "session"), ("max_min", "-3", "positive"),
 ])
 def test_refus_des_valeurs_invalides(env, prog, champ, valeur, mot):
     r = client(env, "admin").ecrire("/events", {**DARS, champ: valeur})
@@ -74,7 +74,7 @@ def test_refus_des_valeurs_invalides(env, prog, champ, valeur, mot):
 
 def test_date_sans_heure_refusee(env, prog):
     r = client(env, "admin").ecrire("/events", {**CONF, "time": ""})
-    assert r.status_code == 422 and "heure" in r.json()["message"]
+    assert r.status_code == 422 and "time" in r.json()["message"]
 
 
 def test_droits_et_jeton(env, prog):

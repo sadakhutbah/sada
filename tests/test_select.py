@@ -86,7 +86,7 @@ def test_repli_sans_modele(monkeypatch):
     wins = S.select_clips(segs, 160.0, 3, use_llm=False, log=logs.append)
     assert 1 <= len(wins) <= 3
     assert all(w["method"] == "heuristique" for w in wins)
-    assert any("candidats" in l for l in logs) and any("retenu" in l for l in logs)
+    assert any("candidates" in l for l in logs) and any("kept" in l for l in logs)
 
     # modèle indisponible : chaque lot retombe sur l'heuristique, rien ne lève
     monkeypatch.setattr(S.llm, "ask_json", lambda prompt, timeout, log: None)

@@ -12,6 +12,7 @@ import os
 import sys
 from pathlib import Path
 
+from ..i18n import _
 from .. import paths, runs
 from ..text import duration as fmt_t
 from . import clips as clipmod
@@ -61,12 +62,12 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
     o = SessionOutput(outdir)
     o.dir.mkdir(parents=True, exist_ok=True)
     wav = str(o.audio)
-    log(f"[{label}] extraction audio {start:.1f}→{end}")
+    log(_("[{label}] audio extraction {start:.1f}→{end}", label=label, start=start, end=end))
     tr.extract_audio(src, wav, start, end)
     res = o.read(o.transcript, None) if not retranscribe else None
     key = transcript_key(src, start, end)
     if res and not transcript_matches(res, key, wav):
-        log(f"[{label}] transcription en cache faite sur un autre extrait : retranscription")
+        log(_("[{label}] cached transcript was made on another excerpt: transcribing again", label=label))
         res = None
     if not res:
         res = tr.transcribe(wav, str(o.transcript), model, log, arabic_retry=arabic_retry)
@@ -74,14 +75,15 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
         o.write(o.transcript, res)
     segs = res["segments"]
     o.transcript_md.write_text("# Transcription — " + label + "\n\n" + "\n".join(f"- **[{fmt_t(s['start'])}]** {s['text']}" for s in segs), encoding="utf-8")
-    log("chargement du Coran + index")
+    log(_("loading the Quran + index"))
     idx = VerseIndex(load_verses())
     ms = to_dicts(detect(segs, idx))
     o.write(o.verses, ms)
-    log(f"{len(ms)} versets détectés : " + ", ".join(f"{m['ref']}@{fmt_t(m['start'])}({m['score']:.0f})" for m in ms))
+    log(_("{count} verses detected: {refs}", count=len(ms),
+          refs=", ".join(f"{m['ref']}@{fmt_t(m['start'])}({m['score']:.0f})" for m in ms)))
     md, extra = notemod.build_notes(label, segs, ms, res, use_llm, log)
     o.notes.write_text(md, encoding="utf-8")
-    log(f"notes -> {o.notes} (résumé : {extra['summary'].get('method')})")
+    log(_("notes -> {path} (summary: {method})", path=o.notes, method=extra["summary"].get("method")))
     manifest = []
     o.clips.mkdir(exist_ok=True)
     # Extraits d'abord, traduction ensuite : une khutba de 20 minutes devient 1-3 clips d'environ
@@ -93,7 +95,7 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
     if nclips:
         wins = selmod.select_clips(segs, res["duration"], nclips, use_llm=use_llm, log=log)
     if nclips and not wins:
-        log("aucun clip publiable : rien n'est monté")
+        log(_("no publishable clip: nothing is edited"))
     # No clips to subtitle: translating the session would burn the model for text nobody reads.
     trs = (trmod.translate_session(segs, ms, o.translations, use_llm, log=log,
                                    only=[(w["start"], w["end"]) for w in wins])
@@ -104,11 +106,12 @@ def process(src: str, start: float, end: float | None, label: str, outdir: Path,
             vsrc = clip_video
             if align:
                 voff, sharp = clipmod.align_offset(wav, clip_video)
-                log(f"clips : {Path(clip_video).name} alignée par l'audio, décalage {voff:+.2f} s (netteté {sharp:.0f})")
+                log(_("clips: {name} aligned on the audio, offset {offset:+.2f} s (sharpness {sharp:.0f})",
+                      name=Path(clip_video).name, offset=voff, sharp=sharp))
                 if sharp < 8:
-                    log("clips : alignement douteux -> retour à l'enregistrement")
+                    log(_("clips: doubtful alignment -> back to the recording"))
                     vsrc, voff = src, start
-        log(f"clips : vidéo {vsrc}")
+        log(_("clips: video {video}", video=vsrc))
         for i, w in enumerate(wins, 1):
             out = clipmod.make_clip(segs, ms, trs, w, i, 1, vsrc, voff, o.clips, header, crop, log,
                                     logo=logo, brand=brand)
@@ -121,7 +124,7 @@ def _clip_video(clean: str | None) -> str | None:
     """Camera recording without overlay (same ffmpeg process -> same positions), if it exists."""
     if clean and Path(clean).exists() and Path(clean).stat().st_size > 0:
         return clean
-    log("pas d'enregistrement propre (live_*_clean.mkv) : clips taillés dans l'enregistrement AVEC habillage")
+    log(_("no clean recording (live_*_clean.mkv): clips cut from the recording WITH branding"))
     return None
 
 
@@ -142,45 +145,48 @@ def apply_llm_options(a) -> None:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("sessions", nargs="?", help="sessions.json écrit par l'orchestrateur (défaut : le dernier run)")
+    ap.add_argument("sessions", nargs="?",
+                    help=_("sessions.json written by the orchestrator (default: the latest run)"))
     ap.add_argument("--input")
     ap.add_argument("--start", type=float, default=0.0)
     ap.add_argument("--end", type=float)
     ap.add_argument("--label", default="session")
     ap.add_argument("--out", default=str(paths.OUTPUT))
-    ap.add_argument("--model", help="large-v3 | large-v3-turbo | medium | small | cpu | force (retranscrire)")
+    ap.add_argument("--model", help=_("large-v3 | large-v3-turbo | medium | small | cpu | force (transcribe again)"))
     ap.add_argument("--llm", action=argparse.BooleanOptionalAction, default=None,
-                    help="activer ou couper l'appel au modèle (défaut : SADA_LLM_ENABLED, sinon activé)")
+                    help=_("enable or cut the model call (default: SADA_LLM_ENABLED, otherwise enabled)"))
     ap.add_argument("--llm-url", default=os.environ.get("SADA_LLM_URL"),
-                    help="endpoint du modèle (défaut : http://127.0.0.1:11434/v1, Ollama)")
+                    help=_("model endpoint (default: http://127.0.0.1:11434/v1, Ollama)"))
     ap.add_argument("--llm-model", default=os.environ.get("SADA_LLM_MODEL"),
-                    help="nom du modèle côté serveur (ex. qwen2.5:7b-instruct)")
+                    help=_("model name on the server side (e.g. qwen2.5:7b-instruct)"))
     ap.add_argument("--llm-protocol", default=os.environ.get("SADA_LLM_PROTOCOL"), choices=["openai", "anthropic", "claude-cli"],
-                    help="format d'API (déduit de l'URL si absent)")
+                    help=_("API format (deduced from the URL when absent)"))
     ap.add_argument("--no-clips", action="store_true")
     ap.add_argument("--clips", type=int, default=None,
-                    help=f"extraits par khutba (défaut : réglage du back-office, sinon {reglages.DEFAULT_CLIPS}) ; 0 = aucun")
+                    help=_("clips per khutba (default: the back-office setting, otherwise {default}); 0 = none",
+                           default=reglages.DEFAULT_CLIPS))
     ap.add_argument("--only-session", type=int)
-    ap.add_argument("--clip-source", help="vidéo pour les clips (défaut : enregistrement propre live_*_clean.mkv s'il existe) ; "
-                    "suffixe @auto = autre vidéo de la même khutba, alignée par l'audio")
-    ap.add_argument("--crop", help="recadrage 9:16 : x=0.52,top=0,bottom=0.15 (fractions ; bottom = bandeau incrusté à exclure)")
+    ap.add_argument("--clip-source", help=_("video for the clips (default: the clean recording live_*_clean.mkv if it "
+                                            "exists); the @auto suffix = another video of the same khutba, aligned by audio"))
+    ap.add_argument("--crop", help=_("9:16 crop: x=0.52,top=0,bottom=0.15 (fractions; bottom = burnt-in banner to exclude)"))
     ap.add_argument("--title", default=clipmod.DEFAULT_TITLE)
-    ap.add_argument("--subtitle", default="", help="ligne sous le titre des clips (ex. mosquée · date)")
+    ap.add_argument("--subtitle", default="", help=_("line under the clip title (e.g. mosque · date)"))
     ap.add_argument("--arabic-retry", action=argparse.BooleanOptionalAction, default=None,
-                    help="retranscrire en arabe les citations rendues en français incohérent "
-                         "(défaut : SADA_ARABIC_RETRY, sinon activé)")
-    ap.add_argument("--logo", help="logo de la mosquée (PNG/JPG) dans l'en-tête des clips")
-    ap.add_argument("--brand-green", help="vert de la mosquée (#RRGGBB) ; défaut : couleurs actuelles")
-    ap.add_argument("--brand-gold", help="or de la mosquée (#RRGGBB) ; défaut : couleurs actuelles")
-    ap.add_argument("--glossary", help="glossaire JSON des termes islamiques "
-                                       "(défaut : SADA_GLOSSARY, sinon data/glossary.json, sinon le glossaire du code)")
+                    help=_("transcribe again in Arabic the quotations rendered as incoherent French "
+                           "(default: SADA_ARABIC_RETRY, otherwise enabled)"))
+    ap.add_argument("--logo", help=_("mosque logo (PNG/JPG) in the clip header"))
+    ap.add_argument("--brand-green", help=_("mosque green (#RRGGBB); default: current colours"))
+    ap.add_argument("--brand-gold", help=_("mosque gold (#RRGGBB); default: current colours"))
+    ap.add_argument("--glossary", help=_("JSON glossary of Islamic terms "
+                                         "(default: SADA_GLOSSARY, otherwise data/glossary.json, otherwise the code glossary)"))
     a = ap.parse_args(argv)
     if a.glossary:
         os.environ["SADA_GLOSSARY"] = a.glossary
     apply_llm_options(a)
-    log(f"modèle : {llm.label() if llm.enabled() else 'désactivé (repli sans IA)'}")
+    model_label = llm.label() if llm.enabled() else _("disabled (fallback without AI)")
+    log(_("model: {model}", model=model_label))
     nclips = nclips_option(a)
-    log("extraits par khutba : " + (str(nclips) if nclips else "aucun"))
+    log(_("clips per khutba: {count}", count=nclips) if nclips else _("clips per khutba: none"))
     if tr.setup_env() and not os.environ.get("SADA_REEXEC"):
         os.environ["SADA_REEXEC"] = "1"
         os.execv(sys.executable, [sys.executable, "-m", "sada.pipeline.run"] + (argv if argv is not None else sys.argv[1:]))
@@ -195,7 +201,7 @@ def main(argv=None):
         "crop": {k: float(v) for k, v in (kv.split("=") for kv in a.crop.split(","))} if a.crop else None,
         "header": {"title": a.title, "subtitle": a.subtitle} if a.title else None,
     }
-    forced, _, mode = (a.clip_source or "").partition("@")
+    forced, _sep, mode = (a.clip_source or "").partition("@")
     if forced:
         opts["align"] = mode == "auto"
     if a.input:
@@ -204,23 +210,25 @@ def main(argv=None):
         return
     sj = Path(a.sessions) if a.sessions else runs.latest()
     if sj is None:
-        sys.exit("aucun run dans " + str(paths.STATE))
+        sys.exit(_("no run in {path}", path=paths.STATE))
     data = runs.load(sj)
     for s in data["sessions"]:
         if a.only_session is not None and s["index"] != a.only_session:
             continue
         if not runs.is_done(s):
-            log(f"session {s['index']} ({s['planned']}) ignorée : statut={s['status']}")
+            log(_("session {index} ({planned}) skipped: status={status}",
+                  index=s["index"], planned=s["planned"], status=s["status"]))
             continue
         live, clean = runs.sources(data, s)
         if not live:
-            log(f"session {s['index']} ({s['planned']}) ignorée : aucun enregistrement")
+            log(_("session {index} ({planned}) skipped: no recording", index=s["index"], planned=s["planned"]))
             continue
         sopts = dict(opts, header=session_header(s, data, a)) if opts["header"] else opts
         r = process(live, s["start_pos"], s["end_pos"], f"{runs.session_dir(s['index'])}_{s['planned'].replace(':', 'h')}",
                     out / data["run_id"] / runs.session_dir(s["index"]),
                     clip_video=forced or _clip_video(clean), **sopts)
-        log(f"session {s['index']} : {r['segments']} segments, {r['verses']} versets, {len(r['clips'])} clips")
+        log(_("session {index}: {segments} segments, {verses} verses, {clips} clips",
+              index=s["index"], segments=r["segments"], verses=r["verses"], clips=len(r["clips"])))
 
 
 def session_header(s: dict, data: dict, a) -> dict:

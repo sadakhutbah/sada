@@ -41,11 +41,11 @@ def test_normaliser_refuse_les_valeurs_illisibles(brut):
 
 
 def test_verifier_refuse_un_element_vide():
-    with pytest.raises(ValueError, match="titre"):
+    with pytest.raises(ValueError, match="title"):
         h.verifier(opts(title=""))
-    with pytest.raises(ValueError, match="intervenant"):
+    with pytest.raises(ValueError, match="speaker"):
         h.verifier(opts(speaker=""))
-    with pytest.raises(ValueError, match="aucun"):
+    with pytest.raises(ValueError, match="No branding"):
         h.verifier(h.normaliser({k: False for k in h.BOOLEENS}))
     h.verifier(opts(title="", intro_on=False))
 

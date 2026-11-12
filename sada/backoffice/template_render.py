@@ -24,6 +24,8 @@ import tempfile
 import threading
 from pathlib import Path
 
+from ..i18n import _
+
 FONTS = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
 
 # The browser is shipped with the application, not borrowed from the machine: Playwright downloads
@@ -88,8 +90,8 @@ def browser_path() -> str:
         if Path(candidate).is_file():
             return candidate
     raise RenderUnavailable(
-        "aucun navigateur de rendu : lancez `python -m sada.backoffice fetch-engine` "
-        "pour télécharger celui fourni avec l'application")
+        _("no rendering browser: run `python -m sada.backoffice fetch-engine` "
+          "to download the one shipped with the application"))
 
 
 ENGINE_VERSION_URL = ("https://googlechromelabs.github.io/chrome-for-testing/"
@@ -130,8 +132,9 @@ def fetch_engine(version: str | None = None, keep_zip: bool = False) -> Path:
         if item["platform"] == plateforme:
             url = item["url"]
     if not url:
-        raise RenderUnavailable(f"pas de paquet pour la plateforme {plateforme}")
-    print(f"Rendu : téléchargement de {ENGINE} {version} ({plateforme})…")
+        raise RenderUnavailable(_("no package for platform {platform}", platform=plateforme))
+    print(_("Render: downloading {engine} {version} ({platform})…",
+            engine=ENGINE, version=version, platform=plateforme))
     with urllib.request.urlopen(url, timeout=600) as r:                 # noqa: S310 — fixed host
         blob = r.read()
     cible = EMBEDDED
@@ -145,9 +148,10 @@ def fetch_engine(version: str | None = None, keep_zip: bool = False) -> Path:
         candidate = cible / name
         if candidate.is_file():
             candidate.chmod(0o755)
-            print(f"Rendu : navigateur installé ({candidate.parent.name}, {version})")
+            print(_("Render: browser installed ({folder}, {version})",
+                    folder=candidate.parent.name, version=version))
             return candidate
-    raise RenderUnavailable("archive téléchargée sans exécutable")
+    raise RenderUnavailable(_("downloaded archive has no executable"))
 
 
 class _Cdp:
@@ -176,7 +180,7 @@ class _Cdp:
             data = json.loads(raw)
             if data.get("id") == msg["id"]:
                 if "error" in data:
-                    raise RenderUnavailable(f"{method} : {data['error'].get('message')}")
+                    raise RenderUnavailable(_("{method}: {error}", method=method, error=data["error"].get("message")))
                 return data.get("result") or {}
             # events are ignored: this client only ever waits on its own replies
 
@@ -202,7 +206,7 @@ class _Cdp:
         self._stage.write_text(page, encoding="utf-8")
         await self.call("Page.navigate", {"url": "file://" + str(self._stage)})
         # fonts are embedded, but layout still settles: wait for the document to say it is ready
-        for _ in range(20):
+        for _attempt in range(20):
             ready = await self.call("Runtime.evaluate", {
                 "expression": "document.readyState === 'complete' && document.fonts.status === 'loaded'",
                 "returnByValue": True})
@@ -262,7 +266,7 @@ class TemplateRender:
         self._thread = threading.Thread(target=self._run_loop, name="template-render", daemon=True)
         self._thread.start()
         if not self._ready.wait(self.timeout):
-            raise RenderUnavailable("navigateur de rendu : démarrage trop long")
+            raise RenderUnavailable(_("rendering browser: startup too slow"))
         if self._failure is not None:
             raise RenderUnavailable(str(self._failure))
 
@@ -305,7 +309,7 @@ class TemplateRender:
                 url = match.group(0)
                 break
         if not url:
-            raise RenderUnavailable("navigateur : adresse de débogage introuvable")
+            raise RenderUnavailable(_("browser: debugging address not found"))
         self._cdp = _Cdp(url, self._loop)          # type: ignore[arg-type]
         self._cdp._stage = self._stage
         await self._cdp.connect()
@@ -333,7 +337,7 @@ class TemplateRender:
     def image(self, page: str, variables: dict | None = None) -> bytes:
         """PNG of one screen. Raises ``RenderUnavailable`` if the browser is gone."""
         if self._loop is None or self._cdp is None:
-            raise RenderUnavailable("navigateur de rendu non démarré")
+            raise RenderUnavailable(_("rendering browser not started"))
         if variables:
             for name, value in variables.items():
                 page = page.replace("{" + name + "}", value or "")
@@ -346,4 +350,4 @@ class TemplateRender:
             try:
                 return future.result(self.timeout)
             except Exception as e:                 # noqa: BLE001 — the caller decides to fall back
-                raise RenderUnavailable(f"rendu de l'écran impossible ({e})") from e
+                raise RenderUnavailable(_("screen rendering impossible ({error})", error=e)) from e

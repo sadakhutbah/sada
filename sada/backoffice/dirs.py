@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 from .. import paths
+from ..i18n import _
 
 # sub-folders of /mnt that are not user disks (internal to Windows/WSL)
 SKIP_MT = {"wsl", "wslg", "host", "cgroup", "host_mnt"}
@@ -29,9 +30,9 @@ def roots() -> list[dict]:
         except OSError:
             pass
 
-    add(paths.ROOT, "Dossier du programme")
-    add(Path.home(), "Dossier personnel")
-    known = {"/mnt": "Disques Windows", "/media": "Périphériques", "/srv": "Services", "/data": "Données"}
+    add(paths.ROOT, _("Program folder"))
+    add(Path.home(), _("Home folder"))
+    known = {"/mnt": _("Windows drives"), "/media": _("Devices"), "/srv": _("Services"), "/data": _("Data")}
     for base in known:
         b = Path(base)
         if not b.is_dir():
@@ -42,11 +43,11 @@ def roots() -> list[dict]:
                 if child.name in SKIP or (base == "/mnt" and child.name in SKIP_MT) or not child.is_dir():
                     continue
                 # "/mnt/c" -> "Disque C:", readable by a Windows user
-                label = f"Disque {child.name.upper()}:" if base == "/mnt" and len(child.name) == 1 else child.name
+                label = _("Drive {letter}:", letter=child.name.upper()) if base == "/mnt" and len(child.name) == 1 else child.name
                 add(child, label)
         except OSError:
             pass
-    add(Path("/"), "Racine du disque")
+    add(Path("/"), _("Disk root"))
     return out
 
 
@@ -56,7 +57,7 @@ def listing(path: str | None) -> dict:
     try:
         p = p.resolve()
     except OSError:
-        raise ValueError("chemin illisible") from None
+        raise ValueError(_("unreadable path")) from None
     if not p.is_dir():
         return {"path": str(p), "parent": str(p.parent) if p.parent != p else None,
                 "exists": False, "writable": False, "entries": []}
@@ -101,14 +102,14 @@ def check(path: str, create_if_missing: bool = False) -> tuple[bool, str]:
     """Checks that a chosen folder is suitable; creates it if missing and requested."""
     p = Path(path).expanduser()
     if p.exists() and not p.is_dir():
-        return False, "un fichier porte déjà ce nom"
+        return False, _("a file already has this name")
     if not p.exists():
         if not create_if_missing:
-            return False, "ce dossier n'existe pas encore"
+            return False, _("this folder does not exist yet")
         try:
             p.mkdir(parents=True)
         except OSError as e:
-            return False, f"impossible de le créer ({e.strerror or e})"
+            return False, _("cannot create it ({error})", error=e.strerror or e)
     if not os.access(p, os.W_OK):
-        return False, "dossier en lecture seule pour le programme"
+        return False, _("folder is read-only for the program")
     return True, ""

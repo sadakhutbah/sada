@@ -12,6 +12,8 @@ import urllib.request
 from typing import Callable
 from urllib.parse import urlencode
 
+from .i18n import _
+
 Fetch = Callable[[str, str], dict]
 
 
@@ -40,11 +42,11 @@ def from_backoffice(backoffice_url: str, api_port: int, fetch: Fetch | None = No
     try:
         data = (fetch or _http_get)(url, token()) or {}
     except Exception as e:                        # noqa: BLE001 — any failure: keep the local setting
-        log(f"Direct : entrée vidéo du back-office injoignable ({e}) — configuration locale conservée")
+        log(_("Live: back-office video input unreachable ({error}) — local setting kept", error=e))
         return ""
     adresse = str(data.get("url") or "").strip()
     if adresse:
-        log(f"Direct : entrée vidéo lue dans le back-office ({adresse.split('://')[0]})")
+        log(_("Live: video input read from the back office ({protocol})", protocol=adresse.split("://")[0]))
     else:
-        log("Direct : aucune entrée vidéo enregistrée dans le back-office — configuration locale conservée")
+        log(_("Live: no video input saved in the back office — local setting kept"))
     return adresse

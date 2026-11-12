@@ -16,6 +16,7 @@ import sqlite3
 from pathlib import Path
 
 from .. import defaults, paths
+from ..i18n import _
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import migrations, models
@@ -112,7 +113,7 @@ def update_mosque(conn, mosque_id: int, **vals) -> None:
         try:
             ZoneInfo(vals["timezone"] or DEFAULT_TZ)
         except (ValueError, ZoneInfoNotFoundError):
-            raise ValueError(f"fuseau horaire inconnu : {vals['timezone']} (ex. Europe/Paris)") from None
+            raise ValueError(_("unknown time zone: {zone} (e.g. Europe/Paris)", zone=vals["timezone"])) from None
     if vals:
         conn.execute(f"UPDATE mosques SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), mosque_id))
 

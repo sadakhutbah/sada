@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
+from ..i18n import _
 from . import db
 
 BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
@@ -20,7 +21,7 @@ PREFIX_MAX = 120
 
 class InvalidStorage(Exception):
     def __init__(self, erreurs: dict[str, str]):
-        super().__init__("Configuration du compartiment refusée.")
+        super().__init__(_("Bucket configuration refused."))
         self.erreurs = erreurs
 
 
@@ -39,20 +40,20 @@ def check(endpoint: str, bucket: str, region: str, prefix: str, access_key: str)
     if e:
         u = urlsplit(e)
         if u.scheme not in ("https", "http") or not u.netloc:
-            err["endpoint"] = "Adresse commençant par https:// (celle du service, pas du compartiment)."
+            err["endpoint"] = _("Address must start with https:// (the service's address, not the bucket's).")
         elif u.path not in ("", "/"):
-            err["endpoint"] = "Retirez le chemin : seul l'hôte compte (https://<compte>.r2.cloudflarestorage.com)."
+            err["endpoint"] = _("Remove the path: only the host counts (https://<account>.r2.cloudflarestorage.com).")
         for interdit in (" ", "\t"):
             if interdit in e:
-                err["endpoint"] = "L'adresse ne doit pas contenir d'espace."
+                err["endpoint"] = _("The address must not contain a space.")
     if not b:
-        err["bucket"] = "Nom du compartiment requis."
+        err["bucket"] = _("Bucket name required.")
     elif not BUCKET_RE.match(b) or ".." in b:
-        err["bucket"] = "Nom invalide : minuscules, chiffres, points et tirets (3 à 63 caractères)."
+        err["bucket"] = _("Invalid name: lowercase letters, digits, dots and hyphens (3 to 63 characters).")
     if len(p) > PREFIX_MAX:
-        err["prefix"] = f"Dossier trop long ({PREFIX_MAX} caractères au plus)."
+        err["prefix"] = _("Folder too long ({max} characters at most).", max=PREFIX_MAX)
     if not k:
-        err["access_key"] = "Clé d'accès requise."
+        err["access_key"] = _("Access key required.")
     if err:
         raise InvalidStorage(err)
     return {"endpoint": e.rstrip("/"), "region": r, "bucket": b,
@@ -85,7 +86,7 @@ def save(conn, mosque_id: int, payload: dict) -> dict:
     if secret in ("", db.MASK):
         secret = avant.get("secret_key") or ""
     if not secret:
-        raise InvalidStorage({"secret_key": "Clé secrète requise."})
+        raise InvalidStorage({"secret_key": _("Secret key required.")})
     # Opt-in: without an explicit "on", the replays stay on the machine.
     actif = str(payload.get("enabled", "0")).strip().lower() in ("1", "true", "on", "oui", "yes")
     conn.execute(
@@ -122,4 +123,5 @@ def probe(target: dict) -> tuple[bool, str]:
         client.delete_object(Bucket=target["bucket"], Key=cle)
     except Exception as e:                                  # noqa: BLE001 — toute erreur se raconte
         return False, upload.human(e)
-    return True, f"Écriture acceptée dans « {target['bucket']} » ({target['prefix']})."
+    return True, _("Write accepted in \"{bucket}\" ({prefix}).",
+                   bucket=target["bucket"], prefix=target["prefix"])

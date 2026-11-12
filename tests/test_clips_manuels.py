@@ -96,19 +96,19 @@ def test_ajustement_des_bornes_d_un_clip_propose(env, rendu):
     # published: frozen
     conn.execute("UPDATE clips SET status = 'publie' WHERE id = ?", (cid,))
     r = c.ecrire(f"/clips/{cid}/bounds", {"start": "2", "end": "13"})
-    assert r.status_code == 422 and "publié" in r.json()["message"]
+    assert r.status_code == 422 and "published" in r.json()["message"]
     assert _clip(conn, cid)["start"] == 1.0
 
 
 @pytest.mark.parametrize("corps, motif", [
-    ({"start": "10", "end": "5"}, "après le début"),
-    ({"start": "-1", "end": "8"}, "avant le début"),
-    ({"start": "0", "end": "2"}, "durée invalide"),
-    ({"start": "0", "end": "400"}, "durée invalide"),
-    ({"start": "8", "end": "30"}, "au-delà de la fin"),          # the khutba lasts 20 s
-    ({"start": "abc", "end": "8"}, "illisibles"),
-    ({"start": "nan", "end": "8"}, "illisibles"),
-    ({"start": "0", "end": "8", "kind": "inconnu"}, "type de clip"),
+    ({"start": "10", "end": "5"}, "after the start"),
+    ({"start": "-1", "end": "8"}, "before the recording"),
+    ({"start": "0", "end": "2"}, "invalid duration"),
+    ({"start": "0", "end": "400"}, "invalid duration"),
+    ({"start": "8", "end": "30"}, "past the end of the recording"),  # the khutba lasts 20 s
+    ({"start": "abc", "end": "8"}, "unreadable"),
+    ({"start": "nan", "end": "8"}, "unreadable"),
+    ({"start": "0", "end": "8", "kind": "inconnu"}, "unknown clip type"),
 ])
 def test_bornes_invalides_refusees(env, rendu, corps, motif):
     conn, kid = env["conn"], env["kid"]
@@ -137,7 +137,7 @@ def test_permissions_et_source_absente(env, monkeypatch):
     d = c.get(f"/api/v1/sermons/{kid}").json()["manual_clip"]
     assert not d["allowed"] and d["reason"] and "/" not in d["reason"]
     r = c.ecrire(f"/sermons/{kid}/clips", {"start": "0", "end": "8"})
-    assert r.status_code == 422 and "impossible" in r.json()["message"]
+    assert r.status_code == 422 and "cannot be produced" in r.json()["message"]
     assert db.one(conn, "SELECT COUNT(*) n FROM clips")["n"] == 2
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
+from ..i18n import _
 from . import db
 
 SCHEMES = ("rtmp://", "rtmps://")
@@ -40,16 +41,16 @@ def check(url: str | None) -> tuple[str, str]:
     """(address trimmed, error message): the address must be a usable RTMP/RTMPS URL."""
     url = (url or "").strip()
     if not url:
-        return "", "L'adresse de diffusion est obligatoire."
+        return "", _("The stream address is required.")
     if not url.startswith(SCHEMES):
-        return url, "L'adresse doit commencer par rtmp:// ou rtmps://."
+        return url, _("The address must start with rtmp:// or rtmps://.")
     if re.search(r"\s", url):
-        return url, "L'adresse ne doit pas contenir d'espace."
+        return url, _("The address must not contain a space.")
     parts = urlsplit(url)
     if not parts.hostname:
-        return url, "L'adresse de diffusion n'indique pas de serveur."
+        return url, _("The stream address has no server.")
     if not parts.path.strip("/"):
-        return url, "L'adresse de diffusion n'indique pas de clé (dernier segment)."
+        return url, _("The stream address has no key (last segment).")
     return url, ""
 
 
@@ -74,9 +75,9 @@ def _stored(conn, mosque_id: int, target_id) -> str:
 def save(conn, mosque, targets, user) -> list[dict]:
     """Replaces the whole list in one gesture (the screen sends it complete)."""
     if not isinstance(targets, list):
-        raise InvalidTarget("Liste de destinations illisible.")
+        raise InvalidTarget(_("Unreadable destination list."))
     if len(targets) > MAX_TARGETS:
-        raise InvalidTarget(f"{MAX_TARGETS} destinations au maximum.")
+        raise InvalidTarget(_("{max_targets} destinations maximum.", max_targets=MAX_TARGETS))
     clean: list[dict] = []
     seen: set[str] = set()
     for i, t in enumerate(targets, start=1):
@@ -88,9 +89,9 @@ def save(conn, mosque, targets, user) -> list[dict]:
         else:
             url, err = check(raw)
         if err:
-            raise InvalidTarget(f"Destination {i} : {err}")
+            raise InvalidTarget(_("Destination {number}: {error}", number=i, error=err))
         if url in seen:
-            raise InvalidTarget(f"Destination {i} : cette adresse est déjà dans la liste.")
+            raise InvalidTarget(_("Destination {number}: this address is already in the list.", number=i))
         seen.add(url)
         label = str(t.get("label") or "").strip()[:LABEL_MAX] or label_for(url)
         enabled = str(t.get("enabled", "1")).strip().lower() not in ("0", "false", "off", "non", "")

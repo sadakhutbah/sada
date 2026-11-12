@@ -13,6 +13,8 @@ from __future__ import annotations
 import html
 import re
 
+from ..i18n import translate
+
 # Palette et polices du back-office, recopiées telles quelles pour que la page ait l'air d'en faire
 # partie sans dépendre du build du front.
 _TEMPLATE = """<!doctype html>
@@ -255,9 +257,9 @@ def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr",
         if ligne.startswith("# "):
             nom = ligne[2:].strip()
             break
-    pied = "Document servi par Sadā. Il se met à jour avec l'application."
-    retour, texte = (("Back to the back office", "Plain text") if lang == "en"
-                     else ("Retour au back-office", "Version texte"))
+    pied = translate("Document served by Sadā. It is updated with the application.", lang)
+    retour = translate("Back to the back office", lang)
+    texte = translate("Plain text", lang)
     lien = (f'<a href="{html.escape(source, quote=True)}">{texte}</a>' if source else "")
     lien_langue = (f'<a href="{html.escape(alterne[0], quote=True)}">{html.escape(alterne[1])}</a>'
                    if alterne else "")

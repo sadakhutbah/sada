@@ -89,7 +89,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                 traitement.tour(conn, m, log=lambda msg: print("[traitement]", msg, flush=True))
                 importer.scan(conn, m, log=lambda msg: print("[import]", msg, flush=True))
         except Exception as e:  # noqa: BLE001
-            print("[import] erreur :", e, flush=True)
+            print(_("[import] error:"), e, flush=True)
         finally:
             conn.close()
 
@@ -393,6 +393,6 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     else:
         @app.get("/")
         def _front_absent():
-            return JSONResponse({"error": "front non construit : npm --prefix web run build"}, status_code=503)
+            return JSONResponse({"error": _("Front not built: npm --prefix web run build")}, status_code=503)
 
     return app

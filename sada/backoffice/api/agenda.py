@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Request
 
 from ... import events as events_mod
+from ...i18n import _
 from ...text import JOURS
 from .. import db
 from ..context import Ctx, CtxDep, Invalid, NotFound
@@ -35,7 +36,7 @@ def _agenda_read(path: Path) -> list[dict]:
     try:
         return events_mod.read_raw(path)
     except ValueError as e:
-        raise Invalid(f"Le programme est illisible, corrigez-le d'abord : {e}") from e
+        raise Invalid(_("The schedule file cannot be read, fix it first: {error}", error=e)) from e
 
 
 def _agenda_clean(f: dict, uid: str) -> dict:
@@ -43,23 +44,23 @@ def _agenda_clean(f: dict, uid: str) -> dict:
     s = lambda k: (f.get(k) or "").strip()                                   # noqa: E731
     kind = s("kind").lower() or "dars"
     if kind not in AGENDA_KINDS:
-        raise Invalid("Type inconnu : choisissez un dars ou une conférence.")
+        raise Invalid(_("Unknown type: choose a dars or a conference."))
     raw: dict = {"uid": uid, "kind": kind, "title": s("title")[:200], "speaker": s("speaker")[:120],
                  "series": s("series")[:200], "publish": s("publish").lower() not in ("0", "false", "non", "off")}
     if s("session"):
         try:
             raw["session"] = int(s("session"))
         except ValueError as e:
-            raise Invalid("Le numéro de séance doit être un nombre entier.") from e
+            raise Invalid(_("The session number must be a whole number.")) from e
         if raw["session"] < 1:
-            raise Invalid("Le numéro de séance doit être positif.")
+            raise Invalid(_("The session number must be positive."))
     if s("max_min"):
         try:
             raw["max_min"] = float(s("max_min").replace(",", "."))
         except ValueError as e:
-            raise Invalid("La durée maximale doit être un nombre de minutes.") from e
+            raise Invalid(_("The maximum duration must be a number of minutes.")) from e
         if raw["max_min"] <= 0:
-            raise Invalid("La durée maximale doit être positive.")
+            raise Invalid(_("The maximum duration must be positive."))
     if s("mode") == "weekly":
         rec: dict = {"weekday": s("weekday").lower()}
         if s("after"):
@@ -67,7 +68,7 @@ def _agenda_clean(f: dict, uid: str) -> dict:
             try:
                 rec["offset_min"] = float(s("offset_min").replace(",", ".") or 0)
             except ValueError as e:
-                raise Invalid("Le décalage doit être un nombre de minutes.") from e
+                raise Invalid(_("The offset must be a number of minutes.")) from e
         else:
             rec["time"] = s("time")
         raw["recurrence"] = rec
@@ -76,7 +77,10 @@ def _agenda_clean(f: dict, uid: str) -> dict:
     try:
         events_mod.parse(raw)
     except ValueError as e:
-        raise Invalid(re.sub(r"^événement #\d+( \([^)]*\))? : ", "", str(e)).capitalize() + ".") from e
+        # `sada.events` prefixes its message with the event number: keep the reason, readable.
+        msg = re.sub(r"^(?:événement|event) #\d+( \([^)]*\))? ?: ?", "", str(e), flags=re.IGNORECASE).strip()
+        msg = msg[:1].upper() + msg[1:]
+        raise Invalid(msg if msg.endswith(".") else msg + ".") from e
     return raw
 
 
@@ -133,7 +137,7 @@ async def event_create(ctx: CtxDep):
         events_mod.write_raw(path, [*items, raw])
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.cree", "programme", None, ip=ctx.ip,
              uid=raw["uid"], type=raw["kind"], titre=raw["title"])
-    return _ok(f"« {raw['title']} » ajouté au programme.", id=raw["uid"])
+    return _ok(_("“{title}” added to the schedule.", title=raw["title"]), id=raw["uid"])
 
 
 @router.put("/events/{uid}")
@@ -151,7 +155,7 @@ async def event_update(uid: str, ctx: CtxDep):
         events_mod.write_raw(path, items)
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.modifie", "programme", None, ip=ctx.ip,
              uid=uid, type=raw["kind"], titre=raw["title"])
-    return _ok(f"« {raw['title']} » mis à jour.", id=uid)
+    return _ok(_("“{title}” updated.", title=raw["title"]), id=uid)
 
 
 @router.delete("/events/{uid}")
@@ -168,4 +172,4 @@ async def event_delete(uid: str, ctx: CtxDep):
         events_mod.write_raw(path, items)
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.supprime", "programme", None, ip=ctx.ip,
              uid=uid, type=gone.get("kind"), titre=gone.get("title"))
-    return _ok(f"« {gone.get('title')} » retiré du programme.")
+    return _ok(_("“{title}” removed from the schedule.", title=gone.get("title")))

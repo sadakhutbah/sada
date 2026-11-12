@@ -349,7 +349,7 @@ def test_regeneration_refusee_sans_correction():
     """The button is only offered on a corrected clip; a direct POST must not overwrite a validation."""
     from sada.backoffice import content
     clip = {"id": 1, "mosque_id": 1, "version": 1, "needs_regen": 0, "regen_state": ""}
-    with pytest.raises(ValueError, match="aucune correction"):
+    with pytest.raises(ValueError, match="no correction to apply"):
         content.start_regeneration(None, "x.db", clip, {"id": 1})
 
 
@@ -447,7 +447,7 @@ def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
                                  "protocol": "openai"}, methode="PUT")
     r = c.ecrire("/settings/model/test")
     assert r.status_code == 422
-    assert "injoignable" in r.json()["message"]
+    assert "unreachable" in r.json()["message"]
 
 
 def test_commande_live_orchestrateur_absent(env):
@@ -610,7 +610,7 @@ def test_rien_ne_se_publie_sans_validation(env):
     assert r.status_code == 422
     assert not (env["tmp"] / "pub").exists()
     p = db.one(conn, "SELECT * FROM publications")
-    assert p["status"] == "refuse" and "non validé" in p["message"]
+    assert p["status"] == "refuse" and "not approved" in p["message"]
     assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
 
 
@@ -662,7 +662,7 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     rows = {r["key"]: r for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"]))}
     assert rows["local"]["available"]
     for key in ("facebook", "youtube", "instagram"):
-        assert not rows[key]["available"] and "identifiants absents" in rows[key]["why"]
+        assert not rows[key]["available"] and "missing credentials" in rows[key]["why"]
         res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), key, resp, "x")
         assert not res.ok
     # with credentials the connector is usable; the network is down here, so the attempt is logged as such

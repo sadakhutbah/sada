@@ -115,7 +115,7 @@ and says so. This is deliberate: without a valid address, Instagram could downlo
 **What is published.** A vertical Reel, with the caption entered, cut at 2,200 characters, shared in
 the account's feed.
 The platform takes a few seconds to prepare the video; the back office waits up to two minutes.
-Beyond that, the upload is refused with `délai dépassé` and nothing is published.
+Beyond that, the upload is refused with a `timeout` and nothing is published.
 
 The video must remain reachable throughout. A file served only on the local network, or behind a
 sign-in page, will not be downloaded by Instagram.
@@ -133,8 +133,8 @@ Each card shows:
 | **Unavailable** | the connector will not publish; the reason is written under the description |
 | **Configure** | opens the fields and the activation box; reserved to administrators |
 
-The reasons for unavailability are precise: for example `désactivé : identifiants absents (page_id,
-page_token)`, `désactivé par l'administrateur`, or the public address that is not a URL.
+The reasons for unavailability are precise: for example `disabled: missing credentials (page_id,
+page_token)`, `disabled by the administrator`, or the public address that is not a URL.
 
 A secret field is never shown again. It appears hidden; leaving it empty or sending the dots back
 keeps the saved value. Entering it again replaces it.
@@ -171,9 +171,9 @@ The platform's message is copied into the history. The cases that come back:
 | `jeton Google : HTTP 400 — invalid_grant` | refresh token expired or revoked | produce a new one with offline access |
 | `HTTP 403 — quotaExceeded` | the day's YouTube quota is used up | wait until the next day, or ask for a quota increase |
 | `HTTP 400 — Media download failed` | Instagram could not read the public address | check the address, the folder and the file name |
-| `Instagram n'a pas fini de préparer la vidéo (délai dépassé)` | preparation too long or file refused | try again; if it repeats, check the file |
-| `désactivé : identifiants absents (…)` | a mandatory field is empty | fill in the named fields and save |
-| `clip non validé : publication refusée` | the clip is not at the Approved status, or has to be regenerated | approve the clip before publishing |
+| `Instagram did not finish preparing the video (timeout)` | preparation too long or file refused | try again; if it repeats, check the file |
+| `disabled: missing credentials (…)` | a mandatory field is empty | fill in the named fields and save |
+| `clip not approved: publication refused` | the clip is not at the Approved status, or has to be regenerated | approve the clip before publishing |
 | `fichier du clip introuvable` | the file was moved or deleted | regenerate the clip, then approve it |
 
 An `erreur : …` error followed by technical text comes from a network incident or an unreadable

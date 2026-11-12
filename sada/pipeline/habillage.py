@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..paths import FONTS
+from ..i18n import _
 from ..text import is_arabic
 from . import clips as clipmod
 
@@ -66,23 +67,23 @@ def normaliser(brut: dict | None, base: dict | None = None) -> dict:
             elif str(v).strip().lower() in VRAI | FAUX:
                 o[k] = str(v).strip().lower() in VRAI
             else:
-                raise ValueError(f"valeur oui/non attendue pour {k}")
+                raise ValueError(_("Yes/no value expected for {key}.", key=k))
         elif k in BORNES:
             try:
                 x = float(str(v).replace(",", "."))
             except ValueError:
-                raise ValueError("durée invalide : un nombre de secondes est attendu") from None
+                raise ValueError(_("Invalid duration: a number of seconds is expected.")) from None
             if not math.isfinite(x):
-                raise ValueError("durée invalide : un nombre de secondes est attendu")
+                raise ValueError(_("Invalid duration: a number of seconds is expected."))
             lo, hi = BORNES[k]
             o[k] = round(min(hi, max(lo, x)), 2)
         elif k == "logo_pos":
             if v not in POSITIONS:
-                raise ValueError("position du logo inconnue")
+                raise ValueError(_("Unknown logo position."))
             o[k] = v
         elif k == "logo_size":
             if v not in TAILLES:
-                raise ValueError("taille du logo inconnue")
+                raise ValueError(_("Unknown logo size."))
             o[k] = v
         else:
             o[k] = re.sub(r"\s+", " ", str(v or "")).strip()[:TEXTES[k]]
@@ -92,11 +93,11 @@ def normaliser(brut: dict | None, base: dict | None = None) -> dict:
 def verifier(o: dict) -> None:
     """Refuse un habillage qui afficherait un élément vide."""
     if o["intro_on"] and not o["title"]:
-        raise ValueError("le carton d'ouverture a besoin d'un titre")
+        raise ValueError(_("The opening card needs a title."))
     if o["lower_on"] and not o["speaker"]:
-        raise ValueError("le bandeau a besoin du nom de l'intervenant")
+        raise ValueError(_("The lower third needs the speaker's name."))
     if not any(o[k] for k in BOOLEENS):
-        raise ValueError("aucun élément d'habillage n'est activé")
+        raise ValueError(_("No branding element is enabled."))
 
 
 # ------------------------------------------------------------------ couleurs
@@ -165,7 +166,7 @@ def ffmpeg() -> str:
     from ..backoffice.importer import _ffmpeg
     exe = _ffmpeg()
     if not exe:
-        raise RuntimeError("ffmpeg introuvable sur cette machine")
+        raise RuntimeError(_("ffmpeg not found on this machine."))
     return exe
 
 
@@ -173,16 +174,16 @@ def sonder(src: str) -> Cadre:
     """Dimensions (rotation du téléphone comprise), cadence, durée et présence du son de la source."""
     exe = _ffprobe()
     if not exe:
-        raise RuntimeError("ffprobe introuvable sur cette machine")
+        raise RuntimeError(_("ffprobe not found on this machine."))
     p = subprocess.run([exe, "-v", "error", "-show_streams", "-show_format", "-of", "json", src],
                        capture_output=True, text=True, timeout=60)
     if p.returncode != 0:
-        raise RuntimeError("vidéo source illisible")
+        raise RuntimeError(_("Unreadable source video."))
     d = json.loads(p.stdout or "{}")
     streams = d.get("streams") or []
     v = next((s for s in streams if s.get("codec_type") == "video"), None)
     if not v:
-        raise RuntimeError("la source n'a pas d'image")
+        raise RuntimeError(_("The source has no video stream."))
     w, h = int(v.get("width") or 0), int(v.get("height") or 0)
     rot = 0
     try:
@@ -195,14 +196,14 @@ def sonder(src: str) -> Cadre:
     if abs(rot) % 180 == 90:
         w, h = h, w
     try:
-        n, _, dd = (v.get("avg_frame_rate") or v.get("r_frame_rate") or "25/1").partition("/")
+        n, _sep, dd = (v.get("avg_frame_rate") or v.get("r_frame_rate") or "25/1").partition("/")
         fps = float(n) / float(dd or 1)
     except (ValueError, ZeroDivisionError):
         fps = 25.0
     fps = 25.0 if not (10 <= fps <= 61) else round(fps, 3)
     duree = float((d.get("format") or {}).get("duration") or v.get("duration") or 0)
     if duree <= 0:
-        raise RuntimeError("durée de la source inconnue")
+        raise RuntimeError(_("Unknown source duration."))
     W, H = taille_sortie(w, h)
     return Cadre(W, H, fps, duree, any(s.get("codec_type") == "audio" for s in streams))
 
@@ -599,7 +600,7 @@ def _bornes(cadre: Cadre, debut: float, fin: float | None) -> Cadre:
     debut = max(0.0, min(debut, cadre.duree - 1.0))
     duree = (min(fin, cadre.duree) if fin else cadre.duree) - debut
     if duree < 1.0:
-        raise RuntimeError("source trop courte pour être habillée")
+        raise RuntimeError(_("Source too short to be branded."))
     return Cadre(cadre.w, cadre.h, cadre.fps, round(duree, 3), cadre.audio)
 
 
@@ -639,9 +640,10 @@ def rendre(o: dict, src: str, out: str, mosquee: str, brand: dict | None = None,
         err = proc.stderr.read() if proc.stderr else ""
         if proc.wait() != 0:
             part.unlink(missing_ok=True)
-            raise RuntimeError("rendu ffmpeg en échec : " + (err.strip().splitlines() or ["?"])[-1][:200])
+            last = (err.strip().splitlines() or ["?"])[-1][:200]
+            raise RuntimeError(_("ffmpeg render failed: {error}", error=last))
     part.replace(dest)
-    log(f"habillage -> {dest} ({c.total:.0f}s)")
+    log(_("branding -> {path} ({seconds:.0f}s)", path=dest, seconds=c.total))
     return str(dest)
 
 
@@ -691,7 +693,8 @@ def apercu(o: dict, src: str, out: str, mosquee: str, brand: dict | None = None,
         p_ = subprocess.run(cmd, cwd=td, capture_output=True, text=True, timeout=300)
         vues = sorted(tdp.glob("img_*.png"))
         if p_.returncode != 0 or not vues:
-            raise RuntimeError("aperçu en échec : " + ((p_.stderr or "").strip().splitlines() or ["?"])[-1][:200])
+            last = (p_.stderr or "").strip().splitlines() or ["?"]
+            raise RuntimeError(_("preview failed: {error}", error=last[-1][:200]))
         planche(vues, out)
     return out
 

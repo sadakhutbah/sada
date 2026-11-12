@@ -43,7 +43,7 @@ To know where a machine stands, changing nothing:
 python -m sada.installer --verifier
 ```
 
-The report reads line by line: `ok`, `à faire` (with the command that does it), or `bloqué`. The
+The report reads line by line: `ok`, `to do` (with the command that does it), or `blocked`. The
 command exits successfully when everything is in place, and fails otherwise: it can be used as is
 in a script.
 
@@ -119,11 +119,11 @@ queries the stream for a few seconds and shows what it receives:
 
 | What the test shows | What it means |
 | --- | --- |
-| `1920×1080 · 25 i/s · son présent` | picture and sound arrive: the input is good |
+| `1920×1080 · 25 fps · sound present` | picture and sound arrive: the input is good |
 | `… · sans son` | the picture arrives, but the voice is not in the stream: check the camera and its microphone |
 | `Flux injoignable : …` | the address does not answer from the back office server, or the stream is already taken |
-| `Aucune image reçue dans le délai imparti` | the server does not answer fast enough, or the camera limits connections |
-| `Le flux répond mais ne contient pas d'image` | the stream exists, but it carries only sound or data |
+| `No image received within the time limit` | the server does not answer fast enough, or the camera limits connections |
+| `The stream answers but carries no image` | the stream exists, but it carries only sound or data |
 
 The test changes nothing. It starts from the server that hosts the back office: a camera on another
 network can therefore be unreachable for the test while it works for the orchestrator, or the
@@ -203,7 +203,7 @@ Before leaving the setup, check these four points:
 | Video input | a chosen mode, a saved address, a test that shows a picture and sound |
 | Destinations | at least one active destination, with a complete address |
 | Time zone | the official name of the mosque's zone, saved in Settings → Mosque |
-| Bucket (optional) | the box ticked and the test `Écriture acceptée` |
+| Bucket (optional) | the box ticked and the test `Write accepted` |
 
 Screen 4 sums up this information in two lines: the input and the number of active destinations,
 then the bucket if it is set. **Go to the dashboard** ends the visit.

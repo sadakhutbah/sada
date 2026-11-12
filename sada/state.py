@@ -22,6 +22,8 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from typing import Callable, Optional
 
+from .i18n import _
+
 
 class State(str, Enum):
     IDLE = "IDLE"          # waiting for the next window
@@ -149,7 +151,8 @@ class Machine:
         self.p = params or MachineParams()
         order = sorted(range(len(sessions)), key=lambda i: sessions[i])
         if extras is not None and len(extras) != len(sessions):
-            raise ValueError(f"extras ({len(extras)}) et sessions ({len(sessions)}) doivent avoir la même longueur")
+            raise ValueError(_("extras ({extras}) and sessions ({sessions}) must have the same length",
+                               extras=len(extras), sessions=len(sessions)))
         self.sessions = [sessions[i] for i in order]
         extras = [extras[i] if extras else {} for i in order]
         self.idx = 0
@@ -225,7 +228,8 @@ class Machine:
             r = self._extra("janaza", sig)
             r.status = "janaza"
             self._open(r, sig)
-        self.log(f"ÉTAT {old.value} → {new.value}  ({reason})  [horloge {sig.now:%H:%M:%S}]")
+        self.log(_("STATE {old} → {new}  ({reason})  [clock {now}]",
+                   old=old.value, new=new.value, reason=reason, now=f"{sig.now:%H:%M:%S}"))
 
     def _extra(self, kind: str, sig: Signals) -> SessionRec:
         """Off-programme session, started by hand: it is a khutba (the Janaza is marked by its status)."""
@@ -258,7 +262,7 @@ class Machine:
         if r and r.status == "pending":
             r.status = "skipped"
             r.end_reason = why
-            self.log(f"Session {r.planned} sautée : {why}")
+            self.log(_("Session {planned} skipped: {why}", planned=r.planned, why=why))
 
     @property
     def kind(self) -> str:
@@ -315,36 +319,36 @@ class Machine:
     def command(self, cmd: str, sig: Signals, arg=None) -> str:
         """Manual command. Returns a confirmation message (or an error)."""
         cmd = cmd.lower()
-        self.log(f"COMMANDE manuelle : {cmd} {arg if arg is not None else ''}")
+        self.log(_("Manual command: {cmd} {arg}", cmd=cmd, arg=arg if arg is not None else ""))
         fn = self.COMMANDS.get(cmd)
-        return fn(self, sig, arg) if fn else f"commande inconnue : {cmd}"
+        return fn(self, sig, arg) if fn else _("unknown command: {cmd}", cmd=cmd)
 
     def _start(self, sig, arg):
         self.override = True
         st = self._entry_state()
         self._go(st, sig, "commande start")
         sc = SCENE_OF[st]
-        return f"stream démarré, scène {sc} (auto suspendu : « auto » pour reprendre)"
+        return _("stream started, scene {scene} (auto suspended: “auto” to resume)", scene=sc)
 
     def _stop(self, sig, arg):
         self.override = True
         self._go(self._end_state(), sig, "commande stop")
-        return "écran Terminé puis arrêt du stream"
+        return _("end screen, then the stream stops")
 
     def _pause(self, sig, arg):
         if self.state == State.PRAYER:
-            return "déjà en pause"
+            return _("already paused")
         self.paused_from = self.state       # before _go: the open session stays open during the pause
         self.override = True
         self._go(State.PRAYER, sig, "commande pause")
-        return "pause (écran Prière en cours)"
+        return _("paused (Prayer screen)")
 
     def _resume(self, sig, arg):
         if self.paused_from is None:
-            return "pas en pause"
+            return _("not paused")
         back = self.paused_from
         self._go(back, sig, "commande resume")
-        return f"reprise sur {back.value}"
+        return _("resumed on {state}", state=back.value)
 
     def _auto(self, sig, arg):
         if self.paused_from is not None:
@@ -352,32 +356,32 @@ class Machine:
         if self.state == State.JANAZA:           # end of the janaza: the remaining sessions resume automatically
             self._go(State.INTERMISSION if self.session else self._end_state(), sig, "commande auto (fin de janaza)")
         self.override = False
-        return "automatique repris"
+        return _("automatic mode resumed")
 
     def _scene(self, sig, arg):
         sc = str(arg or "").lower()
         if sc not in STATE_OF_SCENE:
-            return f"scène inconnue : {sc} (valides : {sorted(STATE_OF_SCENE)})"
+            return _("unknown scene: {scene} (valid: {valid})", scene=sc, valid=sorted(STATE_OF_SCENE))
         self.override = True
         self._go(STATE_OF_SCENE[sc], sig, f"commande scène {sc}")
-        return f"scène {sc} (auto suspendu)"
+        return _("scene {scene} (auto suspended)", scene=sc)
 
     def _extend(self, sig, arg):
         try:
             mins = float(arg or EXTEND_MINUTES[0])
         except ValueError:
-            return f"durée invalide : {arg} (minutes)"
+            return _("invalid duration: {value} (minutes)", value=arg)
         base = max(self.extend_until_t, sig.t)
         self.extend_until_t = base + mins * 60  # REAL minutes (khutba played in real time)
-        return f"prolongé de {mins:g} min (pas d'arrêt automatique avant)"
+        return _("extended by {minutes:g} min (no automatic stop before)", minutes=mins)
 
     def _skip_cmd(self, sig, arg):
         if self.session is None:
-            return "aucune session à sauter"
+            return _("no session to skip")
         self._skip("commande skip")
         nxt = self._next_session(sig)
         self._go(nxt, sig, "commande skip")
-        return f"session sautée, état {nxt.value}"
+        return _("session skipped, state {state}", state=nxt.value)
 
     def _cancel(self, sig, arg):
         for r in self.records:
@@ -387,21 +391,21 @@ class Machine:
         self.idx = len(self.sessions)       # ENDED first if the stream is running: nothing left to come from now on
         self.override = False
         self._go(self._end_state(), sig, "live du jour annulé")
-        return "live du jour annulé"
+        return _("today's live stream cancelled")
 
     def _janaza(self, sig, arg):
         """arg = "name" or "name|note": the record entered in the dashboard (optional fields).
 
         Nothing is named without the family's consent: an empty field stays empty.
         """
-        name, _, info = (arg or "").partition("|")
+        name, _sep, info = (arg or "").partition("|")
         name, info = name.strip()[:80] or None, info.strip()[:60] or None
         if not name:
             info = None                     # a note alone makes no sense without a name
         self.janaza_name, self.janaza_info = name, info
         self.override = True
         self._go(State.JANAZA, sig, "commande janaza")
-        return "mode Janaza (écran plein ; exclue du pipeline IA)"
+        return _("Janaza mode (full screen; excluded from the AI pipeline)")
 
     # Commands accepted by the engine, in dashboard display order. This is the single list of
     # commands: the local API and the back-office derive theirs from this dict.
@@ -478,16 +482,18 @@ class Machine:
                 if sig.silence_run >= silence_s and elapsed >= self.p.min_session_s:
                     self.grace_until = sig.t + grace_s
                     self.grace_reason = "silence prolongé"
-                    self.log(f"silence {sig.silence_run:.0f}s : délai de grâce {grace_s:.0f}s")
+                    self.log(_("silence {silence:.0f}s: grace delay {grace:.0f}s",
+                               silence=sig.silence_run, grace=grace_s))
                 elif face_gone and elapsed >= self.p.min_session_s:
                     self.grace_until = sig.t + grace_s
                     self.grace_reason = "minbar sans visage de face"
-                    self.log(f"plus de visage de face depuis {sig.face_run:.0f}s : délai de grâce {grace_s:.0f}s")
+                    self.log(_("no frontal face for {absent:.0f}s: grace delay {grace:.0f}s",
+                               absent=sig.face_run, grace=grace_s))
             else:
                 face_back = (sig.face_run is not None and sig.face_run <= self.p.face_return_s)
                 if sig.voice_run >= 2.0 or face_back:
                     self.grace_until = None
-                    self.log("voix ou visage repris pendant la grâce : on continue")
+                    self.log(_("voice or face back during the grace period: carrying on"))
                 elif sig.t >= self.grace_until:
                     self._go(end, sig, getattr(self, "grace_reason", None) or "silence prolongé")
             return
@@ -514,7 +520,8 @@ class Machine:
         # reopened before _go, which would otherwise start a fresh session
         rec.status, rec.end_pos, rec.end_clock, rec.end_reason = "live", None, None, None
         self.live, self.cut = rec, (None, None)
-        self.log(f"voix reprise pendant la prière ({sig.voice_run:.0f}s) : la session {rec.planned} continue")
+        self.log(_("voice back during the prayer ({voice:.0f}s): session {planned} continues",
+                   voice=sig.voice_run, planned=rec.planned))
         self._go(from_state, sig, "voix reprise : la khutba continue")
         return True
 

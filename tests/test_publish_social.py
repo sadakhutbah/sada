@@ -142,7 +142,7 @@ def test_youtube_refus_du_jeton(item, monkeypatch):
     use(monkeypatch, Reply(400, {"error": "invalid_grant"}))
     with pytest.raises(social.PublishError) as e:
         social.youtube(item, {"client_id": "cid", "client_secret": "sec", "refresh_token": "vieux"})
-    assert "jeton Google" in str(e.value)
+    assert "Google token" in str(e.value)
 
 
 # --- Instagram --------------------------------------------------------------------------------
@@ -193,7 +193,7 @@ def test_instagram_sans_adresse_publique_pas_d_appel(item, monkeypatch):
     row["settings"] = json.dumps({"ig_user_id": "1789", "access_token": "IGT",
                                   "public_base_url": "/srv/clips"})
     ok, why = publish.Instagram().availability(row)
-    assert not ok and "adresse publique" in why
+    assert not ok and "public address" in why
     # with a real address it becomes available, without any call
     row["settings"] = json.dumps({"ig_user_id": "1789", "access_token": "IGT",
                                   "public_base_url": "https://mosquee.example/clips"})

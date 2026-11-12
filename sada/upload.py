@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from . import paths
+from .i18n import _
 
 CONTENT_TYPES = {".mkv": "video/x-matroska", ".mp4": "video/mp4", ".webm": "video/webm"}
 
@@ -37,17 +38,17 @@ def client(target: dict):                       # pragma: no cover (réseau)
 def human(e: Exception) -> str:
     """Message lisible pour un écran de réglages : la cause, pas la trace."""
     texte = str(e)
-    for cause, dit in (("NoSuchBucket", "Le compartiment n'existe pas (nom ou compte)."),
-                       ("InvalidAccessKeyId", "Clé d'accès inconnue du service."),
-                       ("SignatureDoesNotMatch", "Clé secrète refusée (signature invalide)."),
-                       ("AccessDenied", "Le service refuse l'écriture : droits du jeton insuffisants."),
-                       ("EndpointConnectionError", "Service injoignable : vérifiez l'adresse et le réseau."),
-                       ("ConnectTimeoutError", "Délai dépassé en joignant le service."),
-                       ("InvalidBucketName", "Nom de compartiment invalide pour ce service."),
-                       ("SSLError", "Certificat refusé : vérifiez l'adresse (https).")):
+    for cause, dit in (("NoSuchBucket", _("The bucket does not exist (check the name and the account).")),
+                       ("InvalidAccessKeyId", _("Access key unknown to the service.")),
+                       ("SignatureDoesNotMatch", _("Secret key refused (invalid signature).")),
+                       ("AccessDenied", _("The service refuses the write: the token's rights are insufficient.")),
+                       ("EndpointConnectionError", _("Service unreachable: check the address and the network.")),
+                       ("ConnectTimeoutError", _("Timeout while connecting to the service.")),
+                       ("InvalidBucketName", _("Bucket name invalid for this service.")),
+                       ("SSLError", _("Certificate refused: check the address (https)."))):
         if cause in texte:
             return dit
-    return f"Échec : {texte[:180]}"
+    return _("Failed: {error}", error=texte[:180])
 
 
 def key_for(prefix: str, chemin: str | Path) -> str:
@@ -90,22 +91,23 @@ def _envoyer(client, target: dict, index: Index, chemins: Iterable[str | Path],
     for chemin in chemins:
         p = Path(chemin)
         if not p.is_file() or p.stat().st_size == 0:
-            log(f"Rediffusion : {p.name} absente ou vide, ignorée")
+            log(_("Upload: {name} missing or empty, ignored", name=p.name))
             continue
         if index.deja(p):
-            log(f"Rediffusion : {p.name} déjà envoyée")
+            log(_("Upload: {name} already sent", name=p.name))
             continue
         cle = key_for(target.get("prefix", ""), p)
         mb = p.stat().st_size / 1e6
-        log(f"Rediffusion : envoi de {p.name} ({mb:.0f} Mo) vers {target['bucket']}/{cle}")
+        log(_("Upload: sending {name} ({mb:.0f} MB) to {bucket}/{key}",
+              name=p.name, mb=mb, bucket=target["bucket"], key=cle))
         try:
             client.upload_file(str(p), target["bucket"], cle,
                                ExtraArgs={"ContentType": content_type(p)})
             index.noter(p, cle)
             envoyes.append(cle)
-            log(f"Rediffusion : {p.name} envoyée ({target['bucket']}/{cle})")
+            log(_("Upload: {name} sent ({bucket}/{key})", name=p.name, bucket=target["bucket"], key=cle))
         except Exception as e:                    # noqa: BLE001 — une rediffusion ne fait pas tomber le moteur
-            log(f"Rediffusion : échec pour {p.name} — {human(e)}")
+            log(_("Upload: failed for {name} — {reason}", name=p.name, reason=human(e)))
     return envoyes
 
 
@@ -139,7 +141,7 @@ class Uploader:
         try:
             self.resultat += _envoyer(client(target), target, self.index, liste, self.log)
         except Exception as e:                    # noqa: BLE001
-            self.log(f"Rediffusion : envoi impossible — {human(e)}")
+            self.log(_("Upload: cannot send — {reason}", reason=human(e)))
 
     def attendre(self, delai: float = 60.0) -> None:
         if self.fil:
@@ -165,9 +167,10 @@ def from_backoffice(backoffice_url: str, api_port: int, fetch: Callable[[str, st
             with urllib.request.urlopen(req, timeout=3) as r:
                 data = json.loads(r.read(65536))
     except Exception as e:                        # noqa: BLE001
-        log(f"Rediffusion : réglage du compartiment injoignable ({e}) — envoi désactivé")
+        log(_("Upload: bucket settings unreachable ({error}) — uploads disabled", error=e))
         return None
     if not data.get("target"):
         return None
-    log(f"Rediffusion : envoi vers {data['target']['bucket']}/{data['target']['prefix']}")
+    log(_("Upload: sending to {bucket}/{prefix}",
+          bucket=data["target"]["bucket"], prefix=data["target"]["prefix"]))
     return data["target"]

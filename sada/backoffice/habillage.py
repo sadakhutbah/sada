@@ -14,6 +14,7 @@ import threading
 import traceback
 from pathlib import Path
 
+from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import habillage as rendu
 from . import db
@@ -172,8 +173,8 @@ def sans_chemin(message: str) -> str:
 
 def recover_interrupted(conn) -> None:
     """Rendus en cours quand le serveur s'est arrêté : ils ne finiront jamais."""
-    conn.execute("UPDATE habillages SET status = 'echec', error = 'interrompu (serveur arrêté)', updated_at = ? "
-                 "WHERE status = 'en_cours'", (db.now_iso(),))
+    conn.execute("UPDATE habillages SET status = 'echec', error = ?, updated_at = ? "
+                 "WHERE status = 'en_cours'", (_("interrupted (server stopped)"), db.now_iso()))
 
 
 # ------------------------------------------------------------------ actions
@@ -191,7 +192,7 @@ def apercu(conn, k: dict, m: dict, brut: dict) -> dict:
     o = _options(conn, k, brut)
     src = source(k)
     if not src:
-        raise ValueError("vidéo source introuvable : rien à habiller")
+        raise ValueError(_("source video not found: nothing to dress"))
     brand, logo = marque(m)
     rendu.apercu(o, src[0], str(fichier_apercu(k)), m.get("name") or "", brand, logo, debut=src[1], fin=src[2])
     _enregistrer(conn, k, o, preview_at=db.now_iso())
@@ -203,9 +204,9 @@ def lancer(conn, db_path: str, k: dict, m: dict, brut: dict, user: dict, ip=None
     o = _options(conn, k, brut)
     h = ligne(conn, k["id"])
     if h and h["status"] == "en_cours":
-        raise ValueError("un rendu est déjà en cours pour cette vidéo")
+        raise ValueError(_("a render is already running for this video"))
     if not source(k):
-        raise ValueError("vidéo source introuvable : rien à habiller")
+        raise ValueError(_("source video not found: nothing to dress"))
     _enregistrer(conn, k, o, status="en_cours", progress=0.0, error="", started_at=db.now_iso(), finished_at="",
                  user_id=user["id"])
     retenir(conn, m, o)
@@ -227,7 +228,7 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
         o = rendu.normaliser(json.loads(h["options"]))
         src = source(k)
         if not src:
-            raise RuntimeError("vidéo source introuvable")
+            raise RuntimeError(_("source video not found"))
         brand, logo = marque(m)
         dernier = [0.0]
 

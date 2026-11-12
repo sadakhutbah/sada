@@ -14,6 +14,7 @@ import os
 import re
 from pathlib import Path
 
+from ..i18n import _
 from .. import paths
 from .. import screens as base
 
@@ -117,38 +118,40 @@ def parse(content: bytes, filename: str) -> tuple[dict[str, dict[str, str]], lis
     """
     name = os.path.basename(filename or "")
     if Path(name).suffix.lower() != EXT:
-        raise GabaritRefused(f"Format refusé : un fichier {EXT} est attendu.")
+        raise GabaritRefused(_("Format refused: an {ext} file is expected.", ext=EXT))
     if not content:
-        raise GabaritRefused("Fichier vide.")
+        raise GabaritRefused(_("Empty file."))
     if len(content) > MAX_BYTES:
-        raise GabaritRefused(f"Fichier trop volumineux ({MAX_BYTES // 1024} Ko maximum).")
+        raise GabaritRefused(_("File too large ({size} KB maximum).", size=MAX_BYTES // 1024))
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
-        raise GabaritRefused("Fichier illisible : encodage UTF-8 attendu.") from None
+        raise GabaritRefused(_("Unreadable file: UTF-8 encoding expected.")) from None
     head = text[:4096].lower()
     if "<html" not in head and "<!doctype" not in head:
-        raise GabaritRefused("Ce fichier n'est pas une page HTML.")
+        raise GabaritRefused(_("This file is not an HTML page."))
 
     m = _BLOCK.search(text)
     if not m:
         raise GabaritRefused(
-            "Ce fichier n'est pas un gabarit Sadā : le bloc "
-            "<script id=\"sada-screens\"> est introuvable."
+            _("This file is not a Sadā template: the block "
+              "<script id=\"sada-screens\"> cannot be found.")
         )
     try:
         data = json.loads(m.group(1).strip())
     except json.JSONDecodeError as e:
         raise GabaritRefused(
-            f"Le bloc #sada-screens n'est pas un JSON valide (ligne {e.lineno}, colonne {e.colno})."
+            _("The #sada-screens block is not valid JSON (line {line}, column {col}).",
+              line=e.lineno, col=e.colno)
         ) from None
     if not isinstance(data, dict):
-        raise GabaritRefused("Le bloc #sada-screens doit contenir un objet JSON.")
+        raise GabaritRefused(_("The #sada-screens block must contain a JSON object."))
 
     missing = [s for s in base.SCREENS if s not in data]
     if missing:
         raise GabaritRefused(
-            "Gabarit incomplet : les écrans " + ", ".join(missing) + " manquent dans le bloc #sada-screens."
+            _("Incomplete template: the screens {screens} are missing from the #sada-screens block.",
+              screens=", ".join(missing))
         )
 
     taken: dict[str, dict[str, str]] = {}
@@ -157,29 +160,31 @@ def parse(content: bytes, filename: str) -> tuple[dict[str, dict[str, str]], lis
     for screen, block in data.items():
         if screen not in base.SCREENS:
             ignored.append({"screen": str(screen), "slot": "", "value": "",
-                            "reason": "écran inconnu du moteur"})
+                            "reason": _("unknown screen for the engine")})
             continue
         if not isinstance(block, dict):
-            raise GabaritRefused(f"L'écran « {screen} » doit être un objet {{\"id\": …, \"texts\": …}}.")
+            raise GabaritRefused(_("Screen \"{screen}\" must be an object {{\"id\": …, \"texts\": …}}.",
+                                   screen=screen))
         # The contract wraps texts in "texts"; a flat object is accepted as well.
         texts = dict(block["texts"] if isinstance(block.get("texts"), dict) else block)
         for slot, value in texts.items():
             if not isinstance(value, str):
                 ignored.append({"screen": screen, "slot": str(slot), "value": "",
-                                "reason": "valeur non textuelle (une chaîne est attendue)"})
+                                "reason": _("non-text value (a string is expected)")})
                 continue
             texte = value.replace("\n", " ").strip()
             if not texte:
                 empty.append(f"{screen}.{slot}")
                 continue
             if slot not in base.DEFAULTS[screen]:
-                raison = (f"l'écran « {screen} » n'a pas de champ « {slot} » dans le moteur"
-                          if slot in SLOTS else f"champ inconnu du moteur : « {slot} »")
+                raison = (_("screen \"{screen}\" has no field \"{slot}\" in the engine",
+                            screen=screen, slot=slot) if slot in SLOTS
+                          else _("unknown field for the engine: \"{slot}\"", slot=slot))
                 ignored.append({"screen": screen, "slot": slot, "value": texte, "reason": raison})
                 continue
             if len(texte) > base.MAX_LEN:
                 ignored.append({"screen": screen, "slot": slot, "value": texte[:120] + "…",
-                                "reason": f"texte trop long ({base.MAX_LEN} caractères maximum)"})
+                                "reason": _("text too long ({max} characters maximum)", max=base.MAX_LEN)})
                 continue
             taken.setdefault(screen, {})[slot] = texte
     return taken, ignored, empty
@@ -196,13 +201,12 @@ def store(mosque: dict, content: bytes) -> Path:
 
 
 def summary(taken: dict, ignored: list, empty: list) -> str:
-    """One French sentence for the interface: what was taken, what was not, and why not."""
+    """One sentence for the interface: what was taken, what was not, and why not."""
     n = sum(len(v) for v in taken.values())
-    bits = [f"{n} texte{'s' if n != 1 else ''} repris"]
+    bits = [_("texts kept: {n}", n=n)]
     if ignored:
-        bits.append(f"{len(ignored)} ignoré{'s' if len(ignored) != 1 else ''}")
+        bits.append(_("ignored: {n}", n=len(ignored)))
     if empty:
-        bits.append(f"{len(empty)} champ{'s' if len(empty) != 1 else ''} vide"
-                    f"{'s' if len(empty) != 1 else ''} laissé{'s' if len(empty) != 1 else ''} tel quel")
-    return ("Gabarit importé : " + ", ".join(bits)
-            + ". Le fichier devient la référence visuelle de la mosquée ; le direct garde le rendu du moteur.")
+        bits.append(_("empty fields left as is: {n}", n=len(empty)))
+    return _("Template imported: {parts}. The file becomes the mosque's visual reference; "
+             "the live keeps the engine's rendering.", parts=", ".join(bits))

@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from wordfreq import zipf_frequency
 
+from ..i18n import _
 from ..text import duration as fmt_t
 from ..text import is_arabic
 from ..text import is_translit_word
@@ -238,7 +239,8 @@ def candidate_windows(segments: list[dict], duration: float, log=print) -> list[
     if len(dedup) > MAX_CANDIDATES:
         dedup = sorted(dedup, key=lambda w: -w["note"])[:MAX_CANDIDATES]
         dedup.sort(key=lambda w: w["start"])
-    log(f"clips : {len(wins)} fenêtres générées, {len(dedup)} candidats après dédoublonnage")
+    log(_("clips: {generated} windows generated, {kept} candidates after deduplication",
+          generated=len(wins), kept=len(dedup)))
     return dedup
 
 
@@ -305,7 +307,7 @@ def score_candidates(cands: list[dict], segments: list[dict], use_llm: bool = Tr
         try:
             return _score_batch(batch_texts, log)
         except Exception as e:  # noqa: BLE001 — un modèle lent/indisponible ne bloque pas le pipeline
-            log(f"clips : lot non noté ({e})")
+            log(_("clips: batch not scored ({error})", error=e))
             return None
 
     results = []
@@ -327,7 +329,8 @@ def score_candidates(cands: list[dict], segments: list[dict], use_llm: bool = Tr
                 c["note"] = heuristic_note(c, segments)
                 c["titre"] = ""
                 c["method"] = "heuristique"
-    log(f"clips : {scored}/{len(cands)} candidats notés par le modèle, reste en heuristique")
+    log(_("clips: {scored}/{total} candidates scored by the model, the rest stays heuristic",
+          scored=scored, total=len(cands)))
     return cands
 
 
@@ -352,10 +355,11 @@ def select_clips(segments: list[dict], duration: float, n: int, use_llm: bool = 
     """Chaîne complète : candidats -> notation -> sélection. Rend les fenêtres prêtes à monter."""
     cands = candidate_windows(segments, duration, log=log)
     if not cands:
-        log("clips : aucun candidat publiable")
+        log(_("clips: no publishable candidate"))
         return []
     scored = score_candidates(cands, segments, use_llm=use_llm, log=log)
     wins = pick_clips(scored, n)
     for w in wins:
-        log(f"clips : retenu {fmt_t(w['start'])}→{fmt_t(w['end'])} note {w['note']:.1f} « {w['why']} »")
+        log(_("clips: kept {start}→{end} score {note:.1f} “{why}”",
+              start=fmt_t(w["start"]), end=fmt_t(w["end"]), note=w["note"], why=w["why"]))
     return wins

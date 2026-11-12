@@ -12,6 +12,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .i18n import _
 from .state import Machine
 
 
@@ -30,7 +31,7 @@ def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPSer
 
         def _auth(self) -> bool:
             if token and self.headers.get("X-Token") != token:
-                self._send(401, {"error": "jeton requis"})
+                self._send(401, {"error": _("token required")})
                 return False
             return True
 
@@ -40,7 +41,7 @@ def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPSer
                 return
             if u.path == "/status":
                 return self._send(200, orch.status())
-            self._send(404, {"error": "inconnu"})
+            self._send(404, {"error": _("unknown")})
 
         def do_POST(self):
             if not self._auth():
@@ -52,7 +53,7 @@ def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPSer
             if q.get("info"):                       # janaza record: "name|note"
                 arg = f'{q.get("name", "")}|{q["info"]}'
             if cmd not in Machine.COMMANDS:
-                return self._send(404, {"error": "commande inconnue"})
+                return self._send(404, {"error": _("unknown command")})
             self._send(200, {"ok": True, **orch.manual(cmd, arg)})
 
     srv = ThreadingHTTPServer((host, port), H)

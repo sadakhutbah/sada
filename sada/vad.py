@@ -14,6 +14,7 @@ import time
 import webrtcvad
 
 from . import source
+from .i18n import _
 
 ffmpeg = shutil.which("ffmpeg")
 
@@ -66,7 +67,7 @@ class VadMonitor(threading.Thread):
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self._read(self.proc)
             except Exception as e:  # noqa
-                self.log(f"VAD : erreur {e}")
+                self.log(_("VAD: error {error}", error=e))
             self.connected = False
             if self.stop_flag.wait(2.0):
                 break

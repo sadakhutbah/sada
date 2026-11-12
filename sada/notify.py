@@ -12,12 +12,13 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
 
+from .i18n import _, translate
 from .state import Machine, State
 
 # states that deserve a message (ARMED/IDLE round trips are noise)
 NOTIFY_STATES = {State.ARMED, State.KHUTBA, State.DARS, State.STOPPED}
-# wording of a session type in a sentence
-KIND_NOUNS = {"khutba": "la khutba", "dars": "le dars", "conference": "la conférence"}
+# wording of a session type in a sentence (translated where the sentence is built)
+KIND_NOUNS = {"khutba": "the khutba", "dars": "the dars", "conference": "the conference"}
 
 
 def should_send(state: State, m: Machine, now: dt.datetime) -> bool:
@@ -30,15 +31,16 @@ def should_send(state: State, m: Machine, now: dt.datetime) -> bool:
 def message_for(state: State, m: Machine) -> Optional[str]:
     """Text to send to the imam for this state change; None if nothing to say."""
     ref = m.session.strftime("%H:%M") if m.session else "—"
-    quoi = KIND_NOUNS.get(m.kind, f"le {m.kind}")
+    quoi = translate(KIND_NOUNS.get(m.kind, "the {kind}"), kind=m.kind)
     titre = f" · {m.rec.title}" if m.rec is not None and m.rec.title else ""
     if state == State.ARMED:
-        return f"Rappel : {quoi} de {ref} approche, le direct se prépare."
+        return _("Reminder: {what} at {time} is approaching; the live stream is being prepared.",
+                 what=quoi, time=ref)
     if state in (State.KHUTBA, State.DARS):
-        return f"Le direct a commencé ({quoi} de {ref}{titre})."
+        return _("The live stream has started ({what} at {time}{title}).", what=quoi, time=ref, title=titre)
     if state == State.STOPPED:
         fin = m.rec.end_reason if m.rec is not None else None
-        return f"Le direct est terminé{f' ({fin})' if fin else ''}."
+        return _("The live stream is over{end}.", end=f" ({fin})" if fin else "")
     return None
 
 
@@ -77,7 +79,7 @@ class Notifier:
         """Sends the message; returns False if sending failed (never raises into the live)."""
         self.sent.append(text)
         if not self.enabled:
-            self.log(f"notification (à blanc) : {text}")
+            self.log(_("notification (dry run): {message}", message=text))
             return False
         try:
             if self.webhook:
@@ -88,7 +90,8 @@ class Notifier:
                                 "disable_notification": False})
             return True
         except Exception as exc:                       # network, DNS, quota: we block nothing
-            self.log(f"notification non envoyée ({self.destination}) : {exc}")
+            self.log(_("notification not sent ({destination}): {error}",
+                       destination=self.destination, error=exc))
             return False
 
     def notify_state(self, state: State, m: Machine) -> bool:

@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 from .. import runs
+from ..i18n import _
 from . import db, importer, traitement
 
 EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi", ".mts", ".webm"}
@@ -30,7 +31,7 @@ def _nom_sur(nom: str) -> str:
     base = Path(nom or "").name
     ext = Path(base).suffix.lower()
     if ext not in EXTENSIONS:
-        raise ImportRefuse("Format non reconnu : envoyez une vidéo (mp4, mov, mkv, m4v, avi, mts, webm).")
+        raise ImportRefuse(_("Unrecognised format: send a video (mp4, mov, mkv, m4v, avi, mts, webm)."))
     tige = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(base).stem).strip("_")[:60] or "video"
     return tige + ext
 
@@ -40,17 +41,17 @@ def preparer(meta: dict, now: dt.datetime | None = None) -> dict:
     now = now or dt.datetime.now()
     kind = (meta.get("kind") or "dars").strip().lower()
     if kind not in KINDS:
-        raise ImportRefuse("Type inconnu : dars, conférence ou khutba.")
+        raise ImportRefuse(_("Unknown type: dars, conference or khutba."))
     date = (meta.get("date") or "").strip() or now.strftime("%Y-%m-%d")
     try:
         jour = dt.datetime.strptime(date, "%Y-%m-%d")
     except ValueError as e:
-        raise ImportRefuse("Date invalide.") from e
+        raise ImportRefuse(_("Invalid date.")) from e
     if jour.date() > now.date():
-        raise ImportRefuse("La date de l'enregistrement est dans le futur.")
+        raise ImportRefuse(_("The recording date is in the future."))
     no = (str(meta.get("session_no") or "")).strip()
     if no and not no.isdigit():
-        raise ImportRefuse("Le numéro de séance doit être un nombre.")
+        raise ImportRefuse(_("The session number must be a number."))
     return {"nom": _nom_sur(meta.get("filename") or ""), "kind": kind, "jour": jour,
             "title": (meta.get("title") or "").strip()[:200], "speaker": (meta.get("speaker") or "").strip()[:120],
             "series": (meta.get("series") or "").strip()[:120], "session_no": int(no) if no else None}
@@ -87,9 +88,9 @@ def sonder(path: Path) -> float | None:
     except ValueError:
         info = {}
     if p.returncode != 0 or not info.get("format"):
-        raise ImportRefuse("Fichier illisible : ce n'est pas une vidéo valide.")
+        raise ImportRefuse(_("Unreadable file: this is not a valid video."))
     if not any(s.get("codec_type") == "audio" for s in info.get("streams", [])):
-        raise ImportRefuse("La vidéo n'a pas de son : rien à transcrire.")
+        raise ImportRefuse(_("The video has no sound: nothing to transcribe."))
     try:
         return float(info["format"]["duration"])
     except (KeyError, TypeError, ValueError):
@@ -111,10 +112,10 @@ async def recevoir(mosque: dict, meta: dict, flux, log=print) -> str:
             async for bloc in flux:
                 total += len(bloc)
                 if total > MAX_OCTETS:
-                    raise ImportRefuse("Fichier trop volumineux (50 Go au plus).")
+                    raise ImportRefuse(_("File too large (50 GB at most)."))
                 f.write(bloc)
         if total == 0:
-            raise ImportRefuse("Fichier vide.")
+            raise ImportRefuse(_("Empty file."))
         duree = sonder(dest)
     except BaseException:
         shutil.rmtree(dirs["output"] / rid, ignore_errors=True)
@@ -127,5 +128,5 @@ async def recevoir(mosque: dict, meta: dict, flux, log=print) -> str:
     runs.write(rd, {"run_id": rid, "recordings": [str(dest.resolve())], "recordings_clean": [str(dest.resolve())],
                     "clock_sim": None, "sessions": [session], "mosque": mosque.get("name"), "source": "import"})
     traitement.mettre_en_file(rd, 0)
-    log(f"import vidéo {rid} : {total // (1024 * 1024)} Mo reçus, mis en file")
+    log(_("video import {run}: {size} MB received, queued", run=rid, size=total // (1024 * 1024)))
     return rid

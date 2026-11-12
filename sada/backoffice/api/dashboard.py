@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from ...i18n import _
 from .. import db, live
 from ..context import CtxDep, NotFound, count_clips, imam_filter, live_status
 from .common import _ok
@@ -53,4 +54,5 @@ async def live_command(cmd: str, ctx: CtxDep):
     except live.OrchestratorError as e:
         details = {k: v for k, v in {"commande": cmd, "valeur": valeur, "erreur": str(e)}.items() if v}
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "live.echec", ip=ctx.ip, **details)
-        return JSONResponse({"error": "injoignable", "message": f"échec — {e}"}, status_code=503)
+        return JSONResponse({"error": "injoignable", "message": _("Live command failed — {error}", error=e)},
+                            status_code=503)

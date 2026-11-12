@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 
+from ..i18n import _
 from . import branding, db
 
 # Écran réservé : il ne fait partie ni de `screens.SCREENS` ni du rendu Pillow.
@@ -41,16 +42,16 @@ def lire(conn, mosque_id: int) -> dict[str, str]:
 def check(payload) -> dict[str, str]:
     """Valide un payload de l'interface : champs connus, 160 caractères, pas de balise HTML."""
     if not isinstance(payload, dict):
-        raise InvalidVariables("un objet {champ: texte} est attendu")
+        raise InvalidVariables(_("an object mapping fields to texts is expected"))
     out: dict[str, str] = {}
     for slot, valeur in payload.items():
         if slot not in SLOTS:
-            raise InvalidVariables(f"champ inconnu : {slot}")
+            raise InvalidVariables(_("unknown field: {slot}", slot=slot))
         texte = "" if valeur is None else str(valeur).strip().replace("\n", " ")
         if len(texte) > MAX_LEN:
-            raise InvalidVariables(f"{slot} : {MAX_LEN} caractères au maximum")
+            raise InvalidVariables(_("{slot}: {max} characters at most", slot=slot, max=MAX_LEN))
         if "<" in texte or ">" in texte:
-            raise InvalidVariables(f"{slot} : les balises HTML ne sont pas acceptées")
+            raise InvalidVariables(_("{slot}: HTML tags are not accepted", slot=slot))
         out[slot] = texte
     return out
 

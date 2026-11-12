@@ -15,6 +15,7 @@ import shutil
 import subprocess
 from urllib.parse import urlsplit
 
+from ..i18n import _
 from . import db
 
 MODES = ("camera", "push")
@@ -50,16 +51,16 @@ def check(mode: str, url: str | None, mosque) -> tuple[str, str, str]:
     """(mode, address, error message) — normalised for storage."""
     mode = (mode or "").strip()
     if mode not in MODES:
-        return mode, "", "Choisissez la caméra de la mosquée ou la poussée depuis un ordinateur."
+        return mode, "", _("Choose the mosque's camera or the push from a computer.")
     if mode == "push":
         return mode, push_rtsp(mosque), ""
     url = (url or "").strip() or DEFAULT_URL
     if not url.startswith(CAMERA_SCHEMES):
-        return mode, url, "L'adresse de la caméra doit commencer par rtsp:// ou rtsps://."
+        return mode, url, _("The camera address must start with rtsp:// or rtsps://.")
     if re.search(r"\s", url):
-        return mode, url, "L'adresse ne doit pas contenir d'espace."
+        return mode, url, _("The address must not contain a space.")
     if not urlsplit(url).hostname:
-        return mode, url, "L'adresse n'indique pas de serveur."
+        return mode, url, _("The address does not name a server.")
     return mode, url, ""
 
 
@@ -102,20 +103,21 @@ def probe(url: str, timeout: float = PROBE_TIMEOUT_S) -> tuple[bool, str]:
     """Tries to read the stream: (reachable, readable detail). Never raises."""
     url = (url or "").strip()
     if not url or not shutil.which("ffprobe"):
-        return False, "Flux invérifiable depuis ce serveur."
+        return False, _("Stream cannot be checked from this server.")
     if url.startswith("rtmp"):
-        return False, "Une poussée se vérifie une fois OBS lancé : l'encodeur lit le relais, pas cette adresse."
+        return False, _("A push is checked once OBS is running: the encoder reads the relay, not this address.")
     cmd = ["ffprobe", "-v", "error", "-rtsp_transport", "tcp", "-show_entries",
            "stream=codec_type,width,height,avg_frame_rate", "-of", "csv=p=0", url]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return False, "Aucune image reçue dans le délai imparti."
+        return False, _("No image received within the time limit.")
     except OSError as e:
-        return False, f"Inspection impossible ({e.__class__.__name__})."
+        return False, _("Inspection impossible ({error}).", error=e.__class__.__name__)
     if r.returncode != 0:
         detail = (r.stderr or "").strip().splitlines()
-        return False, ("Flux injoignable : " + (detail[-1][:160] if detail else "aucune réponse"))
+        return False, _("Stream unreachable: {detail}",
+                        detail=detail[-1][:160] if detail else _("no answer"))
     lignes, video = [ln for ln in r.stdout.splitlines() if ln.strip()], ""
     for ln in lignes:
         parts = ln.split(",")
@@ -123,14 +125,14 @@ def probe(url: str, timeout: float = PROBE_TIMEOUT_S) -> tuple[bool, str]:
             w = parts[1] if len(parts) > 1 else ""
             h = parts[2] if len(parts) > 2 else ""
             fps = parts[3] if len(parts) > 3 else ""
-            num, _, den = fps.partition("/")
+            num, _sep, den = fps.partition("/")
             try:
                 taux = round(float(num) / float(den or 1))
             except (ValueError, ZeroDivisionError):
                 taux = 0
-            video = f"{w}×{h}" + (f" · {taux} i/s" if taux else "")
+            video = f"{w}×{h}" + (" · " + _("{rate} fps", rate=taux) if taux else "")
             break
     if not video:
-        return False, "Le flux répond mais ne contient pas d'image."
+        return False, _("The stream answers but carries no image.")
     son = any(ln.startswith("audio") for ln in lignes)
-    return True, video + (" · son présent" if son else " · sans son")
+    return True, video + (" · " + _("sound present") if son else " · " + _("no sound"))

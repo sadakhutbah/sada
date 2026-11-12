@@ -93,14 +93,14 @@ def test_instances_triees_et_prochaines():
 
 def test_validation():
     for bad, motif in [
-        ({"events": [{"kind": "mariage", "title": "X", "date": "2026-01-01", "time": "10:00"}]}, "type inconnu"),
-        ({"events": [{"kind": "dars", "date": "2026-01-01", "time": "10:00"}]}, "titre manquant"),
-        ({"events": [{"kind": "dars", "title": "X"}]}, "ni « date » ni « recurrence »"),
-        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardy", "time": "19:00"}}]}, "jour de récurrence"),
-        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardi"}}]}, "demande « time » ou « after »"),
-        ({"events": [{"kind": "dars", "title": "X", "date": "2026-01-01"}]}, "demande aussi une heure"),
-        ({"events": [{"kind": "dars", "title": "X", "date": "2026-13-01", "time": "10:00"}]}, "date invalide"),
-        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardi", "after": "iftar"}}]}, "prière inconnue"),
+        ({"events": [{"kind": "mariage", "title": "X", "date": "2026-01-01", "time": "10:00"}]}, "unknown type"),
+        ({"events": [{"kind": "dars", "date": "2026-01-01", "time": "10:00"}]}, "title missing"),
+        ({"events": [{"kind": "dars", "title": "X"}]}, "neither “date” nor “recurrence”"),
+        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardy", "time": "19:00"}}]}, "unknown recurrence weekday"),
+        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardi"}}]}, "needs “time” or “after”"),
+        ({"events": [{"kind": "dars", "title": "X", "date": "2026-01-01"}]}, "also needs a time"),
+        ({"events": [{"kind": "dars", "title": "X", "date": "2026-13-01", "time": "10:00"}]}, "invalid date"),
+        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardi", "after": "iftar"}}]}, "unknown prayer"),
     ]:
         with pytest.raises(ValueError, match=motif):
             ev.loads(json.dumps(bad))
@@ -111,7 +111,7 @@ def test_fichier_absent_ou_casse(tmp_path):
     p = tmp_path / "bad.json"
     p.write_text("{ pas du json", encoding="utf-8")
     lst, err = ev.load(p)
-    assert lst == [] and err is not None and "programme illisible" in err
+    assert lst == [] and err is not None and "programme unreadable" in err
 
 
 def test_ecriture_et_relecture(tmp_path):

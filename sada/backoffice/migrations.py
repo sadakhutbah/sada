@@ -27,6 +27,7 @@ from typing import Callable
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.schema import CreateIndex, CreateTable
 
+from ..i18n import _
 from . import models
 
 # bookkeeping, hors `metadata` (doit exister avant de décider des migrations)
@@ -173,8 +174,8 @@ def init(path: str | Path) -> None:
 
         if applied and max(applied) > LATEST:
             raise RuntimeError(
-                f"la base {path} est en version {max(applied)}, plus récente que le code ({LATEST}) : "
-                "mettez à jour le back-office")
+                _("database {path} is at version {version}, newer than the code ({latest}): "
+                  "update the back-office", path=path, version=max(applied), latest=LATEST))
 
         for migration in MIGRATIONS:
             if migration.version not in applied:

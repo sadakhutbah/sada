@@ -19,6 +19,7 @@ import requests
 
 from .. import runs
 from ..events import kind_label
+from ..i18n import _
 from . import db
 
 GRAPH = "https://graph.facebook.com/v21.0"
@@ -54,14 +55,15 @@ def _message(r) -> str:
 def _ok(r, what: str):
     """A response, or a `PublishError` naming the step that failed."""
     if r.status_code >= 400:
-        raise PublishError(f"{what} : HTTP {r.status_code} — {_message(r)}")
+        raise PublishError(_("{what}: HTTP {code} — {message}",
+                             what=what, code=r.status_code, message=_message(r)))
     return r
 
 
 def _json(r, what: str) -> dict:
     body = _ok(r, what).json()
     if not isinstance(body, dict):
-        raise PublishError(f"{what} : réponse inattendue")
+        raise PublishError(_("{what}: unexpected response", what=what))
     return body
 
 
@@ -111,7 +113,7 @@ def facebook(item, settings: dict) -> str:
             data={"description": caption_for(item, 5000), "access_token": settings["page_token"],
                   "published": "true"},
             files={"source": (path.name, f, "video/mp4")}, timeout=UPLOAD_TIMEOUT_S),
-            "envoi de la vidéo à Facebook")
+            _("Facebook video upload"))
     d = r.json() if r.content else {}
     return d.get("permalink_url") or f"https://www.facebook.com/{d.get('id', '')}"
 
@@ -121,9 +123,9 @@ def google_token(settings: dict) -> str:
     d = _json(SESSION.post(GOOGLE_TOKEN, data={
         "client_id": settings["client_id"], "client_secret": settings["client_secret"],
         "refresh_token": settings["refresh_token"], "grant_type": "refresh_token"}, timeout=30),
-        "jeton Google")
+        _("Google token"))
     if not d.get("access_token"):
-        raise PublishError("jeton Google : réponse sans access_token")
+        raise PublishError(_("Google token: response without access_token"))
     return d["access_token"]
 
 
@@ -149,16 +151,16 @@ def youtube(item, settings: dict) -> str:
                             headers={"Authorization": f"Bearer {token}",
                                      "Content-Type": "application/json; charset=UTF-8"},
                             data=json.dumps(body), timeout=60),
-               "ouverture de l'envoi YouTube")
+               _("opening the YouTube upload"))
     where = init.headers.get("location") or init.headers.get("Location")
     if not where:
-        raise PublishError("ouverture de l'envoi YouTube : adresse d'envoi absente de la réponse")
+        raise PublishError(_("opening the YouTube upload: upload address missing from the response"))
     with Path(item.clip["file_path"]).open("rb") as f:
         d = _json(SESSION.put(where, data=f, headers={"Content-Type": "video/mp4"},
                               timeout=UPLOAD_TIMEOUT_S),
-                  "envoi de la vidéo à YouTube")
+                  _("sending the video to YouTube"))
     if not d.get("id"):
-        raise PublishError("envoi de la vidéo à YouTube : réponse sans identifiant")
+        raise PublishError(_("sending the video to YouTube: response without an identifier"))
     return f"https://youtu.be/{d['id']}"
 
 
@@ -168,15 +170,15 @@ def _wait_finished(creation_id: str, settings: dict) -> None:
     for attempt in range(POLL_ATTEMPTS):
         d = _json(SESSION.get(url, params={"fields": "status_code,status",
                                            "access_token": settings["access_token"]}, timeout=30),
-                  "état du Reel Instagram")
+                  _("Instagram Reel status"))
         status = d.get("status_code")
         if status == "FINISHED":
             return
         if status in ("ERROR", "EXPIRED"):
-            raise PublishError(f"Instagram a refusé la vidéo : {d.get('status') or status}")
+            raise PublishError(_("Instagram refused the video: {status}", status=d.get("status") or status))
         if attempt + 1 < POLL_ATTEMPTS:
             SLEEP(POLL_DELAY_S)
-    raise PublishError("Instagram n'a pas fini de préparer la vidéo (délai dépassé)")
+    raise PublishError(_("Instagram did not finish preparing the video (timeout)"))
 
 
 def instagram(item, settings: dict) -> str:
@@ -193,12 +195,12 @@ def instagram(item, settings: dict) -> str:
     d = _json(SESSION.post(f"{GRAPH}/{settings['ig_user_id']}/media", data={
         "media_type": "REELS", "video_url": video_url, "caption": caption_for(item, 2200),
         "share_to_feed": "true", "access_token": settings["access_token"]}, timeout=120),
-        "création du Reel Instagram")
+        _("creating the Instagram Reel"))
     creation = d.get("id")
     if not creation:
-        raise PublishError("création du Reel Instagram : réponse sans identifiant")
+        raise PublishError(_("creating the Instagram Reel: response without an identifier"))
     _wait_finished(creation, settings)
     pub = _json(SESSION.post(f"{GRAPH}/{settings['ig_user_id']}/media_publish",
                              data={"creation_id": creation, "access_token": settings["access_token"]},
-                             timeout=60), "publication du Reel Instagram")
+                             timeout=60), _("publishing the Instagram Reel"))
     return f"https://www.instagram.com/reel/{pub.get('id', '')}"

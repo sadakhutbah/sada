@@ -50,13 +50,13 @@ def test_import_cree_un_run_en_file(env, tmp_path):
 
 
 @pytest.mark.parametrize("q, data_kind, msg", [
-    ({"filename": "a.exe"}, "ok", "Format"),
-    ({"kind": "fete"}, "ok", "Type"),
-    ({"date": "2999-01-01"}, "ok", "futur"),
-    ({"session_no": "trois"}, "ok", "nombre"),
-    ({}, "muet", "son"),
-    ({}, "texte", "illisible"),
-    ({}, "vide", "vide"),
+    ({"filename": "a.exe"}, "ok", "format"),
+    ({"kind": "fete"}, "ok", "type"),
+    ({"date": "2999-01-01"}, "ok", "future"),
+    ({"session_no": "trois"}, "ok", "number"),
+    ({}, "muet", "sound"),
+    ({}, "texte", "not a valid video"),
+    ({}, "vide", "Empty file"),
 ])
 def test_import_refuse(env, tmp_path, q, data_kind, msg):
     c = client(env, "admin")

@@ -15,6 +15,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from ..i18n import _
 from ..text import is_arabic
 from . import llm
 from .verses import formula_fr, shown
@@ -59,11 +60,11 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else empty()
     vms = shown(matches, ambiguous=True)
     ar = [(i, s) for i, s in enumerate(segments) if is_arabic(s["text"])]
+    total_ar = len(ar)
     if only:
         ar = [(i, s) for i, s in ar
               if any(s["end"] > a - 2 and s["start"] < b + 2 for a, b in only)]
-        log(f"traduction : {len(ar)} segments dans les fenêtres retenues "
-            f"(sur {sum(1 for _, s in enumerate(segments) if is_arabic(s['text']))})")
+        log(_("translation: {kept} segments inside the kept windows (out of {total})", kept=len(ar), total=total_ar))
     todo = [(i, s) for i, s in ar if _seg_key(s["text"]) not in cache["seg"]]
     vtodo = [m for m in vms if verse_key(m) not in cache["verse_fr"]]
     if (todo or vtodo) and use_llm:
@@ -86,7 +87,8 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
             "(sinon recopie-la entière).\n\n"
             f"VERSETS :\n{vlines}\n\nSEGMENTS (numéro, temps, texte) :\n{lines}\n"
         )
-        log(f"traduction : {len(todo)} segment(s) arabes, {len(vtodo)} verset(s) via {llm.settings().label()}")
+        log(_("translation: {segments} Arabic segment(s), {verses} verse(s) via {model}",
+              segments=len(todo), verses=len(vtodo), model=llm.settings().label()))
         d = llm.ask_json(prompt, timeout, log)
         if d:
             for i, s in todo:
@@ -101,7 +103,7 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
                 ok = len(ex) >= 12 and ex.rstrip(".") in m["verse_fr"]
                 cache["verse_fr"][k] = ex if ok else m["verse_fr"]
                 if not ok:
-                    log(f"traduction : extrait Hamidullah non littéral pour {k}, traduction complète gardée")
+                    log(_("translation: Hamidullah excerpt not literal for {key}, full translation kept", key=k))
     # known ritual formulas: fixed translation when the LLM is unavailable
     for i, s in ar:
         k = _seg_key(s["text"])
@@ -113,5 +115,5 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
     cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1))
     missing = sum(1 for _, s in ar if _seg_key(s["text"]) not in cache["seg"])
     if missing:
-        log(f"traduction : {missing} segment(s) arabes sans traduction (pas de sous-titre pour eux)")
+        log(_("translation: {count} Arabic segment(s) without translation (no subtitle for them)", count=missing))
     return cache

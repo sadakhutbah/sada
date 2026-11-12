@@ -12,13 +12,14 @@ from fastapi.responses import JSONResponse
 
 from .. import db, destinations, gabarit, internal, live_input, storage, variables_ecran as variables_mod
 from .. import screens as screens_mod
+from ...i18n import _
 from ..context import ConnDep
 
 router = APIRouter()
 
 
 def _refuse() -> JSONResponse:
-    return JSONResponse({"error": "jeton interne requis"}, status_code=403)
+    return JSONResponse({"error": _("internal token required")}, status_code=403)
 
 
 def _mosque_id(conn, port: int) -> int | None:
@@ -37,7 +38,7 @@ def notification_settings(request: Request, conn: ConnDep, port: int = 0):
         return _refuse()
     mid = _mosque_id(conn, port)
     if mid is None:
-        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
     r = db.one(conn, "SELECT * FROM notifications WHERE mosque_id = ?", mid) or {}
     return {"mosque_id": mid, "mode": r.get("mode", ""), "webhook": r.get("webhook", ""),
             "telegram_token": r.get("telegram_token", ""), "telegram_chat": r.get("telegram_chat", "")}
@@ -50,7 +51,7 @@ def live_targets(request: Request, conn: ConnDep, port: int = 0):
         return _refuse()
     mid = _mosque_id(conn, port)
     if mid is None:
-        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
     return {"mosque_id": mid, "urls": destinations.effective(conn, mid)}
 
 
@@ -61,7 +62,7 @@ def storage_target(request: Request, conn: ConnDep, port: int = 0):
         return _refuse()
     mid = _mosque_id(conn, port)
     if mid is None:
-        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
     return {"mosque_id": mid, "target": storage.effective(conn, mid)}
 
 
@@ -72,10 +73,10 @@ def screen_texts(request: Request, conn: ConnDep, port: int = 0):
         return _refuse()
     mid = _mosque_id(conn, port)
     if mid is None:
-        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
     mosque = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
     if not mosque:
-        return JSONResponse({"error": "mosquée introuvable"}, status_code=404)
+        return JSONResponse({"error": _("mosque not found")}, status_code=404)
     return {"mosque_id": mid, "screens": screens_mod.saved(conn, mid),
             "variables": variables_mod.variables(conn, mosque)}
 
@@ -92,7 +93,7 @@ def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
         return _refuse()
     mid = _mosque_id(conn, port)
     if mid is None:
-        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
     mosquee = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid) or {}
     fichier = gabarit.lire(mosquee)
     if not fichier:
@@ -111,5 +112,5 @@ def live_input_url(request: Request, conn: ConnDep, port: int = 0):
         return _refuse()
     mid = _mosque_id(conn, port)
     if mid is None:
-        return JSONResponse({"error": "mosquée indéterminée"}, status_code=404)
+        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
     return {"mosque_id": mid, "url": live_input.effective(conn, mid)}

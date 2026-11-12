@@ -14,6 +14,7 @@ import threading
 import traceback
 from pathlib import Path
 
+from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import translate, verses
 from ..pipeline.output import SessionOutput
@@ -93,12 +94,13 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
     data = load(conn, k)
     seg = next((s for s in data["segments"] if s.get("_i") == seg_index), None)
     if seg is None:
-        raise ValueError("segment inconnu")
+        raise ValueError(_("unknown segment"))
     row = next((r for r in transcript_rows(data) if r["i"] == seg_index), None)
     if row is None or row["field"] != field:
-        raise ValueError("ce passage n'est pas corrigeable (verset : traduction Hamidullah fixe ; récitation non appariée : pas de sous-titre)")
+        raise ValueError(_("this passage cannot be corrected (verse: the Hamidullah translation is fixed; "
+                           "unmatched recitation: no subtitle)"))
     if not value:
-        raise ValueError("texte vide")
+        raise ValueError(_("empty text"))
     current = row["fr"] if field == "fr" else row["text"]
     if value == current:
         return 0
@@ -136,17 +138,19 @@ def add_subtitle(conn, k: dict, start: float, end: float, text: str, user: dict,
     Returns the number of clips to regenerate."""
     text = " ".join((text or "").split())
     if not text:
-        raise ValueError("texte vide")
+        raise ValueError(_("empty text"))
     start, end = round(float(start), 2), round(float(end), 2)
     if start < 0 or not (MIN_ADDED <= end - start <= MAX_ADDED):
-        raise ValueError(f"durée invalide : entre {MIN_ADDED:g} et {MAX_ADDED:g} s")
+        raise ValueError(_("invalid duration: between {low} and {high} s",
+                                      low=f"{MIN_ADDED:g}", high=f"{MAX_ADDED:g}"))
     data = load(conn, k)
     dur = data.get("duration")
     if dur and end > dur + 0.5:
-        raise ValueError("au-delà de la fin de l'enregistrement")
+        raise ValueError(_("beyond the end of the recording"))
     for r in transcript_rows(data, start, end):
         if r.get("added") or r["fr"] or r["verse"]:
-            raise ValueError(f"ce moment porte déjà un sous-titre ({r['start']:.1f}–{r['end']:.1f} s) : corrigez-le plutôt")
+            raise ValueError(_("this moment already has a subtitle ({start}–{end} s): correct it instead",
+                                   start=f"{r['start']:.1f}", end=f"{r['end']:.1f}"))
     cur = conn.execute("INSERT INTO added_subtitles (mosque_id, khutba_id, start, \"end\", text, user_id, created_at) "
                        "VALUES (?,?,?,?,?,?,?)", (k["mosque_id"], k["id"], start, end, text, user["id"], db.now_iso()))
     hit = _requeue(conn, k, start, end)
@@ -158,7 +162,7 @@ def add_subtitle(conn, k: dict, start: float, end: float, text: str, user: dict,
 def remove_subtitle(conn, k: dict, sid: int, user: dict, ip=None) -> int:
     a = db.one(conn, "SELECT * FROM added_subtitles WHERE id = ? AND khutba_id = ?", sid, k["id"])
     if not a:
-        raise ValueError("sous-titre ajouté inconnu")
+        raise ValueError(_("unknown added subtitle"))
     conn.execute("DELETE FROM added_subtitles WHERE id = ?", (sid,))
     hit = _requeue(conn, k, a["start"], a["end"])
     db.audit(conn, k["mosque_id"], user["id"], "correction.retrait", "khutba", k["id"], ip=ip,
@@ -170,18 +174,18 @@ def remove_subtitle(conn, k: dict, sid: int, user: dict, ip=None) -> int:
 
 def can_regenerate(clip: dict) -> tuple[bool, str]:
     if not shutil.which("ffmpeg"):
-        return False, "ffmpeg introuvable sur cette machine"
+        return False, _("ffmpeg not found on this machine")
     if not clip.get("video_source") or not Path(clip["video_source"]).exists():
-        return False, "vidéo source du clip introuvable"
+        return False, _("clip source video not found")
     if clip.get("source_offset") is None:
-        return False, "décalage source inconnu (manifest ancien)"
+        return False, _("unknown source offset (old manifest)")
     return True, ""
 
 
 def recover_interrupted(conn) -> None:
     """Regenerations in progress when the server stopped: they will never finish."""
-    conn.execute("UPDATE clips SET regen_state = 'erreur', regen_error = 'interrompue (serveur arrêté)', updated_at = ? "
-                 "WHERE regen_state = 'en_cours'", (db.now_iso(),))
+    conn.execute("UPDATE clips SET regen_state = 'erreur', regen_error = ?, updated_at = ? "
+                 "WHERE regen_state = 'en_cours'", (_("interrupted (server stopped)"), db.now_iso()))
 
 
 def _render(db_path: str, clip_id: int, log=print) -> None:
@@ -221,12 +225,12 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
 
 def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, background: bool = True) -> None:
     if not (clip["needs_regen"] or clip["regen_state"] == "erreur"):
-        raise ValueError("aucune correction à appliquer : le clip est déjà validé")
+        raise ValueError(_("no correction to apply: the clip is already approved"))
     ok, why = can_regenerate(clip)
     if not ok:
-        raise ValueError(f"régénération impossible : {why}")
+        raise ValueError(_("regeneration impossible: {why}", why=why))
     if clip["regen_state"] == "en_cours":
-        raise ValueError("régénération déjà en cours")
+        raise ValueError(_("regeneration already in progress"))
     conn.execute("UPDATE clips SET regen_state = 'en_cours', regen_error = '', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"]))
     db.audit(conn, clip["mosque_id"], user["id"], "clip.regeneration", "clip", clip["id"], ip=ip, version=clip["version"] + 1)
     if background:
@@ -239,17 +243,17 @@ def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, back
 
 def can_validate(clip: dict) -> tuple[bool, str]:
     if clip["needs_regen"] or clip["regen_state"] == "en_cours":
-        return False, "des corrections ne sont pas encore dans la vidéo : régénérer le clip avant de le valider"
+        return False, _("corrections are not in the video yet: regenerate the clip before approving it")
     if not Path(clip["file_path"]).exists():
-        return False, "fichier du clip introuvable"
+        return False, _("clip file not found")
     return True, ""
 
 
 def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=None) -> None:
     if decision not in ("valide", "rejete"):
-        raise ValueError("décision inconnue")
+        raise ValueError(_("unknown decision"))
     if clip["status"] == "publie":
-        raise ValueError("clip déjà publié : décision figée")
+        raise ValueError(_("clip already published: decision is final"))
     if decision == "valide":
         ok, why = can_validate(clip)
         if not ok:
@@ -262,7 +266,7 @@ def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=Non
 
 def reopen(conn, clip: dict, user: dict, ip=None) -> None:
     if clip["status"] not in ("valide", "rejete"):
-        raise ValueError("seul un clip validé ou rejeté peut être remis en file")
+        raise ValueError(_("only an approved or rejected clip can be put back in the queue"))
     conn.execute(f"UPDATE clips SET {REQUEUE}, reject_reason = '', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"]))
     db.audit(conn, clip["mosque_id"], user["id"], "clip.remis_en_file", "clip", clip["id"], ip=ip)
 
@@ -283,19 +287,20 @@ def clip_bounds(k: dict, start, end, duration: float | None = None) -> tuple[flo
     try:
         start, end = float(str(start).replace(",", ".")), float(str(end).replace(",", "."))
     except ValueError:
-        raise ValueError("bornes illisibles") from None
+        raise ValueError(_("unreadable bounds")) from None
     if not (math.isfinite(start) and math.isfinite(end)):
-        raise ValueError("bornes illisibles")
+        raise ValueError(_("unreadable bounds"))
     start, end = round(start, 2), round(end, 2)
     if start < 0:
-        raise ValueError("le début est avant le début de l'enregistrement")
+        raise ValueError(_("the start is before the recording's start"))
     if end <= start:
-        raise ValueError("la fin doit venir après le début")
+        raise ValueError(_("the end must come after the start"))
     if not (MIN_CLIP <= end - start <= MAX_CLIP):
-        raise ValueError(f"durée invalide : un clip dure entre {MIN_CLIP:g} et {MAX_CLIP:g} s")
+        raise ValueError(_("invalid duration: a clip lasts between {low} and {high} s",
+                                    low=f"{MIN_CLIP:g}", high=f"{MAX_CLIP:g}"))
     dur = k.get("duration_s") or duration
     if dur and end > dur + 0.5:
-        raise ValueError("la fin est au-delà de la fin de l'enregistrement")
+        raise ValueError(_("the end is past the end of the recording"))
     return start, end
 
 
@@ -330,12 +335,12 @@ def create_clip(conn, db_path: str, k: dict, start, end, kind: str, title: str, 
     the subtitles by the regeneration mechanism (version 1). Returns the clip id."""
     kind = (kind or "extrait").strip()
     if kind not in CLIP_KINDS:
-        raise ValueError("type de clip inconnu")
+        raise ValueError(_("unknown clip type"))
     start, end = clip_bounds(k, start, end, load(conn, k).get("duration"))
     src = clip_source(conn, k)
     ok, why = can_regenerate(src)
     if not ok:
-        raise ValueError(f"clip impossible à produire : {why}")
+        raise ValueError(_("clip cannot be produced: {why}", why=why))
     idx = (db.one(conn, "SELECT MAX(idx) n FROM clips WHERE khutba_id = ?", k["id"])["n"] or 0) + 1
     outdir = SessionOutput(k["output_dir"]).clips
     outdir.mkdir(parents=True, exist_ok=True)
@@ -359,16 +364,16 @@ def adjust_clip(conn, db_path: str, clip: dict, k: dict, start, end, title, user
     """New bounds (and title) for a clip, proposed by the model or not: it goes back to "to validate"
     and is rendered again (version n+1). A published clip is frozen: create a new clip instead."""
     if clip["status"] == "publie":
-        raise ValueError("clip déjà publié : ses bornes sont figées, créez plutôt un nouveau clip")
+        raise ValueError(_("clip already published: its bounds are frozen, create a new clip instead"))
     if clip["regen_state"] == "en_cours":
-        raise ValueError("régénération déjà en cours")
+        raise ValueError(_("regeneration already in progress"))
     start, end = clip_bounds(k, start, end, load(conn, k).get("duration"))
     title = clip["title"] if title is None else _clean_title(title)
     if (start, end, title) == (round(clip["start"], 2), round(clip["end"], 2), clip["title"]):
-        raise ValueError("rien n'a changé")
+        raise ValueError(_("nothing changed"))
     ok, why = can_regenerate(clip)
     if not ok:
-        raise ValueError(f"régénération impossible : {why}")
+        raise ValueError(_("regeneration impossible: {why}", why=why))
     moved = (start, end) != (round(clip["start"], 2), round(clip["end"], 2))
     conn.execute(f"UPDATE clips SET start = ?, \"end\" = ?, title = ?, bounds_by = ?, needs_regen = 1, {REQUEUE}, "
                  "reject_reason = '', updated_at = ? WHERE id = ?",

@@ -124,7 +124,7 @@ def test_envoi_et_index(tmp_path, monkeypatch):
                             "video/x-matroska")]
     # deuxième passage : rien à renvoyer
     assert upload._envoyer(faux, cible, idx, [fichier], dits.append) == []
-    assert len(faux.envois) == 1 and any("déjà envoyée" in m for m in dits)
+    assert len(faux.envois) == 1 and any("already sent" in m for m in dits)
     # fichier modifié depuis (taille différente) : il repart
     fichier.write_bytes(b"y" * 4096)
     assert upload._envoyer(faux, cible, idx, [fichier], dits.append) == ["rediffusions/live_20261110_130000.mkv"]
@@ -158,7 +158,7 @@ def test_echec_est_raconte_sans_lever(tmp_path):
     faux = FauxClient(panne=Exception("An error occurred (NoSuchBucket) when calling PutObject"))
     assert upload._envoyer(faux, {"bucket": "b", "prefix": ""}, upload.Index(tmp_path / "u2.json"),
                            [f], dits.append) == []
-    assert any("compartiment n'existe pas" in m for m in dits)
+    assert any("bucket does not exist" in m for m in dits)
 
 
 def test_uploader_sans_cible_n_envoie_rien(tmp_path):
@@ -212,7 +212,7 @@ def test_sonde_refus_lisible(env, monkeypatch):
     panne = Exception("An error occurred (SignatureDoesNotMatch) when calling PutObject")
     monkeypatch.setattr(upload, "client", lambda target: FauxClient(panne))
     ok, detail = storage.probe({"bucket": "b", "prefix": "r/", "access_key": "a", "secret_key": "s"})
-    assert ok is False and "Clé secrète refusée" in detail
+    assert ok is False and "Secret key refused" in detail
 
 
 def test_bouton_tester_utilise_le_secret_enregistre(env, monkeypatch):

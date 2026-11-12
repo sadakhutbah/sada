@@ -93,7 +93,7 @@ def test_interrupteur_coupe_tout_appel(serveur, monkeypatch):
     logs = []
     assert llm.ask_json("résume", 5, logs.append, url=serveur) is None
     assert _Handler.seen == {}                      # no request left
-    assert "désactivé" in logs[0]
+    assert "disabled" in logs[0]
 
 
 def test_interrupteur_valeurs(monkeypatch):
@@ -166,4 +166,4 @@ def test_fichier_illisible_ignore(tmp_path, monkeypatch):
 def test_modele_absent_ne_casse_pas_le_pipeline():
     logs = []
     assert llm.ask_json("résume", 2, logs.append, url="http://127.0.0.1:9/v1") is None
-    assert logs and "LLM indisponible" in logs[0]
+    assert logs and "LLM unavailable" in logs[0]

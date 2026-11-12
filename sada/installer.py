@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from .i18n import _
+
 # Versions minimales des briques sans lesquelles le rendu des écrans ne peut pas fonctionner.
 MIN_PYTHON = (3, 10)
 
@@ -86,8 +88,10 @@ def _python_ok() -> Etape:
     version = sys.version_info
     lisible = f"{version.major}.{version.minor}.{version.micro}"
     if (version.major, version.minor) < MIN_PYTHON:
-        return Etape("Python", BLOQUE, f"{lisible} — {MIN_PYTHON[0]}.{MIN_PYTHON[1]} minimum",
-                     "installez une version récente de Python (python.org, case « Add to PATH »)")
+        return Etape("Python", BLOQUE,
+                     _("{version} — {min_major}.{min_minor} minimum", version=lisible,
+                       min_major=MIN_PYTHON[0], min_minor=MIN_PYTHON[1]),
+                     _("install a recent Python (python.org, “Add to PATH” box)"))
     return Etape("Python", OK, f"{lisible} ({platform.system()})")
 
 
@@ -99,10 +103,11 @@ def _modules_ok() -> Etape:
         except Exception:                          # noqa: BLE001 — un module cassé compte comme absent
             manquants.append(paquet)
     if manquants:
-        return Etape("Dépendances Python", MANQUE, ", ".join(manquants),
+        return Etape(_("Python dependencies"), MANQUE, ", ".join(manquants),
                      f"{_pip()} install --upgrade {_paquet()}",
                      automatique=True, _action=lambda: _installer_dependances(manquants))
-    return Etape("Dépendances Python", OK, f"{len(REQUIRED_MODULES)} modules présents")
+    return Etape(_("Python dependencies"), OK,
+                 _("{count} modules present", count=len(REQUIRED_MODULES)))
 
 
 def _moteur_ok() -> Etape:
@@ -110,18 +115,18 @@ def _moteur_ok() -> Etape:
 
     fourni = tr.embedded_path()
     if fourni is not None:
-        return Etape("Navigateur de rendu", OK, _taille(fourni.parent.parent.parent))
+        return Etape(_("Rendering browser"), OK, _taille(fourni.parent.parent.parent))
     try:
         pris = tr.browser_path()
     except tr.RenderUnavailable:
         pris = None
     if pris is not None:
-        return Etape("Navigateur de rendu", MANQUE,
-                     f"aucun navigateur fourni ; celui de la machine servira ({pris})",
-                     "python -m sada.installer  (télécharge le navigateur fourni, ≈ 280 Mo)",
+        return Etape(_("Rendering browser"), MANQUE,
+                     _("no bundled browser; the machine's own will be used ({path})", path=pris),
+                     _("python -m sada.installer  (downloads the bundled browser, ≈ 280 MB)"),
                      automatique=True, _action=lambda: _telecharger_moteur())
-    return Etape("Navigateur de rendu", MANQUE, "aucun navigateur, ni fourni ni sur la machine",
-                 "python -m sada.installer  (télécharge le navigateur fourni, ≈ 280 Mo)",
+    return Etape(_("Rendering browser"), MANQUE, _("no browser, neither bundled nor on the machine"),
+                 _("python -m sada.installer  (downloads the bundled browser, ≈ 280 MB)"),
                  automatique=True, _action=lambda: _telecharger_moteur())
 
 
@@ -135,9 +140,9 @@ def _relais_ok() -> Etape:
     nom = "mediamtx.exe" if sys.platform.startswith("win") else "mediamtx"
     binaire = RAIL_BIN / nom
     if binaire.is_file():
-        return Etape("Relais vidéo", OK, str(binaire.relative_to(RAIL_BIN.parent.parent)))
-    return Etape("Relais vidéo", MANQUE, "binaire absent pour ce système",
-                 f"poste de direct : placez {nom} dans tools/bin (voir tools/mediamtx.sh)")
+        return Etape(_("Video relay"), OK, str(binaire.relative_to(RAIL_BIN.parent.parent)))
+    return Etape(_("Video relay"), MANQUE, _("no binary for this system"),
+                 _("live machine: put {name} in tools/bin (see tools/mediamtx.sh)", name=nom))
 
 
 
@@ -149,8 +154,8 @@ def _ffmpeg_ok() -> Etape:
     found = shutil.which("ffmpeg")
     if found:
         return Etape("ffmpeg", OK, found)
-    return Etape("ffmpeg", MANQUE, "introuvable, ni dans tools/bin ni dans le PATH",
-                 "poste de direct : déposez ffmpeg dans tools/bin, ou installez-le")
+    return Etape("ffmpeg", MANQUE, _("not found, neither in tools/bin nor in the PATH"),
+             _("live machine: drop ffmpeg into tools/bin, or install it"))
 
 
 def examen() -> list[Etape]:
@@ -161,9 +166,9 @@ def examen() -> list[Etape]:
         etapes.append(_relais_ok())
         etapes.append(_ffmpeg_ok())
     else:
-        etapes.append(Etape("Navigateur de rendu", BLOQUE, "vérifié après les dépendances"))
-        etapes.append(Etape("Relais vidéo", BLOQUE, "vérifié après les dépendances"))
-        etapes.append(Etape("ffmpeg", BLOQUE, "vérifié après les dépendances"))
+        etapes.append(Etape(_("Rendering browser"), BLOQUE, _("checked after the dependencies")))
+        etapes.append(Etape(_("Video relay"), BLOQUE, _("checked after the dependencies")))
+        etapes.append(Etape("ffmpeg", BLOQUE, _("checked after the dependencies")))
     return etapes
 
 
@@ -189,7 +194,7 @@ def _telecharger_moteur() -> bool:
     try:
         fetch_engine()
     except (RenderUnavailable, OSError) as exc:
-        print(f"  téléchargement impossible : {exc}")
+        print("  " + _("download impossible: {error}", error=exc))
         return False
     return True
 
@@ -205,20 +210,22 @@ def _taille(dossier: Path) -> str:
                 except OSError:
                     pass
     except OSError:
-        return "taille inconnue"
-    return f"{octets / (1024 * 1024):.0f} Mo"
+        return _("unknown size")
+    return _("{size:.0f} MB", size=octets / (1024 * 1024))
 
 
 # ----------------------------------------------------------------------------------- présentation
-MARQUES = {OK: "ok", MANQUE: "à faire", BLOQUE: "bloqué"}
+# state marks shown in the summary (values stay keys, translated at display time)
+MARQUES = {OK: "ok", MANQUE: "to do", BLOQUE: "blocked"}
 
 
-def afficher(etapes: list[Etape], entete: str = "Mise en route de Sadā") -> None:
+def afficher(etapes: list[Etape], entete: str | None = None) -> None:
+    entete = entete or _("Sadā setup")
     print(f"\n{entete}")
     print("-" * len(entete))
     largeur = max(len(e.nom) for e in etapes)
     for e in etapes:
-        print(f"  {e.nom.ljust(largeur)}  {MARQUES[e.etat]:<8}  {e.detail}")
+        print(f"  {e.nom.ljust(largeur)}  {_(MARQUES[e.etat]):<8}  {e.detail}")
         if e.etat != OK and e.remede:
             print(f"  {'':<{largeur}}  {'':<8}  → {e.remede}")
     print()
@@ -236,12 +243,13 @@ def install(argv: list[str] | None = None) -> int:
     verifier = "--verifier" in argv
     non_interactif = "--oui" in argv or "--verifier" in argv
 
-    print("\nSadā — mise en route")
-    print("-" * 27)
+    entete = _("Sadā — setup")
+    print(f"\n{entete}")
+    print("-" * len(entete))
 
     etapes = examen()
     if verifier:
-        afficher(etapes, "État de la machine (aucune modification)")
+        afficher(etapes, _("State of the machine (nothing modified)"))
         return 0 if all(e.etat == OK for e in etapes) else 1
 
     # Ce que le poste ne peut pas avoir (relais vidéo, ffmpeg : affaire du poste de direct) est
@@ -253,42 +261,45 @@ def install(argv: list[str] | None = None) -> int:
         prochaine = next((e for e in etapes if e.etat == MANQUE and e.automatique), None)
         if prochaine is None:
             break
-        print(f"\n  {prochaine.nom} : à faire ({prochaine.detail})")
+        print()
+        print("  " + _("{name}: to do ({detail})", name=prochaine.nom, detail=prochaine.detail))
         action = prochaine._action
         if action is None:
-            print(f"  {prochaine.nom} : à faire — {prochaine.remede}")
+            print("  " + _("{name}: to do — {remedy}", name=prochaine.nom, remedy=prochaine.remede))
             break
-        if not non_interactif and not _confirmer(f"  Lancer maintenant ? [{_oui_non(True)}] "):
-            print(f"  {prochaine.nom} : laissé de côté — {prochaine.remede}")
+        if not non_interactif and not _confirmer("  " + _("Run it now? [{answer}]", answer=_oui_non(True)) + " "):
+            print("  " + _("{name}: left aside — {remedy}", name=prochaine.nom, remedy=prochaine.remede))
             break
-        print(f"  {prochaine.nom} : en cours…")
+        print("  " + _("{name}: running…", name=prochaine.nom))
         if not action():
-            print(f"  {prochaine.nom} : échec — {prochaine.remede}")
+            print("  " + _("{name}: failed — {remedy}", name=prochaine.nom, remedy=prochaine.remede))
             return 3
-        print(f"  {prochaine.nom} : fait")
+        print("  " + _("{name}: done", name=prochaine.nom))
 
     for etape in examen():
         if etape.etat == BLOQUE:
-            print(f"  {etape.nom} : bloqué — {etape.remede or etape.detail}")
+            print("  " + _("{name}: blocked — {remedy}", name=etape.nom, remedy=etape.remede or etape.detail))
             return 2
         if etape.etat == OK:
-            print(f"  {etape.nom} : en place ({etape.detail})")
+            print("  " + _("{name}: in place ({detail})", name=etape.nom, detail=etape.detail))
 
-    print("\n  Vérification finale")
+    print()
+    print("  " + _("Final check"))
     restantes = examen()
-    afficher(restantes, "État après installation")
+    afficher(restantes, _("State after installation"))
     bloquantes = [e for e in restantes if e.etat != OK and e.automatique]
     if not bloquantes and all(e.etat != BLOQUE for e in restantes):
-        print("  L'application est prête. Suite : créez un compte administrateur, puis lancez le")
-        print("  serveur.")
+        print("  " + _("The application is ready. Next: create an administrator account, then "
+                        "start the server."))
         print(f"    {_prefixe()} create-admin --username admin")
         print(f"    {_prefixe()} serve")
         absents = [e.nom for e in restantes if e.etat != OK]
         if absents:
-            print(f"  À prévoir pour un poste de direct : {', '.join(absents)} (rien à faire ailleurs).")
+            print("  " + _("To plan for a live machine: {items} (nothing to do elsewhere).",
+                          items=", ".join(absents)))
         print()
         return 0
-    print("  Il reste des points à traiter (voir ci-dessus).\n")
+    print("  " + _("Some points are still to be handled (see above).") + "\n")
     return 1
 
 
@@ -303,7 +314,7 @@ def _confirmer(question: str) -> bool:
 
 
 def _oui_non(defaut: bool) -> str:
-    return "O/n" if defaut else "o/N"
+    return _("Y/n") if defaut else _("y/N")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from typing import Any
 from .. import scenes
 from .. import screens as base
 from ..config import Config
+from ..i18n import _
 from . import branding, db, variables_ecran
 
 
@@ -118,7 +119,7 @@ def preview(mosque: dict, payload, screen: str) -> bytes:
     except ValueError as e:
         raise InvalidScreens(str(e)) from e
     if screen not in base.SCREENS or screen not in scenes.SCENES:
-        raise InvalidScreens(f"écran inconnu : {screen}")
+        raise InvalidScreens(_("unknown screen: {screen}", screen=screen))
     logo = branding.path_for(mosque)
     cfg = Config(title=mosque.get("clip_title") or "", mosque_name=mosque.get("name") or "",
                  logo=str(logo) if logo and (mosque.get("logo_path") or "").strip() else "",

@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .. import paths
 from ..config import pick
+from ..i18n import _
 
 DEFAULT_URL = "http://127.0.0.1:11434/v1"
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
@@ -127,19 +128,19 @@ def _guess_protocol(url: str) -> str:
 def ask_json(prompt: str, timeout: int, log=print, *, url=None, model=None, key=None, protocol=None) -> dict | None:
     """JSON response from the model, or None if it is unavailable (the pipeline always has a fallback)."""
     if not enabled():
-        log("LLM désactivé (SADA_LLM_ENABLED=0) : repli sans modèle")
+        log(_("LLM disabled (SADA_LLM_ENABLED=0): falling back without a model"))
         return None
     s = settings(url, model, key, protocol)
     try:
         text = _ask_cli(prompt, timeout, log) if s.protocol == "claude-cli" else _ask_http(s, prompt, timeout, log)
     except Exception as e:  # noqa: BLE001 — a missing or slow model must not break the pipeline
-        log(f"LLM indisponible ({s.label()}) : {e}")
+        log(_("LLM unavailable ({model}): {error}", model=s.label(), error=e))
         return None
     if not text:
         return None
     d = _json_object(text)
     if d is None:
-        log(f"LLM : réponse sans objet JSON ({text[:200]!r})")
+        log(_("LLM: response without a JSON object ({excerpt})", excerpt=f"{text[:200]!r}"))
     return d
 
 
@@ -186,7 +187,7 @@ def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
     d = _post(url, body, headers, timeout)
     choices = d.get("choices") or []
     if not choices:
-        raise RuntimeError(f"réponse sans « choices » : {json.dumps(d)[:200]}")
+        raise RuntimeError(_("response without “choices”: {body}", body=json.dumps(d)[:200]))
     return (choices[0].get("message") or {}).get("content") or ""
 
 
@@ -196,17 +197,17 @@ def probe(timeout: int = 8) -> tuple[bool, str]:
     try:
         _ask_http(s, 'Réponds uniquement {"ok": true}.', timeout, lambda m: None)
     except Exception as e:  # noqa: BLE001 — the message is shown as is to the administrator
-        return False, f"{s.label()} injoignable : {e}"
-    return True, f"{s.label()} répond."
+        return False, _("{model} unreachable: {error}", model=s.label(), error=e)
+    return True, _("{model} answers.", model=s.label())
 
 
 def _ask_cli(prompt: str, timeout: int, log) -> str:
     """Old behaviour: `claude` binary as a subprocess (disabled by default)."""
     exe = shutil.which("claude")
     if not exe:
-        raise RuntimeError("binaire « claude » introuvable")
+        raise RuntimeError(_("“claude” binary not found."))
     r = subprocess.run([exe, "-p", "--output-format", "text"], input=prompt, capture_output=True,
                        text=True, timeout=timeout)
     if r.returncode != 0:
-        raise RuntimeError(f"claude -p a échoué ({r.returncode}) {r.stderr[:300]}")
+        raise RuntimeError(_("claude -p failed ({code}) {error}", code=r.returncode, error=r.stderr[:300]))
     return r.stdout

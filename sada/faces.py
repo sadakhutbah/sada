@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from . import source
+from .i18n import _
 
 FRAME_TIMEOUT = 5.0     # no frame for this long: source considered lost
 MODEL = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
@@ -47,7 +48,7 @@ class FaceGate:
     def update(self, image: np.ndarray, now: float) -> bool:
         """New frame → frontal face at instant `now`?"""
         if len(self.roi) != 4:
-            raise ValueError(f"zone de visage : 4 fractions attendues, {len(self.roi)} reçues")
+            raise ValueError(_("face zone: 4 fractions expected, {count} received", count=len(self.roi)))
         x0, y0, x1, y1 = self.bounds(image.shape)
         zone = image[y0:y1, x0:x1]
         faces = self.detect(zone, None) or []
@@ -85,7 +86,7 @@ def yunet_detector(threshold: float = 0.6, size: tuple[int, int] = (320, 180)):
 
     def detect(image, _roi=None):
         det.setInputSize((image.shape[1], image.shape[0]))
-        _, faces = det.detect(image)
+        _scores, faces = det.detect(image)
         if faces is None:
             return []
         return [tuple(f) for f in faces]
@@ -122,7 +123,7 @@ class FaceMonitor(threading.Thread):
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self._read(self.proc)
             except Exception as e:  # noqa: BLE001 - we restart, the camera may come back
-                self.log(f"Visage : erreur {e}")
+                self.log(_("Face: error {error}", error=e))
             self.connected = False
             with self._lock:
                 self._present, self._absence, self._score = False, None, None
@@ -140,7 +141,7 @@ class FaceMonitor(threading.Thread):
             try:
                 present = self.gate.update(img, now)
             except ValueError as e:
-                self.log(f"Visage : image ignorée ({e})")
+                self.log(_("Face: frame ignored ({error})", error=e))
                 continue
             with self._lock:
                 self.connected = True

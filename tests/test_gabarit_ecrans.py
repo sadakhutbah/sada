@@ -67,9 +67,9 @@ def test_import_valide_applique_les_textes_et_conserve_le_fichier(env, stockage)
                                    "foot": "Merci de patienter."}
     # `avant` n'a pas de champ titre dans le moteur : la valeur est signalée, pas appliquée.
     assert any(i["screen"] == "avant" and i["slot"] == "title" for i in d["ignored"])
-    assert any("n'a pas de champ" in i["reason"] for i in d["ignored"])
+    assert any("has no field" in i["reason"] for i in d["ignored"])
     assert "priere.eyebrow" not in d["taken"]["priere"]
-    assert "5 textes repris" in d["message"] or "textes repris" in d["message"]
+    assert "texts kept: 15" in d["message"]
 
     champs = _valeurs(c)
     assert champs["avant"]["eyebrow"]["value"] == "Début imminent"
@@ -122,7 +122,7 @@ def test_bloc_json_invalide_refuse(env, stockage):
     r = _envoi(c, _html(script='{"avant": {"texts": },}'))
     assert r.status_code == 422
     message = r.json()["message"]
-    assert "JSON valide" in message and "ligne" in message
+    assert "not valid JSON" in message and "line" in message
     assert not (env["tmp"] / "screens").exists()
 
 
@@ -132,7 +132,7 @@ def test_gabarit_incomplet_refuse(env, stockage):
     del bloc["janaza"]
     r = _envoi(c, _html(bloc))
     assert r.status_code == 422
-    assert "janaza" in r.json()["message"] and "manquent" in r.json()["message"]
+    assert "janaza" in r.json()["message"] and "missing" in r.json()["message"]
 
 
 def test_fichier_trop_gros_refuse(env, stockage):
@@ -142,7 +142,7 @@ def test_fichier_trop_gros_refuse(env, stockage):
     gros = b"<!doctype html><html><body>" + b"x" * (gabarit.MAX_BYTES + 1) + b"</body></html>"
     r = _envoi(c, gros)
     assert r.status_code == 422
-    assert "trop volumineux" in r.json()["message"]
+    assert "too large" in r.json()["message"]
     assert not (env["tmp"] / "screens").exists()
 
 
@@ -150,7 +150,7 @@ def test_mauvaise_extension_refusee(env, stockage):
     c = client(env, "admin")
     r = _envoi(c, _html(), nom="ecrans.txt")
     assert r.status_code == 422
-    assert "Format refusé" in r.json()["message"]
+    assert "Format refused" in r.json()["message"]
     assert not (env["tmp"] / "screens").exists()
 
 

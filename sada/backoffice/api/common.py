@@ -11,7 +11,7 @@ PERMISSIONS = tuple(auth.PERMS)
 def _user(ctx: Ctx) -> dict:
     u = ctx.user
     return {"id": u["id"], "name": u["display_name"] or u["username"], "role": u["role"],
-            "role_label": auth.ROLE_LABELS.get(u["role"], u["role"]),
+            "role_label": auth.role_label(u["role"]),
             "permissions": [p for p in PERMISSIONS if ctx.can(p)]}
 
 

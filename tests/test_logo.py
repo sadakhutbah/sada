@@ -55,9 +55,9 @@ def test_upload_puis_retrait(env):
 def test_fichier_refuse(env):
     c = client(env, "admin")
     r = _envoi(c, "notes.txt", b"pas une image", "text/plain")
-    assert r.status_code == 422 and "format accepté" in r.json()["message"]
+    assert r.status_code == 422 and "accepted format" in r.json()["message"]
     r = _envoi(c, "gros.png", b"\x89PNG" + b"0" * (3 * 1024 * 1024), "image/png")
-    assert r.status_code == 422 and "trop lourde" in r.json()["message"]
+    assert r.status_code == 422 and "too large" in r.json()["message"]
     assert c.get("/api/v1/settings").json()["mosque"]["logo"] == "/static/emblem.svg"
 
 

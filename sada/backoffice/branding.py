@@ -9,6 +9,7 @@ import io
 from pathlib import Path
 
 from .. import paths
+from ..i18n import _
 
 DIR = paths.DATA / "backoffice" / "logos"
 MAX_BYTES = 2 * 1024 * 1024
@@ -37,23 +38,23 @@ def save(mosque: dict, filename: str, content: bytes) -> str:
 
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in EXT:
-        raise ValueError("format accepté : png, jpg, webp ou svg")
+        raise ValueError(_("accepted format: png, jpg, webp or svg"))
     if len(content) > MAX_BYTES:
-        raise ValueError("image trop lourde (2 Mo maximum)")
+        raise ValueError(_("image too large (2 MB maximum)"))
     if ext == ".svg":
         head = content[:400].lower()
         if b"<svg" not in head:
-            raise ValueError("fichier SVG illisible")
+            raise ValueError(_("unreadable SVG file"))
     else:
         try:
             im = Image.open(io.BytesIO(content))
             im.verify()
             if min(im.size) < 16:
-                raise ValueError("image trop petite (16 px minimum)")
+                raise ValueError(_("image too small (16 px minimum)"))
         except ValueError:
             raise
         except Exception:
-            raise ValueError("fichier image illisible") from None
+            raise ValueError(_("unreadable image file")) from None
     DIR.mkdir(parents=True, exist_ok=True)
     for old in DIR.glob(f"{mosque['slug']}.*"):
         old.unlink(missing_ok=True)

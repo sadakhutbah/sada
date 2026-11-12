@@ -18,6 +18,8 @@ import threading
 import time
 from pathlib import Path
 
+from .i18n import _
+
 log = logging.getLogger("sada.gabarit_antenne")
 
 # Les six écrans que le gabarit doit fournir, dans l'ordre du fichier.
@@ -70,16 +72,16 @@ class AntenneGabarit:
         try:
             data = lire(url, token()) or {}
         except Exception as e:                     # noqa: BLE001 — le direct n'attend pas le réseau
-            self.log(f"Gabarit : back-office injoignable ({e}) — dessin du moteur conservé")
+            self.log(_("Template: back office unreachable ({error}) — keeping the engine drawing", error=e))
             return False
         pages = data.get("pages") or {}
         if not pages:
-            self.log("Gabarit : aucun fichier importé — dessin du moteur conservé")
+            self.log(_("Template: no file imported — keeping the engine drawing"))
             self.page = None
             return False
         self.page = pages
         self._variables = data.get("variables") or {}
-        self.log("Gabarit : %s — ce fichier sera affiché à l'antenne" % (data.get("nom") or "importé"))
+        self.log(_("Template: {name} — this file will be shown on air", name=data.get("nom") or "imported"))
         return True
 
     # ------------------------------------------------------------------- rendu
@@ -128,15 +130,16 @@ class AntenneGabarit:
             png = self._rendre(ecran, moment)
         except Exception as e:                     # noqa: BLE001 — un écran raté ne coupe pas le direct
             self._echecs += 1
-            self.log(f"Gabarit : rendu de l'écran {ecran} impossible ({e})")
+            self.log(_("Template: cannot render screen {screen} ({error})", screen=ecran, error=e))
             if self._echecs >= 3:
                 self._disponible = False
-                self.log("Gabarit : trois échecs de suite — retour au dessin du moteur pour ce direct")
+                self.log(_("Template: three failures in a row — back to the engine drawing for this live stream"))
             return None
         self._echecs = 0
         duree = (time.monotonic() - debut) * 1000
         if duree > 600:
-            self.log(f"Gabarit : écran {ecran} rendu en {duree:.0f} ms (au-delà du budget)")
+            self.log(_("Template: screen {screen} rendered in {duration:.0f} ms (over budget)",
+                       screen=ecran, duration=duree))
         with self._lock:
             self._dernieres[ecran] = (signature, png)
         return png
@@ -166,7 +169,8 @@ def depuis_backoffice(cfg, backoffice_url: str, api_port: int, log_fn=None):
         from .backoffice.template_render import TemplateRender
     except Exception as e:                         # noqa: BLE001 — pas de navigateur : on dessine
         log_fn = log_fn or (lambda _m: None)
-        log_fn(f"Gabarit : rendu navigateur indisponible ({e}) — dessin du moteur conservé")
+        log_fn(_("Template: browser rendering unavailable ({error}) — keeping the engine drawing",
+                 error=e))
         return None
     antenne = AntenneGabarit(cfg, lambda _cfg: TemplateRender(), log_fn=log_fn)
     if antenne.charger(backoffice_url, api_port):

@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import source
+from .i18n import _
 
 FRAME_TIMEOUT = 5.0     # no frame for this long: source considered lost
 
@@ -37,7 +38,7 @@ class MotionGate:
     def bounds(self) -> tuple[int, int, int, int]:
         """Usable region in pixels (at least 1×1, within the frame)."""
         if len(self.roi) != 4:
-            raise ValueError(f"zone de présence : 4 fractions attendues, {len(self.roi)} reçues")
+            raise ValueError(_("presence zone: 4 fractions expected, {count} received", count=len(self.roi)))
         x0, y0, x1, y1 = self.roi
         bx0 = min(max(int(round(x0 * self.width)), 0), self.width - 1)
         by0 = min(max(int(round(y0 * self.height)), 0), self.height - 1)
@@ -48,7 +49,8 @@ class MotionGate:
     def score(self, frame: bytes) -> float | None:
         """Share (0–1) of pixels that change clearly in the region. None for the first frame."""
         if len(frame) != self.width * self.height:
-            raise ValueError(f"image de {len(frame)} octets, attendu {self.width * self.height}")
+            raise ValueError(_("frame of {got} bytes, expected {expected}",
+                               got=len(frame), expected=self.width * self.height))
         prev = self._prev
         self._prev = frame
         if prev is None:
@@ -104,7 +106,7 @@ class PresenceMonitor(threading.Thread):
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self._read(self.proc)
             except Exception as e:  # noqa: BLE001 - we restart, the camera may come back
-                self.log(f"Présence : erreur {e}")
+                self.log(_("Presence: error {error}", error=e))
             self.connected = False
             with self._lock:
                 self._present, self._score = False, None
@@ -121,7 +123,7 @@ class PresenceMonitor(threading.Thread):
             try:
                 present = self.gate.update(frame, now)
             except ValueError as e:
-                self.log(f"Présence : image ignorée ({e})")
+                self.log(_("Presence: frame ignored ({error})", error=e))
                 continue
             score = self.gate.last_score
             with self._lock:

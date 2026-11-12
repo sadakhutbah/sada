@@ -117,7 +117,7 @@ def test_refus_d_une_base_plus_recente_que_le_code(tmp_path):
     raw.commit()
     raw.close()
 
-    with pytest.raises(RuntimeError, match="plus récente que le code"):
+    with pytest.raises(RuntimeError, match="newer than the code"):
         db.init(path)
 
 

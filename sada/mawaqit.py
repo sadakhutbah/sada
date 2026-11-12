@@ -7,13 +7,15 @@ from pathlib import Path
 
 import requests
 
+from .i18n import _
+
 UA = "Mozilla/5.0 (X11; Linux x86_64) sada/0.1"
 
 
 def _extract_conf(html: str) -> dict:
     m = re.search(r"confData\s*=\s*(\{.*?\});\s*\n", html, re.S)
     if not m:
-        raise ValueError("confData introuvable dans la page Mawaqit")
+        raise ValueError(_("confData not found in the Mawaqit page"))
     return json.loads(m.group(1))
 
 
@@ -43,14 +45,14 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
         except Exception:
             cache = None
     if cache and time.time() - cp.stat().st_mtime < max_age_h * 3600:
-        cache["origin"] = "cache (frais)"
+        cache["origin"] = _("cache (fresh)")
         return _finish(cache)
     if not url:
         if cache:
-            cache["origin"] = "cache (aucune URL Mawaqit configurée)"
+            cache["origin"] = _("cache (no Mawaqit URL configured)")
             return _finish(cache)
-        raise ValueError("aucune source d'horaires : URL Mawaqit vide (cli --mawaqit-url ou Réglages → Mosquée) "
-                         "et pas de cache local ; sinon --times / jumua_times_override")
+        raise ValueError(_("no time source: empty Mawaqit URL (--mawaqit-url or Settings → Mosque) "
+                           "and no local cache; otherwise --times / jumua_times_override"))
     try:
         data = fetch_live(url, timeout)
         cp.parent.mkdir(parents=True, exist_ok=True)
@@ -59,7 +61,7 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
         return _finish(data)
     except Exception as e:  # network failure / changed format: fall back on the cache
         if cache:
-            cache["origin"] = f"cache (périmé, échec live : {e})"
+            cache["origin"] = _("cache (stale, live fetch failed: {error})", error=e)
             return _finish(cache)
         raise
 

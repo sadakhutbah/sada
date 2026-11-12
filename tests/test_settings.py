@@ -74,7 +74,7 @@ def test_dossier_choisi_enregistre_et_valide(env):
     f = env["tmp"] / "pas-un-dossier"
     f.write_text("x")
     ok, why = dirs.check(str(f))
-    assert not ok and "fichier" in why
+    assert not ok and "file" in why
 
 
 def test_aucun_chemin_de_la_machine_dans_les_reglages(env):
@@ -97,7 +97,7 @@ def test_les_connecteurs_sont_decoupes(env):
     c = client(env, "admin")
     rows = {r["key"]: r for r in c.get("/api/v1/settings").json()["connectors"]}
     assert {"local", "facebook", "youtube", "instagram"} <= set(rows)
-    for cle, libelle in (("local", "Dossier local"), ("facebook", "Page Facebook"),
+    for cle, libelle in (("local", "Local folder"), ("facebook", "Facebook page"),
                          ("youtube", "YouTube"), ("instagram", "Instagram")):
         assert rows[cle]["label"] == libelle
         assert rows[cle]["fields"], cle
@@ -140,7 +140,7 @@ def test_mawaqit_et_fuseau_enregistres_et_valides(env):
     d = c.get("/api/v1/settings").json()["mosque"]
     assert d["mawaqit_url"] == "https://mawaqit.net/fr/x" and d["timezone"] == "Africa/Casablanca"
     r = c.ecrire("/settings/mosque", {"timezone": "Mars/Olympus"}, methode="PATCH")
-    assert r.status_code == 422 and "fuseau" in r.json()["message"]
+    assert r.status_code == 422 and "time zone" in r.json()["message"]
     assert db.one(env["conn"], "SELECT timezone FROM mosques WHERE id = ?", env["mid"])["timezone"] == "Africa/Casablanca"
 
 
@@ -149,7 +149,7 @@ def test_dossier_inutilisable_refuse(env):
     f = env["tmp"] / "un-fichier"
     f.write_text("x")
     r = c.ecrire("/settings/mosque", {"publish_dir": str(f)}, methode="PATCH")
-    assert r.status_code == 422 and "Dossier refusé" in r.json()["message"]
+    assert r.status_code == 422 and "Folder refused" in r.json()["message"]
     ok = env["tmp"] / "cree" / "ici"
     assert c.ecrire("/settings/mosque", {"publish_dir": str(ok)}, methode="PATCH").status_code == 200
     assert ok.is_dir()
