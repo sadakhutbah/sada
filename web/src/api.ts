@@ -83,6 +83,24 @@ export type VideoImport = {
   session_no: string; date: string;
 };
 
+/** Branding options of a video: what is shown, the texts, timings and the logo's place. */
+export type HabillageOptions = {
+  intro_on: boolean; title: string; subtitle: string; intro_s: number;
+  lower_on: boolean; speaker: string; role: string; lower_at: number; lower_s: number;
+  logo_on: boolean; logo_pos: "tl" | "tr" | "bl" | "br"; logo_size: "s" | "m" | "l"; logo_opacity: number;
+  bar_on: boolean;
+  outro_on: boolean; outro_text: string; outro_link: string; outro_s: number;
+};
+
+export type Habillage = {
+  options: HabillageOptions;
+  status: "" | "en_cours" | "pret" | "echec";
+  progress: number; error: string; started_at: string; finished_at: string; duration_s: number | null;
+  video_ready: boolean; size_mb: number | null; preview_ready: boolean; preview_v: number;
+  has_source: boolean; has_logo: boolean; can_edit: boolean; mosque: string;
+  colors: { green: string; gold: string };
+};
+
 export const api = {
   session: () => demande<Session>("/session"),
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
@@ -136,6 +154,11 @@ export const api = {
   ajouterSousTitre: (kid: number, start: number, end: number, text: string) =>
     ecrire<any>("POST", `/sermons/${kid}/subtitles`, { start: String(start), end: String(end), text }),
   retirerSousTitre: (kid: number, sid: number) => ecrire<any>("POST", `/sermons/${kid}/subtitles/${sid}/delete`),
+  habillage: (kid: number) => demande<Habillage>(`/sermons/${kid}/habillage`),
+  habillageApercu: (kid: number, options: HabillageOptions) =>
+    ecrire<Habillage & { message: string }>("POST", `/sermons/${kid}/habillage/apercu`, { options }),
+  habillageLancer: (kid: number, options: HabillageOptions) =>
+    ecrire<Habillage & { message: string }>("POST", `/sermons/${kid}/habillage`, { options }),
   intervenant: (kid: number, imam_id: string, speaker: string) =>
     ecrire<any>("POST", `/sermons/${kid}/speaker`, { imam_id, speaker }),
   motDePasse: (current: string, nouveau: string, confirm: string) =>

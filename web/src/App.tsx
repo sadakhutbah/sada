@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Sermons from "./pages/Sermons";
 import SermonDetail from "./pages/SermonDetail";
+import Habillage from "./pages/Habillage";
 import Dars from "./pages/Dars";
 import Clips from "./pages/Clips";
 import ClipDetail from "./pages/ClipDetail";
@@ -168,6 +169,7 @@ export default function App() {
           <Route path="/dars" element={<Dars />} />
           <Route path="/clips" element={<Clips />} />
           <Route path="/khutbas/:id" element={<SermonDetail />} />
+          <Route path="/khutbas/:id/habillage" element={<Habillage />} />
           {/* Old address: already-shared links keep leading to the list. */}
           <Route path="/sermons" element={<Navigate to="/khutbas" replace />} />
           <Route path="/sermons/:id" element={<Navigate to="/khutbas" replace />} />

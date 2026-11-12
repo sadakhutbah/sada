@@ -110,6 +110,12 @@ def _mosques_couleurs(conn: sqlite3.Connection) -> None:
     ))
 
 
+def _habillage(conn: sqlite3.Connection) -> None:
+    """Migration 8 : habillage des vidéos (table `habillages`, réglages retenus par la mosquée)."""
+    _add_columns(conn, "mosques", (("habillage_defaults", "TEXT NOT NULL DEFAULT ''"),))
+    conn.executescript(_create_ddl())
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -118,7 +124,13 @@ MIGRATIONS: tuple[Migration, ...] = (
               _tables_du_modele),
     Migration(5, "mosques : couleurs des clips (brand_green, brand_gold)", _mosques_couleurs),
     Migration(6, "sous-titres ajoutés à un instant précis (added_subtitles)", _tables_du_modele),
+    # 7 : réservée à une branche menée en parallèle (voir RESERVEES)
+    Migration(8, "habillage des vidéos (habillages, mosques.habillage_defaults)", _habillage),
 )
+
+#: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.
+#: À retirer quand la migration correspondante arrive dans MIGRATIONS.
+RESERVEES: frozenset[int] = frozenset({7})
 
 LATEST = MIGRATIONS[-1].version
 
