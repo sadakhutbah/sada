@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query
 from starlette.concurrency import run_in_threadpool
 
 from .. import auth, content, db, import_video, importer, traitement
-from ..context import CtxDep, Invalid, khutba_or_404, imam_filter
+from ..context import CtxDep, Invalid, NotFound, khutba_or_404, imam_filter
 from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput

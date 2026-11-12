@@ -90,7 +90,7 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
         if not runs.produces_content(s):
             res["skipped"].append(sdir.name)
             continue
-        rec_path, _ = runs.sources(data, s)
+        rec_path, _sources = runs.sources(data, s)
         tr = o.read(o.transcript, {})
         verses = o.read(o.verses, [])
         start, end = s.get("start_pos"), s.get("end_pos")
