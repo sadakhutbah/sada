@@ -42,6 +42,8 @@ mosques = sa.Table(
     # couleurs de la mosquée dans les clips (migration 5), vides = charter actuelle
     sa.Column("brand_green", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("brand_gold", sa.Text, nullable=False, server_default=_d("''")),
+    # habillage des vidéos (migration 8) : derniers réglages choisis, JSON ; vide = réglages par défaut
+    sa.Column("habillage_defaults", sa.Text, nullable=False, server_default=_d("''")),
 )
 
 users = sa.Table(
@@ -165,6 +167,26 @@ added_subtitles = sa.Table(
     sa.Column("created_at", sa.Text, nullable=False),
 )
 
+# Vidéo « habillée » d'une session (migration 8) : une par session, refaite à chaque nouveau rendu.
+habillages = sa.Table(
+    "habillages", metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("khutba_id", sa.Integer, sa.ForeignKey("khutbas.id"), nullable=False, unique=True),
+    sa.Column("options", sa.Text, nullable=False, server_default=_d("'{}'")),
+    sa.Column("status", sa.Text, sa.CheckConstraint("status IN ('', 'en_cours', 'pret', 'echec')"),
+              nullable=False, server_default=_d("''")),
+    sa.Column("progress", sa.Float, nullable=False, server_default=_d("0")),
+    sa.Column("error", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("file_path", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("duration_s", sa.Float),
+    sa.Column("preview_at", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("started_at", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("finished_at", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("updated_at", sa.Text, nullable=False),
+)
+
 connectors = sa.Table(
     "connectors", metadata,
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False, primary_key=True),
@@ -262,5 +284,5 @@ sa.Index("khutbas_mosque", khutbas.c.mosque_id, khutbas.c.date)
 sa.Index("live_targets_mosque", live_targets.c.mosque_id)
 
 # tables métier, dans l'ordre de création (dépendances : FK)
-TABLES = (mosques, users, auth_sessions, khutbas, clips, corrections, added_subtitles, connectors,
+TABLES = (mosques, users, auth_sessions, khutbas, clips, corrections, added_subtitles, habillages, connectors,
           notifications, live_targets, live_input, storage, screen_texts, publications, audit)

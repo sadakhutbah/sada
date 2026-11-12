@@ -127,6 +127,12 @@ export default function SermonDetail() {
           <Fait label={t("sermons.detail.verses")}><span className="tabular-nums">{d.verses.length}</span></Fait>
           <Fait label={t("sermons.clips")}><span className="tabular-nums">{d.clips.length}</span></Fait>
         </dl>
+        {d.has_video && (
+          <Link to={`/khutbas/${k.id}/habillage`}
+            className="inline-flex min-h-11 items-center gap-2 justify-self-start rounded-[9px] border border-leaf bg-leaf px-4 py-2 font-semibold text-night no-underline hover:bg-leaf-2">
+            <span aria-hidden className="size-2.5 rounded-full bg-deep" /> {t("habillage.open")}
+          </Link>
+        )}
       </header>
 
       <div className="grid items-start gap-4 min-[1000px]:grid-cols-[minmax(0,1.2fr)_minmax(380px,1fr)]">

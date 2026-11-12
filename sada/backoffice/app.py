@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import paths
 from ..paths import ASSETS
-from . import auth, branding, content, db, docpage, gabarit, importer, live, traitement
+from . import auth, branding, content, db, docpage, gabarit, habillage, importer, live, traitement
 from . import screens as screens_mod
 from .api import router as api_router
 from .context import (ConnDep, CtxDep, Forbidden, Invalid, LoginRequired, NotFound, _sec,
@@ -75,6 +75,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     conn = db.connect(db_path)
     try:
         content.recover_interrupted(conn)
+        habillage.recover_interrupted(conn)
     finally:
         conn.close()
 

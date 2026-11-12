@@ -22,6 +22,10 @@ def table_names(conn) -> set[str]:
     return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
 
+#: versions attendues dans schema_migrations après mise à jour complète
+VERSIONS = [m.version for m in migrations.MIGRATIONS]
+
+
 def applied_versions(conn) -> list[int]:
     return [r["version"] for r in db.all_(conn, "SELECT version FROM schema_migrations ORDER BY version")]
 
@@ -30,7 +34,8 @@ def test_migrations_sont_ordonnees_et_sans_trou():
     versions = [m.version for m in migrations.MIGRATIONS]
     assert versions == sorted(versions)
     assert versions[0] == 1
-    assert versions == list(range(1, migrations.LATEST + 1))
+    assert versions == [v for v in range(1, migrations.LATEST + 1) if v not in migrations.RESERVEES]
+    assert not set(versions) & migrations.RESERVEES
     assert migrations.LATEST == db.LATEST_VERSION
 
 
@@ -49,7 +54,7 @@ def test_base_neuve_cree_le_schema_complet(tmp_path):
         indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
         assert {"audit_mosque", "clips_mosque", "khutbas_mosque", "live_targets_mosque"} <= indexes
         # toutes les versions sont enregistrées
-        assert applied_versions(conn) == list(range(1, migrations.LATEST + 1))
+        assert applied_versions(conn) == VERSIONS
     finally:
         conn.close()
 
@@ -87,7 +92,7 @@ def test_adoption_d_une_base_existante(tmp_path):
         # données conservées
         assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"
         # version de départ (1) enregistrée, puis 2 et 3 appliquées
-        assert applied_versions(conn) == list(range(1, migrations.LATEST + 1))
+        assert applied_versions(conn) == VERSIONS
     finally:
         conn.close()
 
@@ -98,7 +103,7 @@ def test_init_est_idempotent(tmp_path):
     db.init(path)
     conn = db.connect(path)
     try:
-        assert applied_versions(conn) == list(range(1, migrations.LATEST + 1))
+        assert applied_versions(conn) == VERSIONS
     finally:
         conn.close()
 
