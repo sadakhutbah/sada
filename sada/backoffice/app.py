@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from .. import paths
+from ..i18n import LanguageMiddleware, _
 from ..paths import ASSETS
 from . import auth, branding, content, db, docpage, gabarit, habillage, importer, live, traitement
 from . import screens as screens_mod
@@ -125,6 +126,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         stop.set()
 
     app = FastAPI(title="Sadā", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.add_middleware(LanguageMiddleware)
     app.state.db_path = str(db_path)
     app.state.secure = secure_cookies
     app.state.limiter = auth.RateLimiter()
@@ -165,23 +167,23 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     @app.exception_handler(LoginRequired)
     async def _login(request: Request, exc):
-        return error(request, 401, "connexion requise")
+        return error(request, 401, _("sign-in required"))
 
     @app.exception_handler(Forbidden)
     async def _forbidden(request: Request, exc):
-        return error(request, 403, "accès refusé")
+        return error(request, 403, _("access denied"))
 
     @app.exception_handler(NotFound)
     async def _nf(request: Request, exc):
-        return error(request, 404, "introuvable")
+        return error(request, 404, _("not found"))
 
     @app.exception_handler(Invalid)
     async def _invalid(request: Request, exc: Invalid):
-        return JSONResponse({"error": "refusé", "message": exc.message}, status_code=422)
+        return JSONResponse({"error": _("refused"), "message": exc.message}, status_code=422)
 
     @app.exception_handler(ValueError)
     async def _value(request: Request, exc: ValueError):
-        return JSONResponse({"error": "refusé", "message": str(exc)}, status_code=422)
+        return JSONResponse({"error": _("refused"), "message": str(exc)}, status_code=422)
 
     # ---------------------------------------------------------- live status
     @app.get("/api/live")

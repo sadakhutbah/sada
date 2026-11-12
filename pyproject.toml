@@ -31,7 +31,7 @@ dependencies = [
 packages = ["sada", "sada.pipeline", "sada.backoffice"]
 [tool.setuptools.package-data]
 "sada.backoffice" = ["templates/*.html", "static/*", "static/fonts/*"]
-"sada" = ["models/*.onnx"]
+"sada" = ["models/*.onnx", "locales/*/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
