@@ -1,326 +1,97 @@
-# Sadā
+<p align="center">
+  <img src="web/public/sada-mark-encre.svg" alt="Sadā" width="96">
+</p>
 
-Diffusion automatique de la khutba et pipeline IA après le live (transcription, versets, traduction, clips). Spécification : `SPEC.md`.
+<h1 align="center">Sadā · صدى</h1>
 
-Deux façons de l'utiliser : **auto-hébergé** sur l'ordinateur de la mosquée (ce dépôt), ou **version hébergée**
-proposée par le projet, où la mosquée se connecte directement sans rien installer.
+<p align="center">
+  Automatic live streaming of the Friday khutba, and an AI pipeline that turns it into transcripts,
+  translations and short clips.
+</p>
 
-```bash
-make setup     # .venv + dépendances (uv)
-make test      # tests automatisés
-make demo      # démo complète (caméra simulée, orchestrateur accéléré)
-```
+<p align="center">
+  <b>English</b> · <a href="README.ar.md">العربية</a>
+</p>
 
-## Back-office
+---
 
-Application web authentifiée (FastAPI + SQLite), utilisable sur téléphone. Elle tourne sur l'ordinateur de la mosquée
-(mini-PC NVIDIA ou PC de la mosquée) et, dans le modèle de données, chaque élément appartient à une mosquée : la même
-application pourra servir plusieurs mosquées depuis un serveur central.
+Sadā runs on a small computer at the mosque. It watches the prayer times, starts the live stream on its
+own when the imam steps up to the minbar, stops when the prayer begins, and sends the same stream to
+Facebook, YouTube or any RTMP destination. After the live, it transcribes the khutba (Arabic and French),
+detects the Qur'an verses quoted, translates them, and prepares short clips that a human validates
+before anything is published.
 
-| Rôle | Peut |
-|---|---|
-| Administrateur | tout, dont comptes, réglages de la mosquée et connecteurs |
-| Responsable | live, historique complet, validation, publication, journal |
-| Imam | live, ses khutbas, corriger/valider les clips de ses khutbas (pas de publication) |
+Nobody needs to stay behind the camera.
 
-### Lancer
+## Features
 
-```bash
-# 1. Créer la mosquée et le premier administrateur (le mot de passe est demandé au clavier)
-.venv/bin/python -m sada.backoffice create-admin --username admin --mosque votre-mosquee --mosque-name "Votre mosquée"
+- **Hands-free live**: prayer times from Mawaqit, start on voice + presence at the minbar, end of the
+  khutba detected when the imam turns towards the qibla. Manual controls stay available
+  (+5 min, Janaza, stop, cancel today).
+- **Multi-destination streaming**: one encoder, several RTMP outputs; a platform that drops does not
+  stop the others.
+- **Full-screen slates**: before the live, prayer, intermission, end, Janaza, end of a lesson, with
+  texts editable per mosque.
+- **Lessons and lectures (dars)**: weekly or one-off events, scheduled at a fixed time or after a prayer.
+- **Post-live pipeline**: transcription (faster-whisper), Qur'an verse detection, translation, summary,
+  clips with burned-in subtitles. Works with any local or remote LLM (OpenAI or Anthropic compatible
+  API), and falls back gracefully without one.
+- **Back office**: mobile-friendly web app with roles (admin, manager, imam), human validation before
+  every publication, full audit log.
+- **Publishing**: Facebook page, YouTube, Instagram Reels, or a local folder. Optional upload of
+  recordings to S3 / Cloudflare R2.
+- **Privacy first**: the camera frames the minbar only; presence and face signals are computed on the
+  fly, no image or identity is ever stored.
 
-# 2. Lancer : http://<adresse-du-pc>:8090 (téléphones sur le même réseau)
-make backoffice        # = .venv/bin/python -m sada.backoffice serve --port 8090
-```
+## Two ways to use it
 
-Les autres comptes se créent dans **Réglages → Comptes**, ou en ligne de commande :
-`python -m sada.backoffice create-user --username imam.abdallah --role imam --name "Imam Abdallah"`.
+- **Self-hosted**: install it on the mosque's computer (this repository).
+- **Hosted**: the mosque signs in to the hosted version and streams from OBS, nothing to install.
 
-### Configurer la mosquée
+## Quick start
 
-Dans **Réglages → Mosquée** (ou `python -m sada.backoffice mosque --slug votre-mosquee --orchestrator-url ...`) :
-
-- **Orchestrateur** : adresse de l'API du live (défaut `http://127.0.0.1:8088`) et jeton éventuel. Les boutons
-  +5 min / Janaza / Arrêter / Annuler aujourd'hui du tableau de bord passent par cette API.
-- **Dossiers** : `data/state` (runs), `data/output` (transcriptions, clips) et `data/published` par défaut.
-- **Import automatique** : les nouveaux runs du pipeline sont importés toutes les 60 s (`serve --import-every 0`
-  pour désactiver ; bouton « Importer » dans Khutbas, ou `python -m sada.backoffice import [--run 20261106_220224]`).
-  Les sessions Janaza ne sont pas importées. L'import ne touche jamais aux validations ni aux corrections.
-- **Imam par défaut** des nouvelles khutbas (sinon rattachement à la main sur la page de la khutba).
-- **Connecteurs** : les quatre publient réellement, sur un clip validé par un humain et à la demande.
-  - *Dossier local* : copie du clip et de sa fiche JSON dans `data/published/<mosquée>/<date>/`.
-  - *Page Facebook* : dépôt de la vidéo sur la page, légende = celle saisie (`graph-video`).
-  - *YouTube* : envoi sur la chaîne (jeton d'actualisation OAuth, envoi repris, visibilité réglable).
-  - *Instagram* : Reel sur le compte professionnel ; l'API télécharge la vidéo elle-même, donc elle exige
-    une adresse publique du dossier de publication (`public_base_url`), servi par le site de la mosquée.
-
-  Sans identifiants, un connecteur reste indisponible et ne fait aucun appel ; un refus de la plateforme
-  est enregistré tel quel dans l'historique des publications (son message, pas une traduction).
-
-### Écrans du direct (slates)
-
-**Réglages → Écrans** règle les textes affichés sur les écrans pleins — avant-direct, prière, entracte,
-fin, janaza, fin de dars — un écran par sous-onglet, avec l'aperçu que le moteur vient de dessiner à
-droite. Les textes par défaut restent dans `sada/screens.py` : un champ laissé vide reprend le
-défaut, rappelé en gris dans le champ, et seule la personnalisation de la mosquée est enregistrée
-(table `screen_texts`). L'orchestrateur les relit au lancement du direct
-(`GET /api/v1/internal/screens`).
-
-Les gabarits acceptent des variables remplacées au moment du rendu : `{heure}` (heure annoncée),
-`{date}`, `{jour}`, `{cours}`, `{titre}`, `{mosquee}`. Un écran dont la variable n'existe pas à ce
-moment-là n'affiche pas la ligne, au lieu d'une phrase tronquée.
-
-## Documentation servie par l'application
-
-Trois documents s'adressent à l'administrateur, pas au développeur. Ils sont servis par l'instance
-elle-même (`/docs` les liste) et se mettent à jour avec elle : pas de PDF à retrouver, pas de version
-qui traîne.
-
-| Adresse | Contenu |
-| --- | --- |
-| `/docs` | la liste des documents |
-| `/docs/ecrans-mode-emploi` | les six écrans pleins : à quoi ils servent, comment changer leurs textes, ce qu'ils ne savent pas faire |
-| `/docs/orchestrateur` | les deux programmes, pourquoi ils se parlent, les deux jetons, l'ordre de démarrage |
-| `/docs/agent-gabarit-ecrans` | la consigne à coller dans un assistant conversationnel pour obtenir un gabarit d'écrans à soi |
-| `/docs/mise-en-route` | la première installation, les quatre écrans d'accueil, le premier direct |
-| `/docs/connecteurs` | Facebook, YouTube, Instagram : ce qu'il faut obtenir, où le saisir, ce qui ne marche pas |
-| `/docs/rediffusions` | les clips, le dossier publié, l'envoi facultatif vers un compartiment S3 ou R2 |
-
-Chaque page existe aussi en version texte (`…​.md`) pour être collée dans un chat, et en anglais
-sous `/docs/en/<document>` — la traduction est un fichier `docs/<document>.en.md` ; tant qu'il
-manque, la page française est servie avec un avertissement. Le rendu Markdown
-vit dans `sada/backoffice/docpage.py`, sans dépendance : il échappe le HTML du document et refuse
-les liens `javascript:`. Les documents sources sont dans `docs/`.
-
-## Programme : dars et conférences
-
-Outre les khutbas du vendredi (horaires Mawaqit), l'orchestrateur suit un programme de dars et de
-conférences dans `data/events.json` (modèle : `examples/events.example.json`, à copier).
-
-```json
-{"kind": "dars", "title": "Tafsir de la sourate Al-Kahf", "speaker": "Imam Abdallah",
- "series": "Tafsir Al-Kahf", "session": 7,
- "recurrence": {"weekday": "mardi", "after": "isha", "offset_min": 15}}
-```
-
-- `date` + `time` pour un événement unique ; `recurrence` pour un cours hebdomadaire, à l'heure
-  absolue (`time`) ou après une prière (`after` = dhuhr, asr, maghrib, isha + `offset_min`), recalculée
-  chaque jour avec les horaires Mawaqit.
-- `publish: false` garde une entrée de côté (brouillon, annonce non confirmée).
-- Démarrage sur les mêmes signaux que la khutba, mais plus souple : fenêtre de 90 min (au lieu de 45),
-  silence d'arrêt de 3 min, grâce de 90 s, durée maximale de 2 h.
-- Écrans dédiés : bandeau « Dars : titre · intervenant · série · séance N » sur la caméra, compte à
-  rebours « Prochain cours à … » entre deux sessions, écran de fin avec le prochain cours annoncé.
-  L'API de contrôle expose `kind` et `event` ; le back-office en dérive les commandes `dars` / `dars_fin`.
-- Un fichier illisible n'empêche pas la diffusion : l'erreur est journalisée et les khutbas restent
-  programmées.
-
-## Modèle de langage (résumé et traduction)
-
-Le pipeline utilise un modèle servi en local, par HTTP, au format **OpenAI** ou **Anthropic**. Aucun
-binaire externe n'est requis : tout serveur compatible convient (Ollama, llama.cpp, LM Studio, vLLM, ou
-une API distante). Sans configuration, l'adresse visée est Ollama sur la machine
-(`http://127.0.0.1:11434/v1`) ; si rien ne répond, le pipeline continue avec ses replis — résumé
-extractif et traductions fixes — et la note Markdown l'indique.
+Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), `ffmpeg`, and the
+[mediamtx](https://github.com/bluenviron/mediamtx) relay for live streaming
+(both can be dropped in `tools/bin/`).
 
 ```bash
-export SADA_LLM_ENABLED="1"                          # interrupteur : 0 coupe tout appel, quelle que soit l'URL
-export SADA_LLM_URL="http://127.0.0.1:11434/v1"      # racine de l'API (…/v1, …/v1/messages)
-export SADA_LLM_MODEL="qwen2.5:7b-instruct"          # nom du modèle côté serveur
-export SADA_LLM_PROTOCOL="openai"                    # openai | anthropic (déduit de l'URL sinon)
-export SADA_LLM_API_KEY="…"                          # seulement si le serveur en exige une
+make setup                 # virtualenv + dependencies
+python -m sada.installer   # checks the machine and says what is missing
+
+# create the mosque and its first administrator (password asked interactively)
+.venv/bin/python -m sada.backoffice create-admin --username admin \
+    --mosque my-mosque --mosque-name "My Mosque"
+
+make backoffice            # http://<this-machine>:8090
 ```
 
-Équivalents en options : `--llm` / `--no-llm` (bascule), `--llm-url`, `--llm-model`, `--llm-protocol`.
+The first administrator sign-in opens a four-step setup: video input, live destinations, recordings,
+summary.
 
-En pratique, tout se règle depuis le back-office : **Réglages → Modèle de langage** (bouton « Tester la
-connexion » compris). Il écrit `data/llm.json`, que le pipeline relit à chaque lancement ; les variables
-d'environnement et les options de ligne de commande restent prioritaires sur ce fichier. Si le serveur
-exige une clé, elle se pose une fois hors du formulaire : `SADA_LLM_API_KEY`, ou la clé `key` du fichier
-local (droits 600) — le web ne l'écrit jamais. Exemple d'API distante, compatible OpenAI :
+## Documentation
 
-```json
-{"enabled": true, "url": "https://api.deepseek.com/v1", "model": "deepseek-flash", "protocol": "openai"}
-```
+The administrator guides are served by the app itself under `/docs`, and live in [`docs/`](docs):
 
-Le pipeline journalise son choix au démarrage (`modèle : openai · qwen2.5:7b-instruct` ou
-`modèle : désactivé (repli sans IA)`). La méthode réellement employée est aussi écrite dans l'en-tête
-des notes. L'ancien appel au binaire `claude`, en sous-processus, n'est plus le défaut : il faut le
-demander avec `SADA_LLM_PROTOCOL=claude-cli`.
+- [Getting started](docs/mise-en-route.en.md)
+- [Orchestrator](docs/orchestrateur.en.md): the two processes, tokens, start order
+- [Connectors](docs/connecteurs.en.md): Facebook, YouTube, Instagram
+- [Recordings](docs/rediffusions.en.md): clips, published folder, S3 / R2
+- [Screens](docs/ecrans-mode-emploi.en.md) and [screen template prompt](docs/agent-gabarit-ecrans.en.md)
 
-## Mise en route : quatre écrans
-
-**Mise en route** s'ouvre d'elle-même **au premier login** d'un administrateur, et une seule fois :
-elle est marquée faite qu'on la termine ou qu'on la saute (`mosques.onboarded_at`). Elle n'a pas
-d'entrée de menu — tout ce qu'elle règle se retrouve ensuite dans Réglages → Direct, qui porte les
-mêmes champs. Elle suit la configuration du direct de bout en bout, un formulaire par écran :
-
-1. **Entrée vidéo** — d'où vient l'image. Soit une caméra qui publie déjà en RTSP (son adresse est
-   saisie telle quelle), soit une poussée depuis un ordinateur : OBS envoie son image au relais
-   (`tools/mediamtx.sh`), qui la republie en RTSP pour l'encodeur. L'écran affiche l'adresse à coller
-   dans OBS (`rtmp://<cette machine>:1935/live/<mosquée>`) et un bouton **Tester** qui dit ce que le
-   flux contient — ou pourquoi rien n'arrive.
-2. **Destinations** — une ligne par réseau, comme dans Réglages → Direct ; les clés déjà saisies
-   reviennent masquées.
-3. **Rediffusions** — **facultatif** : le compartiment S3 / R2 qui recevra les enregistrements, et la
-   case qui active l'envoi. Laissé vide, l'étape se passe toute seule et rien n'est enregistré : les
-   fichiers restent sur la machine, comme par défaut. Le bouton d'écriture y fonctionne comme dans
-   Réglages.
-4. **Récapitulatif** — l'entrée retenue, le nombre de destinations actives, et le compartiment s'il
-   est actif.
-
-En mode poussée, l'encodeur lit la copie RTSP du relais (`rtsp://127.0.0.1:8554/live/<mosquée>`), pas
-l'adresse RTMP : le transport RTSP ne s'applique qu'aux adresses `rtsp://`, ce qui permet aussi de
-donner directement une entrée RTMP par configuration locale.
-
-## Diffusion en direct : plusieurs destinations à la fois
-
-Les destinations se règlent dans l'interface : **Réglages → Direct**, une ligne par destination (nom,
-adresse RTMP, active ou non). Le même flux part vers **toutes** les destinations actives, en un seul
-ffmpeg : l'encodeur écrit plusieurs sorties (`tee`), et une plateforme qui lâche n'interrompt pas les
-autres (`onfail=ignore`).
-
-- Une clé de diffusion est le dernier segment de l'adresse. Une fois enregistrée, elle n'est plus
-  réaffichée (masque), et le fait de renvoyer le masque la conserve.
-- L'orchestrateur lit cette liste au lancement du direct, par l'endpoint interne authentifié : il
-  n'ouvre jamais la base du back-office, et une panne de celui-ci laisse jouer la configuration locale.
-- Les clés se créent chez la plateforme (Facebook : diffusion en direct de la page ; YouTube : direct
-  activé sur la chaîne). Aucune n'est écrite dans le dépôt ni dans un fichier de configuration.
-- Repli, pour une démonstration ou une machine sans back-office :
-  `SADA_RTMP_URLS="rtmps://…/rtmp/<clé>,rtmps://…/live2/<clé>"` (liste séparée par des virgules).
-- Instagram ne diffuse pas en direct par RTMP : pour ce réseau, seule la publication de Reels après le
-  direct est possible.
-
-## Rediffusions : envoi vers un compartiment S3 ou R2
-
-Une fois le direct arrêté, les enregistrements partent dans un compartiment compatible S3 (Cloudflare
-R2, MinIO, Backblaze, AWS). C'est **une option, pas le fonctionnement par défaut** : renseigner un
-compartiment ne suffit pas, il faut cocher « Envoyer les rediffusions » — sans cette case, les fichiers
-restent uniquement sur la machine et le moteur ne reçoit rien. Réglages → **Rediffusions** : service
-(adresse du service, vide pour AWS), compartiment, région, clé d'accès, clé secrète, dossier, cette case. Le bouton
-**Tester l'écriture** dépose puis retire un objet minuscule : il dit si le compartiment accepte vraiment
-les fichiers, avant le premier direct. Il faut enregistrer avant de tester.
-
-- L'envoi se fait **après** le direct, en tâche de fond, après l'arrêt de l'encodeur : le moteur n'attend
-  jamais le réseau, et un service lent ne retarde pas la fin de séance.
-- Chaque fichier est **découpé** au-delà de 8 Mo (envoi multiple, reprise par morceau) ; le type de
-  contenu est posé (`video/x-matroska`, `video/mp4`).
-- Un index local (`data/uploads.json`) retient ce qui est déjà parti, avec sa taille et sa date : un
-  redémarrage ne renvoie pas deux fois le même fichier, un fichier plus récent si. Les enregistrements
-  **restent sur la machine** — Sadā ne supprime rien.
-- Les clés ne sont jamais écrites dans le dépôt ; la clé secrète ne revient pas en clair (masque,
-  renvoyer le masque = inchangé) et l'audit `rediffusion.configure` ne la contient pas. Le moteur les
-  reçoit par l'endpoint interne authentifié (`/internal/storage`), comme les destinations.
-- R2 : la région vaut `auto`, et l'adresse est celle du service
-  (`https://<compte>.r2.cloudflarestorage.com`), sans chemin.
-
-## Configuration : une seule règle de précédence
-
-Chaque réglage peut venir de trois endroits, et l'ordre ne change pas d'un réglage à l'autre :
-
-**ligne de commande > variable `SADA_<CHAMP>` > fichier `--config` > défaut.**
-
-- La ligne de commande est construite à partir de la configuration elle-même (`--camera-url` pour
-  `camera_url`, `--api-port` pour `api_port`…). `--help` liste chaque option avec son défaut et le nom
-  de sa variable.
-- Les durées propres à un type de session ne sont pas des options : elles vivent dans deux sections du
-  fichier, `khutba` et `dars` (`window_after_min`, `max_s`, `silence_stop_s`, `grace_s`, `ended_hold_s`).
-- La règle est écrite une fois, `sada.config.pick` ; le réglage du modèle de langage (`sada/pipeline/llm.py`)
-  passe par la même fonction.
-
-```yaml
-khutba: {window_after_min: 45, max_s: 3600, silence_stop_s: 60, grace_s: 30, ended_hold_s: 45}
-dars:   {window_after_min: 90, max_s: 7200, silence_stop_s: 180, grace_s: 90, ended_hold_s: 45}
-```
-
-## Notifications à l'imam
-
-L'orchestrateur prévient l'imam par un message court — rappel avant la session, début du direct,
-fin du direct — vers une destination privée. Rien n'est publié, et sans destination configurée les
-messages restent dans le journal (`notification (à blanc) : …`).
+## Development
 
 ```bash
-export SADA_NOTIFY_URL="https://discord.com/api/webhooks/…"   # webhook générique {"text": …}
-# ou
-export SADA_TELEGRAM_TOKEN="…" SADA_TELEGRAM_CHAT="…"        # bot Telegram
+make test     # test suite
+make front    # rebuild the React front end (web/) into web/dist
 ```
 
-Le jeton Telegram et l'URL du webhook se gardent hors du dépôt (variables d'environnement ou
-fichier de configuration local). Un échec d'envoi est journalisé et n'interrompt jamais le direct.
-Les messages existent aussi en champs de configuration : `notify_url`, `telegram_token`, `telegram_chat`
-(ou les options `--notify-url`, `--telegram-token`, `--telegram-chat`).
+Layout: `sada/` (orchestrator, encoder, signals), `sada/pipeline/` (post-live AI), `sada/backoffice/`
+(FastAPI + SQLite), `web/` (React front end), `tests/`.
 
-Sans destination dans la configuration de l'orchestrateur, celui-ci demande à la fin de son démarrage
-celles que l'administrateur a enregistrées dans le back-office : un appel HTTP local
-(`/api/v1/internal/notification-settings`), authentifié par un jeton que les deux processus lisent dans
-`data/internal.token`. L'orchestrateur n'ouvre jamais la base du back-office ; si celui-ci ne répond pas,
-les notifications restent à blanc et le direct continue.
+Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Présence au minbar
+## License
 
-Le démarrage automatique exige deux signaux : la voix (`vad`, webrtcvad) et, si elle est activée, la
-**présence** devant le minbar. La v1 ne fait pas tourner YOLO : un ffmpeg lit la caméra à 2 i/s en
-160×90 niveaux de gris, et l'on compare chaque image à la précédente dans une zone choisie. Aucune image
-n'est écrite, aucun visage n'est calculé ; il ne sort qu'un score et un booléen.
-
-```yaml
-# config.yaml
-presence: motion            # off | motion
-presence_roi: [0.25, 0.10, 0.75, 0.95]   # zone du minbar, en fractions (x0, y0, x1, y1)
-presence_threshold: 0.004   # part de pixels de la zone qui changent pour dire « mouvement »
-presence_hold_s: 8          # un mouvement vaut « présent » pendant 8 s
-presence_pixel_delta: 12    # écart de niveau (0–255) compté comme un vrai changement
-```
-
-Calibrage (une fois, depuis la caméra réelle) : lancer `python -m sada.orchestrator --presence motion`,
-puis `curl -s 127.0.0.1:8088/status` → `presence.score` au repos (0) et quand quelqu'un monte au minbar.
-Le seuil se met à mi-chemin entre les deux. Si la caméra ne donne plus d'image, `presence.present` vaut
-`null` : la machine ignore alors ce signal au lieu de bloquer le démarrage.
-
-## Visage au minbar : comment se termine une khutba
-
-Le silence ne conclut rien : une salle pleine n'est jamais muette, une toux ou une chaise remettent le
-compteur à zéro. Le signal retenu est **le visage de face** : pendant la khutba, l'imam se tient debout face
-à l'assemblée ; à la prière il se tourne vers la qibla et le minbar n'a plus aucun visage de face.
-
-Un ffmpeg lit la caméra à 5 i/s en 320×180 ; chaque image passe par **YuNet** (modèle ONNX de 232 Ko,
-embarqué dans `sada/models/`, CPU, sans GPU) sur la zone du minbar. Aucune image n'est écrite, aucune
-identité n'est calculée : seuls un score et un booléen sortent du module.
-
-```yaml
-face: yunet                 # off | yunet
-face_roi: [0.0, 0.0, 1.0, 1.0]   # zone du minbar (x0, y0, x1, y1) en fractions
-face_threshold: 0.6         # score minimal d'un visage de face
-face_hold_s: 4              # un visage vu vaut « présent » pendant ce délai
-face_fps: 5                 # images analysées par seconde
-face_absence_s: 45          # plus de visage de face depuis ce délai…
-face_silence_ratio: 0.5     # … ET au moins cette part du seuil de silence
-face_return_s: 3            # visage de retour sous ce délai : la grâce s'annule
-```
-
-La bascule vers PRAYER exige **les deux** : plus de visage de face depuis `face_absence_s` **et** un
-silence d'au moins `face_silence_ratio × silence_stop_s`. Puis la grâce habituelle s'applique ; un visage
-qui revient ou une voix qui reprend l'annule. Si la caméra ne donne plus d'image, le signal vaut `null` et
-la machine retombe sur le silence seul au lieu de couper par accident.
-
-Vérification : `curl -s 127.0.0.1:8088/status` → `face.present`, `face.absence_s`, `face.score`.
-Sur l'enregistrement du 06/11, le visage est détecté pendant toute la khutba (score 0,84–0,92) et plus du
-tout ensuite.
-
-### Règles
-
-- Rien ne se publie sans validation humaine (vérifié côté serveur, chaque tentative est journalisée).
-- Corriger un sous-titre ou une traduction met les clips concernés en « à régénérer » : la régénération (ffmpeg,
-  ~1 min) produit une nouvelle version, à revalider. Les versets gardent la traduction Hamidullah. Les fichiers du
-  pipeline ne sont jamais modifiés : les corrections vivent dans la base, les clips régénérés sont de nouveaux fichiers.
-- Journal : connexions, commandes du live, corrections, validations, publications, réglages (qui, quand, quoi).
-- Base : `data/backoffice/sada.db` (variable `SADA_DB` ou `--db`). Mots de passe argon2id, sessions serveur
-  (cookie HttpOnly, SameSite), jeton CSRF, blocage après 5 essais ratés. Derrière HTTPS (serveur central) :
-  `serve --secure-cookies`.
-
-## Licence
-
-Sadā est un logiciel libre sous licence [GNU AGPL-3.0](LICENSE) : vous pouvez l'utiliser, le modifier et
-l'héberger, à condition de publier sous la même licence le code de toute version modifiée mise à disposition,
-y compris en service en ligne. Les polices embarquées gardent leur propre licence (SIL OFL, voir `assets/fonts/`).
-Pour contribuer : `CONTRIBUTING.md`.
+[GNU AGPL-3.0](LICENSE). You may use, modify and host Sadā; if you make a modified version available,
+including as an online service, its source code must be published under the same license.
+Bundled fonts keep their own license (SIL OFL, see `assets/fonts/`).

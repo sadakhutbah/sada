@@ -2,7 +2,7 @@
 name = "sada"
 license = "AGPL-3.0-or-later"
 version = "0.1.0"
-description = "Sadā : diffusion automatique de la khutba + pipeline IA post-live"
+description = "Sadā: automatic live streaming of the Friday khutba, with an AI pipeline for transcripts, Qur'an verses, translations and clips"
 requires-python = ">=3.10"
 dependencies = [
   "requests",

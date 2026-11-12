@@ -1,36 +1,36 @@
-# Contribuer à Sadā
+# Contributing to Sadā
 
-Merci de votre intérêt. Sadā est un logiciel libre sous licence **GNU AGPL-3.0** (voir `LICENSE`).
+Thanks for your interest. Sadā is free software under the **GNU AGPL-3.0** (see `LICENSE`).
 
-## Avant d'ouvrir une pull request
+## Before opening a pull request
 
 ```bash
-make setup   # environnement
-make test    # tous les tests doivent passer
+make setup
+make test    # every test must pass
 ```
 
-- Une PR = un sujet. Décrivez le problème et la solution en quelques lignes.
-- Ajoutez des tests pour tout changement de comportement.
-- Pour une modification importante, ouvrez d'abord une issue pour en discuter.
+- One pull request, one topic. Describe the problem and the fix in a few lines.
+- Add tests for any change in behaviour.
+- For a large change, open an issue first so we can discuss it.
 
-## Accord de contribution (CLA)
+## Contributor License Agreement
 
-Sadā est aussi proposé en version hébergée. Pour que le projet puisse rester cohérent sous une seule
-gouvernance, chaque contribution est soumise à l'accord suivant. En ouvrant une pull request, vous
-indiquez l'accepter en ajoutant à sa description la ligne :
+Sadā is also offered as a hosted service. To keep the project under a single maintainer, every
+contribution is made under the agreement below. By opening a pull request, you accept it by adding
+this line to its description:
 
-> J'accepte l'accord de contribution de Sadā (CONTRIBUTING.md).
+> I accept the Sadā Contributor License Agreement (CONTRIBUTING.md).
 
-**Accord**
+**Agreement**
 
-1. Vous déclarez être l'auteur de votre contribution, ou avoir le droit de la soumettre, et qu'elle ne
-   contient pas de code soumis à une licence incompatible.
-2. Vous conservez le droit d'auteur sur votre contribution.
-3. Vous accordez à l'auteur et mainteneur de Sadā (Nabil, @Bilnaa), ainsi qu'à toute structure à laquelle il
-   transmettrait le projet, une licence mondiale, perpétuelle, gratuite, non exclusive
-   et irrévocable d'utiliser, reproduire, modifier, distribuer et sous-licencier votre contribution,
-   y compris sous d'autres conditions que l'AGPL-3.0 (par exemple pour la version hébergée).
-4. Vous accordez la même licence sur les brevets que vous détenez et qui seraient nécessairement
-   enfreints par votre contribution.
-5. Votre contribution reste dans tous les cas publiée sous AGPL-3.0 dans ce dépôt.
-6. Votre contribution est fournie « en l'état », sans garantie.
+1. You confirm that you wrote the contribution, or have the right to submit it, and that it contains
+   no code under an incompatible license.
+2. You keep the copyright on your contribution.
+3. You grant the author and maintainer of Sadā (Nabil, @Bilnaa), and any entity he transfers the
+   project to, a worldwide, perpetual, royalty-free, non-exclusive and irrevocable license to use,
+   reproduce, modify, distribute and sublicense your contribution, including under terms other than
+   the AGPL-3.0 (for example for the hosted version).
+4. You grant the same license on any patent you hold that would necessarily be infringed by your
+   contribution.
+5. Your contribution is always published under the AGPL-3.0 in this repository.
+6. Your contribution is provided "as is", without warranty.
