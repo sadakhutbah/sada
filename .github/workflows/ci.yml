@@ -27,6 +27,8 @@ jobs:
           enable-cache: true
       - name: Install
         run: uv venv .venv && uv pip install -p .venv/bin/python -e .
+      - name: Download the rendering engine
+        run: .venv/bin/python -c "from sada.backoffice.template_render import fetch_engine; fetch_engine()"
       - name: Test
         run: .venv/bin/python -m pytest -q
 
