@@ -80,7 +80,7 @@ def test_une_page_francaise_garde_ses_libelles():
 
 
 def test_un_bloc_de_code_garde_ses_retours_a_la_ligne_et_est_echappe():
-    html = docpage.rendre("```bash\npython -m minbar <db>\n```")
+    html = docpage.rendre("```bash\npython -m sada <db>\n```")
     assert "<pre><code>" in html and "```" not in html
     assert "&lt;db&gt;" in html
     assert "<p>" not in html

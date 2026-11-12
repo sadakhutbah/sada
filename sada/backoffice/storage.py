@@ -117,7 +117,7 @@ def probe(target: dict) -> tuple[bool, str]:
     try:
         client = upload.client(target)
         cle = target["prefix"] + "sada-test.txt"
-        client.put_object(Bucket=target["bucket"], Key=cle, Body=b"minbar\n",
+        client.put_object(Bucket=target["bucket"], Key=cle, Body=b"sada\n",
                           ContentType="text/plain")
         client.delete_object(Bucket=target["bucket"], Key=cle)
     except Exception as e:                                  # noqa: BLE001 — toute erreur se raconte
