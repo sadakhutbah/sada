@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import shutil
 import threading
 import traceback
@@ -202,8 +203,11 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
         out = clipmod.make_clip(data["segments"], data["verses"], data["translations"],
                                 {"start": c["start"], "end": c["end"], "kind": c["kind"]}, c["idx"], ver,
                                 c["video_source"], c["source_offset"], Path(c["file_path"]).parent,
-                                {"title": m["clip_title"], "subtitle": ""}, json.loads(c["crop"]) if c["crop"] else None, log,
-                                logo=logo, brand=brand or None)
+                                {"title": m["clip_title"], "subtitle": c.get("title") or ""},
+                                json.loads(c["crop"]) if c["crop"] else None, log,
+                                logo=logo, brand=brand or None,
+                                # bornes choisies par un humain : rendues telles quelles
+                                trim_tail=not (c.get("origin") == "manuel" or c.get("bounds_by")))
         conn.execute("UPDATE clips SET file_path = ?, version = ?, needs_regen = 0, regen_state = '', regen_error = '', "
                      f"{REQUEUE}, updated_at = ? WHERE id = ?", (str(out), ver, db.now_iso(), clip_id))
         db.audit(conn, c["mosque_id"], None, "clip.regenere", "clip", clip_id, version=ver, fichier=out.name)
@@ -261,3 +265,116 @@ def reopen(conn, clip: dict, user: dict, ip=None) -> None:
         raise ValueError("seul un clip validé ou rejeté peut être remis en file")
     conn.execute(f"UPDATE clips SET {REQUEUE}, reject_reason = '', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"]))
     db.audit(conn, clip["mosque_id"], user["id"], "clip.remis_en_file", "clip", clip["id"], ip=ip)
+
+
+# ------------------------------------------------------------------ clips chosen by a human
+# The model proposes excerpts but can miss: the person running the tool creates a clip by hand
+# (start/end chosen on the khutba video) or moves the bounds of a proposed one. Same circuit as
+# the model's clips: render with subtitles (make_clip, via the regeneration thread), "to validate",
+# audit, publication.
+
+CLIP_KINDS = ("extrait", "verset", "rappel", "citation", "passage", "conclusion")
+MIN_CLIP, MAX_CLIP = 5.0, 180.0
+MAX_TITLE = 120
+
+
+def clip_bounds(k: dict, start, end, duration: float | None = None) -> tuple[float, float]:
+    """Bounds in session time, checked: inside the recording, between MIN_CLIP and MAX_CLIP seconds."""
+    try:
+        start, end = float(str(start).replace(",", ".")), float(str(end).replace(",", "."))
+    except ValueError:
+        raise ValueError("bornes illisibles") from None
+    if not (math.isfinite(start) and math.isfinite(end)):
+        raise ValueError("bornes illisibles")
+    start, end = round(start, 2), round(end, 2)
+    if start < 0:
+        raise ValueError("le début est avant le début de l'enregistrement")
+    if end <= start:
+        raise ValueError("la fin doit venir après le début")
+    if not (MIN_CLIP <= end - start <= MAX_CLIP):
+        raise ValueError(f"durée invalide : un clip dure entre {MIN_CLIP:g} et {MAX_CLIP:g} s")
+    dur = k.get("duration_s") or duration
+    if dur and end > dur + 0.5:
+        raise ValueError("la fin est au-delà de la fin de l'enregistrement")
+    return start, end
+
+
+def clip_source(conn, k: dict) -> dict:
+    """Where a new clip of this khutba is cut from: the source of its other clips (same recording,
+    same offset, same crop), otherwise the live recording, otherwise the extracted khutba video."""
+    crop = None
+    candidates = []
+    for c in db.all_(conn, "SELECT video_source, source_offset, crop FROM clips WHERE khutba_id = ? "
+                           "AND video_source IS NOT NULL AND source_offset IS NOT NULL ORDER BY id", k["id"]):
+        candidates.append((c["video_source"], c["source_offset"]))
+        crop = crop or c["crop"]
+    if k.get("recording") and k.get("start_pos") is not None:
+        candidates.append((k["recording"], k["start_pos"]))
+    if k.get("video_path"):
+        candidates.append((k["video_path"], 0.0))       # the extracted video starts at the session start
+    found = next((c for c in candidates if Path(c[0]).exists()), candidates[0] if candidates else (None, None))
+    return {"video_source": found[0], "source_offset": found[1], "crop": crop}
+
+
+def can_create_clip(conn, k: dict) -> tuple[bool, str]:
+    return can_regenerate(clip_source(conn, k))
+
+
+def _clean_title(title) -> str:
+    return " ".join(str(title or "").split())[:MAX_TITLE]
+
+
+def create_clip(conn, db_path: str, k: dict, start, end, kind: str, title: str, user: dict, ip=None,
+                background: bool = True) -> int:
+    """A clip chosen by hand: stored "to validate" (version 0, nothing rendered yet), then rendered with
+    the subtitles by the regeneration mechanism (version 1). Returns the clip id."""
+    kind = (kind or "extrait").strip()
+    if kind not in CLIP_KINDS:
+        raise ValueError("type de clip inconnu")
+    start, end = clip_bounds(k, start, end, load(conn, k).get("duration"))
+    src = clip_source(conn, k)
+    ok, why = can_regenerate(src)
+    if not ok:
+        raise ValueError(f"clip impossible à produire : {why}")
+    idx = (db.one(conn, "SELECT MAX(idx) n FROM clips WHERE khutba_id = ?", k["id"])["n"] or 0) + 1
+    outdir = SessionOutput(k["output_dir"]).clips
+    outdir.mkdir(parents=True, exist_ok=True)
+    t = db.now_iso()
+    cur = conn.execute(
+        "INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, \"end\", file_path, video_source, source_offset, "
+        "crop, version, needs_regen, origin, title, created_by, bounds_by, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,0,1,'manuel',?,?,?,?,?)",
+        (k["mosque_id"], k["id"], idx, kind, "", start, end, str(outdir / f"clip{idx}_{kind}_A-VALIDER.mp4"),
+         src["video_source"], src["source_offset"], src["crop"], _clean_title(title), user["id"], user["id"], t, t))
+    cid = cur.lastrowid
+    db.audit(conn, k["mosque_id"], user["id"], "clip.cree", "clip", cid, ip=ip, khutba=k["id"], type=kind,
+             debut=start, fin=end, titre=_clean_title(title) or None)
+    start_regeneration(conn, db_path, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), user, ip,
+                       background=background)
+    return cid
+
+
+def adjust_clip(conn, db_path: str, clip: dict, k: dict, start, end, title, user: dict, ip=None,
+                background: bool = True) -> None:
+    """New bounds (and title) for a clip, proposed by the model or not: it goes back to "to validate"
+    and is rendered again (version n+1). A published clip is frozen: create a new clip instead."""
+    if clip["status"] == "publie":
+        raise ValueError("clip déjà publié : ses bornes sont figées, créez plutôt un nouveau clip")
+    if clip["regen_state"] == "en_cours":
+        raise ValueError("régénération déjà en cours")
+    start, end = clip_bounds(k, start, end, load(conn, k).get("duration"))
+    title = clip["title"] if title is None else _clean_title(title)
+    if (start, end, title) == (round(clip["start"], 2), round(clip["end"], 2), clip["title"]):
+        raise ValueError("rien n'a changé")
+    ok, why = can_regenerate(clip)
+    if not ok:
+        raise ValueError(f"régénération impossible : {why}")
+    moved = (start, end) != (round(clip["start"], 2), round(clip["end"], 2))
+    conn.execute(f"UPDATE clips SET start = ?, \"end\" = ?, title = ?, bounds_by = ?, needs_regen = 1, {REQUEUE}, "
+                 "reject_reason = '', updated_at = ? WHERE id = ?",
+                 (start, end, title, user["id"] if moved else clip["bounds_by"], db.now_iso(), clip["id"]))
+    db.audit(conn, clip["mosque_id"], user["id"], "clip.bornes", "clip", clip["id"], ip=ip,
+             avant=[clip["start"], clip["end"]], apres=[start, end],
+             titre=title if title != clip["title"] else None)
+    start_regeneration(conn, db_path, db.one(conn, "SELECT * FROM clips WHERE id = ?", clip["id"]), user, ip,
+                       background=background)

@@ -128,6 +128,12 @@ clips = sa.Table(
     sa.Column("reject_reason", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("created_at", sa.Text, nullable=False),
     sa.Column("updated_at", sa.Text, nullable=False),
+    # ajoutées après coup (voir migration 7) : clip créé à la main, bornes choisies par un humain
+    sa.Column("origin", sa.Text, sa.CheckConstraint("origin IN ('ia', 'manuel')"),
+              nullable=False, server_default=_d("'ia'")),
+    sa.Column("title", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("created_by", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("bounds_by", sa.Integer, sa.ForeignKey("users.id")),
     sa.UniqueConstraint("khutba_id", "idx"),
 )
 

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .. import content, db, publish
-from ..context import Ctx, CtxDep, clip_or_404, imam_filter
+from ..context import Ctx, CtxDep, clip_or_404, imam_filter, khutba_or_404
 from .common import _a_table, _ok
 
 router = APIRouter()
@@ -37,9 +37,15 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         "clip": c, "sermon": k, "segments": rows, "history": hist, "publications": pubs,
         "can_regenerate": regen_ok, "regenerate_reason": regen_why,
         "can_validate": content.can_validate(c)[0],
+        # Bounds: moved on the khutba video (session time), not on the rendered clip.
+        "can_adjust": c["status"] != "publie" and c["regen_state"] != "en_cours" and regen_ok,
+        "sermon_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
+        "clip_limits": {"min": content.MIN_CLIP, "max": content.MAX_CLIP,
+                        "duration": k["duration_s"] or data.get("duration")},
         "can_publish": publish.can_publish(c)[0],
         "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
-        "caption": publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
+        "caption": ((c["title"] + "\n") if c["title"] else "")
+                   + publish.default_caption(k, ctx.mosque, list(dict.fromkeys(refs))),
         "contexte": {"theme": k["theme"] or "", "avant": avant, "versets": versets},
         "exists": bool(c["file_path"]) and Path(c["file_path"]).exists(),
     }
@@ -49,7 +55,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
 def clips(ctx: CtxDep, status: str = "", limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)):
     where, args = imam_filter(ctx)
     extra, extra_args = ("AND c.status = ?", (status,)) if status else ("", ())
-    rows = db.all_(ctx.conn, f"SELECT c.*, k.label sermon, k.date, k.title, k.session_no "
+    rows = db.all_(ctx.conn, f"SELECT c.*, c.title clip_title, k.label sermon, k.date, k.title, k.session_no "
                              f"FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
                              f"WHERE {where} {extra} ORDER BY c.id DESC LIMIT ? OFFSET ?", *args, *extra_args, limit, offset)
     # Counts per status for the filters ("To validate (8)"): counted on the whole mosque,
@@ -101,3 +107,27 @@ async def clip_publish(cid: int, ctx: CtxDep):
     if not res.ok:
         return JSONResponse({"error": "refusé", "message": f"Publication refusée : {res.message}"}, status_code=422)
     return _ok(f"Publié : {res.location}", location=res.location)
+
+
+@router.post("/sermons/{kid}/clips")
+async def clip_create(kid: int, ctx: CtxDep):
+    """A clip chosen by hand on the khutba video: bounds in session time (seconds), type, title."""
+    f = await ctx.body()
+    ctx.require("validate")
+    k = khutba_or_404(ctx, kid)
+    cid = content.create_clip(ctx.conn, ctx.request.app.state.db_path, k, f.get("start", ""), f.get("end", ""),
+                              f.get("kind", ""), f.get("title", ""), ctx.user, ctx.ip,
+                              background=ctx.request.app.state.regen_background)
+    return _ok("Clip créé : rendu en cours (environ une minute), puis il attend la validation.", id=cid)
+
+
+@router.post("/clips/{cid}/bounds")
+async def clip_bounds(cid: int, ctx: CtxDep):
+    """New bounds (and title) for a clip: back to "to validate", rendered again."""
+    f = await ctx.body()
+    ctx.require("validate")
+    c, k = clip_or_404(ctx, cid)
+    content.adjust_clip(ctx.conn, ctx.request.app.state.db_path, c, k, f.get("start", ""), f.get("end", ""),
+                        f.get("title"), ctx.user, ctx.ip, background=ctx.request.app.state.regen_background)
+    return _ok("Bornes enregistrées : le clip est rendu à nouveau, puis il repasse par la validation.",
+               regen_state="en_cours")

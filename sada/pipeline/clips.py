@@ -623,10 +623,11 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
 
 def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx: int, version: int,
               video: str, offset: float, outdir: Path, header: dict | None, crop: dict | None, log=print,
-              logo: str | None = None, brand: dict | None = None) -> Path:
+              logo: str | None = None, brand: dict | None = None, trim_tail: bool = True) -> Path:
     """Subtitles + render of clip #idx, version `version`, of window w (session time); return the MP4.
 
-    offset: position of the session start inside `video` (video_time = session_time + offset)."""
+    offset: position of the session start inside `video` (video_time = session_time + offset).
+    trim_tail=False: bounds chosen by a human are rendered as they are (no trimming after the last word)."""
     v = f"_v{version}" if version > 1 else ""
     ass = outdir / f"clip{idx}{v}.ass"
     out = outdir / f"clip{idx}_{w.get('kind') or 'extrait'}{v}_A-VALIDER.mp4"
@@ -634,7 +635,7 @@ def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx:
               rappel=w.get("kind") == "rappel", brand=brand,
               logo=bool(logo) and Path(logo).suffix.lower() in LOGO_EXT)
     last = max((s["end"] for s in segments if s["end"] <= w["end"] + 0.05), default=w["start"])
-    if w["end"] - last > 1.5:
+    if trim_tail and w["end"] - last > 1.5:
         # Safety net for windows stored before the rule: never more than a breath past the last word,
         # otherwise the excerpt drags the mosque's end screen and its hiss into the clip.
         w = {**w, "end": round(last + 0.8, 2)}

@@ -110,6 +110,16 @@ def _mosques_couleurs(conn: sqlite3.Connection) -> None:
     ))
 
 
+def _clips_manuels(conn: sqlite3.Connection) -> None:
+    """Migration 7 : clips créés à la main et bornes ajustées par un humain."""
+    _add_columns(conn, "clips", (
+        ("origin", "TEXT NOT NULL DEFAULT 'ia' CHECK (origin IN ('ia', 'manuel'))"),
+        ("title", "TEXT NOT NULL DEFAULT ''"),
+        ("created_by", "INTEGER REFERENCES users (id)"),
+        ("bounds_by", "INTEGER REFERENCES users (id)"),
+    ))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -118,6 +128,8 @@ MIGRATIONS: tuple[Migration, ...] = (
               _tables_du_modele),
     Migration(5, "mosques : couleurs des clips (brand_green, brand_gold)", _mosques_couleurs),
     Migration(6, "sous-titres ajoutés à un instant précis (added_subtitles)", _tables_du_modele),
+    Migration(7, "clips : création manuelle et bornes ajustées (origin, title, created_by, bounds_by)",
+              _clips_manuels),
 )
 
 LATEST = MIGRATIONS[-1].version

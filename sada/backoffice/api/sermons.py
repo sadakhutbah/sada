@@ -99,7 +99,17 @@ def sermon(ctx: CtxDep, kid: int):
             # Detected verses: the certain/short ones and the ambiguous passages, flagged "to check".
             "verses": verses_mod.for_display(data["verses"]), "imam": imam,
             "imams": auth.imams(ctx.conn, ctx.mosque["id"]) if ctx.can("assign") else [],
-            "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists()}
+            "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
+            # Clip chosen by hand: possible only if a source video can be cut (same circuit as regeneration).
+            "manual_clip": _manual_clip(ctx, k, data)}
+
+
+def _manual_clip(ctx, k: dict, data: dict) -> dict:
+    if not ctx.can("validate"):
+        return {"allowed": False, "reason": "", "kinds": [], "min": 0, "max": 0, "duration": None}
+    ok, why = content.can_create_clip(ctx.conn, k)
+    return {"allowed": ok, "reason": why, "kinds": list(content.CLIP_KINDS), "min": content.MIN_CLIP,
+            "max": content.MAX_CLIP, "duration": k["duration_s"] or data.get("duration")}
 
 
 @router.post("/import")
