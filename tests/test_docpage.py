@@ -24,7 +24,7 @@ def test_le_modele_du_back_office_rend_une_page_complete():
 
 
 def test_le_vrai_document_ne_laisse_aucune_syntaxe_brute():
-    md = (DOCS / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
+    md = (DOCS / "fr" / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
     html = docpage.rendre(md)
     assert "<h1>" in html
     assert html.count("<h2>") >= 8
@@ -35,14 +35,14 @@ def test_le_vrai_document_ne_laisse_aucune_syntaxe_brute():
 
 
 def test_les_six_ecrans_et_les_variables_sont_expliques():
-    md = (DOCS / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
+    md = (DOCS / "fr" / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
     for mot in ("Avant", "Prière", "Entracte", "Terminé", "Janaza", "Fin de cours",
                 "{heure}", "{date}", "{mosquee}", "{cours}"):
         assert mot in md, f"« {mot} » manque au mode d'emploi"
 
 
 def test_le_tableau_des_six_moments_est_rendu_en_tableau():
-    md = (DOCS / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
+    md = (DOCS / "fr" / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
     html = docpage.rendre(md)
     assert html.count("<table>") == 1
     assert "<th>Écran</th>" in html
@@ -87,7 +87,7 @@ def test_un_bloc_de_code_garde_ses_retours_a_la_ligne_et_est_echappe():
 
 
 def test_le_vrai_document_ne_laisse_pas_de_triple_apostrophe():
-    for nom in ("orchestrateur.md", "orchestrateur.en.md", "agent-gabarit-ecrans.md"):
+    for nom in ("fr/orchestrateur.md", "en/orchestrator.md", "fr/agent-gabarit-ecrans.md"):
         html = docpage.rendre((DOCS / nom).read_text(encoding="utf-8"))
         assert "```" not in html, nom
         assert "<pre><code>" in html, nom

@@ -28,35 +28,36 @@ FRONT = HERE.parent.parent / "web" / "dist"
 DOCS = HERE.parent.parent / "docs"
 
 # La table des matières servie sous /docs : un seul endroit à tenir à jour. Le titre et le résumé
-# existent en français et en anglais ; le fichier anglais (``<slug>.en.md``) est facultatif et, s'il
-# manque, la page française est servie avec un avertissement.
+# existent en français et en anglais. Les fichiers vivent dans ``docs/fr/<slug>.md`` et
+# ``docs/en/<slug_en>.md`` ; l'anglais est facultatif et, s'il manque, la page française est servie
+# avec un avertissement. Sous /docs/en/, le slug anglais et le slug français mènent à la même page.
 DOCUMENTS = (
-    {"slug": "ecrans-mode-emploi",
+    {"slug": "ecrans-mode-emploi", "slug_en": "screens",
      "titre_fr": "Mode d'emploi des écrans",
      "titre_en": "Screen manual",
      "resume_fr": "ce que sont les six écrans pleins, comment changer leurs textes et ce qui ne marche pas comme on croit",
      "resume_en": "the six full screens, how to change their texts, and what does not work the way one expects"},
-    {"slug": "orchestrateur",
+    {"slug": "orchestrateur", "slug_en": "orchestrator",
      "titre_fr": "L'orchestrateur et les jetons",
      "titre_en": "The orchestrator and the tokens",
      "resume_fr": "les deux programmes, pourquoi ils se parlent, ce que sont les deux jetons et l'ordre de démarrage",
      "resume_en": "the two programs, why they talk to each other, what the two tokens are, and the startup order"},
-    {"slug": "agent-gabarit-ecrans",
+    {"slug": "agent-gabarit-ecrans", "slug_en": "screen-template-prompt",
      "titre_fr": "Guide de gabarit d'écrans",
      "titre_en": "Screen template guide",
      "resume_fr": "la consigne à donner à un assistant conversationnel pour obtenir un visuel d'écrans à soi",
      "resume_en": "the instruction to give a chat assistant to get a screen mockup of your own"},
-    {"slug": "mise-en-route",
+    {"slug": "mise-en-route", "slug_en": "getting-started",
      "titre_fr": "Mise en route",
      "titre_en": "Getting started",
      "resume_fr": "la première installation, les quatre écrans d'accueil, et ce qui se passe au premier direct",
      "resume_en": "the first installation, the four welcome screens, and what happens on the first live"},
-    {"slug": "connecteurs",
+    {"slug": "connecteurs", "slug_en": "connectors",
      "titre_fr": "Connecteurs : Facebook, YouTube, Instagram",
      "titre_en": "Connectors: Facebook, YouTube, Instagram",
      "resume_fr": "ce qu'il faut obtenir côté plateforme, où le saisir, et ce que le connecteur ne fait pas",
      "resume_en": "what to obtain from each platform, where to enter it, and what the connector does not do"},
-    {"slug": "rediffusions",
+    {"slug": "rediffusions", "slug_en": "recordings",
      "titre_fr": "Rediffusions et compartiment S3",
      "titre_en": "Recordings and S3 buckets",
      "resume_fr": "les clips, le dossier publié, et l'envoi facultatif vers un compartiment S3 ou R2",
@@ -262,9 +263,10 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     # Une seule table de matières : les pages, leur version texte et leur traduction sont dérivées.
     def _doc(slug: str, langue: str) -> tuple[Path, bool]:
         """Le fichier à servir, et si c'est bien la langue demandée (sinon repli sur le français)."""
-        fr = DOCS / f"{slug}.md"
+        d = _document(slug)
+        fr = DOCS / "fr" / f"{d['slug']}.md"
         if langue == "en":
-            en = DOCS / f"{slug}.en.md"
+            en = DOCS / "en" / f"{d['slug_en']}.md"
             if en.exists():
                 return en, True
             return fr, False
@@ -272,7 +274,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
 
     @app.get("/docs")
-    def docs_index(langue: str = "fr"):
+    def docs_index(langue: str = "en"):
         """La liste des documents, dans la langue demandée."""
         en = langue == "en"
         lignes = ["# Documentation" if not en else "# Documentation", "",
@@ -283,11 +285,11 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         for d in DOCUMENTS:
             titre = d["titre_en"] if en else d["titre_fr"]
             resume = d["resume_en"] if en else d["resume_fr"]
-            url = f"/docs/en/{d['slug']}" if en else f"/docs/{d['slug']}"
+            url = f"/docs/en/{d['slug_en']}" if en else f"/docs/{d['slug']}"
             lignes.append(f"- [{titre}]({url}) — {resume}")
         return HTMLResponse(docpage.page("\n".join(lignes), titre="Documentation", source=None,
                                          lang="en" if en else "fr",
-                                         alterne=("/docs" if en else "/docs?langue=en",
+                                         alterne=("/docs?langue=fr" if en else "/docs",
                                                   "Français" if en else "English")))
 
     # Les adresses en « .md » passent avant, sinon le joker de {slug} les avale.
@@ -310,6 +312,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     def _doc_page(slug: str, langue: str):
         """Le document rendu en page. Lire du Markdown dans un navigateur n'est pas lire un mode d'emploi."""
         d = _document(slug)
+        slug, slug_en = d["slug"], d["slug_en"]
         f, exact = _doc(slug, langue)
         if not f.exists():
             raise NotFound()
@@ -317,12 +320,12 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         if not exact:
             avis = ("La version anglaise de ce document n'est pas encore écrite. Le texte affiché est "
                     "le français." if langue == "en" else None)
-        alterne = (f"/docs/{slug}" if langue == "en" else f"/docs/en/{slug}",
+        alterne = (f"/docs/{slug}" if langue == "en" else f"/docs/en/{slug_en}",
                    "Français" if langue == "en" else "English")
         return HTMLResponse(docpage.page(
             f.read_text(encoding="utf-8"),
             titre=(d["titre_en"] if langue == "en" else d["titre_fr"]),
-            source=(f"/docs/en/{slug}.md" if langue == "en" and exact else f"/docs/{slug}.md"),
+            source=(f"/docs/en/{slug_en}.md" if langue == "en" and exact else f"/docs/{slug}.md"),
             lang=langue, alterne=alterne, avis=avis))
 
     def _doc_source(slug: str, langue: str):
@@ -336,7 +339,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
 
     def _document(slug: str) -> dict:
         for d in DOCUMENTS:
-            if d["slug"] == slug:
+            if slug in (d["slug"], d["slug_en"]):
                 return d
         raise NotFound()
 

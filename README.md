@@ -75,13 +75,13 @@ summary.
 
 ## Documentation
 
-The administrator guides are served by the app itself under `/docs`, and live in [`docs/`](docs):
+The administrator guides are served by the app itself under `/docs`, and live in [`docs/`](docs/README.md) (English, with a French version):
 
-- [Getting started](docs/mise-en-route.en.md)
-- [Orchestrator](docs/orchestrateur.en.md): the two processes, tokens, start order
-- [Connectors](docs/connecteurs.en.md): Facebook, YouTube, Instagram
-- [Recordings](docs/rediffusions.en.md): clips, published folder, S3 / R2
-- [Screens](docs/ecrans-mode-emploi.en.md) and [screen template prompt](docs/agent-gabarit-ecrans.en.md)
+- [Getting started](docs/en/getting-started.md)
+- [Orchestrator](docs/en/orchestrator.md): the two processes, tokens, start order
+- [Connectors](docs/en/connectors.md): Facebook, YouTube, Instagram
+- [Recordings](docs/en/recordings.md): clips, published folder, S3 / R2
+- [Screens](docs/en/screens.md) and [screen template prompt](docs/en/screen-template-prompt.md)
 
 ## Development
 

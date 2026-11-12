@@ -171,8 +171,8 @@ export default function Settings() {
       setGuide({ agent: typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`,
                  humain: typeof r.guide?.human === "string" ? r.guide.human : `${window.location.origin}/docs/ecrans-mode-emploi`,
                  docs: typeof r.guide?.docs === "string" ? r.guide.docs : `${window.location.origin}/docs`,
-                 agentEn: typeof r.guide?.url_en === "string" ? r.guide.url_en : `${window.location.origin}/docs/en/agent-gabarit-ecrans.md`,
-                 humainEn: typeof r.guide?.human_en === "string" ? r.guide.human_en : `${window.location.origin}/docs/en/ecrans-mode-emploi`,
+                 agentEn: typeof r.guide?.url_en === "string" ? r.guide.url_en : `${window.location.origin}/docs/en/screen-template-prompt.md`,
+                 humainEn: typeof r.guide?.human_en === "string" ? r.guide.human_en : `${window.location.origin}/docs/en/screens`,
                  docsEn: typeof r.guide?.docs_en === "string" ? r.guide.docs_en : `${window.location.origin}/docs?langue=en` });
       const ad = typeof r.guide?.public_url === "string" ? r.guide.public_url : "";
       setAdresse(ad); setAdresseInitiale(ad);

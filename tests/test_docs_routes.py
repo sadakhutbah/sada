@@ -37,9 +37,22 @@ def test_les_documents_restent_lisibles_en_texte_pour_un_chat(client: TestClient
 
 
 def test_la_page_index_liste_tous_les_documents(client: TestClient):
-    html = client.get("/docs").text
+    html = client.get("/docs?langue=fr").text
     for url in ("/docs/ecrans-mode-emploi", "/docs/orchestrateur", "/docs/agent-gabarit-ecrans"):
         assert f'href="{url}"' in html
+    html = client.get("/docs").text                  # l'anglais par défaut
+    for url in ("/docs/en/screens", "/docs/en/orchestrator", "/docs/en/screen-template-prompt"):
+        assert f'href="{url}"' in html
+
+
+def test_l_anglais_a_ses_propres_adresses_et_garde_les_anciennes(client: TestClient):
+    for url in ("/docs/en/getting-started", "/docs/en/connectors", "/docs/en/recordings",
+                "/docs/en/mise-en-route", "/docs/en/ecrans-mode-emploi"):
+        r = client.get(url)
+        assert r.status_code == 200, url
+        assert '<html lang="en">' in r.text, url
+    r = client.get("/docs/en/screens.md")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/markdown")
 
 
 def test_aucune_page_de_document_n_affiche_du_markdown_brut(client: TestClient):
