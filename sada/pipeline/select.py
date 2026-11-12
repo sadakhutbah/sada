@@ -16,6 +16,7 @@ Conception (décision 11/2026, remplace « un appel modèle pour tout le transcr
    chevauchement.
 4. Sans modèle (ou modèle indisponible) : la note heuristique seule décide.
 """
+
 from __future__ import annotations
 
 import re
@@ -31,10 +32,10 @@ from . import llm
 from .transcribe import is_loop
 
 CAND_MIN, CAND_MAX = 30.0, 75.0
-CAND_MAX_HARD = 90.0     # tolérance pour finir la phrase en cours (on ne coupe jamais un mot)
+CAND_MAX_HARD = 90.0  # tolérance pour finir la phrase en cours (on ne coupe jamais un mot)
 MAX_CANDIDATES = 40
 BATCH = 5
-MIN_SEP = 45.0            # espacement minimal entre deux extraits retenus (secondes)
+MIN_SEP = 45.0  # espacement minimal entre deux extraits retenus (secondes)
 SCORE_TIMEOUT = 240
 END_PUNCT = (".", "!", "?", "؟", "»", "…")
 
@@ -61,7 +62,7 @@ def _ends_strong(text: str) -> bool:
 
 def _is_foreign(word: str) -> bool:
     """Mot ni français ni glose : phonétique arabe ou hors lexique (même règle que les sous-titres)."""
-    bare = word.strip(".,;:!?«»\"()")
+    bare = word.strip('.,;:!?«»"()')
     if not bare:
         return False
     return is_translit_word(bare) or zipf_frequency(bare, "fr") < 2.3
@@ -208,8 +209,9 @@ def heuristic_note(cand: dict, segments: list[dict]) -> float:
     dur = b - a
     length_ok = max(0.0, 1.0 - abs(dur - 50.0) / 50.0)
     hook = 1.0 if any("?" in w for w in cw[:12]) else 0.0
-    note = 10.0 * (0.45 * readability + 0.20 * length_ok + 0.15 * (1.0 - arabic_share)
-                   + 0.05 * (1.0 - loop_share) + 0.15 * hook)
+    note = 10.0 * (
+        0.45 * readability + 0.20 * length_ok + 0.15 * (1.0 - arabic_share) + 0.05 * (1.0 - loop_share) + 0.15 * hook
+    )
     return round(min(10.0, max(0.0, note)), 2)
 
 
@@ -223,8 +225,16 @@ def candidate_windows(segments: list[dict], duration: float, log=print) -> list[
     for i in anchors:
         w = _window_from(segments, i, speech_end)
         if w:
-            wins.append({"kind": "extrait", "start": round(w[0], 2), "end": round(w[1], 2),
-                         "note": 0.0, "titre": "", "method": ""})
+            wins.append(
+                {
+                    "kind": "extrait",
+                    "start": round(w[0], 2),
+                    "end": round(w[1], 2),
+                    "note": 0.0,
+                    "titre": "",
+                    "method": "",
+                }
+            )
     # Dédoublonner les chevauchements : glissement chronologique, la première fenêtre d'une zone
     # garde le début du propos (le « pourquoi » d'introduction) plutôt qu'un morceau déjà engagé.
     wins.sort(key=lambda w: w["start"])
@@ -238,8 +248,13 @@ def candidate_windows(segments: list[dict], duration: float, log=print) -> list[
     if len(dedup) > MAX_CANDIDATES:
         dedup = sorted(dedup, key=lambda w: -w["note"])[:MAX_CANDIDATES]
         dedup.sort(key=lambda w: w["start"])
-    log(_("clips: {generated} windows generated, {kept} candidates after deduplication",
-          generated=len(wins), kept=len(dedup)))
+    log(
+        _(
+            "clips: {generated} windows generated, {kept} candidates after deduplication",
+            generated=len(wins),
+            kept=len(dedup),
+        )
+    )
     return dedup
 
 
@@ -299,7 +314,7 @@ def score_candidates(cands: list[dict], segments: list[dict], use_llm: bool = Tr
             c["titre"] = ""
             c["method"] = "heuristique"
         return cands
-    batches = [cands[i:i + BATCH] for i in range(0, len(cands), BATCH)]
+    batches = [cands[i : i + BATCH] for i in range(0, len(cands), BATCH)]
     texts = [[clean_window_text(segments, c["start"], c["end"]) for c in b] for b in batches]
 
     def run(batch_texts):
@@ -328,8 +343,13 @@ def score_candidates(cands: list[dict], segments: list[dict], use_llm: bool = Tr
                 c["note"] = heuristic_note(c, segments)
                 c["titre"] = ""
                 c["method"] = "heuristique"
-    log(_("clips: {scored}/{total} candidates scored by the model, the rest stays heuristic",
-          scored=scored, total=len(cands)))
+    log(
+        _(
+            "clips: {scored}/{total} candidates scored by the model, the rest stays heuristic",
+            scored=scored,
+            total=len(cands),
+        )
+    )
     return cands
 
 
@@ -359,6 +379,13 @@ def select_clips(segments: list[dict], duration: float, n: int, use_llm: bool = 
     scored = score_candidates(cands, segments, use_llm=use_llm, log=log)
     wins = pick_clips(scored, n)
     for w in wins:
-        log(_("clips: kept {start}→{end} score {note:.1f} “{why}”",
-              start=fmt_t(w["start"]), end=fmt_t(w["end"]), note=w["note"], why=w["why"]))
+        log(
+            _(
+                "clips: kept {start}→{end} score {note:.1f} “{why}”",
+                start=fmt_t(w["start"]),
+                end=fmt_t(w["end"]),
+                note=w["note"],
+                why=w["why"],
+            )
+        )
     return wins

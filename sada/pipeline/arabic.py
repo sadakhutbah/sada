@@ -1,4 +1,5 @@
 """Arabic normalisation (without diacritics) to compare a transcript with the Quranic text."""
+
 from __future__ import annotations
 
 import re
@@ -7,9 +8,21 @@ import unicodedata
 from ..text import AR_LETTER
 
 _DIAC = re.compile(r"[ؐ-ًؚ-ٰٟۖ-ۭ࣓-ࣿـ]")
-_MAP = str.maketrans({
-    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي", "ئ": "ي", "ؤ": "و", "ة": "ه", "ک": "ك", "ی": "ي", "ڤ": "ف",
-})
+_MAP = str.maketrans(
+    {
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ى": "ي",
+        "ئ": "ي",
+        "ؤ": "و",
+        "ة": "ه",
+        "ک": "ك",
+        "ی": "ي",
+        "ڤ": "ف",
+    }
+)
 
 
 def normalize(text: str) -> str:

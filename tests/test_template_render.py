@@ -3,6 +3,7 @@
 Ces tests ouvrent un vrai Chromium. Sans lui (machine sans navigateur), ils sont sautés : c'est le
 repli prévu, pas une raison de faire échouer la suite.
 """
+
 from __future__ import annotations
 
 import io
@@ -29,8 +30,10 @@ def page_six() -> str:
     blocs = []
     for i, ecran in enumerate(ECRANS):
         actif = " data-actif" if i == 0 else ""
-        blocs.append(f'<section class="ecran" data-ecran="{ecran}"{actif}>'
-                     f'<h1>Écran {ecran}</h1><p>{{heure}} — {{mosquee}}</p></section>')
+        blocs.append(
+            f'<section class="ecran" data-ecran="{ecran}"{actif}>'
+            f"<h1>Écran {ecran}</h1><p>{{heure}} — {{mosquee}}</p></section>"
+        )
     return PAGE.replace("__BLOCS__", "\n".join(blocs))
 
 
@@ -59,8 +62,7 @@ def test_les_ecrans_ne_donnent_pas_la_meme_image(rendu):
 
 
 def test_les_variables_sont_posees_avant_la_capture(rendu):
-    png = rendu.image(pour_ecran(page_six(), "avant"),
-                      {"heure": "14 h 36", "mosquee": "Mosquée d'essai"})
+    png = rendu.image(pour_ecran(page_six(), "avant"), {"heure": "14 h 36", "mosquee": "Mosquée d'essai"})
     img = Image.open(io.BytesIO(png)).convert("RGB")
     # aucun crochet d'accolade ne doit rester dessiné à l'écran
     assert img.size == (1280, 720)
@@ -68,7 +70,7 @@ def test_les_variables_sont_posees_avant_la_capture(rendu):
 
 
 def test_une_image_ne_prend_pas_plus_d_une_seconde(rendu):
-    rendu.image(pour_ecran(page_six(), "avant"))          # premier rendu : mise en route
+    rendu.image(pour_ecran(page_six(), "avant"))  # premier rendu : mise en route
     debut = time.monotonic()
     rendu.image(pour_ecran(page_six(), "priere"))
     assert time.monotonic() - debut < 1.0

@@ -13,6 +13,7 @@ Connectors:
 The three networks are real: they call the platform (`sada.backoffice.social`) and publish nothing
 without credentials. The publication is always launched by a person, on a validated clip.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,12 +46,14 @@ class Connector:
     key = ""
     label = ""
     description = ""
-    fields: tuple[str, ...] = ()         # settings entered by the administrator (stored in the local database, never in the code)
-    required: tuple[str, ...] = ()       # among fields: credentials without which the connector is unavailable
-    secret: tuple[str, ...] = ()         # among fields: hidden on display
-    labels: dict[str, str] = {}          # label shown per field (default: its name)
-    enabled_by_default = False           # enabled as long as the administrator has saved nothing
-    implemented = True                   # real publication (the screen says so when it is not)
+    fields: tuple[
+        str, ...
+    ] = ()  # settings entered by the administrator (stored in the local database, never in the code)
+    required: tuple[str, ...] = ()  # among fields: credentials without which the connector is unavailable
+    secret: tuple[str, ...] = ()  # among fields: hidden on display
+    labels: dict[str, str] = {}  # label shown per field (default: its name)
+    enabled_by_default = False  # enabled as long as the administrator has saved nothing
+    implemented = True  # real publication (the screen says so when it is not)
 
     def defaults(self, mosque: dict) -> dict:
         """Value used for a field left empty."""
@@ -66,15 +69,14 @@ class Connector:
             return False, _("disabled by the administrator")
         return True, ""
 
-    def publish(self, item: Item, settings: dict) -> Result:   # pragma: no cover - interface
+    def publish(self, item: Item, settings: dict) -> Result:  # pragma: no cover - interface
         raise NotImplementedError
 
 
 class LocalFolder(Connector):
     key = "local"
     label = "Local folder"
-    description = ("Copies the approved clip and its record (caption, verses, approval) into a folder on "
-                   "this machine.")
+    description = "Copies the approved clip and its record (caption, verses, approval) into a folder on this machine."
     fields = ("path",)
     labels = {"path": "Folder"}
     enabled_by_default = True
@@ -106,9 +108,14 @@ class YouTube(Connector):
     fields = ("channel_id", "client_id", "client_secret", "refresh_token", "privacy_status", "category_id")
     required = ("client_id", "client_secret", "refresh_token")
     secret = ("client_secret", "refresh_token")
-    labels = {"channel_id": "Channel ID", "client_id": "OAuth client ID",
-              "client_secret": "OAuth client secret", "refresh_token": "Refresh token",
-              "privacy_status": "Visibility (public, unlisted, private)", "category_id": "Category (27 = education)"}
+    labels = {
+        "channel_id": "Channel ID",
+        "client_id": "OAuth client ID",
+        "client_secret": "OAuth client secret",
+        "refresh_token": "Refresh token",
+        "privacy_status": "Visibility (public, unlisted, private)",
+        "category_id": "Category (27 = education)",
+    }
 
     def defaults(self, mosque):
         return {"privacy_status": "public", "category_id": "27"}
@@ -120,14 +127,19 @@ class YouTube(Connector):
 
 class Instagram(Connector):
     key, label = "instagram", "Instagram"
-    description = ("Publishes the clip as a Reel on the professional account; the API fetches the video "
-                   "from the publication folder's public address.")
+    description = (
+        "Publishes the clip as a Reel on the professional account; the API fetches the video "
+        "from the publication folder's public address."
+    )
     fields = ("ig_user_id", "access_token", "public_base_url", "folder")
     required = ("ig_user_id", "access_token", "public_base_url")
     secret = ("access_token",)
-    labels = {"ig_user_id": "Professional account ID", "access_token": "Access token",
-              "public_base_url": "Public address of the publication folder",
-              "folder": "Publication folder (archived before sending)"}
+    labels = {
+        "ig_user_id": "Professional account ID",
+        "access_token": "Access token",
+        "public_base_url": "Public address of the publication folder",
+        "folder": "Publication folder (archived before sending)",
+    }
 
     def defaults(self, mosque):
         return {"folder": db.local_folder_default(mosque)}
@@ -153,7 +165,7 @@ CONNECTORS: dict[str, Connector] = {c.key: c for c in (LocalFolder(), FacebookPa
 def _short(value):
     """An example path must not reveal the real location of the server."""
     if not isinstance(value, str) and value is not None:
-        value = str(value)                      # db.local_folder_default returns a path
+        value = str(value)  # db.local_folder_default returns a path
     if value and value.startswith("/"):
         from . import dirs
 
@@ -169,17 +181,31 @@ def connector_rows(conn, mosque: dict) -> list[dict]:
         ok, why = c.availability(r)
         settings = json.loads(r["settings"]) if r else {}
         shown = {f: (db.MASK if f in c.secret and settings.get(f) else settings.get(f, "")) for f in c.fields}
-        out.append({"key": key, "label": _(c.label), "description": _(c.description), "available": ok,
-                    "why": why,
-                    "enabled": bool(r["enabled"]) if r else c.enabled_by_default,
-                    "fields": [{"name": f, "label": _(c.labels.get(f, f)), "value": shown[f],
-                                "secret": f in c.secret,
-                                "placeholder": _short(c.defaults(mosque).get(f, ""))} for f in c.fields]})
+        out.append(
+            {
+                "key": key,
+                "label": _(c.label),
+                "description": _(c.description),
+                "available": ok,
+                "why": why,
+                "enabled": bool(r["enabled"]) if r else c.enabled_by_default,
+                "fields": [
+                    {
+                        "name": f,
+                        "label": _(c.labels.get(f, f)),
+                        "value": shown[f],
+                        "secret": f in c.secret,
+                        "placeholder": _short(c.defaults(mosque).get(f, "")),
+                    }
+                    for f in c.fields
+                ],
+            }
+        )
     return out
 
 
 def default_caption(khutba: dict, mosque: dict, verses: list[str]) -> str:
-    kind = (khutba.get("kind") or "khutba")
+    kind = khutba.get("kind") or "khutba"
     if kind != "khutba" and khutba.get("title"):
         first = f"{kind_label(kind)} : {khutba['title']} — {mosque['name']}"
     else:
@@ -203,12 +229,35 @@ def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=N
     c = CONNECTORS.get(connector_key)
 
     def record(status: str, res: Result) -> Result:
-        conn.execute("INSERT INTO publications (mosque_id, clip_id, clip_version, connector, status, location, caption, message, "
-                     "user_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                     (clip["mosque_id"], clip["id"], clip["version"], connector_key, status, res.location, caption, res.message,
-                      user["id"], db.now_iso()))
-        db.audit(conn, clip["mosque_id"], user["id"], f"publication.{status}", "clip", clip["id"], ip=ip,
-                 connecteur=connector_key, version=clip["version"], message=res.message, emplacement=res.location or None)
+        conn.execute(
+            "INSERT INTO publications (mosque_id, clip_id, clip_version, connector, status, location, caption, message, "
+            "user_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                clip["mosque_id"],
+                clip["id"],
+                clip["version"],
+                connector_key,
+                status,
+                res.location,
+                caption,
+                res.message,
+                user["id"],
+                db.now_iso(),
+            ),
+        )
+        db.audit(
+            conn,
+            clip["mosque_id"],
+            user["id"],
+            f"publication.{status}",
+            "clip",
+            clip["id"],
+            ip=ip,
+            connecteur=connector_key,
+            version=clip["version"],
+            message=res.message,
+            emplacement=res.location or None,
+        )
         return res
 
     if c is None:
@@ -243,10 +292,22 @@ def save_connector(conn, mosque_id: int, key: str, enabled: bool, values: dict, 
     for f in c.fields:
         v = (values.get(f) or "").strip()
         if f in c.secret and v in ("", db.MASK):
-            continue                       # secret field left empty = unchanged
+            continue  # secret field left empty = unchanged
         settings[f] = v
-    conn.execute("INSERT INTO connectors (mosque_id, key, enabled, settings) VALUES (?,?,?,?) ON CONFLICT (mosque_id, key) "
-                 "DO UPDATE SET enabled = excluded.enabled, settings = excluded.settings",
-                 (mosque_id, key, int(enabled), json.dumps(settings)))
-    db.audit(conn, mosque_id, user["id"], "connecteur.configure", "connecteur", None, ip=ip, connecteur=key, actif=enabled,
-             champs=sorted(f for f in settings if settings[f]))
+    conn.execute(
+        "INSERT INTO connectors (mosque_id, key, enabled, settings) VALUES (?,?,?,?) ON CONFLICT (mosque_id, key) "
+        "DO UPDATE SET enabled = excluded.enabled, settings = excluded.settings",
+        (mosque_id, key, int(enabled), json.dumps(settings)),
+    )
+    db.audit(
+        conn,
+        mosque_id,
+        user["id"],
+        "connecteur.configure",
+        "connecteur",
+        None,
+        ip=ip,
+        connecteur=key,
+        actif=enabled,
+        champs=sorted(f for f in settings if settings[f]),
+    )

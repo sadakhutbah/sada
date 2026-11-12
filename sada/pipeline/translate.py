@@ -9,6 +9,7 @@
   rather than an improvised Quran translation).
 Cache: translations.json; re-running does not call the LLM again. Read and edit this cache: segment_fr, verse_fr, with_correction.
 """
+
 from __future__ import annotations
 
 import copy
@@ -51,8 +52,15 @@ def with_correction(tr: dict, seg: dict, fr: str) -> dict:
     return out
 
 
-def translate_session(segments: list[dict], matches: list[dict], cache_path: str | Path, use_llm: bool = True,
-                      timeout: int = 600, log=print, only: list[tuple[float, float]] | None = None) -> dict:
+def translate_session(
+    segments: list[dict],
+    matches: list[dict],
+    cache_path: str | Path,
+    use_llm: bool = True,
+    timeout: int = 600,
+    log=print,
+    only: list[tuple[float, float]] | None = None,
+) -> dict:
     """-> {"seg": {segment_key: {"fr": str, "coran": bool}}, "verse_fr": {ref@start: excerpt}}
 
     only: windows actually kept for the clips. Only the speech inside them is translated — the rest of
@@ -63,14 +71,16 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
     ar = [(i, s) for i, s in enumerate(segments) if is_arabic(s["text"])]
     total_ar = len(ar)
     if only:
-        ar = [(i, s) for i, s in ar
-              if any(s["end"] > a - 2 and s["start"] < b + 2 for a, b in only)]
+        ar = [(i, s) for i, s in ar if any(s["end"] > a - 2 and s["start"] < b + 2 for a, b in only)]
         log(_("translation: {kept} segments inside the kept windows (out of {total})", kept=len(ar), total=total_ar))
     todo = [(i, s) for i, s in ar if _seg_key(s["text"]) not in cache["seg"]]
     vtodo = [m for m in vms if verse_key(m) not in cache["verse_fr"]]
     if (todo or vtodo) and use_llm:
         lines = "\n".join(f"{i}\t[{s['start']:.0f}s]\t{s['text']}" for i, s in todo)
-        vlines = "\n".join(f"{verse_key(m)}\tentendu : {m['heard']}\tHamidullah : {m['verse_fr']}" for m in vtodo) or "(aucun)"
+        vlines = (
+            "\n".join(f"{verse_key(m)}\tentendu : {m['heard']}\tHamidullah : {m['verse_fr']}" for m in vtodo)
+            or "(aucun)"
+        )
         prompt = (
             "Tu prépares les sous-titres FRANÇAIS d'un court extrait vidéo d'une khutba du vendredi (sermon). "
             "Voici les segments en arabe transcrits automatiquement par Whisper (des erreurs de transcription sont possibles : "
@@ -81,15 +91,21 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
             "- une entrée pour CHAQUE numéro ; traduction française fidèle, naturelle, sobre et respectueuse, sans rien ajouter ;\n"
             "- concise (c'est un sous-titre) : garde le sens, évite les tournures lourdes ; pas d'emoji ; « Allah » pour الله ;\n"
             "- formules rituelles : traductions usuelles (ex. « que la paix et les bénédictions d'Allah soient sur lui ») ;\n"
-            "- si le segment est une RÉCITATION du Coran (verset), mets \"coran\": true et une traduction quand même ;\n"
+            '- si le segment est une RÉCITATION du Coran (verset), mets "coran": true et une traduction quand même ;\n'
             "- un segment peut commencer ou finir au milieu d'une phrase : traduis seulement ce qu'il contient, pour que les traductions se suivent.\n"
             "Règles pour verse_fr : pour chaque clé ci-dessous, recopie MOT POUR MOT le passage de la traduction Hamidullah "
             "qui correspond à la partie récitée (entendue) ; ce doit être une sous-chaîne exacte de la traduction fournie "
             "(sinon recopie-la entière).\n\n"
             f"VERSETS :\n{vlines}\n\nSEGMENTS (numéro, temps, texte) :\n{lines}\n"
         )
-        log(_("translation: {segments} Arabic segment(s), {verses} verse(s) via {model}",
-              segments=len(todo), verses=len(vtodo), model=llm.settings().label()))
+        log(
+            _(
+                "translation: {segments} Arabic segment(s), {verses} verse(s) via {model}",
+                segments=len(todo),
+                verses=len(vtodo),
+                model=llm.settings().label(),
+            )
+        )
         d = llm.ask_json(prompt, timeout, log)
         if d:
             for i, s in todo:
@@ -97,10 +113,14 @@ def translate_session(segments: list[dict], matches: list[dict], cache_path: str
                 if isinstance(e, str):
                     e = {"fr": e, "coran": False}
                 if e and e.get("fr"):
-                    cache["seg"][_seg_key(s["text"])] = {"fr": e["fr"].strip(), "coran": bool(e.get("coran")), "ar": s["text"]}
+                    cache["seg"][_seg_key(s["text"])] = {
+                        "fr": e["fr"].strip(),
+                        "coran": bool(e.get("coran")),
+                        "ar": s["text"],
+                    }
             for m in vtodo:
                 k = verse_key(m)
-                ex = ((d.get("verse_fr") or {}).get(k) or "").strip().strip("«»\" ")
+                ex = ((d.get("verse_fr") or {}).get(k) or "").strip().strip('«»" ')
                 ok = len(ex) >= 12 and ex.rstrip(".") in m["verse_fr"]
                 cache["verse_fr"][k] = ex if ok else m["verse_fr"]
                 if not ok:

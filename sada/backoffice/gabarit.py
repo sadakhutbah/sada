@@ -5,6 +5,7 @@ keeps drawing the six screens with Pillow. What this module reads is the `#sada-
 the texts — so the mosque can find them in the settings form. The HTML file itself is kept as the
 mosque's reference and shown in an iframe, same origin only.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -103,9 +104,9 @@ def pour_ecran(page: str, ecran: str) -> str:
     motif = re.compile(rf"<[a-zA-Z][^>]*data-ecran=\"{re.escape(ecran)}\"[^>]*>")
     m = motif.search(sans)
     if not m:
-        return page                      # écran absent du fichier : on ne devine pas
+        return page  # écran absent du fichier : on ne devine pas
     balise = m.group(0)
-    return sans[:m.start()] + balise[:-1] + " data-actif>" + sans[m.end():]
+    return sans[: m.start()] + balise[:-1] + " data-actif>" + sans[m.end() :]
 
 
 def parse(content: bytes, filename: str) -> tuple[dict[str, dict[str, str]], list[dict], list[str]]:
@@ -133,15 +134,13 @@ def parse(content: bytes, filename: str) -> tuple[dict[str, dict[str, str]], lis
     m = _BLOCK.search(text)
     if not m:
         raise GabaritRefused(
-            _("This file is not a Sadā template: the block "
-              "<script id=\"sada-screens\"> cannot be found.")
+            _('This file is not a Sadā template: the block <script id="sada-screens"> cannot be found.')
         )
     try:
         data = json.loads(m.group(1).strip())
     except json.JSONDecodeError as e:
         raise GabaritRefused(
-            _("The #sada-screens block is not valid JSON (line {line}, column {col}).",
-              line=e.lineno, col=e.colno)
+            _("The #sada-screens block is not valid JSON (line {line}, column {col}).", line=e.lineno, col=e.colno)
         ) from None
     if not isinstance(data, dict):
         raise GabaritRefused(_("The #sada-screens block must contain a JSON object."))
@@ -149,8 +148,10 @@ def parse(content: bytes, filename: str) -> tuple[dict[str, dict[str, str]], lis
     missing = [s for s in base.SCREENS if s not in data]
     if missing:
         raise GabaritRefused(
-            _("Incomplete template: the screens {screens} are missing from the #sada-screens block.",
-              screens=", ".join(missing))
+            _(
+                "Incomplete template: the screens {screens} are missing from the #sada-screens block.",
+                screens=", ".join(missing),
+            )
         )
 
     taken: dict[str, dict[str, str]] = {}
@@ -158,32 +159,46 @@ def parse(content: bytes, filename: str) -> tuple[dict[str, dict[str, str]], lis
     empty: list[str] = []
     for screen, block in data.items():
         if screen not in base.SCREENS:
-            ignored.append({"screen": str(screen), "slot": "", "value": "",
-                            "reason": _("unknown screen for the engine")})
+            ignored.append(
+                {"screen": str(screen), "slot": "", "value": "", "reason": _("unknown screen for the engine")}
+            )
             continue
         if not isinstance(block, dict):
-            raise GabaritRefused(_("Screen \"{screen}\" must be an object {{\"id\": …, \"texts\": …}}.",
-                                   screen=screen))
+            raise GabaritRefused(_('Screen "{screen}" must be an object {{"id": …, "texts": …}}.', screen=screen))
         # The contract wraps texts in "texts"; a flat object is accepted as well.
         texts = dict(block["texts"] if isinstance(block.get("texts"), dict) else block)
         for slot, value in texts.items():
             if not isinstance(value, str):
-                ignored.append({"screen": screen, "slot": str(slot), "value": "",
-                                "reason": _("non-text value (a string is expected)")})
+                ignored.append(
+                    {
+                        "screen": screen,
+                        "slot": str(slot),
+                        "value": "",
+                        "reason": _("non-text value (a string is expected)"),
+                    }
+                )
                 continue
             texte = value.replace("\n", " ").strip()
             if not texte:
                 empty.append(f"{screen}.{slot}")
                 continue
             if slot not in base.DEFAULTS[screen]:
-                raison = (_("screen \"{screen}\" has no field \"{slot}\" in the engine",
-                            screen=screen, slot=slot) if slot in SLOTS
-                          else _("unknown field for the engine: \"{slot}\"", slot=slot))
+                raison = (
+                    _('screen "{screen}" has no field "{slot}" in the engine', screen=screen, slot=slot)
+                    if slot in SLOTS
+                    else _('unknown field for the engine: "{slot}"', slot=slot)
+                )
                 ignored.append({"screen": screen, "slot": slot, "value": texte, "reason": raison})
                 continue
             if len(texte) > base.MAX_LEN:
-                ignored.append({"screen": screen, "slot": slot, "value": texte[:120] + "…",
-                                "reason": _("text too long ({max} characters maximum)", max=base.MAX_LEN)})
+                ignored.append(
+                    {
+                        "screen": screen,
+                        "slot": slot,
+                        "value": texte[:120] + "…",
+                        "reason": _("text too long ({max} characters maximum)", max=base.MAX_LEN),
+                    }
+                )
                 continue
             taken.setdefault(screen, {})[slot] = texte
     return taken, ignored, empty
@@ -207,5 +222,8 @@ def summary(taken: dict, ignored: list, empty: list) -> str:
         bits.append(_("ignored: {n}", n=len(ignored)))
     if empty:
         bits.append(_("empty fields left as is: {n}", n=len(empty)))
-    return _("Template imported: {parts}. The file becomes the mosque's visual reference; "
-             "the live keeps the engine's rendering.", parts=", ".join(bits))
+    return _(
+        "Template imported: {parts}. The file becomes the mosque's visual reference; "
+        "the live keeps the engine's rendering.",
+        parts=", ".join(bits),
+    )

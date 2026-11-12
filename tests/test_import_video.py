@@ -1,4 +1,5 @@
 """Import d'une vidéo enregistrée hors direct : envoi -> run d'une session -> file de traitement."""
+
 import json
 import subprocess
 from pathlib import Path
@@ -31,13 +32,17 @@ def _post(c, data, **q):
 
 def test_import_cree_un_run_en_file(env, tmp_path):
     c = client(env, "admin")
-    r = _post(c, _video(tmp_path), kind="dars", title="Tafsir Al-Kahf", speaker="Imam X", session_no="3",
-              date="2026-11-03")
+    r = _post(
+        c, _video(tmp_path), kind="dars", title="Tafsir Al-Kahf", speaker="Imam X", session_no="3", date="2026-11-03"
+    )
     assert r.status_code == 200, r.text
     rid = r.json()["run"]
     assert rid.startswith("20261103_")
-    rd = env["root"] / "state" / rid if "root" in env else Path(env["conn"].execute(
-        "SELECT state_dir FROM mosques").fetchone()[0]) / rid
+    rd = (
+        env["root"] / "state" / rid
+        if "root" in env
+        else Path(env["conn"].execute("SELECT state_dir FROM mosques").fetchone()[0]) / rid
+    )
     data = runs.load(rd / runs.SESSIONS)
     s = data["sessions"][0]
     assert s["status"] == "done" and s["kind"] == "dars" and s["title"] == "Tafsir Al-Kahf" and s["session_no"] == 3
@@ -45,19 +50,22 @@ def test_import_cree_un_run_en_file(env, tmp_path):
     assert Path(data["recordings"][0]).exists()
     assert traitement.lire(rd)["0"]["etat"] == "attente"
     mo = dict(env["conn"].execute("SELECT * FROM mosques").fetchone())
-    assert (rd, 0) in traitement.a_traiter(mo)          # pris malgré une date ancienne
+    assert (rd, 0) in traitement.a_traiter(mo)  # pris malgré une date ancienne
     assert importer.khutba_label(dict(s, index=0)).endswith("Tafsir Al-Kahf · séance 3")
 
 
-@pytest.mark.parametrize("q, data_kind, msg", [
-    ({"filename": "a.exe"}, "ok", "format"),
-    ({"kind": "fete"}, "ok", "type"),
-    ({"date": "2999-01-01"}, "ok", "future"),
-    ({"session_no": "trois"}, "ok", "number"),
-    ({}, "muet", "sound"),
-    ({}, "texte", "not a valid video"),
-    ({}, "vide", "Empty file"),
-])
+@pytest.mark.parametrize(
+    "q, data_kind, msg",
+    [
+        ({"filename": "a.exe"}, "ok", "format"),
+        ({"kind": "fete"}, "ok", "type"),
+        ({"date": "2999-01-01"}, "ok", "future"),
+        ({"session_no": "trois"}, "ok", "number"),
+        ({}, "muet", "sound"),
+        ({}, "texte", "not a valid video"),
+        ({}, "vide", "Empty file"),
+    ],
+)
 def test_import_refuse(env, tmp_path, q, data_kind, msg):
     c = client(env, "admin")
     data = {"ok": b"x" * 10 if q else None, "muet": None, "texte": b"pas une video", "vide": b""}[data_kind]
@@ -68,7 +76,7 @@ def test_import_refuse(env, tmp_path, q, data_kind, msg):
     r = _post(c, data, **q)
     assert r.status_code == 422 and msg in r.text, r.text
     sortie = Path(env["conn"].execute("SELECT output_dir FROM mosques").fetchone()[0])
-    assert not any((d / "source").exists() for d in sortie.iterdir())   # rien ne reste d'un refus
+    assert not any((d / "source").exists() for d in sortie.iterdir())  # rien ne reste d'un refus
 
 
 def test_import_droits_et_csrf(env, tmp_path):

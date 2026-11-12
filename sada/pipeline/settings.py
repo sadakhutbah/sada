@@ -4,6 +4,7 @@ Le back-office écrit ce fichier (Réglages → Traitement) ; le pipeline le lit
 comme il lit déjà `data/llm.json` pour le modèle. Un réglage donné en ligne de commande ou par
 l'environnement reste prioritaire : c'est la règle unique de `sada.config.pick`.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,7 @@ from pathlib import Path
 from .. import paths
 from ..config import pick
 
-DEFAULT_CLIPS = 3                 # extraits par khutba quand rien n'est réglé
+DEFAULT_CLIPS = 3  # extraits par khutba quand rien n'est réglé
 MIN_CLIPS = 1
 MAX_CLIPS = 10
 

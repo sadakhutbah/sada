@@ -6,6 +6,7 @@ POST /<command>?name=...|min=...    Machine.COMMANDS commands (e.g. /extend?min=
 
 JSON only: the control screen is the back-office dashboard, there is no page served here.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,8 +52,8 @@ def make_server(orch, host: str, port: int, token: str = "") -> ThreadingHTTPSer
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             cmd = u.path.strip("/")
             arg = q.get("name") or q.get("min")
-            if q.get("info"):                       # janaza record: "name|note"
-                arg = f'{q.get("name", "")}|{q["info"]}'
+            if q.get("info"):  # janaza record: "name|note"
+                arg = f"{q.get('name', '')}|{q['info']}"
             if cmd not in Machine.COMMANDS:
                 return self._send(404, {"error": _("unknown command")})
             self._send(200, {"ok": True, **orch.manual(cmd, arg)})

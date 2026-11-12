@@ -4,6 +4,7 @@ A separate ffmpeg reads the source audio (RTSP) as 16 kHz mono PCM; it is split 
 and a sliding one-second window is kept: "voice" if the share of voiced frames >= vad_ratio.
 Exposes voice_run / silence_run (real consecutive seconds of voice / of non-voice).
 """
+
 from __future__ import annotations
 
 import collections
@@ -32,9 +33,23 @@ def _last_voice_offset(path: str) -> float | None:
     if not ffmpeg:
         return None
     try:
-        r = subprocess.run([ffmpeg, "-hide_banner", "-nostats", "-i", path, "-af",
-                            "silencedetect=noise=-30dB:d=0.8", "-f", "null", "-"],
-                           capture_output=True, text=True, timeout=600)
+        r = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                path,
+                "-af",
+                "silencedetect=noise=-30dB:d=0.8",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
     except Exception:  # noqa: BLE001
         return None
     last = None
@@ -62,8 +77,23 @@ class VadMonitor(threading.Thread):
 
     def run(self):
         while not self.stop_flag.is_set():
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", *source.input_options(self.url), "-i", self.url,
-                   "-vn", "-ac", "1", "-ar", str(RATE), "-f", "s16le", "-"]
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                *source.input_options(self.url),
+                "-i",
+                self.url,
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                str(RATE),
+                "-f",
+                "s16le",
+                "-",
+            ]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self._read(self.proc)

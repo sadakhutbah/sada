@@ -8,6 +8,7 @@ Variables, replaced when the screen is drawn: {heure} (time of the announced ses
 (title of the mosque settings), {mosquee} (mosque name). A slot whose variable is unknown at that
 moment is left empty (never "Début à "), and an unknown {braces} stays visible so a typo shows.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -60,7 +61,7 @@ DEFAULTS: dict[str, dict[str, str]] = {
     },
 }
 
-MAX_LEN = 160          # longest sensible line on a 1280 px screen
+MAX_LEN = 160  # longest sensible line on a 1280 px screen
 
 
 def defaults() -> dict[str, dict[str, str]]:
@@ -110,15 +111,22 @@ def _placeholders(template: str) -> list[str]:
         b = template.find("}", a)
         if b < 0:
             return found
-        found.append(template[a + 1:b])
+        found.append(template[a + 1 : b])
         i = b + 1
 
 
-def variables(moment, title: str = "", mosque: str = "", heure: str = "", cours: str = "",
-              jour: str = "") -> dict[str, str]:
+def variables(
+    moment, title: str = "", mosque: str = "", heure: str = "", cours: str = "", jour: str = ""
+) -> dict[str, str]:
     """Values available for the substitution; an empty value hides the slots that use it."""
-    return {"heure": heure, "cours": cours, "jour": jour, "titre": title or "",
-            "mosquee": mosque or "", "date": _french_date(moment)}
+    return {
+        "heure": heure,
+        "cours": cours,
+        "jour": jour,
+        "titre": title or "",
+        "mosquee": mosque or "",
+        "date": _french_date(moment),
+    }
 
 
 def _french_date(moment) -> str:
@@ -130,7 +138,7 @@ def _french_date(moment) -> str:
     return french_date(now)
 
 
-def _http_get(url: str, token: str) -> dict:      # pragma: no cover (network)
+def _http_get(url: str, token: str) -> dict:  # pragma: no cover (network)
     from .backoffice.internal import HEADER
 
     req = urllib.request.Request(url, headers={HEADER: token})
@@ -150,15 +158,18 @@ def from_backoffice(backoffice_url: str, api_port: int, fetch=None, log=None) ->
     url = backoffice_url.rstrip("/") + "/api/v1/internal/screens?" + urlencode({"port": api_port or 0})
     try:
         data = (fetch or _http_get)(url, token()) or {}
-    except Exception as e:                        # noqa: BLE001 — the live never waits on the back office
+    except Exception as e:  # noqa: BLE001 — the live never waits on the back office
         log(_("Screens: back-office settings unreachable ({error}) — default texts kept", error=e))
         return {}
     textes = data.get("screens") or {}
     if not isinstance(textes, dict):
         return {}
     changes = sum(len(v) for v in textes.values() if isinstance(v, dict))
-    log(_("Screens: {count} custom text(s) read from the back office", count=changes) if changes
-        else _("Screens: no custom text, default texts"))
+    log(
+        _("Screens: {count} custom text(s) read from the back office", count=changes)
+        if changes
+        else _("Screens: no custom text, default texts")
+    )
     return textes
 
 
@@ -177,7 +188,6 @@ def check(saved: dict) -> dict[str, dict[str, str]]:
                 raise ValueError(_("unknown field: {field}", field=f"{screen}.{slot}"))
             texte = "" if text is None else str(text).strip().replace("\n", " ")
             if len(texte) > MAX_LEN:
-                raise ValueError(_("{field}: {max} characters at most",
-                                   field=f"{screen}.{slot}", max=MAX_LEN))
+                raise ValueError(_("{field}: {max} characters at most", field=f"{screen}.{slot}", max=MAX_LEN))
             out.setdefault(screen, {})[slot] = texte
     return out

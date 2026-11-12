@@ -11,6 +11,7 @@ Arabic goes through libraqm (shaping of joined letters + RTL direction); otherwi
 + python-bidi if they are installed. All the useful content stays in a central safe area
 (the overlays of the mobile Facebook app occupy the corners and the bottom of the image).
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -26,7 +27,7 @@ from . import screens
 from .paths import FONTS
 from .text import JOURS, RAQM, french_date, is_arabic_char, shaped
 
-if TYPE_CHECKING:                       # for annotations only
+if TYPE_CHECKING:  # for annotations only
     from .events import EventInstance
 
 SERIF = str(FONTS / "EBGaramond-SemiBold.ttf")
@@ -38,7 +39,7 @@ ARABIC_B = str(FONTS / "Amiri-Bold.ttf")
 # --- palette ------------------------------------------------------------------
 IVORY = (244, 240, 230, 255)
 IVORY_DIM = (214, 210, 198, 255)
-GOLD = (200, 169, 106, 255)          # matte gold, never saturated
+GOLD = (200, 169, 106, 255)  # matte gold, never saturated
 GOLD_SOFT = (200, 169, 106, 150)
 
 # --- fixed texts (verified Arabic) -------------------------------------------
@@ -95,14 +96,14 @@ def _runs(text: str) -> list[tuple[str, bool]]:
                 if kinds[j] is True:
                     last_ar = j
                 j += 1
-            runs.append([text[i:last_ar + 1], True])
+            runs.append([text[i : last_ar + 1], True])
             i = last_ar + 1
         else:
             j = i
             while j < n and kinds[j] is not True:
                 j += 1
             seg = text[i:j]
-            if base_rtl and runs and runs[-1][1] and not seg.strip(" \u00a0-—·:,.;()«»") :
+            if base_rtl and runs and runs[-1][1] and not seg.strip(" \u00a0-—·:,.;()«»"):
                 runs[-1][0] += seg  # neutrals between two Arabic segments
             else:
                 runs.append([seg, False])
@@ -183,15 +184,15 @@ class SceneRenderer:
         s = size * k
         img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
         g = ImageDraw.Draw(img)
-        pale = _mix(self.dark, (255, 255, 255), 0.86)          # almost white disc, tinted with the mosque green
+        pale = _mix(self.dark, (255, 255, 255), 0.86)  # almost white disc, tinted with the mosque green
         g.ellipse([0, 0, s - 1, s - 1], fill=pale)
         area = Image.new("L", (s, s), 0)
         ga = ImageDraw.Draw(area)
         R = s * 0.58
-        ga.ellipse([s / 2 - R, s / 2 - R, s / 2 + R, s / 2 + R], fill=255)          # full disc
-        rb, bx, by = s * 0.58, s * 0.70, s * 0.30                                   # bite of the same radius, shifted up-right
+        ga.ellipse([s / 2 - R, s / 2 - R, s / 2 + R, s / 2 + R], fill=255)  # full disc
+        rb, bx, by = s * 0.58, s * 0.70, s * 0.30  # bite of the same radius, shifted up-right
         ga.ellipse([bx - rb, by - rb, bx + rb, by + rb], fill=0)
-        img.paste(self.dark, (0, 0), area)                                          # green crescent
+        img.paste(self.dark, (0, 0), area)  # green crescent
         # four-branch gold star, in the hollow of the crescent
         sx, sy, e = s * 0.66, s * 0.36, s * 0.085
         g.polygon([(sx, sy - e), (sx + e * 0.45, sy), (sx, sy + e), (sx - e * 0.45, sy)], fill=GOLD)
@@ -252,8 +253,13 @@ class SceneRenderer:
             for gx in range(-1, W // step + 2):
                 cx, cy = gx * step + (step // 2 if gy % 2 else 0), gy * step
                 for rot in (0, 45):
-                    pts = [(cx + r * math.cos(math.radians(rot + 45 + 90 * i)),
-                            cy + r * math.sin(math.radians(rot + 45 + 90 * i))) for i in range(4)]
+                    pts = [
+                        (
+                            cx + r * math.cos(math.radians(rot + 45 + 90 * i)),
+                            cy + r * math.sin(math.radians(rot + 45 + 90 * i)),
+                        )
+                        for i in range(4)
+                    ]
                     p.polygon(pts, outline=_alpha(GOLD, 255), width=1)
         pmask = rad.point([int(max(0, v - 90) * 0.11) for v in range(256)])
         pat.putalpha(Image.composite(pmask, Image.new("L", (W, H), 0), pat.getchannel("A")))
@@ -342,7 +348,7 @@ class SceneRenderer:
 
     # medallion of the full screens: fixed position (no jump from one scene to another)
     def _med_geom(self) -> tuple[int, int]:
-        return self.px(80), self.px(158)   # (top, diameter)
+        return self.px(80), self.px(158)  # (top, diameter)
 
     def background(self) -> Image.Image:
         """Shared background of the full screens: gradient + pattern, medallion, footer.
@@ -356,8 +362,9 @@ class SceneRenderer:
         self._footer(img)
         return img
 
-    def _full_content(self, title: str, sub: str = "", big: str = "", foot: str = "", *,
-                      eyebrow: str = "", arabic: str = "") -> Image.Image:
+    def _full_content(
+        self, title: str, sub: str = "", big: str = "", foot: str = "", *, eyebrow: str = "", arabic: str = ""
+    ) -> Image.Image:
         """Text block of a full screen (transparent layer): eyebrow, title, Arabic, ornament,
         (countdown), text. The medallion and the footer are in background().
 
@@ -371,19 +378,43 @@ class SceneRenderer:
         items: list[tuple] = [("medallion", None, None, None, 0, {})]
         if eyebrow:
             items.append(("eyebrow", eyebrow.upper(), _font(SANS_SB, px(20)), GOLD, px(34), {}))
-        items.append(("text", title, self._fit(d, title, _font(SERIF, px(62)), SERIF, px(62)), IVORY,
-                      px(24) if eyebrow else px(40), {}))
+        items.append(
+            (
+                "text",
+                title,
+                self._fit(d, title, _font(SERIF, px(62)), SERIF, px(62)),
+                IVORY,
+                px(24) if eyebrow else px(40),
+                {},
+            )
+        )
         if arabic:
             items.append(("text", arabic, _font(ARABIC, px(40)), GOLD, px(20), {}))
         items.append(("orn", None, None, None, px(28), {}))
         if big:
             items.append(("text", big, _font(SANS_SB, px(116)), IVORY, px(36), tnum))
         if sub:
-            items.append(("text", sub, self._fit(d, sub, _font(SANS_SB, px(30)), SANS_SB, px(30)), IVORY,
-                          px(28) if big else px(32), {}))
+            items.append(
+                (
+                    "text",
+                    sub,
+                    self._fit(d, sub, _font(SANS_SB, px(30)), SANS_SB, px(30)),
+                    IVORY,
+                    px(28) if big else px(32),
+                    {},
+                )
+            )
         if foot:
-            items.append(("text", foot, self._fit(d, foot, _font(SANS, px(24)), SANS, px(24)), IVORY_DIM,
-                          px(18) if sub else px(30), {}))
+            items.append(
+                (
+                    "text",
+                    foot,
+                    self._fit(d, foot, _font(SANS, px(24)), SANS, px(24)),
+                    IVORY_DIM,
+                    px(18) if sub else px(30),
+                    {},
+                )
+            )
         med_top, med = self._med_geom()
         sized = []
         for kind, text, font, fill, gap, kw in items:
@@ -423,34 +454,44 @@ class SceneRenderer:
     # Each scene renders its content layer (transparent) from the displayed instant (Moment).
     def _avant(self, m: Moment) -> Image.Image:
         t = self.txt("avant", m, heure=_hm(m.planned) if m.planned else "")
-        return self._full_content(self.cfg.title, t["sub"], "", t["foot"],
-                                  eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
+        return self._full_content(self.cfg.title, t["sub"], "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
 
     def _priere(self, m: Moment) -> Image.Image:
         t = self.txt("priere", m)
-        return self._full_content(t["title"], t["sub"], "", t["foot"],
-                                  eyebrow=t["eyebrow"] or (french_date(m.now) if m.now else ""),
-                                  arabic=AR_JUMUA)
+        return self._full_content(
+            t["title"],
+            t["sub"],
+            "",
+            t["foot"],
+            eyebrow=t["eyebrow"] or (french_date(m.now) if m.now else ""),
+            arabic=AR_JUMUA,
+        )
 
     def _entracte(self, m: Moment) -> Image.Image:
         nxt = m.next_event
-        t = self.txt("entracte", m, heure=_hm(nxt.starts) if nxt is not None and nxt.kind != "khutba"
-                     else (_hm(m.planned) if m.planned else ""),
-                     cours=getattr(nxt, "title", "") if nxt is not None and nxt.kind != "khutba" else "")
+        t = self.txt(
+            "entracte",
+            m,
+            heure=_hm(nxt.starts)
+            if nxt is not None and nxt.kind != "khutba"
+            else (_hm(m.planned) if m.planned else ""),
+            cours=getattr(nxt, "title", "") if nxt is not None and nxt.kind != "khutba" else "",
+        )
         if nxt is not None and nxt.kind != "khutba":
             remaining = max(0, int((nxt.starts - m.now).total_seconds()))
-            return self._full_content(t["title_cours"] or t["title"], nxt.title, _countdown(remaining),
-                                      t["foot"], eyebrow=t["eyebrow"])
+            return self._full_content(
+                t["title_cours"] or t["title"], nxt.title, _countdown(remaining), t["foot"], eyebrow=t["eyebrow"]
+            )
         if m.planned:
             remaining = max(0, int((m.planned - m.now).total_seconds()))
-            return self._full_content(t["title_khutba"] or t["title"], "", _countdown(remaining),
-                                      t["foot"], eyebrow=t["eyebrow"])
+            return self._full_content(
+                t["title_khutba"] or t["title"], "", _countdown(remaining), t["foot"], eyebrow=t["eyebrow"]
+            )
         return self._full_content(t["title"], "", "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_KHUTBA)
 
     def _termine(self, m: Moment) -> Image.Image:
         t = self.txt("termine", m)
-        return self._full_content(t["title"], t["sub"], "", t["foot"],
-                                  eyebrow=t["eyebrow"], arabic=AR_JAZAKUM)
+        return self._full_content(t["title"], t["sub"], "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_JAZAKUM)
 
     def _panel_shadow(self, img: Image.Image, box, radius: int):
         sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -479,13 +520,15 @@ class SceneRenderer:
     def _dars_fin(self, m: Moment) -> Image.Image:
         """End screen of a dars: thanks and announcement of the next class."""
         nxt = m.next_event
-        t = self.txt("dars_fin", m,
-                     jour=JOURS[nxt.starts.weekday()] if nxt else "",
-                     heure=_hm(nxt.starts) if nxt else "",
-                     cours=nxt.title if nxt else "")
+        t = self.txt(
+            "dars_fin",
+            m,
+            jour=JOURS[nxt.starts.weekday()] if nxt else "",
+            heure=_hm(nxt.starts) if nxt else "",
+            cours=nxt.title if nxt else "",
+        )
         foot = (t["foot_cours"] or t["foot"]) if nxt else t["foot"]
-        return self._full_content(t["title"], t["sub"], "", foot,
-                                  eyebrow=t["eyebrow"], arabic=AR_DARS)
+        return self._full_content(t["title"], t["sub"], "", foot, eyebrow=t["eyebrow"], arabic=AR_DARS)
 
     def _banner(self, title: str, line2: str, arabic: str) -> Image.Image:
         """Transparent + compact banner at the bottom left: medallion, title, 2nd line, Arabic title."""
@@ -541,8 +584,7 @@ class SceneRenderer:
         t = self.txt("janaza", m)
         name, info = m.janaza_name, m.janaza_info
         sub = (info or t["sub"]) if name else t["sub"]
-        return self._full_content(name or t["title"], sub, "", t["foot"],
-                                  eyebrow=t["eyebrow"], arabic=AR_JANAZA)
+        return self._full_content(name or t["title"], sub, "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_JANAZA)
 
     def content(self, scene: str, m: Moment) -> Image.Image:
         """Content layer of the scene; the encoder lays it over the shared background if the scene is a full screen.
@@ -563,20 +605,21 @@ class SceneRenderer:
 class Moment:
     """What the scenes show: the time, the planned session, the name of the deceased (Janaza, with the family's
     consent), and for a dars the current class (`event`) or the next one (`next_event`)."""
+
     now: dt.datetime
     planned: dt.datetime | None = None
     janaza_name: str | None = None
-    janaza_info: str | None = None   # note under the name (age, standing…), same family consent
-    event: dict | None = None        # dars / conference in progress: title, speaker, series, session_no, kind
-    next_event: EventInstance | None = None   # next occurrence, for the end screen and the interlude
+    janaza_info: str | None = None  # note under the name (age, standing…), same family consent
+    event: dict | None = None  # dars / conference in progress: title, speaker, series, session_no, kind
+    next_event: EventInstance | None = None  # next occurrence, for the end screen and the interlude
 
 
 @dataclass(frozen=True)
 class Scene:
-    full: bool                  # full screen: the shared background masks the camera
-    mic: bool                   # live microphone open
+    full: bool  # full screen: the shared background masks the camera
+    mic: bool  # live microphone open
     draw: Callable[[SceneRenderer, Moment], Image.Image]
-    ticking: bool = False       # the content changes with the time (countdown): rendered every second
+    ticking: bool = False  # the content changes with the time (countdown): rendered every second
 
 
 SCENES = {

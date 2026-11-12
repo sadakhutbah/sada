@@ -1,4 +1,5 @@
 """Settings (JSON API): sections, partial registry, folder picker, connectors."""
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -8,8 +9,18 @@ from test_backoffice import client  # noqa: E402,F401  (conftest provides the pa
 
 def test_les_sections_sont_annoncees(env):
     d = client(env, "admin").get("/api/v1/settings").json()
-    assert list(d["sections"]) == ["mosque", "logo", "screens", "live", "replays", "folders", "model",
-                                   "processing", "connectors", "access"]
+    assert list(d["sections"]) == [
+        "mosque",
+        "logo",
+        "screens",
+        "live",
+        "replays",
+        "folders",
+        "model",
+        "processing",
+        "connectors",
+        "access",
+    ]
     assert d["mosque"]["name"] == "Mosquée Exemple" and d["mosque"]["slug"] == "ma-mosquee"
     assert d["imams"] and d["model"]["label"]
     assert d["processing"]["clips"] >= 1 and d["processing"]["max"] >= d["processing"]["min"]
@@ -22,8 +33,11 @@ def test_reglages_reserves_a_l_admin(env):
 
 def test_registre_partiel_ne_vide_pas_les_autres_reglages(env):
     from sada.backoffice import db
+
     c = client(env, "admin")
-    r = c.ecrire("/settings/mosque", {"orchestrator_url": "http://127.0.0.1:8089", "orchestrator_token": ""}, methode="PATCH")
+    r = c.ecrire(
+        "/settings/mosque", {"orchestrator_url": "http://127.0.0.1:8089", "orchestrator_token": ""}, methode="PATCH"
+    )
     assert r.status_code == 200, r.text
     m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     assert m["orchestrator_url"] == "http://127.0.0.1:8089"
@@ -64,6 +78,7 @@ def test_api_dossiers_reservee_a_l_admin(env):
 
 def test_dossier_choisi_enregistre_et_valide(env):
     from sada.backoffice import db, dirs
+
     c = client(env, "admin")
     target = env["tmp"] / "nouveau" / "output"
     c.ecrire("/settings/mosque", {"output_dir": str(target)}, methode="PATCH")
@@ -97,8 +112,12 @@ def test_les_connecteurs_sont_decoupes(env):
     c = client(env, "admin")
     rows = {r["key"]: r for r in c.get("/api/v1/settings").json()["connectors"]}
     assert {"local", "facebook", "youtube", "instagram"} <= set(rows)
-    for cle, libelle in (("local", "Local folder"), ("facebook", "Facebook page"),
-                         ("youtube", "YouTube"), ("instagram", "Instagram")):
+    for cle, libelle in (
+        ("local", "Local folder"),
+        ("facebook", "Facebook page"),
+        ("youtube", "YouTube"),
+        ("instagram", "Instagram"),
+    ):
         assert rows[cle]["label"] == libelle
         assert rows[cle]["fields"], cle
     assert {f["name"] for f in rows["facebook"]["fields"]} == {"page_id", "page_token"}
@@ -106,6 +125,7 @@ def test_les_connecteurs_sont_decoupes(env):
     # a saved secret never comes back in clear text
     c.ecrire("/settings/connectors/facebook", {"page_id": "123", "page_token": "secret"})
     from sada.backoffice import db
+
     row = next(r for r in c.get("/api/v1/settings").json()["connectors"] if r["key"] == "facebook")
     assert {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
 
@@ -134,14 +154,23 @@ def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
 
 def test_mawaqit_et_fuseau_enregistres_et_valides(env):
     from sada.backoffice import db
+
     c = client(env, "admin")
-    assert c.ecrire("/settings/mosque", {"mawaqit_url": "https://mawaqit.net/fr/x", "timezone": "Africa/Casablanca"},
-                    methode="PATCH").status_code == 200
+    assert (
+        c.ecrire(
+            "/settings/mosque",
+            {"mawaqit_url": "https://mawaqit.net/fr/x", "timezone": "Africa/Casablanca"},
+            methode="PATCH",
+        ).status_code
+        == 200
+    )
     d = c.get("/api/v1/settings").json()["mosque"]
     assert d["mawaqit_url"] == "https://mawaqit.net/fr/x" and d["timezone"] == "Africa/Casablanca"
     r = c.ecrire("/settings/mosque", {"timezone": "Mars/Olympus"}, methode="PATCH")
     assert r.status_code == 422 and "time zone" in r.json()["message"]
-    assert db.one(env["conn"], "SELECT timezone FROM mosques WHERE id = ?", env["mid"])["timezone"] == "Africa/Casablanca"
+    assert (
+        db.one(env["conn"], "SELECT timezone FROM mosques WHERE id = ?", env["mid"])["timezone"] == "Africa/Casablanca"
+    )
 
 
 def test_dossier_inutilisable_refuse(env):
@@ -158,8 +187,11 @@ def test_dossier_inutilisable_refuse(env):
 def test_modele_enregistre_et_relu(env, monkeypatch):
     monkeypatch.setenv("SADA_LLM_CONFIG", str(env["tmp"] / "llm.json"))
     c = client(env, "admin")
-    r = c.ecrire("/settings/model", {"enabled": "1", "url": "http://127.0.0.1:1/v1", "model": "m", "protocol": "openai"},
-                 methode="PUT")
+    r = c.ecrire(
+        "/settings/model",
+        {"enabled": "1", "url": "http://127.0.0.1:1/v1", "model": "m", "protocol": "openai"},
+        methode="PUT",
+    )
     assert r.status_code == 200, r.text
     m = c.get("/api/v1/settings").json()["model"]
     assert (m["enabled"], m["url"], m["model"], m["protocol"]) == (True, "http://127.0.0.1:1/v1", "m", "openai")
@@ -169,11 +201,12 @@ def test_modele_enregistre_et_relu(env, monkeypatch):
 def test_publications_real_status_and_notifications(env, monkeypatch):
     """The Publications screen shows real status, masks secrets and configures notifications."""
     from sada import notify
+
     c = client(env, "admin")
     d = c.get("/api/v1/publications").json()
     rows = {r["key"]: r for r in d["connectors"]}
     assert rows["local"]["available"] and rows["local"]["implemented"]
-    assert all(r["implemented"] for r in rows.values())        # real connectors, all four
+    assert all(r["implemented"] for r in rows.values())  # real connectors, all four
     # without credentials a network connector is unavailable, and says which one is missing
     assert not rows["facebook"]["available"] and "page_token" in rows["facebook"]["why"]
     # with credentials saved and the switch on, it becomes available (nothing is sent at this point)
@@ -183,7 +216,12 @@ def test_publications_real_status_and_notifications(env, monkeypatch):
     assert fb["available"] and fb["why"] == "" and "SECRET-FB" not in str(d)
     # notifications: secrets masked, value unchanged when the field comes back masked or empty
     assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": "ftp://x"}, "PUT").status_code == 422
-    assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": "https://hook.example/abc"}, "PUT").status_code == 200
+    assert (
+        c.ecrire(
+            "/settings/notifications", {"mode": "webhook", "webhook": "https://hook.example/abc"}, "PUT"
+        ).status_code
+        == 200
+    )
     assert c.ecrire("/settings/notifications", {"mode": "webhook", "webhook": ""}, "PUT").status_code == 200
     n = c.get("/api/v1/publications").json()["notifications"]
     assert n["mode"] == "webhook" and n["active"] and n["destination"] == "webhook"
@@ -202,11 +240,12 @@ def test_publications_real_status_and_notifications(env, monkeypatch):
 def test_endpoint_interne_des_notifications(env, monkeypatch, tmp_path):
     """The orchestrator gets the settings over HTTP with the local token, never by opening the database."""
     from sada.backoffice import internal
+
     monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
     c = client(env, "admin")
     c.ecrire("/settings/notifications", {"mode": "telegram", "telegram_token": "tok", "telegram_chat": "42"}, "PUT")
     url = "/api/v1/internal/notification-settings?port=8088"
-    assert c.get(url).status_code == 403                        # no token, no answer
+    assert c.get(url).status_code == 403  # no token, no answer
     r = c.get(url, headers={internal.HEADER: internal.token()})
     assert r.status_code == 200
     d = r.json()
@@ -219,6 +258,7 @@ def test_notifier_reads_backoffice_settings(env, monkeypatch, tmp_path):
 
     from sada import notify
     from sada.backoffice import internal
+
     monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
     c = client(env, "admin")
     c.ecrire("/settings/notifications", {"mode": "telegram", "telegram_token": "tok", "telegram_chat": "42"}, "PUT")
@@ -226,19 +266,20 @@ def test_notifier_reads_backoffice_settings(env, monkeypatch, tmp_path):
 
     def fetch(url, token):
         seen.append((url, token))
-        return c.get("/api/v1/internal/notification-settings?port=8088",
-                     headers={internal.HEADER: token}).json()
+        return c.get("/api/v1/internal/notification-settings?port=8088", headers={internal.HEADER: token}).json()
 
-    cfg = SimpleNamespace(notify_url="", telegram_token="", telegram_chat="", api_port=8088,
-                          backoffice_url="http://127.0.0.1:8090")
+    cfg = SimpleNamespace(
+        notify_url="", telegram_token="", telegram_chat="", api_port=8088, backoffice_url="http://127.0.0.1:8090"
+    )
     n = notify.from_config(cfg, log=lambda _m: None, fetch=fetch)
     assert n.enabled and n.destination == "telegram"
     assert seen and seen[0][0] == "http://127.0.0.1:8090/api/v1/internal/notification-settings?port=8088"
     cfg.notify_url = "https://priority.example"
-    assert notify.from_config(cfg, fetch=fetch).destination == "webhook"     # config wins, no call
+    assert notify.from_config(cfg, fetch=fetch).destination == "webhook"  # config wins, no call
     assert len(seen) == 1
 
     # back-office unreachable: no destination, the live goes on
-    dead = SimpleNamespace(notify_url="", telegram_token="", telegram_chat="", api_port=8088,
-                           backoffice_url="http://127.0.0.1:9")
+    dead = SimpleNamespace(
+        notify_url="", telegram_token="", telegram_chat="", api_port=8088, backoffice_url="http://127.0.0.1:9"
+    )
     assert notify.from_config(dead, log=lambda _m: None).enabled is False

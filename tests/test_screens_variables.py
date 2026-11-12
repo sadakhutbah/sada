@@ -3,6 +3,7 @@
 Le gabarit peut afficher le logo, le nom et une ligne arabe. Ces textes-là ne viennent que de la
 mosquée : vides au départ, ils restent vides tant que personne ne les saisit.
 """
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -25,13 +26,11 @@ def test_enregistrement_et_relecture(env):
     from sada.backoffice import db, variables_ecran
 
     c = client(env, "admin")
-    r = c.ecrire("/settings/screens/variables",
-                 {"variables": {"arabe_khutba": f"  {ARABE}  "}}, methode="PUT")
+    r = c.ecrire("/settings/screens/variables", {"variables": {"arabe_khutba": f"  {ARABE}  "}}, methode="PUT")
     assert r.status_code == 200, r.text
     assert r.json()["screens_variables"]["arabe_khutba"] == ARABE
     assert variables_ecran.lire(env["conn"], env["mid"])["arabe_khutba"] == ARABE
-    row = db.one(env["conn"], "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ?",
-                 env["mid"])
+    row = db.one(env["conn"], "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ?", env["mid"])
     assert row == {"screen": "_commun", "slot": "arabe_khutba", "text": ARABE}
     assert c.get("/api/v1/settings").json()["screens_variables"]["arabe_khutba"] == ARABE
 
@@ -46,11 +45,13 @@ def test_borne_de_longueur(env):
     from sada.backoffice import variables_ecran
 
     c = client(env, "admin")
-    r = c.ecrire("/settings/screens/variables",
-                 {"variables": {"arabe_dars": "د" * variables_ecran.MAX_LEN}}, methode="PUT")
+    r = c.ecrire(
+        "/settings/screens/variables", {"variables": {"arabe_dars": "د" * variables_ecran.MAX_LEN}}, methode="PUT"
+    )
     assert r.status_code == 200, r.text
-    r = c.ecrire("/settings/screens/variables",
-                 {"variables": {"arabe_dars": "د" * (variables_ecran.MAX_LEN + 1)}}, methode="PUT")
+    r = c.ecrire(
+        "/settings/screens/variables", {"variables": {"arabe_dars": "د" * (variables_ecran.MAX_LEN + 1)}}, methode="PUT"
+    )
     assert r.status_code == 422
     assert "160" in r.json()["message"]
     assert variables_ecran.lire(env["conn"], env["mid"])["arabe_dars"] == "د" * variables_ecran.MAX_LEN
@@ -83,13 +84,13 @@ def test_isole_par_mosquee(env):
 def test_reserve_a_l_admin_et_csrf(env):
     c = client(env, "admin")
     r = c.put("/api/v1/settings/screens/variables", json={"variables": {"arabe_dars": "درس"}})
-    assert r.status_code == 403                      # sans jeton CSRF
-    r = c.put("/api/v1/settings/screens/variables", json={"variables": {"arabe_dars": "درس"}},
-              headers={"X-CSRF": "faux"})
+    assert r.status_code == 403  # sans jeton CSRF
+    r = c.put(
+        "/api/v1/settings/screens/variables", json={"variables": {"arabe_dars": "درس"}}, headers={"X-CSRF": "faux"}
+    )
     assert r.status_code == 403
     for role in ("imam", "responsable"):
-        r = client(env, role).ecrire("/settings/screens/variables",
-                                     {"variables": {"arabe_dars": "درس"}}, methode="PUT")
+        r = client(env, role).ecrire("/settings/screens/variables", {"variables": {"arabe_dars": "درس"}}, methode="PUT")
         assert r.status_code == 403
 
 
@@ -101,9 +102,9 @@ def test_le_moteur_recoit_logo_nom_et_lignes_arabes(env):
     h = {internal.HEADER: internal.token()}
     d = c.get("/api/v1/internal/screens", headers=h).json()
     assert d["variables"]["arabe_khutba"] == ARABE
-    assert d["variables"]["arabe_janaza"] == ""       # jamais inventée
+    assert d["variables"]["arabe_janaza"] == ""  # jamais inventée
     assert d["variables"]["nom"] == "Mosquée Exemple"
-    assert d["variables"]["logo"] == ""               # aucun logo : rien à afficher
+    assert d["variables"]["logo"] == ""  # aucun logo : rien à afficher
     assert "_commun" not in d["screens"]
     assert c.get("/api/v1/internal/screens", headers={internal.HEADER: "faux"}).status_code == 403
 

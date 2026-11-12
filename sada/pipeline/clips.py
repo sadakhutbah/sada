@@ -10,6 +10,7 @@ Rendering (ASS burned in by libass):
 - Unmatched Arabic segments: French translation (translate.py); never raw Arabic in the subtitles.
 - Discreet header for the first seconds (khutba, mosque, date); gradient veil at the bottom for legibility.
 """
+
 from __future__ import annotations
 
 import re
@@ -30,22 +31,25 @@ DEFAULT_TITLE = "Khutba du vendredi"
 W, H = 1080, 1920
 
 # --- layout (pixels, 1080x1920 reference) ---------------------------------------------
-SAFE_BOTTOM = 430          # bottom of the speech text: above the caption / TikTok buttons
-SUB_SIZE = 100             # ASS size (≈ 82 px em)
-SUB_MAXW = 920             # max width of a subtitle line
-SUB_CHUNK_CHARS = 26       # beyond this: new subtitle « page »
+SAFE_BOTTOM = 430  # bottom of the speech text: above the caption / TikTok buttons
+SUB_SIZE = 100  # ASS size (≈ 82 px em)
+SUB_MAXW = 920  # max width of a subtitle line
+SUB_CHUNK_CHARS = 26  # beyond this: new subtitle « page »
 CARD_BOTTOM = 1920 - 390
 CARD_W = 980
-GOLD = "&H0058C8F2&"       # #F2C858 (BGR)
-PANEL = "&H1016120E"       # verse card panel: near-black, slightly green (BGR, alpha 0x10)
+GOLD = "&H0058C8F2&"  # #F2C858 (BGR)
+PANEL = "&H1016120E"  # verse card panel: near-black, slightly green (BGR, alpha 0x10)
 WHITE = "&H00FFFFFF&"
-WEAK_END = set("de du des la le les l' d' un une et à au aux en que qui qu' pour par sur dans avec sans son sa ses ce cette ces "
-               "ne n' se s' leur nos vos mon ma mes ton ta tes notre votre il elle ils elles nous vous on je j' tu y est".split())
+WEAK_END = set(
+    "de du des la le les l' d' un une et à au aux en que qui qu' pour par sur dans avec sans son sa ses ce cette ces "
+    "ne n' se s' leur nos vos mon ma mes ton ta tes notre votre il elle ils elles nous vous on je j' tu y est".split()
+)
 
 
 @cache
 def _font(name: str, size: int):
     from PIL import ImageFont
+
     return ImageFont.truetype(str(FONTS / name), size)
 
 
@@ -71,6 +75,7 @@ def _sub_w(t: str) -> float:
 
 # --------------------------------------------------------------------------- text
 
+
 def _ass_time(t: float) -> str:
     cs = int(round(max(0.0, t) * 100))
     h, rem = divmod(cs, 360000)
@@ -90,7 +95,9 @@ def clean_fr(t: str) -> str:
     t = AR_RUN.sub("", t)  # never any Arabic in the speech subtitles
     t = re.sub(r"\s+", " ", t).strip()
     t = re.sub(r"\s+([,.;:!?…])", r"\1", t)
-    t = re.sub(r"\b(" + "|".join(PROPER) + r")\b", lambda m: PROPER[m.group(1)], t)  # Whisper output: « coran », « allah »
+    t = re.sub(
+        r"\b(" + "|".join(PROPER) + r")\b", lambda m: PROPER[m.group(1)], t
+    )  # Whisper output: « coran », « allah »
     return t.replace("'", "’")
 
 
@@ -142,8 +149,12 @@ def split_lines(words: list[str]) -> list[list[str]]:
     for k in range(1, len(words)):
         w1, w2 = _sub_w(" ".join(words[:k])), _sub_w(" ".join(words[k:]))
         over = max(0, w1 - SUB_MAXW) + max(0, w2 - SUB_MAXW)
-        pen = (abs(w1 - w2) + over * 10 + (120 if words[k - 1].lower() in WEAK_END else 0)
-               - (160 if words[k - 1][-1:] in ",;:.!?" else 0))   # split after punctuation
+        pen = (
+            abs(w1 - w2)
+            + over * 10
+            + (120 if words[k - 1].lower() in WEAK_END else 0)
+            - (160 if words[k - 1][-1:] in ",;:.!?" else 0)
+        )  # split after punctuation
         if best is None or pen < best[0]:
             best = (pen, k)
     k = best[1]
@@ -205,8 +216,7 @@ def _page_events(ch: list[dict], a: float, b: float, gold: str) -> list[str]:
     lines = _wrap_tokens(toks)
     if len(lines) > 2:
         k = _split_chunk(ch)
-        return (_page_events(ch[:k], a, ch[k]["s"], gold)
-                + _page_events(ch[k:], ch[k]["s"], b, gold))
+        return _page_events(ch[:k], a, ch[k]["s"], gold) + _page_events(ch[k:], ch[k]["s"], b, gold)
     ev = []
     for i in range(len(ch)):
         s = a if i == 0 else ch[i]["s"]
@@ -245,10 +255,13 @@ def _speech_events(words: list[dict], hide: list[tuple[float, float]], t_end: fl
 
 # --------------------------------------------------------------------------- verse card
 
+
 def _round_rect(w: int, h: int, r: int) -> str:
     k = 0.45 * r
-    return (f"m {r} 0 l {w - r} 0 b {w - k} 0 {w} {k} {w} {r} l {w} {h - r} b {w} {h - k} {w - k} {h} {w - r} {h} "
-            f"l {r} {h} b {k} {h} 0 {h - k} 0 {h - r} l 0 {r} b 0 {k} {k} 0 {r} 0")
+    return (
+        f"m {r} 0 l {w - r} 0 b {w - k} 0 {w} {k} {w} {r} l {w} {h - r} b {w} {h - k} {w - k} {h} {w - r} {h} "
+        f"l {r} {h} b {k} {h} 0 {h - k} 0 {h - r} l 0 {r} b 0 {k} {k} 0 {r} 0"
+    )
 
 
 def wrap_px(text: str, font_file: str, size: int, maxw: float) -> list[str]:
@@ -289,7 +302,10 @@ def _verse_card(m: dict, fr: str, a: float, b: float, gold: str = GOLD) -> list[
     q = lambda t: f"«\u00a0{t}\u00a0»"  # noqa: E731  (non-breaking spaces: no lone quote mark at the end of a line)
     fr_lines = [x.replace("\u00a0", " ") for x in wrap_px(q(fr), FR_CARD_FONT, FR_CARD_SIZE, inner)]
     if len(fr_lines) > 5:  # too long: keep the end (the recited passage is usually at the end)
-        fr_lines = [x.replace("\u00a0", " ") for x in wrap_px(q("… " + fr[-190:].split(" ", 1)[-1]), FR_CARD_FONT, FR_CARD_SIZE, inner)[:5]]
+        fr_lines = [
+            x.replace("\u00a0", " ")
+            for x in wrap_px(q("… " + fr[-190:].split(" ", 1)[-1]), FR_CARD_FONT, FR_CARD_SIZE, inner)[:5]
+        ]
     ar = recited_arabic(m)
     ar_size = AR_CARD_SIZE
     while ar and text_width(ar, AR_CARD_FONT, ar_size) > inner and ar_size > 74:
@@ -308,14 +324,18 @@ def _verse_card(m: dict, fr: str, a: float, b: float, gold: str = GOLD) -> list[
     def pos(x: int, y: float) -> str:  # slight upward slide on appearance
         return f"\\move({x},{int(y) + 24},{x},{int(y)},0,380)"
 
-    ev = [f"Dialogue: 2,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0, top)}{fad}\\p1}}{_round_rect(CARD_W, h, 34)}",
-          # gold rule on the left of the card
-          f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0 + 34, top)}{fad}\\1c{gold}\\1a&H00&\\p1}}m 0 0 l {CARD_W - 68} 0 l {CARD_W - 68} 4 l 0 4"]
+    ev = [
+        f"Dialogue: 2,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0, top)}{fad}\\p1}}{_round_rect(CARD_W, h, 34)}",
+        # gold rule on the left of the card
+        f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an7{pos(x0 + 34, top)}{fad}\\1c{gold}\\1a&H00&\\p1}}m 0 0 l {CARD_W - 68} 0 l {CARD_W - 68} 4 l 0 4",
+    ]
     y = top + pad_t + lab_h / 2
     label = "CORAN" if m.get("ambiguous") else f"SOURATE {_esc(surah_label(m['surah_name']))}   ·   {m['ref']}"
     ev.append(f"Dialogue: 3,{ta},{tb},CardLabel,,0,0,0,,{{\\an5{pos(W // 2, y)}{fad}}}{label}")
     y += lab_h / 2 + rule_h / 2
-    ev.append(f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an5{pos(W // 2, y)}{fad}\\1c{gold}\\1a&H60&\\p1}}m 0 0 l 90 0 l 90 2 l 0 2")
+    ev.append(
+        f"Dialogue: 3,{ta},{tb},Card,,0,0,0,,{{\\an5{pos(W // 2, y)}{fad}\\1c{gold}\\1a&H60&\\p1}}m 0 0 l 90 0 l 90 2 l 0 2"
+    )
     y += rule_h / 2
     if ar:
         y += ar_h / 2
@@ -332,11 +352,15 @@ def _header(header: dict | None, t_end: float, logo: bool = False) -> list[str]:
     if not header:
         return []
     b = min(6.0, t_end)
-    title_y, sub_y = (258, 308) if logo else (118, 168)   # the logo sits above the title
-    ev = [f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head,,0,0,0,,{{\\an8\\pos(540,{title_y})\\fad(600,800)}}"
-          f"{_esc(header.get('title', DEFAULT_TITLE).upper())}"]
+    title_y, sub_y = (258, 308) if logo else (118, 168)  # the logo sits above the title
+    ev = [
+        f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head,,0,0,0,,{{\\an8\\pos(540,{title_y})\\fad(600,800)}}"
+        f"{_esc(header.get('title', DEFAULT_TITLE).upper())}"
+    ]
     if header.get("subtitle"):
-        ev.append(f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head2,,0,0,0,,{{\\an8\\pos(540,{sub_y})\\fad(600,800)}}{_esc(header['subtitle'])}")
+        ev.append(
+            f"Dialogue: 1,{_ass_time(0.15)},{_ass_time(b)},Head2,,0,0,0,,{{\\an8\\pos(540,{sub_y})\\fad(600,800)}}{_esc(header['subtitle'])}"
+        )
     return ev
 
 
@@ -361,7 +385,7 @@ def brand_colours(brand: dict | None) -> tuple[str, str]:
     if not m:
         return gold, PANEL
     h = m.group(1)
-    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
     panel = f"&H10{max(6, round(b * 0.22)):02X}{max(6, round(g * 0.22)):02X}{max(6, round(r * 0.22)):02X}&".upper()
     return gold, panel
 
@@ -396,8 +420,8 @@ def drop_translit_runs(words: list[dict], run: int = 2) -> list[dict]:
     Les mots isolés (« dunya », « fitna ») restent : la glose les explique."""
     from wordfreq import zipf_frequency
 
-    def foreign(w: str) -> bool:   # arabe translittéré, ou mot absent du français courant
-        bare = w.strip(".,;:!?«»\"()").lower().replace("’", "'")
+    def foreign(w: str) -> bool:  # arabe translittéré, ou mot absent du français courant
+        bare = w.strip('.,;:!?«»"()').lower().replace("’", "'")
         return bool(bare) and (is_translit_word(w) or zipf_frequency(bare, "fr") < 2.3)
 
     out: list[dict] = []
@@ -409,7 +433,7 @@ def drop_translit_runs(words: list[dict], run: int = 2) -> list[dict]:
         if j - i >= run and sum(is_translit_word(w["w"]) for w in words[i:j]) >= 1:
             i = j
             continue
-        out.extend(words[i:max(j, i + 1)])
+        out.extend(words[i : max(j, i + 1)])
         i = max(j, i + 1)
     return out
 
@@ -431,9 +455,19 @@ def subtitle(seg: dict, vms: list[dict], tr: dict) -> dict:
     return {"kind": "translation", "fr": e["fr"] if e else None}
 
 
-def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, path: str, tr: dict | None = None,
-              header: dict | None = None, rappel: bool = False, glossary: list[dict] | None = None,
-              brand: dict | None = None, logo: bool = False) -> int:
+def build_ass(
+    segments: list[dict],
+    matches: list[dict],
+    t0: float,
+    t1: float,
+    path: str,
+    tr: dict | None = None,
+    header: dict | None = None,
+    rappel: bool = False,
+    glossary: list[dict] | None = None,
+    brand: dict | None = None,
+    logo: bool = False,
+) -> int:
     """Write the .ass of clip [t0, t1] (session time); return the number of units (subtitle pages + cards).
 
     `rappel`: short clip centred on a verse — the card stays on screen until the end, because it
@@ -479,9 +513,13 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
                     t = clean_fr(w["w"])
                     if not t or not (t0 <= w["s"] < t1):
                         continue
-                    if words and (t[0] in "’-" or words[-1]["w"].endswith(("’", "-"))) and (w["s"] - t0) - words[-1]["e"] < 0.3:
+                    if (
+                        words
+                        and (t[0] in "’-" or words[-1]["w"].endswith(("’", "-")))
+                        and (w["s"] - t0) - words[-1]["e"] < 0.3
+                    ):
                         words[-1]["w"] += t
-                        words[-1]["e"] = w["e"] - t0   # « d » + « ’Allah » -> « d’Allah »
+                        words[-1]["e"] = w["e"] - t0  # « d » + « ’Allah » -> « d’Allah »
                     else:
                         words.append({"w": t, "s": w["s"] - t0, "e": w["e"] - t0})
             else:
@@ -503,26 +541,36 @@ def build_ass(segments: list[dict], matches: list[dict], t0: float, t1: float, p
         words[0]["w"] = words[0]["w"][:1].upper() + words[0]["w"][1:]
     sev = _speech_events(words, cards, dur, gold)
     pages = sum(1 for e in sev if ",Glow," in e)
-    Path(path).write_text(ass_header(gold, panel) + "\n".join(_header(header, dur, logo) + ev + sev) + "\n", encoding="utf-8")
+    Path(path).write_text(
+        ass_header(gold, panel) + "\n".join(_header(header, dur, logo) + ev + sev) + "\n", encoding="utf-8"
+    )
     return pages + len(cards)
 
 
 # --------------------------------------------------------------------------- rendering
 
+
 def _pcm(path: str, start: float = 0.0, dur: float | None = None, sr: int = 8000):
     import numpy as np
-    cmd = ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-i", path] + (["-t", f"{dur:.3f}"] if dur else []) + \
-          ["-vn", "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"]
+
+    cmd = (
+        ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-i", path]
+        + (["-t", f"{dur:.3f}"] if dur else [])
+        + ["-vn", "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"]
+    )
     return np.frombuffer(subprocess.run(cmd, capture_output=True, check=True).stdout, dtype=np.int16).astype(np.float32)
 
 
-def align_offset(session_wav: str, video: str, probe_at: float = 30.0, probe_len: float = 40.0, sr: int = 8000) -> tuple[float, float]:
+def align_offset(
+    session_wav: str, video: str, probe_at: float = 30.0, probe_len: float = 40.0, sr: int = 8000
+) -> tuple[float, float]:
     """Offset (s) such that video_time = session_time + offset, by audio cross-correlation.
 
     Used to cut the clips from another video of the same khutba (shifted clean recording, archive source).
     Returns (offset, peak sharpness); sharpness < 8 = doubtful alignment.
     """
     import numpy as np
+
     x = _pcm(video, sr=sr)
     q = _pcm(session_wav, probe_at, probe_len, sr=sr)
     if len(q) < sr or len(x) <= len(q):
@@ -538,8 +586,9 @@ def gradient_png(path: str) -> str:
     """Progressive dark veil (bottom: subtitle legibility; top: header), 1080x1920 RGBA."""
     import numpy as np
     from PIL import Image
+
     y = np.arange(H, dtype=np.float32)
-    bot = np.clip((y - 1020) / 480, 0, 1) ** 1.4 * 0.78   # full from ~1500 px: subtitle and UI area
+    bot = np.clip((y - 1020) / 480, 0, 1) ** 1.4 * 0.78  # full from ~1500 px: subtitle and UI area
     top = np.clip((330 - y) / 330, 0, 1) ** 2 * 0.40
     img = np.zeros((H, W, 4), np.uint8)
     img[..., 3] = (np.maximum(bot, top) * 255).astype(np.uint8)[:, None]
@@ -548,7 +597,7 @@ def gradient_png(path: str) -> str:
 
 
 LOGO_SIZE = 132
-LOGO_EXT = {".png", ".jpg", ".jpeg", ".webp"}   # pas de SVG : pas de convertisseur dans les dépendances
+LOGO_EXT = {".png", ".jpg", ".jpeg", ".webp"}  # pas de SVG : pas de convertisseur dans les dépendances
 
 
 def logo_disc(src: str, dst: str, size: int = LOGO_SIZE, brand: dict | None = None) -> str | None:
@@ -558,11 +607,12 @@ def logo_disc(src: str, dst: str, size: int = LOGO_SIZE, brand: dict | None = No
     rendered without a logo instead of failing. The disc keeps the logo readable on any picture.
     """
     from PIL import Image, ImageDraw
+
     try:
         im = Image.open(src).convert("RGBA")
     except Exception:  # noqa: BLE001 — un logo illisible ne doit pas empêcher le clip
         return None
-    k = size * 2                       # drawn at 2x, overlaid at `size`: clean edges
+    k = size * 2  # drawn at 2x, overlaid at `size`: clean edges
     s = min(im.size)
     im = im.crop(((im.width - s) // 2, (im.height - s) // 2, (im.width + s) // 2, (im.height + s) // 2))
     im = im.resize((k, k), Image.Resampling.LANCZOS)
@@ -572,7 +622,7 @@ def logo_disc(src: str, dst: str, size: int = LOGO_SIZE, brand: dict | None = No
     disc.paste(Image.new("RGBA", (k, k), (255, 255, 255, 255)), (0, 0), mask)
     disc.paste(im, (0, 0), mask)
     gold = ((brand or {}).get("gold") or "").strip().lstrip("#")
-    r, g, b = (int(gold[i:i + 2], 16) for i in (0, 2, 4)) if re.fullmatch(r"[0-9a-fA-F]{6}", gold) else (242, 200, 88)
+    r, g, b = (int(gold[i : i + 2], 16) for i in (0, 2, 4)) if re.fullmatch(r"[0-9a-fA-F]{6}", gold) else (242, 200, 88)
     ImageDraw.Draw(disc).ellipse((2, 2, k - 3, k - 3), outline=(r, g, b, 255), width=max(4, k // 40))
     disc.save(dst, "PNG")
     return dst
@@ -582,12 +632,24 @@ def crop_filter(crop: dict | None) -> str:
     """9:16 crop. crop = {x: horizontal centre (0-1), top, bottom: fractions of the height removed}."""
     c = {"x": 0.5, "top": 0.0, "bottom": 0.0, **(crop or {})}
     hh = f"ih*{1 - c['top'] - c['bottom']:.4f}"
-    return (f"crop=w='trunc({hh}*9/16/2)*2':h='trunc({hh}/2)*2':"
-            f"x='max(0,min(iw-ow,iw*{c['x']:.4f}-ow/2))':y='trunc(ih*{c['top']:.4f})'")
+    return (
+        f"crop=w='trunc({hh}*9/16/2)*2':h='trunc({hh}/2)*2':"
+        f"x='max(0,min(iw-ow,iw*{c['x']:.4f}-ow/2))':y='trunc(ih*{c['top']:.4f})'"
+    )
 
 
-def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=print, crop: dict | None = None,
-                fade_out: float | None = None, logo: str | None = None, brand: dict | None = None) -> None:
+def render_clip(
+    src: str,
+    rec_offset: float,
+    w: dict,
+    ass: str,
+    out: str,
+    log=print,
+    crop: dict | None = None,
+    fade_out: float | None = None,
+    logo: str | None = None,
+    brand: dict | None = None,
+) -> None:
     """9:16 crop (1080x1920), gradient veil, burned-in subtitles, normalised original audio (no music).
 
     Both picture and sound fade out at the end: an extract closes on an image that goes out, not on
@@ -597,8 +659,8 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
     """
     a, dur = rec_offset + w["start"], w["end"] - w["start"]
     tail = fade_out if fade_out else min(1.0, max(0.4, dur / 20))
-    fo_v = min(1.5, max(0.8, tail + 0.25))   # picture: a real fade, it never hides a word
-    fo_a = min(1.5, max(0.45, tail))         # sound: closes over the silence left after the last word
+    fo_v = min(1.5, max(0.8, tail + 0.25))  # picture: a real fade, it never hides a word
+    fo_a = min(1.5, max(0.45, tail))  # sound: closes over the silence left after the last word
     with tempfile.TemporaryDirectory() as td:
         grad = gradient_png(str(Path(td) / "grad.png"))
         lg = logo_disc(logo, str(Path(td) / "logo.png"), brand=brand) if logo else None
@@ -606,29 +668,86 @@ def render_clip(src: str, rec_offset: float, w: dict, ass: str, out: str, log=pr
             # Logo above the title during the header only (same 6 s, fades with it), then it leaves
             # the frame to the subtitles.
             fade_end = max(0.2, min(6.0, dur) - 0.8)
-            pre = (f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS}[bs];"
-                   f"[2:v]scale={LOGO_SIZE}:{LOGO_SIZE},format=rgba,"
-                   f"fade=t=in:st=0.15:d=0.5:alpha=1,fade=t=out:st={fade_end:.2f}:d=0.7:alpha=1[lg];"
-                   f"[bs][lg]overlay=(main_w-overlay_w)/2:78:format=auto,format=yuv420p,")
+            pre = (
+                f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS}[bs];"
+                f"[2:v]scale={LOGO_SIZE}:{LOGO_SIZE},format=rgba,"
+                f"fade=t=in:st=0.15:d=0.5:alpha=1,fade=t=out:st={fade_end:.2f}:d=0.7:alpha=1[lg];"
+                f"[bs][lg]overlay=(main_w-overlay_w)/2:78:format=auto,format=yuv420p,"
+            )
             extra = ["-loop", "1", "-framerate", "25", "-i", lg]
         else:
-            pre = (f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS},format=yuv420p,")
+            pre = f"[cam][1:v]overlay=0:0:format=auto,subtitles={ass}:fontsdir={FONTS},format=yuv420p,"
             extra = []
-        fc = (f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p[cam];"
-              f"{pre}fade=t=out:st={max(0, dur - fo_v):.2f}:d={fo_v:.2f}[v];"
-              f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
-              f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - fo_a):.2f}:d={fo_a:.2f}[a]")
-        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.2f}", "-t", f"{dur:.2f}", "-i", str(Path(src).resolve()),
-               "-loop", "1", "-framerate", "25", "-i", grad, *extra, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
-               "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-               "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(Path(out).resolve())]
+        fc = (
+            f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p[cam];"
+            f"{pre}fade=t=out:st={max(0, dur - fo_v):.2f}:d={fo_v:.2f}[v];"
+            f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
+            f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - fo_a):.2f}:d={fo_a:.2f}[a]"
+        )
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-ss",
+            f"{a:.2f}",
+            "-t",
+            f"{dur:.2f}",
+            "-i",
+            str(Path(src).resolve()),
+            "-loop",
+            "1",
+            "-framerate",
+            "25",
+            "-i",
+            grad,
+            *extra,
+            "-filter_complex",
+            fc,
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-t",
+            f"{dur:.2f}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
+            "-movflags",
+            "+faststart",
+            str(Path(out).resolve()),
+        ]
         subprocess.run(cmd, check=True, cwd=str(Path(out).resolve().parent))
     log(f"clip -> {out} ({dur:.0f}s)")
 
 
-def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx: int, version: int,
-              video: str, offset: float, outdir: Path, header: dict | None, crop: dict | None, log=print,
-              logo: str | None = None, brand: dict | None = None, trim_tail: bool = True) -> Path:
+def make_clip(
+    segments: list[dict],
+    matches: list[dict],
+    tr: dict,
+    w: dict,
+    idx: int,
+    version: int,
+    video: str,
+    offset: float,
+    outdir: Path,
+    header: dict | None,
+    crop: dict | None,
+    log=print,
+    logo: str | None = None,
+    brand: dict | None = None,
+    trim_tail: bool = True,
+) -> Path:
     """Subtitles + render of clip #idx, version `version`, of window w (session time); return the MP4.
 
     offset: position of the session start inside `video` (video_time = session_time + offset).
@@ -636,21 +755,29 @@ def make_clip(segments: list[dict], matches: list[dict], tr: dict, w: dict, idx:
     v = f"_v{version}" if version > 1 else ""
     ass = outdir / f"clip{idx}{v}.ass"
     out = outdir / f"clip{idx}_{w.get('kind') or 'extrait'}{v}_A-VALIDER.mp4"
-    build_ass(segments, matches, w["start"], w["end"], str(ass), tr=tr, header=header,
-              rappel=w.get("kind") == "rappel", brand=brand,
-              logo=bool(logo) and Path(logo).suffix.lower() in LOGO_EXT)
+    build_ass(
+        segments,
+        matches,
+        w["start"],
+        w["end"],
+        str(ass),
+        tr=tr,
+        header=header,
+        rappel=w.get("kind") == "rappel",
+        brand=brand,
+        logo=bool(logo) and Path(logo).suffix.lower() in LOGO_EXT,
+    )
     last = max((s["end"] for s in segments if s["end"] <= w["end"] + 0.05), default=w["start"])
     if trim_tail and w["end"] - last > 1.5:
         # Safety net for windows stored before the rule: never more than a breath past the last word,
         # otherwise the excerpt drags the mosque's end screen and its hiss into the clip.
         w = {**w, "end": round(last + 0.8, 2)}
         last = max(s["end"] for s in segments if s["end"] <= w["end"] + 0.05)
-    tail = w["end"] - last                       # silence left after the last word
+    tail = w["end"] - last  # silence left after the last word
     extra = {}
     if logo:
         extra["logo"] = logo
     if brand:
         extra["brand"] = brand
-    render_clip(video, offset, w, ass.name, str(out), log, crop=crop,
-                fade_out=min(1.3, max(0.45, tail)), **extra)
+    render_clip(video, offset, w, ass.name, str(out), log, crop=crop, fade_out=min(1.3, max(0.45, tail)), **extra)
     return out

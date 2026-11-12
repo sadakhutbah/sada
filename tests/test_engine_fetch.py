@@ -3,6 +3,7 @@
 Ces tests ne téléchargent rien : ils vérifient comment le bon exécutable est choisi, et qu'un
 téléchargement manquant donne un message qui dit quoi faire plutôt que « ça ne marche pas ».
 """
+
 from __future__ import annotations
 
 from pathlib import Path

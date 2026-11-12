@@ -1,4 +1,5 @@
 """Passages arabes rendus en français incohérent : repérés et retranscrits en arabe forcé."""
+
 import numpy as np
 
 from sada.pipeline import settings as reglages
@@ -35,8 +36,12 @@ class FakeModel:
 
 
 VERSE_AR = "كلا بل ران على قلوبهم ما كانوا يكسبون"
-GARBLED = {"start": 1090.0, "end": 1098.0, "avg_logprob": -1.1,
-           "text": "ça s'accumule jusqu'à ce que devenir un voie, ce qu'on appelle aran"}
+GARBLED = {
+    "start": 1090.0,
+    "end": 1098.0,
+    "avg_logprob": -1.1,
+    "text": "ça s'accumule jusqu'à ce que devenir un voie, ce qu'on appelle aran",
+}
 
 
 def _audio(seconds=1200.0):
@@ -44,9 +49,22 @@ def _audio(seconds=1200.0):
 
 
 def _arabic_piece():
-    return [Piece(" " + VERSE_AR, 0.2, 2.6, -0.35,
-                  words=[Word("كلا", 0.2, 0.6), Word("بل", 0.6, 0.9), Word("ران", 0.9, 1.4),
-                         Word("على", 1.4, 1.8), Word("قلوبهم", 1.8, 2.4), Word("يكسبون", 2.4, 3.0)])]
+    return [
+        Piece(
+            " " + VERSE_AR,
+            0.2,
+            2.6,
+            -0.35,
+            words=[
+                Word("كلا", 0.2, 0.6),
+                Word("بل", 0.6, 0.9),
+                Word("ران", 0.9, 1.4),
+                Word("على", 1.4, 1.8),
+                Word("قلوبهم", 1.8, 2.4),
+                Word("يكسبون", 2.4, 3.0),
+            ],
+        )
+    ]
 
 
 def test_un_passage_arabe_mal_transcrit_est_remplace():
@@ -113,7 +131,7 @@ def test_reglage_arabic_retry_prioritaire(monkeypatch, tmp_path):
     assert reglages.arabic_retry_enabled() is True
     monkeypatch.setenv("SADA_ARABIC_RETRY", "0")
     assert reglages.arabic_retry_enabled() is False
-    assert reglages.arabic_retry_enabled(True) is True          # l'option de commande gagne
+    assert reglages.arabic_retry_enabled(True) is True  # l'option de commande gagne
     (tmp_path / "pipeline.json").write_text('{"arabic_retry": false}', encoding="utf-8")
     monkeypatch.delenv("SADA_ARABIC_RETRY")
     assert reglages.arabic_retry_enabled() is False

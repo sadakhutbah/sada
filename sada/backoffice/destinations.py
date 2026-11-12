@@ -5,6 +5,7 @@ A destination is a label and an RTMP address; the key is the last path segment o
 a mask and sending the mask back means "unchanged". The orchestrator reads the enabled ones over the
 internal endpoint and sends the same stream to all of them.
 """
+
 from __future__ import annotations
 
 import re
@@ -57,14 +58,25 @@ def check(url: str | None) -> tuple[str, str]:
 def rows(conn, mosque) -> list[dict]:
     """Destinations as the screen shows them: key masked, never in clear."""
     out = db.all_(conn, "SELECT * FROM live_targets WHERE mosque_id = ? ORDER BY id", mosque["id"])
-    return [{"id": r["id"], "label": r["label"] or label_for(r["url"]), "url": mask(r["url"]),
-             "enabled": bool(r["enabled"])} for r in out]
+    return [
+        {
+            "id": r["id"],
+            "label": r["label"] or label_for(r["url"]),
+            "url": mask(r["url"]),
+            "enabled": bool(r["enabled"]),
+        }
+        for r in out
+    ]
 
 
 def effective(conn, mosque_id: int) -> list[str]:
     """Addresses in clear, for the encoder: the enabled destinations, in order."""
-    return [r["url"] for r in db.all_(conn, "SELECT url FROM live_targets WHERE mosque_id = ? AND enabled = 1 ORDER BY id",
-                                       mosque_id)]
+    return [
+        r["url"]
+        for r in db.all_(
+            conn, "SELECT url FROM live_targets WHERE mosque_id = ? AND enabled = 1 ORDER BY id", mosque_id
+        )
+    ]
 
 
 def _stored(conn, mosque_id: int, target_id) -> str:
@@ -85,7 +97,7 @@ def save(conn, mosque, targets, user) -> list[dict]:
         raw = str(t.get("url") or "").strip()
         before = _stored(conn, mosque["id"], t.get("id"))
         if before and raw == mask(before):
-            url, err = before, ""                     # the mask came back: the key is unchanged
+            url, err = before, ""  # the mask came back: the key is unchanged
         else:
             url, err = check(raw)
         if err:
@@ -100,16 +112,31 @@ def save(conn, mosque, targets, user) -> list[dict]:
     keep = []
     for c in clean:
         if c["id"] and _stored(conn, mosque["id"], c["id"]):
-            conn.execute("UPDATE live_targets SET label = ?, url = ?, enabled = ?, updated_at = ? "
-                         "WHERE id = ? AND mosque_id = ?",
-                         (c["label"], c["url"], c["enabled"], db.now_iso(), c["id"], mosque["id"]))
+            conn.execute(
+                "UPDATE live_targets SET label = ?, url = ?, enabled = ?, updated_at = ? "
+                "WHERE id = ? AND mosque_id = ?",
+                (c["label"], c["url"], c["enabled"], db.now_iso(), c["id"], mosque["id"]),
+            )
             keep.append(c["id"])
         else:
-            keep.append(conn.execute("INSERT INTO live_targets (mosque_id, label, url, enabled, created_at, updated_at) "
-                                     "VALUES (?, ?, ?, ?, ?, ?)",
-                                     (mosque["id"], c["label"], c["url"], c["enabled"], db.now_iso(), db.now_iso())).lastrowid)
+            keep.append(
+                conn.execute(
+                    "INSERT INTO live_targets (mosque_id, label, url, enabled, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (mosque["id"], c["label"], c["url"], c["enabled"], db.now_iso(), db.now_iso()),
+                ).lastrowid
+            )
     marks = ",".join("?" * len(keep)) if keep else "NULL"
     conn.execute(f"DELETE FROM live_targets WHERE mosque_id = ? AND id NOT IN ({marks})", (mosque["id"], *keep))
-    db.audit(conn, mosque["id"], user["id"] if user else None, "direct.configure", "mosque", mosque["id"],
-             destinations=[{"label": c["label"], "serveur": label_for(c["url"]), "actif": bool(c["enabled"])} for c in clean])
+    db.audit(
+        conn,
+        mosque["id"],
+        user["id"] if user else None,
+        "direct.configure",
+        "mosque",
+        mosque["id"],
+        destinations=[
+            {"label": c["label"], "serveur": label_for(c["url"]), "actif": bool(c["enabled"])} for c in clean
+        ],
+    )
     return rows(conn, mosque)

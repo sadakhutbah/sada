@@ -1,4 +1,5 @@
 """Glossaire : hotwords pour Whisper et glose française des termes à leur première occurrence."""
+
 import json
 
 from sada.pipeline import clips as C
@@ -14,44 +15,67 @@ def test_normalisation_insensible_casse_accents_apostrophes():
 
 
 def test_variantes_et_glose_unique_dans_le_clip():
-    words = [{"w": "La", "s": 0.0, "e": 0.2}, {"w": "taouba", "s": 0.2, "e": 0.6},
-             {"w": "est", "s": 0.6, "e": 0.8}, {"w": "un", "s": 0.8, "e": 0.9},
-             {"w": "retour.", "s": 0.9, "e": 1.3}, {"w": "Cette", "s": 1.3, "e": 1.5},
-             {"w": "tawbah", "s": 1.5, "e": 1.9}, {"w": "libre.", "s": 1.9, "e": 2.3}]
+    words = [
+        {"w": "La", "s": 0.0, "e": 0.2},
+        {"w": "taouba", "s": 0.2, "e": 0.6},
+        {"w": "est", "s": 0.6, "e": 0.8},
+        {"w": "un", "s": 0.8, "e": 0.9},
+        {"w": "retour.", "s": 0.9, "e": 1.3},
+        {"w": "Cette", "s": 1.3, "e": 1.5},
+        {"w": "tawbah", "s": 1.5, "e": 1.9},
+        {"w": "libre.", "s": 1.9, "e": 2.3},
+    ]
     out = G.gloss_words(words)
     assert G.display(out[1]) == "taouba (le repentir)"
-    assert out[1]["w"] == "taouba" and out[6].get("gloss") is None   # une seule glose par clip
-    assert "gloss" not in words[1]                      # l'entrée n'est pas modifiée
-    assert out[1]["s"] == 0.2 and out[1]["e"] == 0.6    # minutage inchangé
+    assert out[1]["w"] == "taouba" and out[6].get("gloss") is None  # une seule glose par clip
+    assert "gloss" not in words[1]  # l'entrée n'est pas modifiée
+    assert out[1]["s"] == 0.2 and out[1]["e"] == 0.6  # minutage inchangé
 
 
 def test_terme_multi_mots_et_ponctuation_conservee():
-    words = [{"w": "Nous", "s": 0, "e": 0.3}, {"w": "disons", "s": 0.3, "e": 0.6},
-             {"w": "in", "s": 0.6, "e": 0.7}, {"w": "sha", "s": 0.7, "e": 0.8},
-             {"w": "Allah,", "s": 0.8, "e": 1.2}, {"w": "demain.", "s": 1.2, "e": 1.6}]
+    words = [
+        {"w": "Nous", "s": 0, "e": 0.3},
+        {"w": "disons", "s": 0.3, "e": 0.6},
+        {"w": "in", "s": 0.6, "e": 0.7},
+        {"w": "sha", "s": 0.7, "e": 0.8},
+        {"w": "Allah,", "s": 0.8, "e": 1.2},
+        {"w": "demain.", "s": 1.2, "e": 1.6},
+    ]
     out = G.gloss_words(words)
     assert G.display(out[4]) == "Allah (si Allah le veut),"
     assert G.display(out[5]) == "demain."
 
 
 def test_pas_de_faux_positif_sur_un_mot_francais():
-    words = [{"w": "Le", "s": 0, "e": 0.2}, {"w": "sabre", "s": 0.2, "e": 0.6},
-             {"w": "et", "s": 0.6, "e": 0.8}, {"w": "le", "s": 0.8, "e": 1.0},
-             {"w": "harem", "s": 1.0, "e": 1.4}]
+    words = [
+        {"w": "Le", "s": 0, "e": 0.2},
+        {"w": "sabre", "s": 0.2, "e": 0.6},
+        {"w": "et", "s": 0.6, "e": 0.8},
+        {"w": "le", "s": 0.8, "e": 1.0},
+        {"w": "harem", "s": 1.0, "e": 1.4},
+    ]
     assert [G.display(w) for w in G.gloss_words(words)] == ["Le", "sabre", "et", "le", "harem"]
 
 
 def test_fichier_de_glossaire_complete_et_remplace(monkeypatch, tmp_path):
     f = tmp_path / "glossaire.json"
-    f.write_text(json.dumps({"terms": [
-        {"term": "tawba", "variants": ["tawba", "taouba"], "fr": "le retour vers Allah"},
-        {"term": "khouchou'", "variants": ["khouchou", "khushu"], "fr": "la concentration"},
-    ]}, ensure_ascii=False), encoding="utf-8")
+    f.write_text(
+        json.dumps(
+            {
+                "terms": [
+                    {"term": "tawba", "variants": ["tawba", "taouba"], "fr": "le retour vers Allah"},
+                    {"term": "khouchou'", "variants": ["khouchou", "khushu"], "fr": "la concentration"},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("SADA_GLOSSARY", str(f))
     terms = G.load()
     by = {e["term"]: e for e in terms}
-    assert by["tawba"]["fr"] == "le retour vers Allah"       # le fichier gagne
-    assert by["khouchou'"]["fr"] == "la concentration"        # terme ajouté
+    assert by["tawba"]["fr"] == "le retour vers Allah"  # le fichier gagne
+    assert by["khouchou'"]["fr"] == "la concentration"  # terme ajouté
     assert len(terms) == len(G.default_terms()) + 1
     words = [{"w": "khouchou", "s": 0, "e": 1}]
     assert G.display(G.gloss_words(words)[0]) == "khouchou (la concentration)"
@@ -73,24 +97,43 @@ def test_hotwords_contient_les_termes_courants():
 
 
 def test_build_ass_glose_une_fois_sans_casser_les_pages(tmp_path):
-    segs = [{"start": 0.0, "end": 4.0, "text": "La tawba est un retour vers Allah.",
-             "words": [{"w": "La", "s": 0.0, "e": 0.2}, {"w": "tawba", "s": 0.2, "e": 0.6},
-                       {"w": "est", "s": 0.6, "e": 0.8}, {"w": "un", "s": 0.8, "e": 0.9},
-                       {"w": "retour", "s": 0.9, "e": 1.2}, {"w": "vers", "s": 1.2, "e": 1.4},
-                       {"w": "Allah.", "s": 1.4, "e": 2.0}]},
-            {"start": 4.5, "end": 7.0, "text": "La tawba efface les fautes.",
-             "words": [{"w": "La", "s": 4.5, "e": 4.7}, {"w": "tawba", "s": 4.7, "e": 5.1},
-                       {"w": "efface", "s": 5.1, "e": 5.4}, {"w": "les", "s": 5.4, "e": 5.6},
-                       {"w": "fautes.", "s": 5.6, "e": 6.0}]}]
+    segs = [
+        {
+            "start": 0.0,
+            "end": 4.0,
+            "text": "La tawba est un retour vers Allah.",
+            "words": [
+                {"w": "La", "s": 0.0, "e": 0.2},
+                {"w": "tawba", "s": 0.2, "e": 0.6},
+                {"w": "est", "s": 0.6, "e": 0.8},
+                {"w": "un", "s": 0.8, "e": 0.9},
+                {"w": "retour", "s": 0.9, "e": 1.2},
+                {"w": "vers", "s": 1.2, "e": 1.4},
+                {"w": "Allah.", "s": 1.4, "e": 2.0},
+            ],
+        },
+        {
+            "start": 4.5,
+            "end": 7.0,
+            "text": "La tawba efface les fautes.",
+            "words": [
+                {"w": "La", "s": 4.5, "e": 4.7},
+                {"w": "tawba", "s": 4.7, "e": 5.1},
+                {"w": "efface", "s": 5.1, "e": 5.4},
+                {"w": "les", "s": 5.4, "e": 5.6},
+                {"w": "fautes.", "s": 5.6, "e": 6.0},
+            ],
+        },
+    ]
     p = tmp_path / "g.ass"
     C.build_ass(segs, [], 0.0, 8.0, str(p))
     lines = p.read_text(encoding="utf-8").splitlines()
     glow = [ligne for ligne in lines if ",Glow," in ligne]
-    assert sum("(le repentir)" in ligne for ligne in glow) == 1      # une page, une seule glose
-    assert any("tawba" in ligne and "(le repentir)" in ligne for ligne in glow)   # sur la page du terme
-    assert all(ligne.count("\\N") <= 1 for ligne in glow)            # deux lignes au plus
+    assert sum("(le repentir)" in ligne for ligne in glow) == 1  # une page, une seule glose
+    assert any("tawba" in ligne and "(le repentir)" in ligne for ligne in glow)  # sur la page du terme
+    assert all(ligne.count("\\N") <= 1 for ligne in glow)  # deux lignes au plus
     sub = [ligne for ligne in lines if ",Sub," in ligne]
-    assert sub and all(ligne.count("\\N") <= 1 for ligne in sub)      # deux lignes au plus
+    assert sub and all(ligne.count("\\N") <= 1 for ligne in sub)  # deux lignes au plus
     # le second passage garde le terme sans glose
     assert any("La tawba efface" in ligne for ligne in glow)
 
@@ -146,9 +189,12 @@ def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
 
 def test_pas_de_glose_quand_l_orateur_traduit_lui_meme():
     from sada.pipeline import glossary as g
+
     terms = [g._entry("tawba", ["taouba"], "le repentir")]
+
     def ws(s):
         return [{"w": x, "s": 0, "e": 0} for x in s.split()]
+
     a = g.gloss_words(ws("la tawba, et le repentir efface"), terms)
     assert not any(w.get("gloss") for w in a)
     b = g.gloss_words(ws("la tawba efface les péchés"), terms)

@@ -21,7 +21,8 @@ def _d(sql: str) -> sa.TextClause:
 
 
 mosques = sa.Table(
-    "mosques", metadata,
+    "mosques",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("slug", sa.Text, nullable=False, unique=True),
     sa.Column("name", sa.Text, nullable=False),
@@ -47,21 +48,22 @@ mosques = sa.Table(
 )
 
 users = sa.Table(
-    "users", metadata,
+    "users",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("username", sa.Text(collation="NOCASE"), nullable=False, unique=True),
     sa.Column("display_name", sa.Text, nullable=False),
     sa.Column("password_hash", sa.Text, nullable=False),
-    sa.Column("role", sa.Text,
-              sa.CheckConstraint("role IN ('admin', 'responsable', 'imam')"), nullable=False),
+    sa.Column("role", sa.Text, sa.CheckConstraint("role IN ('admin', 'responsable', 'imam')"), nullable=False),
     sa.Column("active", sa.Integer, nullable=False, server_default=_d("1")),
     sa.Column("created_at", sa.Text, nullable=False),
     sa.Column("last_login_at", sa.Text),
 )
 
 auth_sessions = sa.Table(
-    "auth_sessions", metadata,
+    "auth_sessions",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("token_hash", sa.Text, nullable=False, unique=True),
     sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
@@ -75,7 +77,8 @@ auth_sessions = sa.Table(
 )
 
 khutbas = sa.Table(
-    "khutbas", metadata,
+    "khutbas",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("run_id", sa.Text, nullable=False),
@@ -105,7 +108,8 @@ khutbas = sa.Table(
 )
 
 clips = sa.Table(
-    "clips", metadata,
+    "clips",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("khutba_id", sa.Integer, sa.ForeignKey("khutbas.id"), nullable=False),
@@ -118,9 +122,13 @@ clips = sa.Table(
     sa.Column("video_source", sa.Text),
     sa.Column("source_offset", sa.REAL),
     sa.Column("crop", sa.Text),
-    sa.Column("status", sa.Text,
-              sa.CheckConstraint("status IN ('a_valider', 'valide', 'rejete', 'publie')"),
-              nullable=False, server_default=_d("'a_valider'")),
+    sa.Column(
+        "status",
+        sa.Text,
+        sa.CheckConstraint("status IN ('a_valider', 'valide', 'rejete', 'publie')"),
+        nullable=False,
+        server_default=_d("'a_valider'"),
+    ),
     sa.Column("version", sa.Integer, nullable=False, server_default=_d("1")),
     sa.Column("needs_regen", sa.Integer, nullable=False, server_default=_d("0")),
     sa.Column("regen_state", sa.Text, nullable=False, server_default=_d("''")),
@@ -131,8 +139,9 @@ clips = sa.Table(
     sa.Column("created_at", sa.Text, nullable=False),
     sa.Column("updated_at", sa.Text, nullable=False),
     # ajoutées après coup (voir migration 7) : clip créé à la main, bornes choisies par un humain
-    sa.Column("origin", sa.Text, sa.CheckConstraint("origin IN ('ia', 'manuel')"),
-              nullable=False, server_default=_d("'ia'")),
+    sa.Column(
+        "origin", sa.Text, sa.CheckConstraint("origin IN ('ia', 'manuel')"), nullable=False, server_default=_d("'ia'")
+    ),
     sa.Column("title", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("created_by", sa.Integer, sa.ForeignKey("users.id")),
     sa.Column("bounds_by", sa.Integer, sa.ForeignKey("users.id")),
@@ -140,7 +149,8 @@ clips = sa.Table(
 )
 
 corrections = sa.Table(
-    "corrections", metadata,
+    "corrections",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("khutba_id", sa.Integer, sa.ForeignKey("khutbas.id"), nullable=False),
@@ -156,7 +166,8 @@ corrections = sa.Table(
 # Sous-titres ajoutés à la main à un instant précis (passage que la transcription a sauté, souvent de
 # l'arabe) : appliqués en mémoire comme les corrections, les fichiers du pipeline restent intacts.
 added_subtitles = sa.Table(
-    "added_subtitles", metadata,
+    "added_subtitles",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("khutba_id", sa.Integer, sa.ForeignKey("khutbas.id"), nullable=False),
@@ -169,13 +180,19 @@ added_subtitles = sa.Table(
 
 # Vidéo « habillée » d'une session (migration 8) : une par session, refaite à chaque nouveau rendu.
 habillages = sa.Table(
-    "habillages", metadata,
+    "habillages",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("khutba_id", sa.Integer, sa.ForeignKey("khutbas.id"), nullable=False, unique=True),
     sa.Column("options", sa.Text, nullable=False, server_default=_d("'{}'")),
-    sa.Column("status", sa.Text, sa.CheckConstraint("status IN ('', 'en_cours', 'pret', 'echec')"),
-              nullable=False, server_default=_d("''")),
+    sa.Column(
+        "status",
+        sa.Text,
+        sa.CheckConstraint("status IN ('', 'en_cours', 'pret', 'echec')"),
+        nullable=False,
+        server_default=_d("''"),
+    ),
     sa.Column("progress", sa.Float, nullable=False, server_default=_d("0")),
     sa.Column("error", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("file_path", sa.Text, nullable=False, server_default=_d("''")),
@@ -188,7 +205,8 @@ habillages = sa.Table(
 )
 
 connectors = sa.Table(
-    "connectors", metadata,
+    "connectors",
+    metadata,
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False, primary_key=True),
     sa.Column("key", sa.Text, nullable=False, primary_key=True),
     sa.Column("enabled", sa.Integer, nullable=False, server_default=_d("0")),
@@ -196,11 +214,16 @@ connectors = sa.Table(
 )
 
 notifications = sa.Table(
-    "notifications", metadata,
+    "notifications",
+    metadata,
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), primary_key=True),
-    sa.Column("mode", sa.Text,
-              sa.CheckConstraint("mode IN ('', 'webhook', 'telegram')"),
-              nullable=False, server_default=_d("''")),
+    sa.Column(
+        "mode",
+        sa.Text,
+        sa.CheckConstraint("mode IN ('', 'webhook', 'telegram')"),
+        nullable=False,
+        server_default=_d("''"),
+    ),
     sa.Column("webhook", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("telegram_token", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("telegram_chat", sa.Text, nullable=False, server_default=_d("''")),
@@ -208,7 +231,8 @@ notifications = sa.Table(
 )
 
 live_targets = sa.Table(
-    "live_targets", metadata,
+    "live_targets",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("label", sa.Text, nullable=False, server_default=_d("''")),
@@ -219,16 +243,19 @@ live_targets = sa.Table(
 )
 
 live_input = sa.Table(
-    "live_input", metadata,
+    "live_input",
+    metadata,
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), primary_key=True),
-    sa.Column("mode", sa.Text, sa.CheckConstraint("mode IN ('camera', 'push')"),
-              nullable=False, server_default=_d("'camera'")),
+    sa.Column(
+        "mode", sa.Text, sa.CheckConstraint("mode IN ('camera', 'push')"), nullable=False, server_default=_d("'camera'")
+    ),
     sa.Column("url", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("updated_at", sa.Text),
 )
 
 storage = sa.Table(
-    "storage", metadata,
+    "storage",
+    metadata,
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), primary_key=True),
     sa.Column("endpoint", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("region", sa.Text, nullable=False, server_default=_d("'auto'")),
@@ -241,7 +268,8 @@ storage = sa.Table(
 )
 
 screen_texts = sa.Table(
-    "screen_texts", metadata,
+    "screen_texts",
+    metadata,
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False, primary_key=True),
     sa.Column("screen", sa.Text, nullable=False, primary_key=True),
     sa.Column("slot", sa.Text, nullable=False, primary_key=True),
@@ -250,14 +278,14 @@ screen_texts = sa.Table(
 )
 
 publications = sa.Table(
-    "publications", metadata,
+    "publications",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
     sa.Column("clip_id", sa.Integer, sa.ForeignKey("clips.id"), nullable=False),
     sa.Column("clip_version", sa.Integer, nullable=False),
     sa.Column("connector", sa.Text, nullable=False),
-    sa.Column("status", sa.Text,
-              sa.CheckConstraint("status IN ('publie', 'refuse', 'erreur')"), nullable=False),
+    sa.Column("status", sa.Text, sa.CheckConstraint("status IN ('publie', 'refuse', 'erreur')"), nullable=False),
     sa.Column("location", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("caption", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("message", sa.Text, nullable=False, server_default=_d("''")),
@@ -266,7 +294,8 @@ publications = sa.Table(
 )
 
 audit = sa.Table(
-    "audit", metadata,
+    "audit",
+    metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id")),
     sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id")),
@@ -284,5 +313,21 @@ sa.Index("khutbas_mosque", khutbas.c.mosque_id, khutbas.c.date)
 sa.Index("live_targets_mosque", live_targets.c.mosque_id)
 
 # tables métier, dans l'ordre de création (dépendances : FK)
-TABLES = (mosques, users, auth_sessions, khutbas, clips, corrections, added_subtitles, habillages, connectors,
-          notifications, live_targets, live_input, storage, screen_texts, publications, audit)
+TABLES = (
+    mosques,
+    users,
+    auth_sessions,
+    khutbas,
+    clips,
+    corrections,
+    added_subtitles,
+    habillages,
+    connectors,
+    notifications,
+    live_targets,
+    live_input,
+    storage,
+    screen_texts,
+    publications,
+    audit,
+)

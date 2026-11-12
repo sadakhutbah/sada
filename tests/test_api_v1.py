@@ -1,4 +1,5 @@
 """JSON API of the React front end: access, login, and response shapes."""
+
 from __future__ import annotations
 
 import pytest
@@ -67,11 +68,25 @@ def test_les_clips_arrivent_par_pages(env):
     """Three hundred clips must not be rendered at once: the page asks for twenty, then follows."""
     conn, kid, mid = env["conn"], env["kid"], env["mid"]
     for i in range(3, 28):
-        conn.execute("""INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, end, file_path,
+        conn.execute(
+            """INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, end, file_path,
                         status, version, created_at, updated_at)
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                     (mid, kid, i, "verset", "test", i * 10.0, i * 10.0 + 40, f"/tmp/c{i}.mp4",
-                      "a_valider" if i % 2 else "valide", 1, "2026-11-10T10:00:00", "2026-11-10T10:00:00"))
+            (
+                mid,
+                kid,
+                i,
+                "verset",
+                "test",
+                i * 10.0,
+                i * 10.0 + 40,
+                f"/tmp/c{i}.mp4",
+                "a_valider" if i % 2 else "valide",
+                1,
+                "2026-11-10T10:00:00",
+                "2026-11-10T10:00:00",
+            ),
+        )
     conn.commit()
     c = client(env, "admin")
 
@@ -85,7 +100,7 @@ def test_les_clips_arrivent_par_pages(env):
     assert {x["id"] for x in page["items"]}.isdisjoint({x["id"] for x in suite["items"]})
 
     filtre = c.get("/api/v1/clips?status=a_valider&limit=10&offset=0").json()
-    assert filtre["total"] == filtre["counts"]["a_valider"] == 15   # 13 ajoutés + 2 du jeu de départ
+    assert filtre["total"] == filtre["counts"]["a_valider"] == 15  # 13 ajoutés + 2 du jeu de départ
     assert all(x["status"] == "a_valider" for x in filtre["items"])
 
     assert c.get("/api/v1/clips?limit=0").status_code == 422
@@ -106,10 +121,19 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
     conn = env["conn"]
     base = conn.execute("SELECT mosque_id, output_dir FROM khutbas LIMIT 1").fetchone()
     for i in range(5):
-        conn.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, theme, date, output_dir, "
-                     "imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-                     (base["mosque_id"], f"essai{i}", i, f"Passage {i}", "la patience" if i % 2 else "la misericorde",
-                      f"2024-0{i + 1}-12", base["output_dir"]))
+        conn.execute(
+            "INSERT INTO khutbas (mosque_id, run_id, session_index, label, theme, date, output_dir, "
+            "imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            (
+                base["mosque_id"],
+                f"essai{i}",
+                i,
+                f"Passage {i}",
+                "la patience" if i % 2 else "la misericorde",
+                f"2024-0{i + 1}-12",
+                base["output_dir"],
+            ),
+        )
     conn.commit()
 
     tout = c.get("/api/v1/sermons", params={"limit": 200}).json()
@@ -144,7 +168,7 @@ def test_mois_de_la_liste(env):
             attendus[k["date"][:7]] = attendus.get(k["date"][:7], 0) + 1
     r = c.get("/api/v1/sermons/mois").json()["items"]
     assert r and {m["mois"]: m["n"] for m in r} == attendus
-    assert [m["mois"] for m in r] == sorted(attendus, reverse=True)   # from most recent to oldest
+    assert [m["mois"] for m in r] == sorted(attendus, reverse=True)  # from most recent to oldest
 
 
 def test_filtre_par_mois(env):
@@ -160,11 +184,16 @@ def test_filtre_par_mois(env):
 def test_commandes_live_exposees_et_validees(env, monkeypatch):
     """The dashboard lists all commands; a value outside the list is refused before sending."""
     from sada.backoffice import live
+
     envoyees = []
-    live._caches.clear()                # the status cache is global: we leave nothing to the other tests
-    monkeypatch.setattr(live, "_call", lambda m, meth, chemin, params=None, timeout=3.0:
-                        (envoyees.append((chemin, params)) if meth == "POST" else None)
-                        or {"message": "ok", "state": "KHUTBA"})
+    live._caches.clear()  # the status cache is global: we leave nothing to the other tests
+    monkeypatch.setattr(
+        live,
+        "_call",
+        lambda m, meth, chemin, params=None, timeout=3.0: (
+            (envoyees.append((chemin, params)) if meth == "POST" else None) or {"message": "ok", "state": "KHUTBA"}
+        ),
+    )
     c = client(env, "admin")
     cles = {x["key"] for x in c.get("/api/v1/dashboard").json()["live_commands"]}
     assert {"start", "pause", "resume", "auto", "stop", "extend", "skip", "cancel", "janaza", "scene"} <= cles
@@ -182,14 +211,25 @@ def test_commandes_live_exposees_et_validees(env, monkeypatch):
 def test_le_tableau_de_bord_n_envoie_aucun_texte_d_interface(env):
     """Contract: command keys and choice values only, plus a danger flag. Labels are the front's job."""
     from sada.state import EXTEND_MINUTES, PICKABLE_SCENES
+
     c = client(env, "admin")
     d = c.get("/api/v1/dashboard").json()
     assert "state_label" not in d["live"] and "sessions" not in d["live"]
     cmds = d["live_commands"]
     assert [x["key"] for x in cmds] == [
-        "start", "pause", "resume", "auto", "extend", "skip", "scene", "janaza", "stop", "cancel"]
+        "start",
+        "pause",
+        "resume",
+        "auto",
+        "extend",
+        "skip",
+        "scene",
+        "janaza",
+        "stop",
+        "cancel",
+    ]
     for x in cmds:
-        assert set(x) == {"key", "destructive", "choices"}     # no label, style or confirm sentence
+        assert set(x) == {"key", "destructive", "choices"}  # no label, style or confirm sentence
         assert all(isinstance(v, str) for v in x["choices"])
     assert {x["key"] for x in cmds if x["destructive"]} == {"stop", "cancel"}
     assert next(x for x in cmds if x["key"] == "extend")["choices"] == list(EXTEND_MINUTES)

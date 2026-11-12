@@ -4,6 +4,7 @@ Page rendering (Jinja2) has been removed: the only interface is the React applic
 built into `web/dist` then served as static files. This module therefore only produces
 JSON (API and media); screens are described once, in the front.
 """
+
 from __future__ import annotations
 
 import re
@@ -43,43 +44,66 @@ DOCS = HERE.parent.parent / "docs"
 # ``docs/en/<slug_en>.md`` ; l'anglais est facultatif et, s'il manque, la page française est servie
 # avec un avertissement. Sous /docs/en/, le slug anglais et le slug français mènent à la même page.
 DOCUMENTS = (
-    {"slug": "ecrans-mode-emploi", "slug_en": "screens",
-     "titre_fr": "Mode d'emploi des écrans",
-     "titre_en": "Screen manual",
-     "resume_fr": "ce que sont les six écrans pleins, comment changer leurs textes et ce qui ne marche pas comme on croit",
-     "resume_en": "the six full screens, how to change their texts, and what does not work the way one expects"},
-    {"slug": "orchestrateur", "slug_en": "orchestrator",
-     "titre_fr": "L'orchestrateur et les jetons",
-     "titre_en": "The orchestrator and the tokens",
-     "resume_fr": "les deux programmes, pourquoi ils se parlent, ce que sont les deux jetons et l'ordre de démarrage",
-     "resume_en": "the two programs, why they talk to each other, what the two tokens are, and the startup order"},
-    {"slug": "agent-gabarit-ecrans", "slug_en": "screen-template-prompt",
-     "titre_fr": "Guide de gabarit d'écrans",
-     "titre_en": "Screen template guide",
-     "resume_fr": "la consigne à donner à un assistant conversationnel pour obtenir un visuel d'écrans à soi",
-     "resume_en": "the instruction to give a chat assistant to get a screen mockup of your own"},
-    {"slug": "mise-en-route", "slug_en": "getting-started",
-     "titre_fr": "Mise en route",
-     "titre_en": "Getting started",
-     "resume_fr": "la première installation, les quatre écrans d'accueil, et ce qui se passe au premier direct",
-     "resume_en": "the first installation, the four welcome screens, and what happens on the first live"},
-    {"slug": "connecteurs", "slug_en": "connectors",
-     "titre_fr": "Connecteurs : Facebook, YouTube, Instagram",
-     "titre_en": "Connectors: Facebook, YouTube, Instagram",
-     "resume_fr": "ce qu'il faut obtenir côté plateforme, où le saisir, et ce que le connecteur ne fait pas",
-     "resume_en": "what to obtain from each platform, where to enter it, and what the connector does not do"},
-    {"slug": "rediffusions", "slug_en": "recordings",
-     "titre_fr": "Rediffusions et compartiment S3",
-     "titre_en": "Recordings and S3 buckets",
-     "resume_fr": "les clips, le dossier publié, et l'envoi facultatif vers un compartiment S3 ou R2",
-     "resume_en": "clips, the published folder, and the optional upload to an S3 or R2 bucket"},
+    {
+        "slug": "ecrans-mode-emploi",
+        "slug_en": "screens",
+        "titre_fr": "Mode d'emploi des écrans",
+        "titre_en": "Screen manual",
+        "resume_fr": "ce que sont les six écrans pleins, comment changer leurs textes et ce qui ne marche pas comme on croit",
+        "resume_en": "the six full screens, how to change their texts, and what does not work the way one expects",
+    },
+    {
+        "slug": "orchestrateur",
+        "slug_en": "orchestrator",
+        "titre_fr": "L'orchestrateur et les jetons",
+        "titre_en": "The orchestrator and the tokens",
+        "resume_fr": "les deux programmes, pourquoi ils se parlent, ce que sont les deux jetons et l'ordre de démarrage",
+        "resume_en": "the two programs, why they talk to each other, what the two tokens are, and the startup order",
+    },
+    {
+        "slug": "agent-gabarit-ecrans",
+        "slug_en": "screen-template-prompt",
+        "titre_fr": "Guide de gabarit d'écrans",
+        "titre_en": "Screen template guide",
+        "resume_fr": "la consigne à donner à un assistant conversationnel pour obtenir un visuel d'écrans à soi",
+        "resume_en": "the instruction to give a chat assistant to get a screen mockup of your own",
+    },
+    {
+        "slug": "mise-en-route",
+        "slug_en": "getting-started",
+        "titre_fr": "Mise en route",
+        "titre_en": "Getting started",
+        "resume_fr": "la première installation, les quatre écrans d'accueil, et ce qui se passe au premier direct",
+        "resume_en": "the first installation, the four welcome screens, and what happens on the first live",
+    },
+    {
+        "slug": "connecteurs",
+        "slug_en": "connectors",
+        "titre_fr": "Connecteurs : Facebook, YouTube, Instagram",
+        "titre_en": "Connectors: Facebook, YouTube, Instagram",
+        "resume_fr": "ce qu'il faut obtenir côté plateforme, où le saisir, et ce que le connecteur ne fait pas",
+        "resume_en": "what to obtain from each platform, where to enter it, and what the connector does not do",
+    },
+    {
+        "slug": "rediffusions",
+        "slug_en": "recordings",
+        "titre_fr": "Rediffusions et compartiment S3",
+        "titre_en": "Recordings and S3 buckets",
+        "resume_fr": "les clips, le dossier publié, et l'envoi facultatif vers un compartiment S3 ou R2",
+        "resume_en": "clips, the published folder, and the optional upload to an S3 or R2 bucket",
+    },
 )
 
 
 # ------------------------------------------------------------------ application
 
-def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False, auto_import_s: float = 0,
-               regen_background: bool = True) -> FastAPI:
+
+def create_app(
+    db_path: str | Path = db.DEFAULT_DB,
+    secure_cookies: bool = False,
+    auto_import_s: float = 0,
+    regen_background: bool = True,
+) -> FastAPI:
     """regen_background=False: clip regeneration happens inside the request (tests)."""
     db.init(db_path)
     stop = threading.Event()
@@ -149,9 +173,11 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     @app.middleware("http")
     async def headers(request: Request, call_next):
         resp = await call_next(request)
-        csp = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
-               "script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
-               "form-action 'self'; base-uri 'none'")
+        csp = (
+            "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
+            "form-action 'self'; base-uri 'none'"
+        )
         if request.url.path.startswith("/screens/"):
             # The imported gabarit is shown in an iframe of the settings page: same origin only.
             # Everywhere else stays unframeable (frame-ancestors 'none' / X-Frame-Options DENY).
@@ -216,8 +242,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         if not Path(c["file_path"]).exists():
             raise NotFound()
         if download:
-            return FileResponse(c["file_path"], media_type="video/mp4",
-                                filename=f"sada-clip-{cid}-v{c['version']}.mp4")
+            return FileResponse(c["file_path"], media_type="video/mp4", filename=f"sada-clip-{cid}-v{c['version']}.mp4")
         return FileResponse(c["file_path"], media_type="video/mp4")
 
     # ---------------------------------------------------------- interface logo
@@ -229,8 +254,11 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         f = branding.path_for(m)
         if not f.exists():
             raise NotFound()
-        return FileResponse(f, media_type=branding.EXT.get(f.suffix.lower(), "application/octet-stream"),
-                            headers={"Cache-Control": "private, max-age=300"})
+        return FileResponse(
+            f,
+            media_type=branding.EXT.get(f.suffix.lower(), "application/octet-stream"),
+            headers={"Cache-Control": "private, max-age=300"},
+        )
 
     # ------------------------------------------------- imported screen template (reference)
     @app.get("/screens/{slug}/ecrans.html")
@@ -242,7 +270,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         """
         ctx.require("admin")
         if slug != ctx.mosque["slug"]:
-            raise NotFound()          # another mosque's reference is not readable by slug
+            raise NotFound()  # another mosque's reference is not readable by slug
         f = gabarit.path_for(ctx.mosque)
         if not f.is_file():
             raise NotFound()
@@ -252,8 +280,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             # « Début à {heure} » quand le moteur affiche « Début à 14 h 36 ».
             page = gabarit.remplir(page, screens_mod.valeurs_apercu(ctx.mosque, ecran))
             return HTMLResponse(page, headers={"Cache-Control": "no-store"})
-        return FileResponse(f, media_type="text/html; charset=utf-8",
-                            headers={"Cache-Control": "no-store"})
+        return FileResponse(f, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-store"})
 
     @app.get("/screens/assets/fonts/{nom}")
     def screens_gabarit_font(nom: str, ctx: CtxDep):
@@ -284,25 +311,35 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             return fr, False
         return fr, True
 
-
     @app.get("/docs")
     def docs_index(langue: str = "en"):
         """La liste des documents, dans la langue demandée."""
         en = langue == "en"
-        lignes = ["# Documentation" if not en else "# Documentation", "",
-                  ("These documents are served by this instance: they describe what it does, and they"
-                   " are updated with it.") if en
-                  else ("Ces documents sont servis par cette instance : ils décrivent ce qu'elle fait,"
-                        " et se mettent à jour avec elle."), ""]
+        lignes = [
+            "# Documentation" if not en else "# Documentation",
+            "",
+            ("These documents are served by this instance: they describe what it does, and they are updated with it.")
+            if en
+            else (
+                "Ces documents sont servis par cette instance : ils décrivent ce qu'elle fait,"
+                " et se mettent à jour avec elle."
+            ),
+            "",
+        ]
         for d in DOCUMENTS:
             titre = d["titre_en"] if en else d["titre_fr"]
             resume = d["resume_en"] if en else d["resume_fr"]
             url = f"/docs/en/{d['slug_en']}" if en else f"/docs/{d['slug']}"
             lignes.append(f"- [{titre}]({url}) — {resume}")
-        return HTMLResponse(docpage.page("\n".join(lignes), titre="Documentation", source=None,
-                                         lang="en" if en else "fr",
-                                         alterne=("/docs?langue=fr" if en else "/docs",
-                                                  "Français" if en else "English")))
+        return HTMLResponse(
+            docpage.page(
+                "\n".join(lignes),
+                titre="Documentation",
+                source=None,
+                lang="en" if en else "fr",
+                alterne=("/docs?langue=fr" if en else "/docs", "Français" if en else "English"),
+            )
+        )
 
     # Les adresses en « .md » passent avant, sinon le joker de {slug} les avale.
     @app.get("/docs/en/{slug}.md")
@@ -330,15 +367,25 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
             raise NotFound()
         avis = None
         if not exact:
-            avis = ("La version anglaise de ce document n'est pas encore écrite. Le texte affiché est "
-                    "le français." if langue == "en" else None)
-        alterne = (f"/docs/{slug}" if langue == "en" else f"/docs/en/{slug_en}",
-                   "Français" if langue == "en" else "English")
-        return HTMLResponse(docpage.page(
-            f.read_text(encoding="utf-8"),
-            titre=(d["titre_en"] if langue == "en" else d["titre_fr"]),
-            source=(f"/docs/en/{slug_en}.md" if langue == "en" and exact else f"/docs/{slug}.md"),
-            lang=langue, alterne=alterne, avis=avis))
+            avis = (
+                "La version anglaise de ce document n'est pas encore écrite. Le texte affiché est le français."
+                if langue == "en"
+                else None
+            )
+        alterne = (
+            f"/docs/{slug}" if langue == "en" else f"/docs/en/{slug_en}",
+            "Français" if langue == "en" else "English",
+        )
+        return HTMLResponse(
+            docpage.page(
+                f.read_text(encoding="utf-8"),
+                titre=(d["titre_en"] if langue == "en" else d["titre_fr"]),
+                source=(f"/docs/en/{slug_en}.md" if langue == "en" and exact else f"/docs/{slug}.md"),
+                lang=langue,
+                alterne=alterne,
+                avis=avis,
+            )
+        )
 
     def _doc_source(slug: str, langue: str):
         """Le même texte, brut : pour le coller dans un chat quand un lien ne s'ouvre pas."""
@@ -346,8 +393,11 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         f, exact = _doc(slug, langue)
         if not f.exists() or not exact:
             raise NotFound()
-        return FileResponse(f, media_type="text/markdown; charset=utf-8",
-                            headers={"Content-Disposition": f'inline; filename="{f.name}"'})
+        return FileResponse(
+            f,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'inline; filename="{f.name}"'},
+        )
 
     def _document(slug: str) -> dict:
         for d in DOCUMENTS:
@@ -365,10 +415,17 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
     # ------------------------------------------------- old French addresses
     # Kept as permanent redirects: a bookmark or a link already sent keeps working.
     ANCIENNES = {
-        "/connexion": "/login", "/deconnexion": "/", "/compte": "/settings", "/journal": "/audit",
-        "/sermons": "/khutbas", "/publication": "/publications", "/sante": "/health",
-        "/api/dossiers": "/api/v1/folders", "/admin/utilisateurs": "/users",
-        "/admin/mosquee": "/settings", "/admin/modele": "/settings",
+        "/connexion": "/login",
+        "/deconnexion": "/",
+        "/compte": "/settings",
+        "/journal": "/audit",
+        "/sermons": "/khutbas",
+        "/publication": "/publications",
+        "/sante": "/health",
+        "/api/dossiers": "/api/v1/folders",
+        "/admin/utilisateurs": "/users",
+        "/admin/mosquee": "/settings",
+        "/admin/modele": "/settings",
         "/admin/modele/tester": "/api/v1/settings/model/test",
     }
     ANCIENS_MOTIFS = (
@@ -386,6 +443,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
                 adresse = adresse.replace("{" + nom + "}", str(valeur))
             q = request.url.query
             return RedirectResponse(adresse + (f"?{q}" if q else ""), status_code=308)
+
         return aller
 
     for _vieux, _neuf in ANCIENNES.items():
@@ -401,6 +459,7 @@ def create_app(db_path: str | Path = db.DEFAULT_DB, secure_cookies: bool = False
         # (/khutbas/12), the server must not answer 404 on those paths.
         app.frontend("/", directory=str(FRONT), fallback="index.html")
     else:
+
         @app.get("/")
         def _front_absent():
             return JSONResponse({"error": _("Front not built: npm --prefix web run build")}, status_code=503)

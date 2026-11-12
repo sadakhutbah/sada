@@ -1,4 +1,5 @@
 """Authentication hardening: session replay patching, browser fingerprint, HSTS, cookies."""
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -33,6 +34,7 @@ def test_jeton_recopie_dans_un_autre_navigateur_ne_sert_a_rien(env):
     # the real session is not destroyed by the attempt (no denial of service offered to the thief)
     assert c.get("/api/v1/session").status_code == 200
     from sada.backoffice import db
+
     traces = db.all_(env["conn"], "SELECT * FROM audit WHERE action = 'session.navigateur_inattendu'")
     assert len(traces) == 1
 
@@ -61,8 +63,7 @@ def test_cookie_secure_derriere_un_proxy_https(env):
 
     c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF, "x-forwarded-proto": "https"})
     pre = c.get("/api/v1/login-challenge").json()["pre"]
-    r = c.post("/api/v1/login", data={"username": "admin", "password": PW, "pre": pre},
-               cookies={"sada_pre": pre})
+    r = c.post("/api/v1/login", data={"username": "admin", "password": PW, "pre": pre}, cookies={"sada_pre": pre})
     assert r.status_code == 200, r.text[:200]
     setc = r.headers.get("set-cookie", "")
     assert "Secure" in setc

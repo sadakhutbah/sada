@@ -1,4 +1,5 @@
 """Interface logo: separate network repository, validated upload, fallback to the neutral emblem."""
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -25,15 +26,16 @@ def test_le_depot_n_embarque_plus_le_logo_de_la_mosquee():
 
 
 def _envoi(c, nom: str, donnees: bytes, type_mime: str):
-    return c.request("POST", "/api/v1/settings/logo", files={"logo": (nom, donnees, type_mime)},
-                     headers={"X-CSRF": c.csrf})
+    return c.request(
+        "POST", "/api/v1/settings/logo", files={"logo": (nom, donnees, type_mime)}, headers={"X-CSRF": c.csrf}
+    )
 
 
 def test_sans_logo_embleme_neutre(env):
     c = client(env, "admin")
     d = c.get("/api/v1/settings").json()
     assert d["mosque"]["logo"] == "/static/emblem.svg"
-    assert c.get("/static/emblem.svg").status_code == 200       # fallback served, even without a session
+    assert c.get("/static/emblem.svg").status_code == 200  # fallback served, even without a session
 
 
 def test_upload_puis_retrait(env):

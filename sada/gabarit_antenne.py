@@ -11,6 +11,7 @@ Deux règles tenues ici :
 * un écran qui ne change pas n'est jamais redessiné, et une image identique n'est jamais réécrite
   sur le disque : le direct ne clignote pas et le disque ne travaille pas pour rien.
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,11 +40,11 @@ class AntenneGabarit:
         self._rendu = None
         self._fetch = fetch
         self.log = log_fn or (lambda _m: None)
-        self.page: dict[str, str] | None = None   # une page par écran, décorée par le back-office
+        self.page: dict[str, str] | None = None  # une page par écran, décorée par le back-office
         self._variables: dict[str, str] = {}
         self._lock = threading.Lock()
         self._dernieres: dict[str, tuple[str, bytes]] = {}
-        self._disponible = True             # faux après un échec : on ne s'acharne pas
+        self._disponible = True  # faux après un échec : on ne s'acharne pas
         self._echecs = 0
 
     # ------------------------------------------------------------------ lecture
@@ -66,11 +67,10 @@ class AntenneGabarit:
         from .screens import _http_get
 
         lire = fetch or self._fetch or _http_get
-        url = (backoffice_url.rstrip("/") + "/api/v1/internal/gabarit?"
-               + urlencode({"port": api_port or 0}))
+        url = backoffice_url.rstrip("/") + "/api/v1/internal/gabarit?" + urlencode({"port": api_port or 0})
         try:
             data = lire(url, token()) or {}
-        except Exception as e:                     # noqa: BLE001 — le direct n'attend pas le réseau
+        except Exception as e:  # noqa: BLE001 — le direct n'attend pas le réseau
             self.log(_("Template: back office unreachable ({error}) — keeping the engine drawing", error=e))
             return False
         pages = data.get("pages") or {}
@@ -85,8 +85,14 @@ class AntenneGabarit:
 
     # ------------------------------------------------------------------- rendu
     # quel texte arabe saisir pour tel écran du gabarit
-    ARABE = {"avant": "arabe_khutba", "priere": "arabe_priere", "janaza": "arabe_janaza",
-             "dars_fin": "arabe_dars", "termine": "", "entracte": ""}
+    ARABE = {
+        "avant": "arabe_khutba",
+        "priere": "arabe_priere",
+        "janaza": "arabe_janaza",
+        "dars_fin": "arabe_dars",
+        "termine": "",
+        "entracte": "",
+    }
 
     def valeurs(self, ecran: str, moment=None) -> dict[str, str]:
         """Les valeurs à poser dans la page : heure, nom de la mosquée, ligne arabe de cet écran.
@@ -127,7 +133,7 @@ class AntenneGabarit:
         debut = time.monotonic()
         try:
             png = self._rendre(ecran, moment)
-        except Exception as e:                     # noqa: BLE001 — un écran raté ne coupe pas le direct
+        except Exception as e:  # noqa: BLE001 — un écran raté ne coupe pas le direct
             self._echecs += 1
             self.log(_("Template: cannot render screen {screen} ({error})", screen=ecran, error=e))
             if self._echecs >= 3:
@@ -137,8 +143,9 @@ class AntenneGabarit:
         self._echecs = 0
         duree = (time.monotonic() - debut) * 1000
         if duree > 600:
-            self.log(_("Template: screen {screen} rendered in {duration:.0f} ms (over budget)",
-                       screen=ecran, duration=duree))
+            self.log(
+                _("Template: screen {screen} rendered in {duration:.0f} ms (over budget)", screen=ecran, duration=duree)
+            )
         with self._lock:
             self._dernieres[ecran] = (signature, png)
         return png
@@ -153,7 +160,7 @@ class AntenneGabarit:
         if self._rendu is not None:
             try:
                 self._rendu.close()
-            except Exception:                      # noqa: BLE001 — on ferme, coûte que coûte
+            except Exception:  # noqa: BLE001 — on ferme, coûte que coûte
                 pass
             self._rendu = None
 
@@ -166,10 +173,9 @@ def depuis_backoffice(cfg, backoffice_url: str, api_port: int, log_fn=None):
     """
     try:
         from .backoffice.template_render import TemplateRender
-    except Exception as e:                         # noqa: BLE001 — pas de navigateur : on dessine
+    except Exception as e:  # noqa: BLE001 — pas de navigateur : on dessine
         log_fn = log_fn or (lambda _m: None)
-        log_fn(_("Template: browser rendering unavailable ({error}) — keeping the engine drawing",
-                 error=e))
+        log_fn(_("Template: browser rendering unavailable ({error}) — keeping the engine drawing", error=e))
         return None
     antenne = AntenneGabarit(cfg, lambda _cfg: TemplateRender(), log_fn=log_fn)
     if antenne.charger(backoffice_url, api_port):

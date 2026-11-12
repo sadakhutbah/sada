@@ -15,6 +15,7 @@ Ce module ne touche ni la base, ni les comptes, ni les réglages : il prépare l
 mosquée. Les étapes qui laissent une trace (navigateur dans ``vendor/``) sont réversibles en
 supprimant le dossier, et il le dit avant de le faire.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -45,12 +46,12 @@ def _console_lisible() -> None:
         try:
             import ctypes
 
-            ctypes.windll.kernel32.SetConsoleOutputCP(65001)     # type: ignore[attr-defined]
-        except Exception:                          # noqa: BLE001 — purement cosmétique
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 — purement cosmétique
             pass
     for flux in (sys.stdout, sys.stderr):
         try:
-            flux.reconfigure(encoding="utf-8", errors="replace")   # type: ignore[union-attr]
+            flux.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
         except (AttributeError, ValueError):
             pass
 
@@ -88,10 +89,17 @@ def _python_ok() -> Etape:
     version = sys.version_info
     lisible = f"{version.major}.{version.minor}.{version.micro}"
     if (version.major, version.minor) < MIN_PYTHON:
-        return Etape("Python", BLOQUE,
-                     _("{version} — {min_major}.{min_minor} minimum", version=lisible,
-                       min_major=MIN_PYTHON[0], min_minor=MIN_PYTHON[1]),
-                     _("install a recent Python (python.org, “Add to PATH” box)"))
+        return Etape(
+            "Python",
+            BLOQUE,
+            _(
+                "{version} — {min_major}.{min_minor} minimum",
+                version=lisible,
+                min_major=MIN_PYTHON[0],
+                min_minor=MIN_PYTHON[1],
+            ),
+            _("install a recent Python (python.org, “Add to PATH” box)"),
+        )
     return Etape("Python", OK, f"{lisible} ({platform.system()})")
 
 
@@ -100,14 +108,18 @@ def _modules_ok() -> Etape:
     for module, paquet in REQUIRED_MODULES:
         try:
             importlib.import_module(module)
-        except Exception:                          # noqa: BLE001 — un module cassé compte comme absent
+        except Exception:  # noqa: BLE001 — un module cassé compte comme absent
             manquants.append(paquet)
     if manquants:
-        return Etape(_("Python dependencies"), MANQUE, ", ".join(manquants),
-                     f"{_pip()} install --upgrade {_paquet()}",
-                     automatique=True, _action=lambda: _installer_dependances(manquants))
-    return Etape(_("Python dependencies"), OK,
-                 _("{count} modules present", count=len(REQUIRED_MODULES)))
+        return Etape(
+            _("Python dependencies"),
+            MANQUE,
+            ", ".join(manquants),
+            f"{_pip()} install --upgrade {_paquet()}",
+            automatique=True,
+            _action=lambda: _installer_dependances(manquants),
+        )
+    return Etape(_("Python dependencies"), OK, _("{count} modules present", count=len(REQUIRED_MODULES)))
 
 
 def _moteur_ok() -> Etape:
@@ -121,13 +133,22 @@ def _moteur_ok() -> Etape:
     except tr.RenderUnavailable:
         pris = None
     if pris is not None:
-        return Etape(_("Rendering browser"), MANQUE,
-                     _("no bundled browser; the machine's own will be used ({path})", path=pris),
-                     _("python -m sada.installer  (downloads the bundled browser, ≈ 280 MB)"),
-                     automatique=True, _action=lambda: _telecharger_moteur())
-    return Etape(_("Rendering browser"), MANQUE, _("no browser, neither bundled nor on the machine"),
-                 _("python -m sada.installer  (downloads the bundled browser, ≈ 280 MB)"),
-                 automatique=True, _action=lambda: _telecharger_moteur())
+        return Etape(
+            _("Rendering browser"),
+            MANQUE,
+            _("no bundled browser; the machine's own will be used ({path})", path=pris),
+            _("python -m sada.installer  (downloads the bundled browser, ≈ 280 MB)"),
+            automatique=True,
+            _action=lambda: _telecharger_moteur(),
+        )
+    return Etape(
+        _("Rendering browser"),
+        MANQUE,
+        _("no browser, neither bundled nor on the machine"),
+        _("python -m sada.installer  (downloads the bundled browser, ≈ 280 MB)"),
+        automatique=True,
+        _action=lambda: _telecharger_moteur(),
+    )
 
 
 RAIL_BIN = Path(__file__).resolve().parent.parent / "tools" / "bin"
@@ -141,9 +162,12 @@ def _relais_ok() -> Etape:
     binaire = RAIL_BIN / nom
     if binaire.is_file():
         return Etape(_("Video relay"), OK, str(binaire.relative_to(RAIL_BIN.parent.parent)))
-    return Etape(_("Video relay"), MANQUE, _("no binary for this system"),
-                 _("live machine: put {name} in tools/bin (see tools/mediamtx.sh)", name=nom))
-
+    return Etape(
+        _("Video relay"),
+        MANQUE,
+        _("no binary for this system"),
+        _("live machine: put {name} in tools/bin (see tools/mediamtx.sh)", name=nom),
+    )
 
 
 def _ffmpeg_ok() -> Etape:
@@ -154,8 +178,12 @@ def _ffmpeg_ok() -> Etape:
     found = shutil.which("ffmpeg")
     if found:
         return Etape("ffmpeg", OK, found)
-    return Etape("ffmpeg", MANQUE, _("not found, neither in tools/bin nor in the PATH"),
-             _("live machine: drop ffmpeg into tools/bin, or install it"))
+    return Etape(
+        "ffmpeg",
+        MANQUE,
+        _("not found, neither in tools/bin nor in the PATH"),
+        _("live machine: drop ffmpeg into tools/bin, or install it"),
+    )
 
 
 def examen() -> list[Etape]:
@@ -289,14 +317,12 @@ def install(argv: list[str] | None = None) -> int:
     afficher(restantes, _("State after installation"))
     bloquantes = [e for e in restantes if e.etat != OK and e.automatique]
     if not bloquantes and all(e.etat != BLOQUE for e in restantes):
-        print("  " + _("The application is ready. Next: create an administrator account, then "
-                        "start the server."))
+        print("  " + _("The application is ready. Next: create an administrator account, then start the server."))
         print(f"    {_prefixe()} create-admin --username admin")
         print(f"    {_prefixe()} serve")
         absents = [e.nom for e in restantes if e.etat != OK]
         if absents:
-            print("  " + _("To plan for a live machine: {items} (nothing to do elsewhere).",
-                          items=", ".join(absents)))
+            print("  " + _("To plan for a live machine: {items} (nothing to do elsewhere).", items=", ".join(absents)))
         print()
         return 0
     print("  " + _("Some points are still to be handled (see above).") + "\n")
@@ -305,7 +331,7 @@ def install(argv: list[str] | None = None) -> int:
 
 def _confirmer(question: str) -> bool:
     if not sys.stdin.isatty():
-        return False                               # jamais d'accord supposé à la place d'une personne
+        return False  # jamais d'accord supposé à la place d'une personne
     try:
         reponse = input(question).strip().lower()
     except EOFError:
@@ -319,4 +345,3 @@ def _oui_non(defaut: bool) -> str:
 
 if __name__ == "__main__":
     sys.exit(install(sys.argv[1:]))
-

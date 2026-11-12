@@ -4,6 +4,7 @@ The server only renders existing folders: we start from the accessible roots (ho
 and only descend into real entries. Hidden names and pseudo-filesystems (/proc, /sys) are
 masked; no file content is exposed.
 """
+
 from __future__ import annotations
 
 import os
@@ -43,7 +44,11 @@ def roots() -> list[dict]:
                 if child.name in SKIP or (base == "/mnt" and child.name in SKIP_MT) or not child.is_dir():
                     continue
                 # "/mnt/c" -> "Disque C:", readable by a Windows user
-                label = _("Drive {letter}:", letter=child.name.upper()) if base == "/mnt" and len(child.name) == 1 else child.name
+                label = (
+                    _("Drive {letter}:", letter=child.name.upper())
+                    if base == "/mnt" and len(child.name) == 1
+                    else child.name
+                )
                 add(child, label)
         except OSError:
             pass
@@ -59,8 +64,13 @@ def listing(path: str | None) -> dict:
     except OSError:
         raise ValueError(_("unreadable path")) from None
     if not p.is_dir():
-        return {"path": str(p), "parent": str(p.parent) if p.parent != p else None,
-                "exists": False, "writable": False, "entries": []}
+        return {
+            "path": str(p),
+            "parent": str(p.parent) if p.parent != p else None,
+            "exists": False,
+            "writable": False,
+            "entries": [],
+        }
     entries = []
     try:
         for child in sorted(p.iterdir(), key=lambda c: c.name.lower()):

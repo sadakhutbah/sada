@@ -1,4 +1,5 @@
 """Quran text (api.alquran.cloud: quran-simple-clean + fr.hamidullah translation), cached."""
+
 from __future__ import annotations
 
 import json
@@ -30,10 +31,15 @@ def load_verses() -> list[dict]:
         for ai, a in enumerate(s["ayahs"]):
             txt = a["text"]
             if a["numberInSurah"] == 1 and s["number"] not in (1, 9) and txt.startswith(BASMALA):
-                txt = txt[len(BASMALA):].strip()
-            out.append({
-                "surah": s["number"], "ayah": a["numberInSurah"], "surah_name": s["englishName"],
-                "text": txt, "norm": normalize(txt),
-                "fr": fr[si]["ayahs"][ai]["text"],
-            })
+                txt = txt[len(BASMALA) :].strip()
+            out.append(
+                {
+                    "surah": s["number"],
+                    "ayah": a["numberInSurah"],
+                    "surah_name": s["englishName"],
+                    "text": txt,
+                    "norm": normalize(txt),
+                    "fr": fr[si]["ayahs"][ai]["text"],
+                }
+            )
     return out

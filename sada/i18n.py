@@ -14,6 +14,7 @@ The language is per request (``X-Sada-Lang`` header sent by the front end, then 
 and otherwise the server default ``SADA_LANG`` (``en`` when unset). Background work outside a request
 uses the server default.
 """
+
 from __future__ import annotations
 
 import contextvars

@@ -1,4 +1,5 @@
 """Jumu'a times from Mawaqit, with a local cache (fallback if the site is unreachable)."""
+
 from __future__ import annotations
 
 import json
@@ -52,8 +53,12 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
         if cache:
             cache["origin"] = _("cache (no Mawaqit URL configured)")
             return _finish(cache)
-        raise ValueError(_("no time source: empty Mawaqit URL (--mawaqit-url or Settings → Mosque) "
-                           "and no local cache; otherwise --times / jumua_times_override"))
+        raise ValueError(
+            _(
+                "no time source: empty Mawaqit URL (--mawaqit-url or Settings → Mosque) "
+                "and no local cache; otherwise --times / jumua_times_override"
+            )
+        )
     try:
         data = fetch_live(url, timeout)
         cp.parent.mkdir(parents=True, exist_ok=True)

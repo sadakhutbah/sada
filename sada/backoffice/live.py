@@ -3,6 +3,7 @@
 Mode A: the orchestrator runs on the same machine (http://127.0.0.1:8088). Mode B: URL + token per mosque
 (tunnel/VPN to the mosque's machine); the code does not change.
 """
+
 from __future__ import annotations
 
 import json
@@ -95,11 +96,10 @@ def status_cached(mosque: dict, ttl: float = STATUS_TTL, forcer: bool = False) -
                 return entree[1]
             if entree is not None:
                 _en_cours.add(cle)
-        if entree is not None:                  # stale: we serve the snapshot, refresh behind
-            threading.Thread(target=_rafraichir, args=(mosque, cle), daemon=True,
-                             name="statut-live").start()
+        if entree is not None:  # stale: we serve the snapshot, refresh behind
+            threading.Thread(target=_rafraichir, args=(mosque, cle), daemon=True, name="statut-live").start()
             return entree[1]
-    resultat = _lire(mosque)                    # first call (or forced read): we wait
+    resultat = _lire(mosque)  # first call (or forced read): we wait
     with _verrou:
         _caches[cle] = (time.monotonic(), resultat)
     return resultat
@@ -115,8 +115,7 @@ def _rafraichir(mosque: dict, cle: str) -> None:
             _en_cours.discard(cle)
 
 
-def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = None,
-            valeur: str | None = None) -> dict:
+def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = None, valeur: str | None = None) -> dict:
     """arg: name of the deceased (janaza); info: note on the janaza record; valeur: choice of a
     command with a parameter (minutes of extend, scene name of scene).
 
@@ -127,14 +126,14 @@ def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = N
     permises = choices(cmd)
     params = {}
     if permises:
-        valeur = valeur or (permises[0] if cmd == "extend" else None)    # extend: first value by default
+        valeur = valeur or (permises[0] if cmd == "extend" else None)  # extend: first value by default
         if valeur not in permises:
             raise ValueError(_("invalid value for “{command}”", command=cmd))
         params[_VARIED[cmd][0]] = valeur
     if cmd == "janaza":
         if arg:
             params["name"] = arg[:80]
-        if info and arg:                # a note alone makes no sense without a name
+        if info and arg:  # a note alone makes no sense without a name
             params["info"] = info[:60]
     return _call(mosque, "POST", cmd, params or None)
 
@@ -155,11 +154,17 @@ def summarize(st: dict) -> dict:
         session = {"n": n, "total": len(planned), "planned": cur.get("planned")}
     return {
         "state": st.get("state"),
-        "clock": st.get("clock"), "session": session, "has_sessions": bool(planned),
+        "clock": st.get("clock"),
+        "session": session,
+        "has_sessions": bool(planned),
         "next_session": st.get("next_session"),
-        "stream_on": bool(st.get("stream_on")), "mic": bool(st.get("mic")), "override": bool(st.get("override")),
-        "last_reason": st.get("last_reason") or "", "run_id": st.get("run_id"),
-        "janaza_name": st.get("janaza_name"), "janaza_info": st.get("janaza_info"),
+        "stream_on": bool(st.get("stream_on")),
+        "mic": bool(st.get("mic")),
+        "override": bool(st.get("override")),
+        "last_reason": st.get("last_reason") or "",
+        "run_id": st.get("run_id"),
+        "janaza_name": st.get("janaza_name"),
+        "janaza_info": st.get("janaza_info"),
         "encoder_alive": bool((st.get("encoder") or {}).get("alive")),
         "vad_connected": bool((st.get("vad") or {}).get("connected")),
     }

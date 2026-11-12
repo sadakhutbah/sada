@@ -1,4 +1,5 @@
 """Helpers and fixtures shared by the back-office tests (defined in test_backoffice)."""
+
 import sys
 from pathlib import Path
 

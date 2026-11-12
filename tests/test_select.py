@@ -1,4 +1,5 @@
 """Sélection des extraits (sada.pipeline.select) : candidats par le code, notation, sélection espacée."""
+
 from sada.pipeline import select as S
 
 
@@ -39,10 +40,10 @@ def test_ancres_propres_seulement():
     ancres = {segs[i]["start"] for i in S._anchor_indexes(segs)}
     assert 0.0 in ancres
     assert 25.0 in ancres
-    assert 5.0 not in ancres     # « Et » en pleine phrase
-    assert 10.0 not in ancres    # phonétique
-    assert 15.0 not in ancres    # arabe
-    assert 20.0 in ancres        # « Et » après une récitation : le propos est refermé
+    assert 5.0 not in ancres  # « Et » en pleine phrase
+    assert 10.0 not in ancres  # phonétique
+    assert 15.0 not in ancres  # arabe
+    assert 20.0 in ancres  # « Et » après une récitation : le propos est refermé
 
 
 def test_nettoyage_phonetique_et_mot_isole():
@@ -71,15 +72,16 @@ def test_selection_espacee_sans_chevauchement():
         {"kind": "extrait", "start": 120.0, "end": 160.0, "note": 10.0, "titre": "d"},
     ]
     wins = S.pick_clips(scored, 2)
-    assert [w["start"] for w in wins] == [0.0, 120.0]      # meilleures notes, espacées, chronologiques
-    assert wins[1]["why"] == "d"                            # le titre sert de « pourquoi »
+    assert [w["start"] for w in wins] == [0.0, 120.0]  # meilleures notes, espacées, chronologiques
+    assert wins[1]["why"] == "d"  # le titre sert de « pourquoi »
 
 
 def test_repli_sans_modele(monkeypatch):
     segs = _khutba_propre(20)
     # sans LLM : note heuristique seule
-    scored = S.score_candidates(S.candidate_windows(segs, 160.0, log=lambda *a: None), segs,
-                                use_llm=False, log=lambda *a: None)
+    scored = S.score_candidates(
+        S.candidate_windows(segs, 160.0, log=lambda *a: None), segs, use_llm=False, log=lambda *a: None
+    )
     assert scored and all(w["method"] == "heuristique" and w["note"] > 0 for w in scored)
 
     logs = []
@@ -90,6 +92,7 @@ def test_repli_sans_modele(monkeypatch):
 
     # modèle indisponible : chaque lot retombe sur l'heuristique, rien ne lève
     monkeypatch.setattr(S.llm, "ask_json", lambda prompt, timeout, log: None)
-    scored2 = S.score_candidates(S.candidate_windows(segs, 160.0, log=lambda *a: None), segs,
-                                 use_llm=True, log=lambda *a: None)
+    scored2 = S.score_candidates(
+        S.candidate_windows(segs, 160.0, log=lambda *a: None), segs, use_llm=True, log=lambda *a: None
+    )
     assert scored2 and all(w["method"] == "heuristique" for w in scored2)

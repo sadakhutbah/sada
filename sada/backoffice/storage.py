@@ -5,6 +5,7 @@ le back-office ; la clé secrète ne revient jamais en clair (masque, renvoyer l
 Envoi en HTTPS signé (SigV4) par la bibliothèque aws (boto3), qui gère aussi le découpage des gros
 fichiers et les reprises.
 """
+
 from __future__ import annotations
 
 import re
@@ -56,8 +57,13 @@ def check(endpoint: str, bucket: str, region: str, prefix: str, access_key: str)
         err["access_key"] = _("Access key required.")
     if err:
         raise InvalidStorage(err)
-    return {"endpoint": e.rstrip("/"), "region": r, "bucket": b,
-            "prefix": (p if p.endswith("/") else p + "/"), "access_key": k}
+    return {
+        "endpoint": e.rstrip("/"),
+        "region": r,
+        "bucket": b,
+        "prefix": (p if p.endswith("/") else p + "/"),
+        "access_key": k,
+    }
 
 
 def view(conn, mosque_id: int) -> dict:
@@ -79,9 +85,13 @@ def view(conn, mosque_id: int) -> dict:
 def save(conn, mosque_id: int, payload: dict) -> dict:
     """Enregistre ; un champ secret renvoyé sous sa forme masquée garde la valeur précédente."""
     avant = db.one(conn, "SELECT * FROM storage WHERE mosque_id = ?", mosque_id) or {}
-    propre = check(payload.get("endpoint", ""), payload.get("bucket", ""),
-                   payload.get("region", ""), payload.get("prefix", ""),
-                   payload.get("access_key", ""))
+    propre = check(
+        payload.get("endpoint", ""),
+        payload.get("bucket", ""),
+        payload.get("region", ""),
+        payload.get("prefix", ""),
+        payload.get("access_key", ""),
+    )
     secret = _net(payload.get("secret_key", ""))
     if secret in ("", db.MASK):
         secret = avant.get("secret_key") or ""
@@ -95,8 +105,18 @@ def save(conn, mosque_id: int, payload: dict) -> dict:
            ON CONFLICT(mosque_id) DO UPDATE SET endpoint=excluded.endpoint, region=excluded.region,
              bucket=excluded.bucket, access_key=excluded.access_key, secret_key=excluded.secret_key,
              prefix=excluded.prefix, enabled=excluded.enabled, updated_at=excluded.updated_at""",
-        (mosque_id, propre["endpoint"], propre["region"], propre["bucket"], propre["access_key"],
-         secret, propre["prefix"], 1 if actif else 0, db.now_iso()))
+        (
+            mosque_id,
+            propre["endpoint"],
+            propre["region"],
+            propre["bucket"],
+            propre["access_key"],
+            secret,
+            propre["prefix"],
+            1 if actif else 0,
+            db.now_iso(),
+        ),
+    )
     conn.commit()
     return view(conn, mosque_id)
 
@@ -106,9 +126,14 @@ def effective(conn, mosque_id: int) -> dict | None:
     r = db.one(conn, "SELECT * FROM storage WHERE mosque_id = ?", mosque_id) or {}
     if not (r.get("enabled") and r.get("bucket") and r.get("access_key") and r.get("secret_key")):
         return None
-    return {"endpoint": r.get("endpoint") or "", "region": r.get("region") or REGION_DEFAULT,
-            "bucket": r["bucket"], "access_key": r["access_key"], "secret_key": r["secret_key"],
-            "prefix": r.get("prefix") or PREFIX_DEFAULT}
+    return {
+        "endpoint": r.get("endpoint") or "",
+        "region": r.get("region") or REGION_DEFAULT,
+        "bucket": r["bucket"],
+        "access_key": r["access_key"],
+        "secret_key": r["secret_key"],
+        "prefix": r.get("prefix") or PREFIX_DEFAULT,
+    }
 
 
 def probe(target: dict) -> tuple[bool, str]:
@@ -118,10 +143,8 @@ def probe(target: dict) -> tuple[bool, str]:
     try:
         client = upload.client(target)
         cle = target["prefix"] + "sada-test.txt"
-        client.put_object(Bucket=target["bucket"], Key=cle, Body=b"sada\n",
-                          ContentType="text/plain")
+        client.put_object(Bucket=target["bucket"], Key=cle, Body=b"sada\n", ContentType="text/plain")
         client.delete_object(Bucket=target["bucket"], Key=cle)
-    except Exception as e:                                  # noqa: BLE001 — toute erreur se raconte
+    except Exception as e:  # noqa: BLE001 — toute erreur se raconte
         return False, upload.human(e)
-    return True, _("Write accepted in \"{bucket}\" ({prefix}).",
-                   bucket=target["bucket"], prefix=target["prefix"])
+    return True, _('Write accepted in "{bucket}" ({prefix}).', bucket=target["bucket"], prefix=target["prefix"])

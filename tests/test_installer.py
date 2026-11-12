@@ -4,6 +4,7 @@ Ces tests ne touchent ni au réseau ni au disque hors d'un dossier temporaire : 
 règle du module — un pas n'est « ok » que si le contrôle qui le suit repasse — et le fait qu'un
 examen ne modifie jamais rien.
 """
+
 from __future__ import annotations
 
 from collections import namedtuple
@@ -77,7 +78,7 @@ def test_sans_terminal_on_ne_suppose_jamais_un_accord(monkeypatch):
 
 def test_un_relais_d_une_autre_plateforme_ne_compte_pas(tmp_path, monkeypatch):
     """Sous Windows, le mediamtx Linux d'un dépôt partagé ne doit pas passer pour installé."""
-    (tmp_path / "mediamtx").write_text("biele linux")      # présent, mais mauvais système
+    (tmp_path / "mediamtx").write_text("biele linux")  # présent, mais mauvais système
     monkeypatch.setattr(inst, "RAIL_BIN", tmp_path)
     monkeypatch.setattr(inst.sys, "platform", "win32")
     assert inst._relais_ok().etat == inst.MANQUE
@@ -90,11 +91,9 @@ def test_une_dependance_reparee_debloque_la_suite(monkeypatch, capsys):
     etats = iter([inst.MANQUE, inst.MANQUE, inst.OK, inst.OK, inst.OK, inst.OK, inst.OK])
 
     def faux_examen():
-        return [inst.Etape("Brique", next(etats, inst.OK), "", "", automatique=True,
-                           _action=lambda: True)]
+        return [inst.Etape("Brique", next(etats, inst.OK), "", "", automatique=True, _action=lambda: True)]
 
     monkeypatch.setattr(inst, "examen", faux_examen)
     assert inst.install(["--oui"]) == 0
     sortie = capsys.readouterr().out
     assert "in place" in sortie and "ready" in sortie
-

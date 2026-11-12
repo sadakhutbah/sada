@@ -36,8 +36,18 @@ def test_le_vrai_document_ne_laisse_aucune_syntaxe_brute():
 
 def test_les_six_ecrans_et_les_variables_sont_expliques():
     md = (DOCS / "fr" / "ecrans-mode-emploi.md").read_text(encoding="utf-8")
-    for mot in ("Avant", "Prière", "Entracte", "Terminé", "Janaza", "Fin de cours",
-                "{heure}", "{date}", "{mosquee}", "{cours}"):
+    for mot in (
+        "Avant",
+        "Prière",
+        "Entracte",
+        "Terminé",
+        "Janaza",
+        "Fin de cours",
+        "{heure}",
+        "{date}",
+        "{mosquee}",
+        "{cours}",
+    ):
         assert mot in md, f"« {mot} » manque au mode d'emploi"
 
 

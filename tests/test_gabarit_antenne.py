@@ -4,6 +4,7 @@ Un faux rendu (aucun navigateur) permet de vérifier ce qui est vraiment fragile
 change pas n'est pas redessiné, l'entracte l'est une fois par seconde, un échec répété ramène au
 dessin du moteur, et une image n'est jamais réécrite sans raison.
 """
+
 from __future__ import annotations
 
 from PIL import Image
@@ -53,8 +54,9 @@ def antenne(monkeypatch, **kw):
 
 def test_sans_fichier_importe_le_dessin_du_moteur_reste(monkeypatch):
     appels: list = []
-    a = AntenneGabarit(object(), FauxRendu, fetch=lambda url, token: {"present": False, "pages": {}},
-                       log_fn=appels.append)
+    a = AntenneGabarit(
+        object(), FauxRendu, fetch=lambda url, token: {"present": False, "pages": {}}, log_fn=appels.append
+    )
     assert a.charger("http://bo", 0) is False
     assert a.actif is False
     assert a.image("avant") is None

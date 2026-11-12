@@ -1,4 +1,5 @@
 """Single interface: the React front end at the root, and old addresses kept working."""
+
 from __future__ import annotations
 
 import re
@@ -16,7 +17,7 @@ def test_le_front_est_servi_a_la_racine(env):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     assert 'id="root"' in r.text and "Sadā" in r.text
-    assert "/src/main.tsx" not in r.text                     # production build, not the dev server
+    assert "/src/main.tsx" not in r.text  # production build, not the dev server
     asset = re.search(r'src="(/assets/index-[^"]+\.js)"', r.text).group(1)
     assert c.get(asset).status_code == 200
 
@@ -51,8 +52,14 @@ def test_plus_aucune_page_html_rendue_par_le_serveur(env):
 
 def test_les_anciennes_adresses_redirigent(env):
     c = client(env, "admin")
-    cas = {"/journal": "/audit", "/sante": "/health", "/api/dossiers": "/api/v1/folders",
-           "/admin/utilisateurs": "/users", "/admin/mosquee": "/settings", "/sermons": "/khutbas"}
+    cas = {
+        "/journal": "/audit",
+        "/sante": "/health",
+        "/api/dossiers": "/api/v1/folders",
+        "/admin/utilisateurs": "/users",
+        "/admin/mosquee": "/settings",
+        "/sermons": "/khutbas",
+    }
     for vieux, neuf in cas.items():
         r = c.get(vieux, follow_redirects=False)
         assert r.status_code in (301, 302, 307, 308), (vieux, r.status_code)

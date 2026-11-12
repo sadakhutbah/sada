@@ -32,10 +32,7 @@ from . import models
 
 # bookkeeping, hors `metadata` (doit exister avant de décider des migrations)
 SCHEMA_MIGRATIONS_DDL = (
-    "CREATE TABLE IF NOT EXISTS schema_migrations ("
-    " version INTEGER PRIMARY KEY,"
-    " appliquee_le TEXT NOT NULL"
-    ")"
+    "CREATE TABLE IF NOT EXISTS schema_migrations ( version INTEGER PRIMARY KEY, appliquee_le TEXT NOT NULL)"
 )
 
 # version d'une base existante créée par l'ancien code : les tables existent déjà.
@@ -77,20 +74,28 @@ def _add_columns(conn: sqlite3.Connection, table: str, columns: tuple[tuple[str,
 
 def _khutbas_dars(conn: sqlite3.Connection) -> None:
     """Migration 2 : colonnes « dars » des khutbas, ajoutées après coup."""
-    _add_columns(conn, "khutbas", (
-        ("kind", "TEXT NOT NULL DEFAULT 'khutba'"),
-        ("title", "TEXT NOT NULL DEFAULT ''"),
-        ("series", "TEXT NOT NULL DEFAULT ''"),
-        ("session_no", "INTEGER"),
-    ))
+    _add_columns(
+        conn,
+        "khutbas",
+        (
+            ("kind", "TEXT NOT NULL DEFAULT 'khutba'"),
+            ("title", "TEXT NOT NULL DEFAULT ''"),
+            ("series", "TEXT NOT NULL DEFAULT ''"),
+            ("session_no", "INTEGER"),
+        ),
+    )
 
 
 def _mosques_logo(conn: sqlite3.Connection) -> None:
     """Migration 3 : logo et date d'embarquement des mosquées, ajoutés après coup."""
-    _add_columns(conn, "mosques", (
-        ("logo_path", "TEXT NOT NULL DEFAULT ''"),
-        ("onboarded_at", "TEXT NOT NULL DEFAULT ''"),
-    ))
+    _add_columns(
+        conn,
+        "mosques",
+        (
+            ("logo_path", "TEXT NOT NULL DEFAULT ''"),
+            ("onboarded_at", "TEXT NOT NULL DEFAULT ''"),
+        ),
+    )
 
 
 def _tables_du_modele(conn: sqlite3.Connection) -> None:
@@ -105,20 +110,28 @@ def _tables_du_modele(conn: sqlite3.Connection) -> None:
 
 def _mosques_couleurs(conn: sqlite3.Connection) -> None:
     """Migration 5 : couleurs de la mosquée pour l'habillage des clips, ajoutées après coup."""
-    _add_columns(conn, "mosques", (
-        ("brand_green", "TEXT NOT NULL DEFAULT ''"),
-        ("brand_gold", "TEXT NOT NULL DEFAULT ''"),
-    ))
+    _add_columns(
+        conn,
+        "mosques",
+        (
+            ("brand_green", "TEXT NOT NULL DEFAULT ''"),
+            ("brand_gold", "TEXT NOT NULL DEFAULT ''"),
+        ),
+    )
 
 
 def _clips_manuels(conn: sqlite3.Connection) -> None:
     """Migration 7 : clips créés à la main et bornes ajustées par un humain."""
-    _add_columns(conn, "clips", (
-        ("origin", "TEXT NOT NULL DEFAULT 'ia' CHECK (origin IN ('ia', 'manuel'))"),
-        ("title", "TEXT NOT NULL DEFAULT ''"),
-        ("created_by", "INTEGER REFERENCES users (id)"),
-        ("bounds_by", "INTEGER REFERENCES users (id)"),
-    ))
+    _add_columns(
+        conn,
+        "clips",
+        (
+            ("origin", "TEXT NOT NULL DEFAULT 'ia' CHECK (origin IN ('ia', 'manuel'))"),
+            ("title", "TEXT NOT NULL DEFAULT ''"),
+            ("created_by", "INTEGER REFERENCES users (id)"),
+            ("bounds_by", "INTEGER REFERENCES users (id)"),
+        ),
+    )
 
 
 def _habillage(conn: sqlite3.Connection) -> None:
@@ -131,12 +144,10 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
     Migration(3, "mosques : logo et embarquement (logo_path, onboarded_at)", _mosques_logo),
-    Migration(4, "tables des modèles ajoutées après coup (direct, entrées, stockage, textes)",
-              _tables_du_modele),
+    Migration(4, "tables des modèles ajoutées après coup (direct, entrées, stockage, textes)", _tables_du_modele),
     Migration(5, "mosques : couleurs des clips (brand_green, brand_gold)", _mosques_couleurs),
     Migration(6, "sous-titres ajoutés à un instant précis (added_subtitles)", _tables_du_modele),
-    Migration(7, "clips : création manuelle et bornes ajustées (origin, title, created_by, bounds_by)",
-              _clips_manuels),
+    Migration(7, "clips : création manuelle et bornes ajustées (origin, title, created_by, bounds_by)", _clips_manuels),
     Migration(8, "habillage des vidéos (habillages, mosques.habillage_defaults)", _habillage),
 )
 
@@ -167,21 +178,29 @@ def init(path: str | Path) -> None:
         if not applied and _business_tables(conn):
             # base créée par l'ancien code : on l'adopte à sa version de départ (schéma initial),
             # sans rien toucher aux données.
-            conn.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)",
-                         (LEGACY_BASELINE, now_iso()))
+            conn.execute(
+                "INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (LEGACY_BASELINE, now_iso())
+            )
             conn.commit()
             applied = {LEGACY_BASELINE}
 
         if applied and max(applied) > LATEST:
             raise RuntimeError(
-                _("database {path} is at version {version}, newer than the code ({latest}): "
-                  "update the back-office", path=path, version=max(applied), latest=LATEST))
+                _(
+                    "database {path} is at version {version}, newer than the code ({latest}): update the back-office",
+                    path=path,
+                    version=max(applied),
+                    latest=LATEST,
+                )
+            )
 
         for migration in MIGRATIONS:
             if migration.version not in applied:
                 migration.up(conn)
-                conn.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)",
-                             (migration.version, now_iso()))
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)",
+                    (migration.version, now_iso()),
+                )
                 conn.commit()
     finally:
         conn.close()

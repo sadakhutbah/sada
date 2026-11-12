@@ -1,4 +1,5 @@
 """Live commands: all those of the state machine are exposed, with validated parameters."""
+
 import pytest
 
 from sada.backoffice import live
@@ -11,8 +12,11 @@ MOSQUE = {"orchestrator_url": "http://127.0.0.1:9"}
 def appels(monkeypatch):
     """Replaces the HTTP call to the orchestrator and keeps the requests sent."""
     vus = []
-    monkeypatch.setattr(live, "_call", lambda mosque, methode, chemin, params=None, timeout=3.0:
-                        vus.append((methode, chemin, params)) or {"ok": True})
+    monkeypatch.setattr(
+        live,
+        "_call",
+        lambda mosque, methode, chemin, params=None, timeout=3.0: vus.append((methode, chemin, params)) or {"ok": True},
+    )
     return vus
 
 
@@ -60,4 +64,4 @@ def test_les_variantes_viennent_du_moteur():
     assert live.choices("extend") == EXTEND_MINUTES
     assert live.choices("scene") == PICKABLE_SCENES
     assert live.choices("stop") == ()
-    assert "janaza" not in live.choices("scene")      # janaza has its own command, which opens its form
+    assert "janaza" not in live.choices("scene")  # janaza has its own command, which opens its form

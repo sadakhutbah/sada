@@ -6,6 +6,7 @@ not a second matrix. Writes require the session token in the `X-CSRF` header.
 One router per domain: this module only assembles them and exposes the shared request context
 (`sada.backoffice.context`) and the shared response shapes (`common`).
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter

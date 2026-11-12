@@ -3,6 +3,7 @@
 Same circuit as the model's clips: rendered with subtitles (make_clip, through the regeneration
 mechanism), "to validate", audit, then publication once validated.
 """
+
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ def rendu(monkeypatch):
     def fake_render(src, off, w, ass, out, log=print, crop=None, fade_out=None):
         vus.append({"src": src, "off": off, "w": dict(w), "ass": (Path(out).parent / ass).read_text()})
         Path(out).write_bytes(b"clip rendu")
+
     monkeypatch.setattr(clipmod, "render_clip", fake_render)
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
     return vus
@@ -46,7 +48,7 @@ def test_creation_manuelle_du_clip_jusqu_a_la_publication(env, rendu):
     assert clip["created_by"] == env["ids"]["responsable"] and Path(clip["file_path"]).exists()
     assert clip["file_path"].endswith("clip3_rappel_A-VALIDER.mp4")
     assert rendu[-1]["off"] == 100.0 and rendu[-1]["w"]["start"] == 3.5
-    assert "La patience" in rendu[-1]["ass"]           # the title is burnt in under the mosque's
+    assert "La patience" in rendu[-1]["ass"]  # the title is burnt in under the mosque's
 
     # the end the human chose is kept: no trimming after the last word
     assert rendu[-1]["w"]["end"] == 15.0
@@ -59,8 +61,10 @@ def test_creation_manuelle_du_clip_jusqu_a_la_publication(env, rendu):
     assert r.status_code == 200, r.text
     assert _clip(conn, cid)["status"] == "publie"
 
-    acts = [a["action"] for a in db.all_(conn, "SELECT action FROM audit WHERE object_type = 'clip' AND object_id = ? "
-                                               "ORDER BY id", cid)]
+    acts = [
+        a["action"]
+        for a in db.all_(conn, "SELECT action FROM audit WHERE object_type = 'clip' AND object_id = ? ORDER BY id", cid)
+    ]
     assert acts[:4] == ["clip.cree", "clip.regeneration", "clip.regenere", "clip.valide"]
     hist = [h["action"] for h in c.get(f"/api/v1/clips/{cid}").json()["history"]]
     assert "clip.cree" in hist
@@ -71,8 +75,8 @@ def test_creation_manuelle_du_clip_jusqu_a_la_publication(env, rendu):
 
 def test_ajustement_des_bornes_d_un_clip_propose(env, rendu):
     conn = env["conn"]
-    cid = clip_ids(env)[0]                       # model's clip 0–10 s, "verset"
-    c = client(env, "imam")                      # the imam adjusts the clips of his own khutbas
+    cid = clip_ids(env)[0]  # model's clip 0–10 s, "verset"
+    c = client(env, "imam")  # the imam adjusts the clips of his own khutbas
     r = c.ecrire(f"/clips/{cid}/bounds", {"start": "1", "end": "12.5"})
     assert r.status_code == 200, r.text
     clip = _clip(conn, cid)
@@ -99,16 +103,19 @@ def test_ajustement_des_bornes_d_un_clip_propose(env, rendu):
     assert _clip(conn, cid)["start"] == 1.0
 
 
-@pytest.mark.parametrize("corps, motif", [
-    ({"start": "10", "end": "5"}, "after the start"),
-    ({"start": "-1", "end": "8"}, "before the recording"),
-    ({"start": "0", "end": "2"}, "invalid duration"),
-    ({"start": "0", "end": "400"}, "invalid duration"),
-    ({"start": "8", "end": "30"}, "past the end of the recording"),  # the khutba lasts 20 s
-    ({"start": "abc", "end": "8"}, "unreadable"),
-    ({"start": "nan", "end": "8"}, "unreadable"),
-    ({"start": "0", "end": "8", "kind": "inconnu"}, "unknown clip type"),
-])
+@pytest.mark.parametrize(
+    "corps, motif",
+    [
+        ({"start": "10", "end": "5"}, "after the start"),
+        ({"start": "-1", "end": "8"}, "before the recording"),
+        ({"start": "0", "end": "2"}, "invalid duration"),
+        ({"start": "0", "end": "400"}, "invalid duration"),
+        ({"start": "8", "end": "30"}, "past the end of the recording"),  # the khutba lasts 20 s
+        ({"start": "abc", "end": "8"}, "unreadable"),
+        ({"start": "nan", "end": "8"}, "unreadable"),
+        ({"start": "0", "end": "8", "kind": "inconnu"}, "unknown clip type"),
+    ],
+)
 def test_bornes_invalides_refusees(env, rendu, corps, motif):
     conn, kid = env["conn"], env["kid"]
     c = client(env, "responsable")
@@ -147,14 +154,18 @@ def test_echec_du_rendu_laisse_le_clip_a_relancer(env, monkeypatch):
 
     def casse(*a, **k):
         raise RuntimeError("ffmpeg a échoué")
+
     monkeypatch.setattr(clipmod, "render_clip", casse)
     c = client(env, "responsable")
     cid = c.ecrire(f"/sermons/{kid}/clips", {"start": "0", "end": "8"}).json()["id"]
     clip = _clip(conn, cid)
     assert clip["regen_state"] == "erreur" and clip["needs_regen"] == 1 and clip["version"] == 0
     assert c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"}).status_code == 422
-    monkeypatch.setattr(clipmod, "render_clip", lambda src, off, w, ass, out, log=print, crop=None, fade_out=None:
-                        Path(out).write_bytes(b"ok"))
+    monkeypatch.setattr(
+        clipmod,
+        "render_clip",
+        lambda src, off, w, ass, out, log=print, crop=None, fade_out=None: Path(out).write_bytes(b"ok"),
+    )
     assert c.ecrire(f"/clips/{cid}/regenerate").status_code == 200
     assert _clip(conn, cid)["version"] == 1
 

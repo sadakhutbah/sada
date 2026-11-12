@@ -73,11 +73,16 @@ def test_adoption_d_une_base_existante(tmp_path):
         "ALTER TABLE khutbas DROP COLUMN series;"
         "ALTER TABLE khutbas DROP COLUMN session_no;"
         "ALTER TABLE mosques DROP COLUMN logo_path;"
-        "ALTER TABLE mosques DROP COLUMN onboarded_at;")
-    raw.execute("INSERT INTO mosques (slug, name, clip_title, created_at) "
-                "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')")
-    raw.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
-                " VALUES (1, '20261106_220224', 0, 'Khutba du vendredi', '/tmp/x', 'now')")
+        "ALTER TABLE mosques DROP COLUMN onboarded_at;"
+    )
+    raw.execute(
+        "INSERT INTO mosques (slug, name, clip_title, created_at) "
+        "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')"
+    )
+    raw.execute(
+        "INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
+        " VALUES (1, '20261106_220224', 0, 'Khutba du vendredi', '/tmp/x', 'now')"
+    )
     raw.commit()
     raw.close()
 
@@ -112,8 +117,7 @@ def test_refus_d_une_base_plus_recente_que_le_code(tmp_path):
     path = tmp_path / "future.db"
     db.init(path)
     raw = sqlite3.connect(path)
-    raw.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)",
-                (migrations.LATEST + 1, "now"))
+    raw.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (migrations.LATEST + 1, "now"))
     raw.commit()
     raw.close()
 
@@ -142,8 +146,9 @@ def test_table_ajoutee_apres_coup_est_creee_sur_une_base_ancienne(tmp_path):
     try:
         assert {"live_targets", "live_input", "storage", "screen_texts"} <= table_names(conn)
         assert applied_versions(conn)[-1] == migrations.LATEST
-        assert "live_targets_mosque" in {r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'index'")}
+        assert "live_targets_mosque" in {
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+        }
     finally:
         conn.close()
 

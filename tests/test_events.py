@@ -1,4 +1,5 @@
 """Program (events): recurrence expansion, validation, upcoming occurrences."""
+
 import datetime as dt
 import json
 
@@ -14,13 +15,28 @@ def D(y, m, d):
 
 PROG = {
     "events": [
-        {"kind": "dars", "title": "Tafsir Al-Kahf", "speaker": "Imam Abdallah",
-         "series": "Tafsir Al-Kahf", "session": 7,
-         "recurrence": {"weekday": "mardi", "after": "isha", "offset_min": 15}, "max_min": 90},
-        {"kind": "conference", "title": "Les droits des voisins", "speaker": "Cheikh X",
-         "date": "2026-11-21", "time": "18:30"},
-        {"kind": "dars", "title": "Fiqh du quotidien", "publish": False,
-         "recurrence": {"weekday": "jeudi", "time": "19:00"}},
+        {
+            "kind": "dars",
+            "title": "Tafsir Al-Kahf",
+            "speaker": "Imam Abdallah",
+            "series": "Tafsir Al-Kahf",
+            "session": 7,
+            "recurrence": {"weekday": "mardi", "after": "isha", "offset_min": 15},
+            "max_min": 90,
+        },
+        {
+            "kind": "conference",
+            "title": "Les droits des voisins",
+            "speaker": "Cheikh X",
+            "date": "2026-11-21",
+            "time": "18:30",
+        },
+        {
+            "kind": "dars",
+            "title": "Fiqh du quotidien",
+            "publish": False,
+            "recurrence": {"weekday": "jeudi", "time": "19:00"},
+        },
     ]
 }
 
@@ -33,13 +49,13 @@ def prog():
 
 def test_recurrence_apres_isha():
     dars = prog()[0]
-    mardi = D(2026, 11, 10)          # a Tuesday
+    mardi = D(2026, 11, 10)  # a Tuesday
     inst = dars.instance(mardi, TIMES)
     assert inst is not None
-    assert inst.starts == dt.datetime(2026, 11, 10, 19, 0)   # isha 18:45 + 15 min
+    assert inst.starts == dt.datetime(2026, 11, 10, 19, 0)  # isha 18:45 + 15 min
     assert inst.label == "Dars : Tafsir Al-Kahf"
     assert inst.as_event()["session_no"] == 7
-    assert dars.instance(D(2026, 11, 11), TIMES) is None      # Wednesday: nothing
+    assert dars.instance(D(2026, 11, 11), TIMES) is None  # Wednesday: nothing
 
 
 def test_instance_porte_la_forme_canonique_de_l_evenement():
@@ -48,8 +64,12 @@ def test_instance_porte_la_forme_canonique_de_l_evenement():
     assert inst is not None
     m = Machine([inst.starts], MachineParams(), extras=[inst.as_event()])
     rec = m.sessions_dicts()[0]
-    assert (rec["kind"], rec["title"], rec["series"], rec["session_no"]) == \
-        ("dars", "Tafsir Al-Kahf", "Tafsir Al-Kahf", 7)
+    assert (rec["kind"], rec["title"], rec["series"], rec["session_no"]) == (
+        "dars",
+        "Tafsir Al-Kahf",
+        "Tafsir Al-Kahf",
+        7,
+    )
     assert rec["speaker"] == "Imam Abdallah"
 
 
@@ -69,25 +89,23 @@ def test_evenement_unique():
 
 def test_heure_relative_sans_horaire_de_priere():
     dars = prog()[0]
-    assert dars.starts_on(D(2026, 11, 10), {}) is None          # Mawaqit silent: no invented time
+    assert dars.starts_on(D(2026, 11, 10), {}) is None  # Mawaqit silent: no invented time
 
 
 def test_non_publies_ignores():
-    today = D(2026, 11, 12)                                      # Thursday
+    today = D(2026, 11, 12)  # Thursday
     assert [i.title for i in ev.instances_on(prog(), today, TIMES)] == []
 
 
 def test_instances_triees_et_prochaines():
-    day = D(2026, 11, 10)                                        # Tuesday
+    day = D(2026, 11, 10)  # Tuesday
     inst = ev.instances_on(prog(), day, TIMES)
     assert [i.kind for i in inst] == ["dars"]
     # from Tuesday the 10th at noon: the evening dars, then the one on the 17th (the conference is later)
-    nxt = ev.next_instances(prog(), dt.datetime(2026, 11, 10, 12, 0), count=2,
-                            times_for=lambda d: TIMES)
+    nxt = ev.next_instances(prog(), dt.datetime(2026, 11, 10, 12, 0), count=2, times_for=lambda d: TIMES)
     assert [i.title for i in nxt] == ["Tafsir Al-Kahf", "Tafsir Al-Kahf"]
     assert nxt[0].starts == dt.datetime(2026, 11, 10, 19, 0)
-    nxt = ev.next_instances(prog(), dt.datetime(2026, 11, 11, 12, 0), count=2,
-                            times_for=lambda d: TIMES)
+    nxt = ev.next_instances(prog(), dt.datetime(2026, 11, 11, 12, 0), count=2, times_for=lambda d: TIMES)
     assert [i.title for i in nxt] == ["Tafsir Al-Kahf", "Les droits des voisins"]
 
 
@@ -96,11 +114,17 @@ def test_validation():
         ({"events": [{"kind": "mariage", "title": "X", "date": "2026-01-01", "time": "10:00"}]}, "unknown type"),
         ({"events": [{"kind": "dars", "date": "2026-01-01", "time": "10:00"}]}, "title missing"),
         ({"events": [{"kind": "dars", "title": "X"}]}, "neither “date” nor “recurrence”"),
-        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardy", "time": "19:00"}}]}, "unknown recurrence weekday"),
+        (
+            {"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardy", "time": "19:00"}}]},
+            "unknown recurrence weekday",
+        ),
         ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardi"}}]}, "needs “time” or “after”"),
         ({"events": [{"kind": "dars", "title": "X", "date": "2026-01-01"}]}, "also needs a time"),
         ({"events": [{"kind": "dars", "title": "X", "date": "2026-13-01", "time": "10:00"}]}, "invalid date"),
-        ({"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardi", "after": "iftar"}}]}, "unknown prayer"),
+        (
+            {"events": [{"kind": "dars", "title": "X", "recurrence": {"weekday": "mardi", "after": "iftar"}}]},
+            "unknown prayer",
+        ),
     ]:
         with pytest.raises(ValueError, match=motif):
             ev.loads(json.dumps(bad))

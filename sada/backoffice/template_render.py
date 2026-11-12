@@ -12,6 +12,7 @@ The template is a document, never a program: scripts are disabled in the page be
 is inserted, so a file cannot run anything on the mosque's machine. Fonts are inlined, because a
 file references ``../assets/fonts/<name>.ttf`` and this page has no URL to resolve it against.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,10 +39,12 @@ WIDTH, HEIGHT = 1280, 720
 _FONT_REF = re.compile(r"""url\(\s*['"]?(?:\.\./)?assets/fonts/([A-Za-z0-9_.-]+\.ttf)['"]?\s*\)""")
 
 # Names of the embedded engine, by platform: the shipped directory differs on Windows.
-EMBEDDED_NAMES = ("chrome-headless-shell-linux64/chrome-headless-shell",
-                  "chrome-headless-shell-win64/chrome-headless-shell.exe",
-                  "chrome-headless-shell-mac-x64/chrome-headless-shell",
-                  "chrome-headless-shell-mac-arm64/chrome-headless-shell")
+EMBEDDED_NAMES = (
+    "chrome-headless-shell-linux64/chrome-headless-shell",
+    "chrome-headless-shell-win64/chrome-headless-shell.exe",
+    "chrome-headless-shell-mac-x64/chrome-headless-shell",
+    "chrome-headless-shell-mac-arm64/chrome-headless-shell",
+)
 
 # Last resort: a browser already installed on the machine.
 CHROMIUM_CANDIDATES = ("/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome")
@@ -90,12 +93,16 @@ def browser_path() -> str:
         if Path(candidate).is_file():
             return candidate
     raise RenderUnavailable(
-        _("no rendering browser: run `python -m sada.backoffice fetch-engine` "
-          "to download the one shipped with the application"))
+        _(
+            "no rendering browser: run `python -m sada.backoffice fetch-engine` "
+            "to download the one shipped with the application"
+        )
+    )
 
 
-ENGINE_VERSION_URL = ("https://googlechromelabs.github.io/chrome-for-testing/"
-                      "last-known-good-versions-with-downloads.json")
+ENGINE_VERSION_URL = (
+    "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+)
 
 
 def _platform() -> str:
@@ -122,7 +129,7 @@ def fetch_engine(version: str | None = None, keep_zip: bool = False) -> Path:
     import urllib.request
     import zipfile
 
-    with urllib.request.urlopen(ENGINE_VERSION_URL, timeout=60) as r:   # noqa: S310 — fixed host
+    with urllib.request.urlopen(ENGINE_VERSION_URL, timeout=60) as r:  # noqa: S310 — fixed host
         known = json.load(r)
     if version is None:
         version = known["channels"]["Stable"]["version"]
@@ -133,23 +140,24 @@ def fetch_engine(version: str | None = None, keep_zip: bool = False) -> Path:
             url = item["url"]
     if not url:
         raise RenderUnavailable(_("no package for platform {platform}", platform=plateforme))
-    print(_("Render: downloading {engine} {version} ({platform})…",
-            engine=ENGINE, version=version, platform=plateforme))
-    with urllib.request.urlopen(url, timeout=600) as r:                 # noqa: S310 — fixed host
+    print(
+        _("Render: downloading {engine} {version} ({platform})…", engine=ENGINE, version=version, platform=plateforme)
+    )
+    with urllib.request.urlopen(url, timeout=600) as r:  # noqa: S310 — fixed host
         blob = r.read()
     cible = EMBEDDED
     if cible.exists():
         import shutil
-        shutil.rmtree(cible)                    # a previous download is replaced, not merged
+
+        shutil.rmtree(cible)  # a previous download is replaced, not merged
     cible.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
         z.extractall(cible)
-    for name in EMBEDDED_NAMES:                 # the executable bit does not survive a zip
+    for name in EMBEDDED_NAMES:  # the executable bit does not survive a zip
         candidate = cible / name
         if candidate.is_file():
             candidate.chmod(0o755)
-            print(_("Render: browser installed ({folder}, {version})",
-                    folder=candidate.parent.name, version=version))
+            print(_("Render: browser installed ({folder}, {version})", folder=candidate.parent.name, version=version))
             return candidate
     raise RenderUnavailable(_("downloaded archive has no executable"))
 
@@ -187,12 +195,13 @@ class _Cdp:
     async def open_page(self) -> None:
         result = await self.call("Target.createTarget", {"url": "about:blank"}, session=False)
         target = result["targetId"]
-        attached = await self.call("Target.attachToTarget", {"targetId": target, "flatten": True},
-                                   session=False)
+        attached = await self.call("Target.attachToTarget", {"targetId": target, "flatten": True}, session=False)
         self._session = attached["sessionId"]
         await self.call("Page.enable")
-        await self.call("Emulation.setDeviceMetricsOverride",
-                        {"width": WIDTH, "height": HEIGHT, "deviceScaleFactor": 1, "mobile": False})
+        await self.call(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": WIDTH, "height": HEIGHT, "deviceScaleFactor": 1, "mobile": False},
+        )
         # a template is a document, never a program
         await self.call("Emulation.setScriptExecutionDisabled", {"value": True})
 
@@ -207,9 +216,13 @@ class _Cdp:
         await self.call("Page.navigate", {"url": "file://" + str(self._stage)})
         # fonts are embedded, but layout still settles: wait for the document to say it is ready
         for _attempt in range(20):
-            ready = await self.call("Runtime.evaluate", {
-                "expression": "document.readyState === 'complete' && document.fonts.status === 'loaded'",
-                "returnByValue": True})
+            ready = await self.call(
+                "Runtime.evaluate",
+                {
+                    "expression": "document.readyState === 'complete' && document.fonts.status === 'loaded'",
+                    "returnByValue": True,
+                },
+            )
             if (ready.get("result") or {}).get("value") is True:
                 return
             await asyncio.sleep(0.02)
@@ -240,6 +253,7 @@ def _stage_fonts(root: Path) -> Path:
                 target.symlink_to(source)
             except OSError:
                 import shutil
+
                 shutil.copyfile(source, target)
     return assets
 
@@ -277,7 +291,7 @@ class TemplateRender:
             self._loop.run_until_complete(self._open())
             self._ready.set()
             self._loop.run_forever()
-        except Exception as e:                     # noqa: BLE001 — reported to the caller
+        except Exception as e:  # noqa: BLE001 — reported to the caller
             self._failure = e
             self._ready.set()
 
@@ -295,22 +309,35 @@ class TemplateRender:
         # written by CDP as UTF-8, so the template's encoding is not left to the platform default.
         url = self._stage.resolve().as_uri()
         proc = subprocess.Popen(
-            [self._browser or browser_path(), "--headless=new", "--disable-gpu", "--no-sandbox",
-             "--no-first-run", "--disable-extensions", "--mute-audio", "--hide-scrollbars",
-             f"--window-size={WIDTH},{HEIGHT}", "--remote-debugging-port=0",
-             f"--user-data-dir={self._profile.name}", url],
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            [
+                self._browser or browser_path(),
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--no-first-run",
+                "--disable-extensions",
+                "--mute-audio",
+                "--hide-scrollbars",
+                f"--window-size={WIDTH},{HEIGHT}",
+                "--remote-debugging-port=0",
+                f"--user-data-dir={self._profile.name}",
+                url,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
 
         self._proc = proc
         url = None
-        for line in proc.stderr:                   # type: ignore[union-attr]
+        for line in proc.stderr:  # type: ignore[union-attr]
             match = re.search(r"ws://\S+", line or "")
             if match:
                 url = match.group(0)
                 break
         if not url:
             raise RenderUnavailable(_("browser: debugging address not found"))
-        self._cdp = _Cdp(url, self._loop)          # type: ignore[arg-type]
+        self._cdp = _Cdp(url, self._loop)  # type: ignore[arg-type]
         self._cdp._stage = self._stage
         await self._cdp.connect()
         await self._cdp.open_page()
@@ -319,7 +346,7 @@ class TemplateRender:
         if self._loop is not None and self._cdp is not None:
             try:
                 asyncio.run_coroutine_threadsafe(self._cdp.close(), self._loop).result(3)
-            except Exception:                      # noqa: BLE001 — on ferme, coûte que coûte
+            except Exception:  # noqa: BLE001 — on ferme, coûte que coûte
                 pass
         if self._loop is not None:
             self._loop.call_soon_threadsafe(self._loop.stop)
@@ -341,13 +368,14 @@ class TemplateRender:
         if variables:
             for name, value in variables.items():
                 page = page.replace("{" + name + "}", value or "")
-        with self._lock:                           # one screenshot at a time, one page
+        with self._lock:  # one screenshot at a time, one page
+
             async def run() -> bytes:
-                await self._cdp.show(page)         # type: ignore[union-attr]
+                await self._cdp.show(page)  # type: ignore[union-attr]
                 return await self._cdp.screenshot()  # type: ignore[union-attr]
 
             future = asyncio.run_coroutine_threadsafe(run(), self._loop)
             try:
                 return future.result(self.timeout)
-            except Exception as e:                 # noqa: BLE001 — the caller decides to fall back
+            except Exception as e:  # noqa: BLE001 — the caller decides to fall back
                 raise RenderUnavailable(_("screen rendering impossible ({error})", error=e)) from e

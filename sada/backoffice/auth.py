@@ -1,4 +1,5 @@
 """Accounts, passwords (argon2id), server sessions, CSRF token, attempt limiting, permissions."""
+
 from __future__ import annotations
 
 import hashlib
@@ -26,6 +27,7 @@ def role_labels() -> dict[str, str]:
     """Every role label, in the request's language."""
     return {r: role_label(r) for r in ROLE_LABELS}
 
+
 # Permission matrix: a single source of truth, tested (tests/test_backoffice.py).
 #   live        : drive the live (live.COMMANDS) — SPEC 5.0 ter: imam and responsables
 #   history_all : see all the khutbas of the mosque (the imam only sees his own)
@@ -45,11 +47,11 @@ PERMS = {
 }
 
 MIN_PASSWORD = 10
-SESSION_TTL = 7 * 24 * 3600          # maximum lifetime of a session
-IDLE_TTL = 12 * 3600                 # signed out after 12 h of inactivity
+SESSION_TTL = 7 * 24 * 3600  # maximum lifetime of a session
+IDLE_TTL = 12 * 3600  # signed out after 12 h of inactivity
 COOKIE = "sada_session"
 
-_ph = PasswordHasher()               # argon2id, argon2-cffi default parameters (RFC 9106 "low memory")
+_ph = PasswordHasher()  # argon2id, argon2-cffi default parameters (RFC 9106 "low memory")
 
 
 def can(user: dict | None, perm: str) -> bool:
@@ -81,8 +83,11 @@ def _dummy_hash() -> str:
 
 def imams(conn, mosque_id: int) -> list[dict]:
     """Active imams of the mosque (choice of the imam of a khutba, default imam)."""
-    return db.all_(conn, "SELECT id, display_name FROM users WHERE mosque_id = ? AND role = 'imam' AND active = 1 "
-                         "ORDER BY display_name", mosque_id)
+    return db.all_(
+        conn,
+        "SELECT id, display_name FROM users WHERE mosque_id = ? AND role = 'imam' AND active = 1 ORDER BY display_name",
+        mosque_id,
+    )
 
 
 def imam_id(conn, mosque_id: int, value) -> int | None:
@@ -99,21 +104,22 @@ def create_user(conn, mosque_id: int, username: str, password: str, role: str, d
         raise ValueError(_("invalid username (no space, 64 characters max)"))
     if db.one(conn, "SELECT id FROM users WHERE username = ?", username):
         raise ValueError(_("the username “{username}” already exists", username=username))
-    cur = conn.execute("INSERT INTO users (mosque_id, username, display_name, password_hash, role, created_at) "
-                       "VALUES (?,?,?,?,?,?)",
-                       (mosque_id, username, display_name.strip() or username, hash_password(password), role, db.now_iso()))
+    cur = conn.execute(
+        "INSERT INTO users (mosque_id, username, display_name, password_hash, role, created_at) VALUES (?,?,?,?,?,?)",
+        (mosque_id, username, display_name.strip() or username, hash_password(password), role, db.now_iso()),
+    )
     return cur.lastrowid
 
 
 def set_password(conn, user_id: int, password: str) -> None:
     conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), user_id))
-    conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))   # signs out everywhere
+    conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))  # signs out everywhere
 
 
 def authenticate(conn, username: str, password: str) -> dict | None:
     u = db.one(conn, "SELECT * FROM users WHERE username = ?", username.strip())
     if not u:
-        verify_password(_dummy_hash(), password)   # constant time: does not reveal whether the account exists
+        verify_password(_dummy_hash(), password)  # constant time: does not reveal whether the account exists
         return None
     if not verify_password(u["password_hash"], password) or not u["active"]:
         return None
@@ -123,6 +129,7 @@ def authenticate(conn, username: str, password: str) -> dict | None:
 
 
 # ------------------------------------------------------------------ sessions
+
 
 def _h(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
@@ -144,9 +151,11 @@ def open_session(conn, user_id: int, ip: str | None, ua: str | None) -> str:
     """Creates a session; returns the token (only its SHA-256 digest is stored)."""
     token = secrets.token_urlsafe(32)
     t = time.time()
-    conn.execute("INSERT INTO auth_sessions (token_hash, user_id, csrf, created_at, expires_at, last_seen_at, ip, user_agent) "
-                 "VALUES (?,?,?,?,?,?,?,?)", (_h(token), user_id, secrets.token_urlsafe(24), t, t + SESSION_TTL, t, ip,
-                                              ua_tag(ua)))
+    conn.execute(
+        "INSERT INTO auth_sessions (token_hash, user_id, csrf, created_at, expires_at, last_seen_at, ip, user_agent) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (_h(token), user_id, secrets.token_urlsafe(24), t, t + SESSION_TTL, t, ip, ua_tag(ua)),
+    )
     conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (db.now_iso(), user_id))
     conn.execute("DELETE FROM auth_sessions WHERE expires_at < ? OR last_seen_at < ?", (t, t - IDLE_TTL))
     return token
@@ -191,6 +200,7 @@ def check_csrf(session: dict, value: str | None) -> bool:
 
 # --------------------------------------------------------- attempt limiting
 
+
 class RateLimiter:
     """5 failures in 10 min (per IP + username, or 20 per IP) -> 10 min block."""
 
@@ -207,7 +217,10 @@ class RateLimiter:
 
     def blocked(self, ip: str, username: str) -> bool:
         with self._lock:
-            return len(self._recent(f"u:{ip}:{username.lower()}")) >= self.per_user or len(self._recent(f"ip:{ip}")) >= self.per_ip
+            return (
+                len(self._recent(f"u:{ip}:{username.lower()}")) >= self.per_user
+                or len(self._recent(f"ip:{ip}")) >= self.per_ip
+            )
 
     def fail(self, ip: str, username: str) -> None:
         with self._lock:

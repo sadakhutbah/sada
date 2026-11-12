@@ -1,7 +1,8 @@
 """Orchestrator: schedule + signals + state machine + encoder + API.
 
-    python -m sada.orchestrator --sim-start 12:12 --sim-speed 40
+python -m sada.orchestrator --sim-start 12:12 --sim-speed 40
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,8 +55,14 @@ class Orchestrator:
         extras = [{} for _ in jumua] + [i.as_event() for i in self.instances]
         log.info(_("Sessions of the day (mosque clock): {times}", times=[s.strftime("%H:%M") for s in sessions]))
         for i in self.instances:
-            log.info(_("Programme: {label} at {time} — {speaker}", label=i.label,
-                       time=i.starts.strftime("%H:%M"), speaker=i.speaker or _("speaker to be confirmed")))
+            log.info(
+                _(
+                    "Programme: {label} at {time} — {speaker}",
+                    label=i.label,
+                    time=i.starts.strftime("%H:%M"),
+                    speaker=i.speaker or _("speaker to be confirmed"),
+                )
+            )
         # Live destinations come from the back office when an administrator saved some there.
         remote = destinations.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
         if remote:
@@ -70,7 +77,8 @@ class Orchestrator:
             cfg.screen_texts = textes
         # Replays: after the live, the recordings are sent to the bucket saved in the interface.
         self.uploader = upload.Uploader(
-            upload.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info), log=log.info)
+            upload.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info), log=log.info
+        )
         # Le gabarit importé par la mosquée est ce qui s'affiche : le dessin du moteur ne sert plus
         # que de repli quand aucun fichier n'a été importé, ou quand le navigateur de rendu manque.
         self.gabarit = gabarit_antenne.depuis_backoffice(cfg, cfg.backoffice_url, cfg.api_port, log_fn=log.info)
@@ -87,20 +95,40 @@ class Orchestrator:
         self.vad = VadMonitor(cfg.camera_url, cfg.vad_aggressiveness, cfg.vad_ratio, log=log.info)
         self.presence = None
         if cfg.presence == "motion":
-            gate = MotionGate(width=cfg.presence_width, height=cfg.presence_height,
-                              roi=tuple(cfg.presence_roi), threshold=cfg.presence_threshold,
-                              pixel_delta=cfg.presence_pixel_delta, hold_s=cfg.presence_hold_s)
+            gate = MotionGate(
+                width=cfg.presence_width,
+                height=cfg.presence_height,
+                roi=tuple(cfg.presence_roi),
+                threshold=cfg.presence_threshold,
+                pixel_delta=cfg.presence_pixel_delta,
+                hold_s=cfg.presence_hold_s,
+            )
             self.presence = PresenceMonitor(cfg.camera_url, gate, fps=cfg.presence_fps, log=log.info)
-            log.info(_("Presence: motion in zone {zone} (threshold {threshold:.3f})",
-                       zone=tuple(cfg.presence_roi), threshold=cfg.presence_threshold))
+            log.info(
+                _(
+                    "Presence: motion in zone {zone} (threshold {threshold:.3f})",
+                    zone=tuple(cfg.presence_roi),
+                    threshold=cfg.presence_threshold,
+                )
+            )
         self.faces = None
         if cfg.face == "yunet":
-            gate = FaceGate(detect=yunet_detector(cfg.face_threshold, (cfg.face_width, cfg.face_height)),
-                            roi=tuple(cfg.face_roi), threshold=cfg.face_threshold, hold_s=cfg.face_hold_s)
-            self.faces = FaceMonitor(cfg.camera_url, gate, width=cfg.face_width, height=cfg.face_height,
-                                     fps=cfg.face_fps, log=log.info)
-            log.info(_("Face: YuNet, zone {zone}, threshold {threshold:.2f}",
-                       zone=tuple(cfg.face_roi), threshold=cfg.face_threshold))
+            gate = FaceGate(
+                detect=yunet_detector(cfg.face_threshold, (cfg.face_width, cfg.face_height)),
+                roi=tuple(cfg.face_roi),
+                threshold=cfg.face_threshold,
+                hold_s=cfg.face_hold_s,
+            )
+            self.faces = FaceMonitor(
+                cfg.camera_url, gate, width=cfg.face_width, height=cfg.face_height, fps=cfg.face_fps, log=log.info
+            )
+            log.info(
+                _(
+                    "Face: YuNet, zone {zone}, threshold {threshold:.2f}",
+                    zone=tuple(cfg.face_roi),
+                    threshold=cfg.face_threshold,
+                )
+            )
         self.lock = threading.RLock()
         self._shown_key = None
         self._saved = None
@@ -112,7 +140,10 @@ class Orchestrator:
         fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S")
         root = logging.getLogger("sada")
         root.setLevel(logging.INFO)
-        for h in (logging.StreamHandler(sys.stdout), logging.FileHandler(self.run_dir / "orchestrator.log", encoding="utf-8")):
+        for h in (
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(self.run_dir / "orchestrator.log", encoding="utf-8"),
+        ):
             h.setFormatter(fmt)
             root.addHandler(h)
 
@@ -129,8 +160,14 @@ class Orchestrator:
         try:
             d = mawaqit.get_jumua(self.cfg.mawaqit_url, self.cfg.mawaqit_cache)
             self.mawaqit_data = d
-            log.info(_("Mawaqit ({name}): jumua={jumua} — origin: {origin}",
-                       name=d.get("name"), jumua=d["jumua_list"], origin=d.get("origin")))
+            log.info(
+                _(
+                    "Mawaqit ({name}): jumua={jumua} — origin: {origin}",
+                    name=d.get("name"),
+                    jumua=d["jumua_list"],
+                    origin=d.get("origin"),
+                )
+            )
             if d["jumua_list"]:
                 return d["jumua_list"]
         except Exception as e:
@@ -141,8 +178,7 @@ class Orchestrator:
     # --- events ---------------------------------------------------------------
     def _next_event(self, now: dt.datetime):
         """Next class, announced on the end screen and during the interlude."""
-        found = events_mod.next_instances(self.program, now, count=1, days=21,
-                                          times_for=lambda d: self.prayer_times)
+        found = events_mod.next_instances(self.program, now, count=1, days=21, times_for=lambda d: self.prayer_times)
         return found[0] if found else None
 
     # --- broadcast -----------------------------------------------------------
@@ -154,8 +190,15 @@ class Orchestrator:
             spec = SCENES[m.scene]
             ev = m.rec.event() if m.scene == "dars" and m.rec is not None else None
             nxt = self._next_event(now) if m.scene in ("dars_fin", "entracte") else None
-            key = (m.scene, m.session, m.janaza_name, m.janaza_info, (ev or {}).get("title"),
-                   getattr(nxt, "starts", None), now.strftime("%H:%M:%S") if spec.ticking else None)
+            key = (
+                m.scene,
+                m.session,
+                m.janaza_name,
+                m.janaza_info,
+                (ev or {}).get("title"),
+                getattr(nxt, "starts", None),
+                now.strftime("%H:%M:%S") if spec.ticking else None,
+            )
             if key != self._shown_key:
                 self._shown_key = key
                 moment = Moment(now, m.session, m.janaza_name, m.janaza_info, event=ev, next_event=nxt)
@@ -192,9 +235,10 @@ class Orchestrator:
         cle = f"{scene}|{self.gabarit.variable_de_l_instant(scene)}"
         try:
             image = Image.open(io.BytesIO(png)).convert("RGBA")
-        except Exception as e:                      # noqa: BLE001 — image illisible : on dessine
-            log.warning(_("Template: image of screen {screen} unreadable ({error}) — engine drawing",
-                          screen=scene, error=e))
+        except Exception as e:  # noqa: BLE001 — image illisible : on dessine
+            log.warning(
+                _("Template: image of screen {screen} unreadable ({error}) — engine drawing", screen=scene, error=e)
+            )
             return False
         self.encoder.show_image(scene, full, image, cle)
         return True
@@ -208,8 +252,14 @@ class Orchestrator:
 
     def _save_sessions(self):
         recs = self.encoder.recordings
-        data = {"run_id": self.run_id, "recordings": [r for r, _ in recs], "recordings_clean": [c for _, c in recs],
-                "clock_sim": self.cfg.sim_start, "sessions": self.machine.sessions_dicts(), "mosque": self.cfg.mosque_name}
+        data = {
+            "run_id": self.run_id,
+            "recordings": [r for r, _ in recs],
+            "recordings_clean": [c for _, c in recs],
+            "clock_sim": self.cfg.sim_start,
+            "sessions": self.machine.sessions_dicts(),
+            "mosque": self.cfg.mosque_name,
+        }
         if data != self._saved:
             runs.write(self.run_dir, data)
             self._saved = data
@@ -219,8 +269,9 @@ class Orchestrator:
         v, s = self.vad.runs()
         pres = self.presence.present() if self.presence else None
         face_run = self.faces.absence_run() if self.faces else None
-        return Signals(now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s,
-                       presence=pres, face_run=face_run)
+        return Signals(
+            now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s, presence=pres, face_run=face_run
+        )
 
     def manual(self, cmd: str, arg=None) -> dict:
         with self.lock:
@@ -235,26 +286,36 @@ class Orchestrator:
             _tok, pos = self.encoder.position()
             face_abs = self.faces.absence_run() if self.faces else None
             face_score = self.faces.last_score() if self.faces else None
-            st.update({
-                "run_id": self.run_id,
-                "clock": self.clock.now().strftime("%H:%M:%S"), "clock_speed": self.clock.speed,
-                "vad": {"connected": self.vad.connected, "voice_run_s": round(v, 1), "silence_run_s": round(s, 1)},
-                "encoder": {"alive": self.encoder.alive(), "restarts": self.encoder.restarts,
-                            "recording": self.encoder.current_recording(),
-                            "pos_s": round(pos, 1)},
-                "mic": self.encoder.mic_on,
-                "presence": (
-                    {"mode": "motion", "present": self.presence.present(),
-                     "score": self.presence.last_score()}
-                    if self.presence else {"mode": "off", "present": None, "score": None}
-                ),
-                "face": (
-                    {"mode": self.cfg.face, "present": self.faces.present(),
-                     "absence_s": round(face_abs, 1) if face_abs is not None else None,
-                     "score": round(face_score, 2) if face_score is not None else None}
-                    if self.faces else {"mode": "off", "present": None, "absence_s": None, "score": None}
-                ),
-            })
+            st.update(
+                {
+                    "run_id": self.run_id,
+                    "clock": self.clock.now().strftime("%H:%M:%S"),
+                    "clock_speed": self.clock.speed,
+                    "vad": {"connected": self.vad.connected, "voice_run_s": round(v, 1), "silence_run_s": round(s, 1)},
+                    "encoder": {
+                        "alive": self.encoder.alive(),
+                        "restarts": self.encoder.restarts,
+                        "recording": self.encoder.current_recording(),
+                        "pos_s": round(pos, 1),
+                    },
+                    "mic": self.encoder.mic_on,
+                    "presence": (
+                        {"mode": "motion", "present": self.presence.present(), "score": self.presence.last_score()}
+                        if self.presence
+                        else {"mode": "off", "present": None, "score": None}
+                    ),
+                    "face": (
+                        {
+                            "mode": self.cfg.face,
+                            "present": self.faces.present(),
+                            "absence_s": round(face_abs, 1) if face_abs is not None else None,
+                            "score": round(face_score, 2) if face_score is not None else None,
+                        }
+                        if self.faces
+                        else {"mode": "off", "present": None, "absence_s": None, "score": None}
+                    ),
+                }
+            )
             return st
 
     # --- loop --------------------------------------------------------------
@@ -269,8 +330,14 @@ class Orchestrator:
         if self.faces:
             self.faces.start()
         self.api = make_server(self, cfg.api_host, cfg.api_port, cfg.api_token)
-        log.info(_("Control API: http://{host}:{port}/   | initial state {state}",
-                   host=cfg.api_host, port=cfg.api_port, state=self.machine.state.value))
+        log.info(
+            _(
+                "Control API: http://{host}:{port}/   | initial state {state}",
+                host=cfg.api_host,
+                port=cfg.api_port,
+                state=self.machine.state.value,
+            )
+        )
         for sig_ in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig_, lambda *a: self._stop.set())
         last_status = 0.0
@@ -285,8 +352,15 @@ class Orchestrator:
             if time.monotonic() - last_status > 30:
                 last_status = time.monotonic()
                 st = self.status()
-                log.info(_("status: state={state} clock={clock} vad={vad} enc={enc}",
-                           state=st["state"], clock=st["clock"], vad=st["vad"], enc=st["encoder"]))
+                log.info(
+                    _(
+                        "status: state={state} clock={clock} vad={vad} enc={enc}",
+                        state=st["state"],
+                        clock=st["clock"],
+                        vad=st["vad"],
+                        enc=st["encoder"],
+                    )
+                )
             self._stop.wait(0.5)
         log.info(_("Stop requested"))
         self.shutdown()
@@ -338,15 +412,22 @@ def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=_("Sadā — orchestrator"))
     ap.add_argument("--config", help=_("JSON configuration file"))
     for f in fields(Config):
-        template = f.default if f.default is not MISSING else (
-            f.default_factory() if f.default_factory is not MISSING else None)
+        template = (
+            f.default
+            if f.default is not MISSING
+            else (f.default_factory() if f.default_factory is not MISSING else None)
+        )
         if isinstance(template, SessionParams):
             continue
         flags = (f"--{f.name.replace('_', '-')}",) + tuple(CLI_ALIASES.get(f.name, ()))
-        ap.add_argument(*flags, dest=f.name, type=cli_type(template), default=None,
-                        metavar=f.name.upper(),
-                        help=_("default {default} ; env {env}", default=repr(template),
-                               env=env_name(f.name)))
+        ap.add_argument(
+            *flags,
+            dest=f.name,
+            type=cli_type(template),
+            default=None,
+            metavar=f.name.upper(),
+            help=_("default {default} ; env {env}", default=repr(template), env=env_name(f.name)),
+        )
     return ap
 
 

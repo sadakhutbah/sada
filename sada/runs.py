@@ -3,6 +3,7 @@
 Written by the orchestrator (one entry per session: planned, manual or janaza), read by the pipeline and the
 back-office. The pipeline outputs of a session go to data/output/<run_id>/<session_dir(index)>/.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -49,8 +50,9 @@ def load(path: str | Path) -> dict:
 
 def latest(state_dir: Path = paths.STATE) -> Path | None:
     """sessions.json of the most recent run."""
-    runs = sorted((d for d in state_dir.glob("*") if RUN_RE.match(d.name) and (d / SESSIONS).exists()),
-                  key=lambda d: d.name)
+    runs = sorted(
+        (d for d in state_dir.glob("*") if RUN_RE.match(d.name) and (d / SESSIONS).exists()), key=lambda d: d.name
+    )
     return runs[-1] / SESSIONS if runs else None
 
 

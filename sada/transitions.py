@@ -16,19 +16,20 @@ Choreography (sober):
 
 This module is pure (no I/O): the value computation is testable without ffmpeg.
 """
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
-DELAI_CHARGEMENT = 1.0   # s: the layer PNG is re-read in ≤ 0.65 s (ffmpeg queue at 25 fps)
-OUT_DUR = 0.45           # fade-out of the old content
-FOND_DUR = 0.80          # background fade (camera <-> full screen)
-IN_START = 0.35          # entrance of the new content
+DELAI_CHARGEMENT = 1.0  # s: the layer PNG is re-read in ≤ 0.65 s (ffmpeg queue at 25 fps)
+OUT_DUR = 0.45  # fade-out of the old content
+FOND_DUR = 0.80  # background fade (camera <-> full screen)
+IN_START = 0.35  # entrance of the new content
 IN_DUR = 0.70
-AUDIO_DUR = 0.80         # audio fade of the mic
-SLIDE_Y = 18             # px (720p mockup): rise of the full-screen texts
-SLIDE_X = 36             # px: banner slide from the left
+AUDIO_DUR = 0.80  # audio fade of the mic
+SLIDE_Y = 18  # px (720p mockup): rise of the full-screen texts
+SLIDE_X = 36  # px: banner slide from the left
 TOTAL = max(OUT_DUR, FOND_DUR, IN_START + IN_DUR, AUDIO_DUR)
 
 
@@ -51,11 +52,12 @@ def ease_out(x: float) -> float:
 @dataclass
 class Plan:
     """A transition from one content layer (src) to the other (dst)."""
-    src: str            # "a" | "b": layer of the outgoing content
-    dst: str            # layer of the incoming content
-    fond_from: float    # background opacity at the start (0 or 1)
+
+    src: str  # "a" | "b": layer of the outgoing content
+    dst: str  # layer of the incoming content
+    fond_from: float  # background opacity at the start (0 or 1)
     fond_to: float
-    full: bool          # the arriving scene is a full screen (vertical slide) or a banner
+    full: bool  # the arriving scene is a full screen (vertical slide) or a banner
     scale: float = 1.0  # scale factor (height / 720)
 
     def values(self, tau: float) -> dict[str, float]:
@@ -63,8 +65,15 @@ class Plan:
         out = 1 - ease_in_out(tau / OUT_DUR)
         k = ease_out((tau - IN_START) / IN_DUR)
         fond = self.fond_from + (self.fond_to - self.fond_from) * ease_in_out(tau / FOND_DUR)
-        v = {"fond": fond, f"a_{self.src}": out, f"a_{self.dst}": k,
-             f"x_{self.src}": 0.0, f"y_{self.src}": 0.0, f"x_{self.dst}": 0.0, f"y_{self.dst}": 0.0}
+        v = {
+            "fond": fond,
+            f"a_{self.src}": out,
+            f"a_{self.dst}": k,
+            f"x_{self.src}": 0.0,
+            f"y_{self.src}": 0.0,
+            f"x_{self.dst}": 0.0,
+            f"y_{self.dst}": 0.0,
+        }
         if self.full:
             v[f"y_{self.dst}"] = round(SLIDE_Y * self.scale * (1 - k), 1)
         else:
@@ -82,5 +91,7 @@ def volume_ramp(a: float, b: float, dur: float = AUDIO_DUR) -> str:
     audio frame following the command (start t memorised in register 0; +1 to avoid 0)."""
     if a == b:
         return f"{b:g}"
-    return (f"if(isnan(t),{a:g},(if(eq(ld(0),0),st(0,t+1),0);{a:g}+({b:g}-{a:g})"
-            f"*(0.5-0.5*cos(PI*clip((t+1-ld(0))/{dur:g},0,1)))))")
+    return (
+        f"if(isnan(t),{a:g},(if(eq(ld(0),0),st(0,t+1),0);{a:g}+({b:g}-{a:g})"
+        f"*(0.5-0.5*cos(PI*clip((t+1-ld(0))/{dur:g},0,1)))))"
+    )

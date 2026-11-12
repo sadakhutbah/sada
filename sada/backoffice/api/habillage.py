@@ -3,6 +3,7 @@
 Lecture : quiconque voit la session. Écriture (aperçu, rendu) : le droit `assign`, celui de l'import
 de vidéo. Aucun chemin de la machine dans les réponses : les fichiers passent par les adresses ci-dessous.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -44,12 +45,22 @@ async def habillage_lancer(kid: int, ctx: CtxDep):
     ctx.require("assign")
     k = khutba_or_404(ctx, kid)
     try:
-        habillage.lancer(ctx.conn, ctx.request.app.state.db_path, k, ctx.mosque, brut.get("options") or {}, ctx.user,
-                         ctx.ip, background=ctx.request.app.state.regen_background)
+        habillage.lancer(
+            ctx.conn,
+            ctx.request.app.state.db_path,
+            k,
+            ctx.mosque,
+            brut.get("options") or {},
+            ctx.user,
+            ctx.ip,
+            background=ctx.request.app.state.regen_background,
+        )
     except ValueError as e:
         raise Invalid(str(e)) from e
-    return _ok(_("Rendering started: the dressed video will be ready in a few minutes, this page follows "
-                 "the progress."), **_vue(ctx, k))
+    return _ok(
+        _("Rendering started: the dressed video will be ready in a few minutes, this page follows the progress."),
+        **_vue(ctx, k),
+    )
 
 
 @router.get("/sermons/{kid}/habillage/apercu.jpg")

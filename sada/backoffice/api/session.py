@@ -1,4 +1,5 @@
 """Login, logout and the session probe."""
+
 from __future__ import annotations
 
 import secrets
@@ -52,8 +53,9 @@ async def login(request: Request, conn: ConnDep):
     sess = auth.load_session(conn, token, request.headers.get("user-agent"), ip)[0]
     ctx = Ctx(request, conn, sess, u, m)
     r = JSONResponse({"user": _user(ctx), "mosque": _mosque(ctx), "csrf": sess["csrf"]})
-    r.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=_secure(request),
-                 max_age=auth.SESSION_TTL, path="/")
+    r.set_cookie(
+        auth.COOKIE, token, httponly=True, samesite="lax", secure=_secure(request), max_age=auth.SESSION_TTL, path="/"
+    )
     r.delete_cookie(PRE_COOKIE)
     return r
 
@@ -77,7 +79,14 @@ def session(ctx: CtxDep):
     # The number of clips to validate comes with the session: the navigation shows it as a badge
     # without a second request at startup.
     where, args = imam_filter(ctx)
-    a_valider = db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
-                                 f"WHERE {where} AND c.status = 'a_valider'", *args)["n"]
-    return {"user": _user(ctx), "mosque": _mosque(ctx), "csrf": (ctx.session or {}).get("csrf", ""),
-            "counts": {"pending": a_valider}}
+    a_valider = db.one(
+        ctx.conn,
+        f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = 'a_valider'",
+        *args,
+    )["n"]
+    return {
+        "user": _user(ctx),
+        "mosque": _mosque(ctx),
+        "csrf": (ctx.session or {}).get("csrf", ""),
+        "counts": {"pending": a_valider},
+    }

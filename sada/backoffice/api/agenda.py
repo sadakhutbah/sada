@@ -1,4 +1,5 @@
 """Schedule of dars and conferences (`events.json`), through `sada.events`."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -21,7 +22,7 @@ router = APIRouter()
 
 # ------------------------------------------------------------------ programme: dars and conferences
 
-AGENDA_KINDS = ("dars", "conference")       # the Friday khutba is not an event to enter
+AGENDA_KINDS = ("dars", "conference")  # the Friday khutba is not an event to enter
 _agenda_lock = threading.Lock()
 
 
@@ -40,12 +41,18 @@ def _agenda_read(path: Path) -> list[dict]:
 
 def _agenda_clean(f: dict, uid: str) -> dict:
     """Form (flat fields, as text) -> canonical event, validated by the engine itself."""
-    s = lambda k: (f.get(k) or "").strip()                                   # noqa: E731
+    s = lambda k: (f.get(k) or "").strip()  # noqa: E731
     kind = s("kind").lower() or "dars"
     if kind not in AGENDA_KINDS:
         raise Invalid(_("Unknown type: choose a dars or a conference."))
-    raw: dict = {"uid": uid, "kind": kind, "title": s("title")[:200], "speaker": s("speaker")[:120],
-                 "series": s("series")[:200], "publish": s("publish").lower() not in ("0", "false", "non", "off")}
+    raw: dict = {
+        "uid": uid,
+        "kind": kind,
+        "title": s("title")[:200],
+        "speaker": s("speaker")[:120],
+        "series": s("series")[:200],
+        "publish": s("publish").lower() not in ("0", "false", "non", "off"),
+    }
     if s("session"):
         try:
             raw["session"] = int(s("session"))
@@ -93,30 +100,49 @@ def _agenda_item(raw: dict, idx: int, today: dt.date) -> dict:
         nxt = ev.date
     elif ev.recurrence is not None:
         nxt = today + dt.timedelta(days=(ev.recurrence.weekday - today.weekday()) % 7)
-    return {"id": events_mod.uid_of(raw, idx), "kind": ev.kind, "kind_label": events_mod.kind_label(ev.kind),
-            "title": ev.title, "speaker": ev.speaker, "series": ev.series, "session": ev.session,
-            "max_min": ev.max_min, "publish": ev.publish,
-            "mode": "weekly" if rec else "once",
-            "date": raw.get("date") or "", "time": raw.get("time") or (rec or {}).get("time") or "",
-            "weekday": (rec or {}).get("weekday") or "", "after": (rec or {}).get("after") or "",
-            "offset_min": (rec or {}).get("offset_min") or 0,
-            "next": nxt.isoformat() if nxt else "", "past": bool(ev.date and ev.date < today)}
+    return {
+        "id": events_mod.uid_of(raw, idx),
+        "kind": ev.kind,
+        "kind_label": events_mod.kind_label(ev.kind),
+        "title": ev.title,
+        "speaker": ev.speaker,
+        "series": ev.series,
+        "session": ev.session,
+        "max_min": ev.max_min,
+        "publish": ev.publish,
+        "mode": "weekly" if rec else "once",
+        "date": raw.get("date") or "",
+        "time": raw.get("time") or (rec or {}).get("time") or "",
+        "weekday": (rec or {}).get("weekday") or "",
+        "after": (rec or {}).get("after") or "",
+        "offset_min": (rec or {}).get("offset_min") or 0,
+        "next": nxt.isoformat() if nxt else "",
+        "past": bool(ev.date and ev.date < today),
+    }
 
 
 def _agenda_today(ctx: Ctx) -> dt.date:
     try:
         return dt.datetime.now(db.timezone(ctx.mosque)).date()
-    except Exception:                                  # noqa: BLE001 — unknown timezone: machine time
+    except Exception:  # noqa: BLE001 — unknown timezone: machine time
         return dt.date.today()
 
 
 def _agenda_list(ctx: Ctx) -> dict:
     items = _agenda_read(_agenda_path(ctx.request))
     today = _agenda_today(ctx)
-    rows = [_agenda_item(r, i, today) for i, r in enumerate(items) if str(r.get("kind", "dars")).lower() in AGENDA_KINDS]
+    rows = [
+        _agenda_item(r, i, today) for i, r in enumerate(items) if str(r.get("kind", "dars")).lower() in AGENDA_KINDS
+    ]
     rows.sort(key=lambda r: (r["past"], r["next"] or "9999", r["time"] or "99:99", r["title"].lower()))
-    return {"items": rows, "total": len(rows), "kinds": {k: events_mod.kind_label(k) for k in AGENDA_KINDS},
-            "weekdays": list(JOURS), "prayers": list(events_mod.PRAYERS), "today": today.isoformat()}
+    return {
+        "items": rows,
+        "total": len(rows),
+        "kinds": {k: events_mod.kind_label(k) for k in AGENDA_KINDS},
+        "weekdays": list(JOURS),
+        "prayers": list(events_mod.PRAYERS),
+        "today": today.isoformat(),
+    }
 
 
 @router.get("/events")
@@ -134,8 +160,18 @@ async def event_create(ctx: CtxDep):
         items = _agenda_read(path)
         raw = _agenda_clean(f, secrets.token_hex(4))
         events_mod.write_raw(path, [*items, raw])
-    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.cree", "programme", None, ip=ctx.ip,
-             uid=raw["uid"], type=raw["kind"], titre=raw["title"])
+    db.audit(
+        ctx.conn,
+        ctx.mosque["id"],
+        ctx.user["id"],
+        "programme.cree",
+        "programme",
+        None,
+        ip=ctx.ip,
+        uid=raw["uid"],
+        type=raw["kind"],
+        titre=raw["title"],
+    )
     return _ok(_("“{title}” added to the schedule.", title=raw["title"]), id=raw["uid"])
 
 
@@ -150,16 +186,26 @@ async def event_update(uid: str, ctx: CtxDep):
         if pos is None:
             raise NotFound()
         raw = _agenda_clean(f, uid)
-        items[pos] = raw           # the identifier (uid) is written: it no longer depends on the position
+        items[pos] = raw  # the identifier (uid) is written: it no longer depends on the position
         events_mod.write_raw(path, items)
-    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.modifie", "programme", None, ip=ctx.ip,
-             uid=uid, type=raw["kind"], titre=raw["title"])
+    db.audit(
+        ctx.conn,
+        ctx.mosque["id"],
+        ctx.user["id"],
+        "programme.modifie",
+        "programme",
+        None,
+        ip=ctx.ip,
+        uid=uid,
+        type=raw["kind"],
+        titre=raw["title"],
+    )
     return _ok(_("“{title}” updated.", title=raw["title"]), id=uid)
 
 
 @router.delete("/events/{uid}")
 async def event_delete(uid: str, ctx: CtxDep):
-    await ctx.body()                  # checks the anti-replay token
+    await ctx.body()  # checks the anti-replay token
     ctx.require("assign")
     path = _agenda_path(ctx.request)
     with _agenda_lock:
@@ -169,6 +215,16 @@ async def event_delete(uid: str, ctx: CtxDep):
             raise NotFound()
         gone = items.pop(pos)
         events_mod.write_raw(path, items)
-    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "programme.supprime", "programme", None, ip=ctx.ip,
-             uid=uid, type=gone.get("kind"), titre=gone.get("title"))
+    db.audit(
+        ctx.conn,
+        ctx.mosque["id"],
+        ctx.user["id"],
+        "programme.supprime",
+        "programme",
+        None,
+        ip=ctx.ip,
+        uid=uid,
+        type=gone.get("kind"),
+        titre=gone.get("title"),
+    )
     return _ok(_("“{title}” removed from the schedule.", title=gone.get("title")))

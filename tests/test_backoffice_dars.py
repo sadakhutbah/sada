@@ -1,4 +1,5 @@
 """Back-office and dars: labels, column migration, clip caption."""
+
 import sqlite3
 
 from sada.backoffice import db, publish
@@ -8,10 +9,14 @@ MOSQUE = {"name": "Mosquée Exemple", "clip_title": "Khutba du vendredi"}
 
 
 def test_libelle_dars_et_khutba():
-    assert khutba_label({"index": 1, "kind": "dars", "title": "Tafsir Al-Kahf", "session_no": 7}) == \
-        "Dars — Tafsir Al-Kahf · séance 7"
-    assert khutba_label({"index": 0, "kind": "conference", "title": "Les droits des voisins"}) == \
-        "Conférence — Les droits des voisins"
+    assert (
+        khutba_label({"index": 1, "kind": "dars", "title": "Tafsir Al-Kahf", "session_no": 7})
+        == "Dars — Tafsir Al-Kahf · séance 7"
+    )
+    assert (
+        khutba_label({"index": 0, "kind": "conference", "title": "Les droits des voisins"})
+        == "Conférence — Les droits des voisins"
+    )
     assert khutba_label({"index": 0, "planned": "13:30"}) == "Session 1 — 13 h 30"
     assert khutba_label({"index": 1, "kind": "dars"}) == "Session 2"
 
@@ -30,11 +35,16 @@ def test_migration_ajoute_les_colonnes(tmp_path):
         "ALTER TABLE khutbas DROP COLUMN series;"
         "ALTER TABLE khutbas DROP COLUMN session_no;"
         "ALTER TABLE mosques DROP COLUMN logo_path;"
-        "ALTER TABLE mosques DROP COLUMN onboarded_at;")
-    old.execute("INSERT INTO mosques (slug, name, clip_title, created_at) "
-                "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')")
-    old.execute("INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
-                " VALUES (1, '20261106_220224', 0, 'Khutba du vendredi', '/tmp/x', 'now')")
+        "ALTER TABLE mosques DROP COLUMN onboarded_at;"
+    )
+    old.execute(
+        "INSERT INTO mosques (slug, name, clip_title, created_at) "
+        "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')"
+    )
+    old.execute(
+        "INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
+        " VALUES (1, '20261106_220224', 0, 'Khutba du vendredi', '/tmp/x', 'now')"
+    )
     old.commit()
     old.close()
 
@@ -45,7 +55,7 @@ def test_migration_ajoute_les_colonnes(tmp_path):
         assert {"kind", "title", "series", "session_no"} <= cols
         row = db.one(conn, "SELECT * FROM khutbas")
         assert row["kind"] == "khutba" and row["title"] == ""
-        assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"   # données conservées
+        assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"  # données conservées
         migrated = {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")}
     finally:
         conn.close()
@@ -64,8 +74,12 @@ def test_migration_ajoute_les_colonnes(tmp_path):
 
 
 def test_legende_dun_clip_de_dars():
-    khutba = {"kind": "dars", "title": "Tafsir Al-Kahf", "label": "Dars — Tafsir Al-Kahf · séance 7",
-              "date": "2026-11-10"}
+    khutba = {
+        "kind": "dars",
+        "title": "Tafsir Al-Kahf",
+        "label": "Dars — Tafsir Al-Kahf · séance 7",
+        "date": "2026-11-10",
+    }
     cap = publish.default_caption(khutba, MOSQUE, ["65:3"])
     assert cap.splitlines()[0] == "Dars : Tafsir Al-Kahf — Mosquée Exemple"
     assert "65:3" in cap

@@ -13,6 +13,7 @@ and the pipeline goes on with its fallbacks (extractive summary, fixed translati
 `claude-cli` stays available for the old behaviour (`claude -p` binary run as a subprocess):
 it is no longer the default, it must be requested explicitly.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,7 +60,7 @@ def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "
     p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     data = {"enabled": bool(enabled), "url": url.strip(), "model": model.strip(), "protocol": protocol.strip()}
-    if (old_key := config().get("key")):
+    if old_key := config().get("key"):
         data["key"] = old_key
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
@@ -102,8 +103,9 @@ class Settings:
         return f"{self.protocol} · {self.model}"
 
 
-def settings(url: str | None = None, model: str | None = None, key: str | None = None,
-             protocol: str | None = None) -> Settings:
+def settings(
+    url: str | None = None, model: str | None = None, key: str | None = None, protocol: str | None = None
+) -> Settings:
     """Effective settings: argument, process setting, environment, back-office file, default."""
     cfg = config()
     # same precedence as the orchestrator configuration (config.pick): argument > process > env > file > default
@@ -112,9 +114,10 @@ def settings(url: str | None = None, model: str | None = None, key: str | None =
     # The saved protocol only holds for the saved address: if the address changes (back-office
     # setting, environment variable, argument), the protocol is deduced again from the address.
     cfg_proto = (cfg.get("protocol") or "").strip().lower() if (cfg.get("url") or "").rstrip("/") == url else ""
-    proto = pick(protocol, _OVERRIDE.get("protocol"), os.environ.get("SADA_LLM_PROTOCOL"),
-                 cfg_proto, "").strip().lower() or _guess_protocol(url)
-    if key is None:                                  # an empty key given explicitly stays empty
+    proto = pick(
+        protocol, _OVERRIDE.get("protocol"), os.environ.get("SADA_LLM_PROTOCOL"), cfg_proto, ""
+    ).strip().lower() or _guess_protocol(url)
+    if key is None:  # an empty key given explicitly stays empty
         key = pick(os.environ.get("SADA_LLM_API_KEY"), cfg.get("key"), "")
     return Settings(url=url, model=model, key=key, protocol=proto)
 
@@ -174,16 +177,19 @@ def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
         headers = {"Content-Type": "application/json", "anthropic-version": ANTHROPIC_VERSION}
         if s.key:
             headers["x-api-key"] = s.key
-        body = {"model": s.model, "max_tokens": 8192, "temperature": 0,
-                "messages": [{"role": "user", "content": prompt}]}
+        body = {
+            "model": s.model,
+            "max_tokens": 8192,
+            "temperature": 0,
+            "messages": [{"role": "user", "content": prompt}],
+        }
         d = _post(url, body, headers, timeout)
         return "".join(b.get("text", "") for b in d.get("content") or [] if b.get("type") == "text")
     url = s.url if s.url.endswith("/chat/completions") else f"{s.url}/chat/completions"
     headers = {"Content-Type": "application/json"}
     if s.key:
         headers["Authorization"] = f"Bearer {s.key}"
-    body = {"model": s.model, "temperature": 0, "stream": False,
-            "messages": [{"role": "user", "content": prompt}]}
+    body = {"model": s.model, "temperature": 0, "stream": False, "messages": [{"role": "user", "content": prompt}]}
     d = _post(url, body, headers, timeout)
     choices = d.get("choices") or []
     if not choices:
@@ -206,8 +212,9 @@ def _ask_cli(prompt: str, timeout: int, log) -> str:
     exe = shutil.which("claude")
     if not exe:
         raise RuntimeError(_("“claude” binary not found."))
-    r = subprocess.run([exe, "-p", "--output-format", "text"], input=prompt, capture_output=True,
-                       text=True, timeout=timeout)
+    r = subprocess.run(
+        [exe, "-p", "--output-format", "text"], input=prompt, capture_output=True, text=True, timeout=timeout
+    )
     if r.returncode != 0:
         raise RuntimeError(_("claude -p failed ({code}) {error}", code=r.returncode, error=r.stderr[:300]))
     return r.stdout

@@ -3,6 +3,7 @@
 Kept apart from `app.py` so that the API modules depend on this module, never on the application:
 `app.py` imports the API router, the API never imports `app.py`.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -16,6 +17,7 @@ PRE_COOKIE = "sada_pre"
 
 
 # ------------------------------------------------------------------ errors
+
 
 class LoginRequired(Exception):
     pass
@@ -39,6 +41,7 @@ class Invalid(Exception):
 
 # ------------------------------------------------------------------ context
 
+
 class Ctx:
     def __init__(self, request: Request, conn, session: dict, user: dict, mosque: dict):
         self.request, self.conn, self.session, self.user, self.mosque = request, conn, session, user, mosque
@@ -49,8 +52,15 @@ class Ctx:
 
     def require(self, perm: str) -> None:
         if not self.can(perm):
-            db.audit(self.conn, self.mosque["id"], self.user["id"], "acces.refuse", ip=self.ip,
-                     chemin=self.request.url.path, droit=perm)
+            db.audit(
+                self.conn,
+                self.mosque["id"],
+                self.user["id"],
+                "acces.refuse",
+                ip=self.ip,
+                chemin=self.request.url.path,
+                droit=perm,
+            )
             raise Forbidden()
 
     def csrf_ok(self) -> bool:
@@ -83,7 +93,7 @@ class Ctx:
                 form = await self.request.form()
                 self.files = {k: v for k, v in form.items() if not isinstance(v, str)}
                 corps = dict(form)
-        except Exception:                       # noqa: BLE001 — empty or unreadable body
+        except Exception:  # noqa: BLE001 — empty or unreadable body
             corps = {}
         return corps if isinstance(corps, dict) else {}
 
@@ -106,8 +116,12 @@ ConnDep = Annotated[sqlite3.Connection, Depends(get_conn)]
 
 
 def get_ctx(request: Request, conn: ConnDep) -> Ctx:
-    res = auth.load_session(conn, request.cookies.get(auth.COOKIE), request.headers.get("user-agent"),
-                            request.client.host if request.client else None)
+    res = auth.load_session(
+        conn,
+        request.cookies.get(auth.COOKIE),
+        request.headers.get("user-agent"),
+        request.client.host if request.client else None,
+    )
     if not res:
         raise LoginRequired()
     s, u = res
@@ -122,6 +136,7 @@ CtxDep = Annotated[Ctx, Depends(get_ctx)]
 
 # ------------------------------------------------------------------ shared rules
 
+
 def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
     """Visible khutbas (alias k): those of the mosque; for an imam, only his own."""
     if ctx.can("history_all"):
@@ -131,8 +146,12 @@ def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
 
 def count_clips(ctx: Ctx, status: str) -> int:
     where, args = imam_filter(ctx)
-    return db.one(ctx.conn, f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
-                            f"WHERE {where} AND c.status = ?", *args, status)["n"]
+    return db.one(
+        ctx.conn,
+        f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = ?",
+        *args,
+        status,
+    )["n"]
 
 
 def khutba_or_404(ctx: Ctx, kid: int) -> dict:

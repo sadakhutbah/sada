@@ -8,6 +8,7 @@ module is unchanged.
 Every business table carries `mosque_id`: that is the partitioning key (tenant). Queries from the
 application ALWAYS filter by the mosque of the logged-in user.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -22,9 +23,21 @@ from . import migrations, models
 
 DEFAULT_DB = paths.BACKOFFICE_DB
 # settings a mosque can change (Settings → Mosque, `python -m sada.backoffice mosque`)
-MOSQUE_SETTINGS = ("name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token", "state_dir", "output_dir",
-                   "publish_dir", "clip_title", "logo_path", "brand_green", "brand_gold")
-MASK = "••••••"                  # value shown in place of a stored secret; sent back as is = unchanged
+MOSQUE_SETTINGS = (
+    "name",
+    "timezone",
+    "mawaqit_url",
+    "orchestrator_url",
+    "orchestrator_token",
+    "state_dir",
+    "output_dir",
+    "publish_dir",
+    "clip_title",
+    "logo_path",
+    "brand_green",
+    "brand_gold",
+)
+MASK = "••••••"  # value shown in place of a stored secret; sent back as is = unchanged
 
 # schéma SQLAlchemy (source de vérité) et migrations versionnées, réexportés pour introspection
 metadata = models.metadata
@@ -61,13 +74,18 @@ def all_(conn, sql: str, *args) -> list[dict]:
     return [dict(r) for r in conn.execute(sql, args).fetchall()]
 
 
-def audit(conn, mosque_id, user_id, action: str, object_type: str = "", object_id=None, ip: str | None = None, **details):
-    conn.execute("INSERT INTO audit (mosque_id, user_id, action, object_type, object_id, details, ip, created_at) "
-                 "VALUES (?,?,?,?,?,?,?,?)",
-                 (mosque_id, user_id, action, object_type, object_id, json.dumps(details, ensure_ascii=False), ip, now_iso()))
+def audit(
+    conn, mosque_id, user_id, action: str, object_type: str = "", object_id=None, ip: str | None = None, **details
+):
+    conn.execute(
+        "INSERT INTO audit (mosque_id, user_id, action, object_type, object_id, details, ip, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (mosque_id, user_id, action, object_type, object_id, json.dumps(details, ensure_ascii=False), ip, now_iso()),
+    )
 
 
 # ------------------------------------------------------------------ mosques
+
 
 def mosque_dirs(m: dict) -> dict:
     """Effective folders of a mosque (empty values = folders of the repository, mode A)."""
@@ -114,7 +132,9 @@ def update_mosque(conn, mosque_id: int, **vals) -> None:
         except (ValueError, ZoneInfoNotFoundError):
             raise ValueError(_("unknown time zone: {zone} (e.g. Europe/Paris)", zone=vals["timezone"])) from None
     if vals:
-        conn.execute(f"UPDATE mosques SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), mosque_id))
+        conn.execute(
+            f"UPDATE mosques SET {', '.join(f'{k} = ?' for k in vals)} WHERE id = ?", (*vals.values(), mosque_id)
+        )
 
 
 def create_mosque(conn, slug: str, name: str, **fields) -> int:
@@ -123,6 +143,8 @@ def create_mosque(conn, slug: str, name: str, **fields) -> int:
     vals = [slug, name, now_iso()] + list(fields.values())
     cur = conn.execute(f"INSERT INTO mosques ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", vals)
     mid = cur.lastrowid
-    conn.execute("INSERT OR IGNORE INTO connectors (mosque_id, key, enabled, settings) VALUES (?, 'local', 1, '{}')", (mid,))
+    conn.execute(
+        "INSERT OR IGNORE INTO connectors (mosque_id, key, enabled, settings) VALUES (?, 'local', 1, '{}')", (mid,)
+    )
     audit(conn, mid, None, "mosquee.creee", "mosquee", mid, slug=slug)
     return mid

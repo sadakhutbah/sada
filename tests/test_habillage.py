@@ -1,4 +1,5 @@
 """Habillage des vidéos : options, ASS et graphe ffmpeg selon les éléments choisis, API, vrai rendu court."""
+
 from __future__ import annotations
 
 import json
@@ -15,17 +16,33 @@ MOSQUEE = "Mosquée Exemple"
 
 
 def opts(**k):
-    base = {"title": "Le tafsir de la sourate Al-Kahf", "subtitle": "Série Al-Kahf · séance 3",
-            "speaker": "Cheikh Abdallah", "role": "Imam de la mosquée", "outro_link": "mosquee.fr"}
+    base = {
+        "title": "Le tafsir de la sourate Al-Kahf",
+        "subtitle": "Série Al-Kahf · séance 3",
+        "speaker": "Cheikh Abdallah",
+        "role": "Imam de la mosquée",
+        "outro_link": "mosquee.fr",
+    }
     base.update(k)
     return h.normaliser(base)
 
 
 # ------------------------------------------------------------------ options
 
+
 def test_normaliser_borne_et_convertit():
-    o = h.normaliser({"intro_s": "99", "lower_s": "1", "logo_opacity": "0,5", "bar_on": "1", "outro_on": "non",
-                      "logo_on": False, "title": "  Un   titre \n long  ", "inconnu": "x"})
+    o = h.normaliser(
+        {
+            "intro_s": "99",
+            "lower_s": "1",
+            "logo_opacity": "0,5",
+            "bar_on": "1",
+            "outro_on": "non",
+            "logo_on": False,
+            "title": "  Un   titre \n long  ",
+            "inconnu": "x",
+        }
+    )
     assert o["intro_s"] == 15.0 and o["lower_s"] == 3.0 and o["logo_opacity"] == 0.5
     assert o["bar_on"] is True and o["outro_on"] is False and o["logo_on"] is False
     assert o["title"] == "Un titre long" and "inconnu" not in o
@@ -33,8 +50,10 @@ def test_normaliser_borne_et_convertit():
     assert h.normaliser({"title": "B"}, {"title": "A", "logo_pos": "bl"})["logo_pos"] == "bl"
 
 
-@pytest.mark.parametrize("brut", [{"logo_pos": "milieu"}, {"logo_size": "xxl"}, {"intro_s": "deux"},
-                                  {"intro_s": "nan"}, {"bar_on": "peut-être"}])
+@pytest.mark.parametrize(
+    "brut",
+    [{"logo_pos": "milieu"}, {"logo_size": "xxl"}, {"intro_s": "deux"}, {"intro_s": "nan"}, {"bar_on": "peut-être"}],
+)
 def test_normaliser_refuse_les_valeurs_illisibles(brut):
     with pytest.raises(ValueError):
         h.normaliser(brut)
@@ -51,6 +70,7 @@ def test_verifier_refuse_un_element_vide():
 
 
 # ------------------------------------------------------------------ chronologie
+
 
 def test_chronologie_carton_video_fin():
     c = h.chrono(opts(intro_s=5, outro_s=6), 60)
@@ -70,19 +90,25 @@ def test_bandeau_dans_la_video_et_jamais_au_dela():
 
 # ------------------------------------------------------------------ ASS
 
+
 def _dialogues(ass: str) -> list[str]:
     return [ligne for ligne in ass.splitlines() if ligne.startswith("Dialogue:")]
 
 
 def test_ass_complet_tous_elements():
-    ass = h.build_ass(opts(bar_on=True, outro_text="Retrouvez nos cours"), CADRE, MOSQUEE,
-                      {"green": "#1E5A44", "gold": "#E8BE50"}, logo=True)
+    ass = h.build_ass(
+        opts(bar_on=True, outro_text="Retrouvez nos cours"),
+        CADRE,
+        MOSQUEE,
+        {"green": "#1E5A44", "gold": "#E8BE50"},
+        logo=True,
+    )
     assert "PlayResX: 1920" in ass and "PlayResY: 1080" in ass
     d = "\n".join(_dialogues(ass))
-    assert "MOSQUÉE EXEMPLE" in d                      # surtitre du carton
+    assert "MOSQUÉE EXEMPLE" in d  # surtitre du carton
     assert "Le tafsir de la sourate Al-Kahf" in d
     assert "Cheikh Abdallah" in d and "IMAM DE LA MOSQUÉE" in d
-    assert "\\clip(" in d                                  # bandeau révélé en volet
+    assert "\\clip(" in d  # bandeau révélé en volet
     assert "Retrouvez nos cours" in d and "mosquee.fr" in d and "Mosquée Exemple" in d
     # doré de la mosquée (BGR) dans le filet et la barre
     assert "&H0050BEE8&" in d
@@ -97,7 +123,7 @@ def test_ass_elements_coupes_absents():
     d = "\n".join(_dialogues(ass))
     assert "Le tafsir" not in d and "MOSQUÉE EXEMPLE" not in d and "mosquee.fr" not in d
     assert "Cheikh Abdallah" in d
-    assert any(ligne.startswith("Dialogue: 3,0:00:02.00,") for ligne in _dialogues(ass))   # sans carton : 2 s
+    assert any(ligne.startswith("Dialogue: 3,0:00:02.00,") for ligne in _dialogues(ass))  # sans carton : 2 s
     rien = h.build_ass(opts(intro_on=False, lower_on=False, outro_on=False), CADRE, MOSQUEE)
     assert _dialogues(rien) == []
 
@@ -119,6 +145,7 @@ def test_video_verticale_garde_ses_proportions():
 
 
 # ------------------------------------------------------------------ mise en page et graphe ffmpeg
+
 
 @pytest.mark.parametrize("pos", h.POSITIONS)
 def test_filigrane_dans_son_coin(pos):
@@ -144,7 +171,7 @@ def test_graphe_complet():
     assert "colorchannelmixer=aa=0.60" in fc
     x, y, _ = p["filigrane"]
     assert f"overlay={x}:{y}" in fc
-    assert fc.count("overlay=") == 3                     # filigrane + logo du carton + logo de fin
+    assert fc.count("overlay=") == 3  # filigrane + logo du carton + logo de fin
     assert "subtitles=filename=habillage.ass" in fc and fc.endswith("[v]")
 
 
@@ -173,21 +200,46 @@ def test_instants_apercu_un_par_element():
 
 # ------------------------------------------------------------------ vrai rendu
 
+
 @pytest.fixture(scope="module")
 def video(tmp_path_factory):
     if not FFMPEG:
         pytest.skip("ffmpeg absent")
     d = tmp_path_factory.mktemp("src")
     f = d / "dars.mp4"
-    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
-                    "testsrc2=size=640x360:rate=25:duration=6", "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", str(f)], check=True)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=640x360:rate=25:duration=6",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=6",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            "-shortest",
+            str(f),
+        ],
+        check=True,
+    )
     return f
 
 
 @pytest.fixture(scope="module")
 def logo(tmp_path_factory):
     from PIL import Image, ImageDraw
+
     f = tmp_path_factory.mktemp("logo") / "logo.png"
     im = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
     ImageDraw.Draw(im).ellipse((8, 8, 248, 248), fill=(30, 90, 68, 255))
@@ -197,13 +249,14 @@ def logo(tmp_path_factory):
 
 def test_vrai_rendu_court(video, logo, tmp_path):
     o = opts(intro_s=2, outro_s=2, lower_at=0.5, lower_s=3, bar_on=True)
-    out = h.rendre(o, str(video), str(tmp_path / "out.mp4"), MOSQUEE, {"green": "#1E5A44"}, str(logo),
-                   log=lambda *a: None)
+    out = h.rendre(
+        o, str(video), str(tmp_path / "out.mp4"), MOSQUEE, {"green": "#1E5A44"}, str(logo), log=lambda *a: None
+    )
     c = h.sonder(out)
     assert (c.w, c.h) == (1920, 1080) and c.audio
-    assert abs(c.duree - 10.0) < 0.3                      # 2 s + 6 s + 2 s
+    assert abs(c.duree - 10.0) < 0.3  # 2 s + 6 s + 2 s
     assert not list(tmp_path.glob("*.part*"))
-    assert video.stat().st_size > 0                       # l'original est intact
+    assert video.stat().st_size > 0  # l'original est intact
 
 
 def test_rendu_coupe_aux_bornes_de_la_session(video, tmp_path):
@@ -214,8 +267,15 @@ def test_rendu_coupe_aux_bornes_de_la_session(video, tmp_path):
 
 def test_vrai_apercu(video, logo, tmp_path):
     from PIL import Image
-    out = h.apercu(opts(intro_s=2, outro_s=2, lower_at=0.5, lower_s=3), str(video), str(tmp_path / "a.jpg"),
-                   MOSQUEE, None, str(logo))
+
+    out = h.apercu(
+        opts(intro_s=2, outro_s=2, lower_at=0.5, lower_s=3),
+        str(video),
+        str(tmp_path / "a.jpg"),
+        MOSQUEE,
+        None,
+        str(logo),
+    )
     im = Image.open(out)
     assert im.format == "JPEG" and im.width > im.height
 
@@ -228,9 +288,13 @@ from test_backoffice import client  # noqa: E402
 
 def test_api_prerempli_sans_chemin(env):
     from sada.backoffice import db
+
     db.one(env["conn"], "SELECT 1")
-    env["conn"].execute("UPDATE khutbas SET title = 'Patience et gratitude', series = 'Les vertus', session_no = 2, "
-                        "date = '2026-11-06' WHERE id = ?", (env["kid"],))
+    env["conn"].execute(
+        "UPDATE khutbas SET title = 'Patience et gratitude', series = 'Les vertus', session_no = 2, "
+        "date = '2026-11-06' WHERE id = ?",
+        (env["kid"],),
+    )
     c = client(env, "admin")
     r = c.get(f"/api/v1/sermons/{env['kid']}/habillage")
     assert r.status_code == 200, r.text
@@ -238,10 +302,10 @@ def test_api_prerempli_sans_chemin(env):
     o = d["options"]
     assert o["title"] == "Patience et gratitude"
     assert o["subtitle"] == "Les vertus · séance 2 · 6 novembre 2026"
-    assert o["speaker"] == "Imam"                          # nom affiché de l'imam rattaché
+    assert o["speaker"] == "Imam"  # nom affiché de l'imam rattaché
     assert d["status"] == "" and d["has_source"] is False and d["can_edit"] is True
     assert d["mosque"] == "Mosquée Exemple" and d["colors"]["gold"].startswith("#")
-    assert str(env["tmp"]) not in r.text                  # aucun chemin de la machine
+    assert str(env["tmp"]) not in r.text  # aucun chemin de la machine
 
 
 def test_api_ecriture_reservee(env):
@@ -266,11 +330,21 @@ def test_api_sans_source_refuse_proprement(env):
 
 def test_api_apercu_puis_rendu(env, video):
     from sada.backoffice import db
+
     conn, kid = env["conn"], env["kid"]
     conn.execute("UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
     c = client(env, "admin")
-    options = {"title": "Patience", "speaker": "Cheikh Test", "intro_s": "2", "outro_s": "2", "lower_at": "0.5",
-               "lower_s": "3", "logo_pos": "bl", "bar_on": True, "outro_link": "mosquee-exemple.fr"}
+    options = {
+        "title": "Patience",
+        "speaker": "Cheikh Test",
+        "intro_s": "2",
+        "outro_s": "2",
+        "lower_at": "0.5",
+        "lower_s": "3",
+        "logo_pos": "bl",
+        "bar_on": True,
+        "outro_link": "mosquee-exemple.fr",
+    }
     r = c.ecrire(f"/sermons/{kid}/habillage/apercu", {"options": options})
     assert r.status_code == 200, r.text
     assert r.json()["preview_ready"] is True
@@ -284,8 +358,10 @@ def test_api_apercu_puis_rendu(env, video):
     assert d["options"]["logo_pos"] == "bl" and abs(d["duration_s"] - 10) < 0.5
     v = c.get(f"/api/v1/sermons/{kid}/habillage/video.mp4?download=1")
     assert v.status_code == 200 and "attachment" in v.headers["content-disposition"]
-    assert "habillee.mp4" in v.headers["content-disposition"] and str(env["tmp"]) not in v.headers["content-disposition"]
-    assert video.exists()                                  # la source n'est pas touchée
+    assert (
+        "habillee.mp4" in v.headers["content-disposition"] and str(env["tmp"]) not in v.headers["content-disposition"]
+    )
+    assert video.exists()  # la source n'est pas touchée
     # la mosquée retient son identité (pas le titre de ce dars)
     m = db.one(conn, "SELECT habillage_defaults FROM mosques WHERE id = ?", env["mid"])
     retenu = json.loads(m["habillage_defaults"])
@@ -297,20 +373,25 @@ def test_api_apercu_puis_rendu(env, video):
 def test_rendu_interrompu_marque_en_echec(env):
     from sada.backoffice import db
     from sada.backoffice import habillage as bo
+
     conn = env["conn"]
-    conn.execute("INSERT INTO habillages (mosque_id, khutba_id, status, updated_at) VALUES (?, ?, 'en_cours', 'x')",
-                 (env["mid"], env["kid"]))
+    conn.execute(
+        "INSERT INTO habillages (mosque_id, khutba_id, status, updated_at) VALUES (?, ?, 'en_cours', 'x')",
+        (env["mid"], env["kid"]),
+    )
     bo.recover_interrupted(conn)
     assert db.one(conn, "SELECT status FROM habillages")["status"] == "echec"
 
 
 def test_erreur_sans_chemin():
     from sada.backoffice.habillage import sans_chemin
+
     assert sans_chemin("/home/x/data/output/run/source/dars.mp4: Invalid data") == "dars.mp4: Invalid data"
 
 
 def test_migration_8_sur_une_base_en_version_6(tmp_path):
     from sada.backoffice import db, migrations
+
     path = tmp_path / "bo.db"
     db.init(path)
     conn = db.connect(path)

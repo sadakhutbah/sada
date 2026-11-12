@@ -1,4 +1,5 @@
 """Language model: local HTTP endpoint (OpenAI and Anthropic formats), silent fallback when absent."""
+
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -7,8 +8,11 @@ import pytest
 
 from sada.pipeline import llm
 
-REPLY_OPENAI = {"choices": [{"message": {"role": "assistant",
-                                         "content": '```json\n{"theme": "la patience", "points": ["a"]}\n```'}}]}
+REPLY_OPENAI = {
+    "choices": [
+        {"message": {"role": "assistant", "content": '```json\n{"theme": "la patience", "points": ["a"]}\n```'}}
+    ]
+}
 REPLY_ANTHROPIC = {"content": [{"type": "text", "text": '{"theme": "la patience", "points": ["b"]}'}]}
 
 
@@ -17,8 +21,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802 — name imposed by http.server
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        _Handler.seen = {"path": self.path, "body": body,
-                         "headers": {k.lower(): v for k, v in self.headers.items()}}
+        _Handler.seen = {"path": self.path, "body": body, "headers": {k.lower(): v for k, v in self.headers.items()}}
         payload = REPLY_ANTHROPIC if self.path.endswith("/messages") else REPLY_OPENAI
         raw = json.dumps(payload).encode()
         self.send_response(200)
@@ -50,8 +53,9 @@ def test_format_openai(serveur):
 
 def test_format_anthropic(serveur):
     # the format is chosen explicitly: deducing it here would be circular in the test
-    d = llm.ask_json("résume", 5, lambda m: None, url=f"{serveur}/messages", model="claude-local", key="secret",
-                     protocol="anthropic")
+    d = llm.ask_json(
+        "résume", 5, lambda m: None, url=f"{serveur}/messages", model="claude-local", key="secret", protocol="anthropic"
+    )
     assert d == {"theme": "la patience", "points": ["b"]}
     seen = _Handler.seen
     assert seen["path"] == "/v1/messages"
@@ -63,7 +67,7 @@ def test_format_anthropic(serveur):
 def test_protocole_deduit_de_l_url():
     assert llm.settings(url="http://127.0.0.1:11434/v1").protocol == "openai"
     assert llm.settings(url="https://api.anthropic.com/v1").protocol == "anthropic"
-    assert llm.settings(url="https://api.anthropic.com/v1/").protocol == "anthropic"   # trailing slash tolerated
+    assert llm.settings(url="https://api.anthropic.com/v1/").protocol == "anthropic"  # trailing slash tolerated
     assert llm.settings(url="http://127.0.0.1:8000/v1/messages").protocol == "anthropic"
     assert llm.settings(url="http://127.0.0.1:8000/v1", protocol="anthropic").protocol == "anthropic"
     assert llm.settings(url="http://127.0.0.1:11434/v1", protocol="claude-cli").label() == "claude -p"
@@ -72,10 +76,12 @@ def test_protocole_deduit_de_l_url():
 def test_format_enregistre_ne_s_applique_qu_a_son_adresse(tmp_path, monkeypatch):
     """The format kept in memory (back-office) must not leak into another address."""
     cfg = tmp_path / "llm.json"
-    cfg.write_text(json.dumps({"enabled": True, "url": "http://127.0.0.1:11434/v1", "model": "m", "protocol": "openai"}))
+    cfg.write_text(
+        json.dumps({"enabled": True, "url": "http://127.0.0.1:11434/v1", "model": "m", "protocol": "openai"})
+    )
     monkeypatch.setenv("SADA_LLM_CONFIG", str(cfg))
     monkeypatch.delenv("SADA_LLM_PROTOCOL", raising=False)
-    assert llm.settings().protocol == "openai"                                   # same address: saved setting honoured
+    assert llm.settings().protocol == "openai"  # same address: saved setting honoured
     assert llm.settings(url="https://api.anthropic.com/v1").protocol == "anthropic"  # other address: deduced
 
 
@@ -83,7 +89,7 @@ def test_environnement_prime_sur_le_defaut(monkeypatch):
     monkeypatch.setenv("SADA_LLM_URL", "http://127.0.0.1:8080/v1/")
     monkeypatch.setenv("SADA_LLM_MODEL", "mistral-small")
     s = llm.settings()
-    assert s.url == "http://127.0.0.1:8080/v1"          # trailing slash removed
+    assert s.url == "http://127.0.0.1:8080/v1"  # trailing slash removed
     assert s.label() == "openai · mistral-small"
 
 
@@ -92,7 +98,7 @@ def test_interrupteur_coupe_tout_appel(serveur, monkeypatch):
     _Handler.seen = {}
     logs = []
     assert llm.ask_json("résume", 5, logs.append, url=serveur) is None
-    assert _Handler.seen == {}                      # no request left
+    assert _Handler.seen == {}  # no request left
     assert "disabled" in logs[0]
 
 
@@ -109,6 +115,7 @@ def test_options_du_cli_reglent_l_interrupteur(monkeypatch):
     from types import SimpleNamespace
 
     from sada.pipeline import run
+
     monkeypatch.setenv("SADA_LLM_ENABLED", "1")
     a = SimpleNamespace(llm=False, llm_url="http://127.0.0.1:9/v1", llm_model="m", llm_protocol="openai")
     run.apply_llm_options(a)
@@ -129,7 +136,7 @@ def test_fichier_du_backoffice_et_priorite(serveur, tmp_path, monkeypatch):
     assert llm.config()["model"] == "du-fichier" and llm.enabled() is True
     assert llm.label() == "openai · du-fichier"
 
-    monkeypatch.setenv("SADA_LLM_MODEL", "de-l-env")           # the command line wins
+    monkeypatch.setenv("SADA_LLM_MODEL", "de-l-env")  # the command line wins
     assert llm.settings().model == "de-l-env"
     monkeypatch.delenv("SADA_LLM_MODEL")
 
@@ -137,7 +144,7 @@ def test_fichier_du_backoffice_et_priorite(serveur, tmp_path, monkeypatch):
 
     llm.save_config(enabled=False)
     assert llm.enabled() is False
-    monkeypatch.setenv("SADA_LLM_ENABLED", "1")                # SADA_LLM_ENABLED takes precedence over the file
+    monkeypatch.setenv("SADA_LLM_ENABLED", "1")  # SADA_LLM_ENABLED takes precedence over the file
     assert llm.enabled() is True
 
 

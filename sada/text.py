@@ -1,4 +1,5 @@
 """Text: Arabic script, dates and durations in French (shared by live, pipeline and back-office)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -41,6 +42,7 @@ def shaped(text: str) -> tuple[str, dict]:
         return text, {}
     return reshaped_view(text), {}
 
+
 # Arabic script (letters, signs, presentation forms)
 AR_CHARS = "؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿"
 AR_RUN = re.compile(f"[{AR_CHARS}]+")
@@ -48,8 +50,20 @@ _AR_CHAR = re.compile(f"[{AR_CHARS}]")
 AR_LETTER = re.compile(r"[ء-يٱ-ۓ]")
 
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
-        "septembre", "octobre", "novembre", "décembre"]
+MOIS = [
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+]
 
 
 def has_arabic(s: str) -> bool:
@@ -84,16 +98,20 @@ def duration(sec: float) -> str:
 
 # Arabic written in Latin letters by Whisper (« wa'alha an alati lahwin ») : a well-scored segment
 # escapes the log-probability test, so the share of transliterated words is measured as well.
-_TRANSLIT_WORDS = frozenset("""wa wal fa fi bi li la lam lan ma man min an anna inna innahu qala qawluhu
+_TRANSLIT_WORDS = frozenset(
+    """wa wal fa fi bi li la lam lan ma man min an anna inna innahu qala qawluhu
 qal huwa hiya hum alayhi alayha alaihi allati alladhi alladhina kana kanat yaqul yuqal lahu lahou
-ila illa ala ya ayyuha tum thumma idha idhan bihi biha minhu anha anhu ma'a wala walha lahwin""".split())
-_TRANSLIT_SHAPE = re.compile(r"^(?:[aeiu][lrnsdtz]-\w+|(?!(?:l|d|j|n|s|m|t|c|qu|jusqu|lorsqu|puisqu|presqu)')\w+'\w+|\w*(?:q[aiy]|kh|gh|dh|aa|ii|uu)\w*)$")
-FRENCH_HINT = frozenset("le la les de des du un une et est que qui ce il elle on tu je vous nous pas dans sur pour avec".split())
-
-
+ila illa ala ya ayyuha tum thumma idha idhan bihi biha minhu anha anhu ma'a wala walha lahwin""".split()
+)
+_TRANSLIT_SHAPE = re.compile(
+    r"^(?:[aeiu][lrnsdtz]-\w+|(?!(?:l|d|j|n|s|m|t|c|qu|jusqu|lorsqu|puisqu|presqu)')\w+'\w+|\w*(?:q[aiy]|kh|gh|dh|aa|ii|uu)\w*)$"
+)
+FRENCH_HINT = frozenset(
+    "le la les de des du un une et est que qui ce il elle on tu je vous nous pas dans sur pour avec".split()
+)
 
 
 def is_translit_word(word: str) -> bool:
     """Word of Arabic written in Latin letters (« qawluhu », « al-ghada », « na'imul »)."""
-    w = word.strip(".,;:!?«»\"()").lower().replace("’", "'")
+    w = word.strip('.,;:!?«»"()').lower().replace("’", "'")
     return bool(w) and w not in FRENCH_HINT and (w in _TRANSLIT_WORDS or bool(_TRANSLIT_SHAPE.match(w)))

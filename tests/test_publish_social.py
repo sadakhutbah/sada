@@ -3,6 +3,7 @@
 No network: `social.SESSION` and `social.SLEEP` are replaced. What is checked is the protocol we send
 (addresses, methods, credentials, form fields, file body, polling) and how a refusal is reported.
 """
+
 from __future__ import annotations
 
 import json
@@ -73,13 +74,33 @@ def no_wait(monkeypatch):
 def item(tmp_path):
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"\x00\x00\x00\x18ftypmp42")
-    clip = {"id": 7, "idx": 2, "kind": "passage", "version": 3, "start": 30.0, "end": 75.0,
-            "why": "verset", "file_path": str(video)}
-    khutba = {"label": "Khutba du 6 novembre", "date": "2026-11-06", "run_id": "20261106_191913",
-              "session_index": 1, "kind": "khutba", "title": ""}
+    clip = {
+        "id": 7,
+        "idx": 2,
+        "kind": "passage",
+        "version": 3,
+        "start": 30.0,
+        "end": 75.0,
+        "why": "verset",
+        "file_path": str(video),
+    }
+    khutba = {
+        "label": "Khutba du 6 novembre",
+        "date": "2026-11-06",
+        "run_id": "20261106_191913",
+        "session_index": 1,
+        "kind": "khutba",
+        "title": "",
+    }
     mosque = {"slug": "exemple", "name": "Mosquée Exemple", "clip_title": "Khutba du vendredi"}
-    return SimpleNamespace(clip=clip, khutba=khutba, mosque=mosque, caption="Extrait du vendredi",
-                           validated_by="Imam Abdallah", published_by="Essai")
+    return SimpleNamespace(
+        clip=clip,
+        khutba=khutba,
+        mosque=mosque,
+        caption="Extrait du vendredi",
+        validated_by="Imam Abdallah",
+        published_by="Essai",
+    )
 
 
 def use(monkeypatch, *answers):
@@ -89,6 +110,7 @@ def use(monkeypatch, *answers):
 
 
 # --- Facebook ---------------------------------------------------------------------------------
+
 
 def test_facebook_envoie_le_fichier_et_rend_le_lien(item, monkeypatch):
     s = use(monkeypatch, Reply(200, {"id": "123_456", "permalink_url": "https://fb.example/123_456"}))
@@ -100,12 +122,13 @@ def test_facebook_envoie_le_fichier_et_rend_le_lien(item, monkeypatch):
     assert call.data["description"] == "Extrait du vendredi"
     name, body, mime = call.files["source"]
     assert name == "clip.mp4" and mime == "video/mp4" and body.startswith(b"\x00\x00\x00\x18")
-    assert call.timeout >= 600                     # a clip on a mosque's connection is not a JSON call
+    assert call.timeout >= 600  # a clip on a mosque's connection is not a JSON call
 
 
 def test_facebook_erreur_de_l_api_reprise_telle_quelle(item, monkeypatch):
-    use(monkeypatch, Reply(400, {"error": {"message": "Invalid OAuth access token.",
-                                           "error_user_msg": "Jeton expiré"}}))
+    use(
+        monkeypatch, Reply(400, {"error": {"message": "Invalid OAuth access token.", "error_user_msg": "Jeton expiré"}})
+    )
     with pytest.raises(social.PublishError) as e:
         social.facebook(item, {"page_id": "123", "page_token": "TOK"})
     assert "HTTP 400" in str(e.value) and "Invalid OAuth access token." in str(e.value)
@@ -113,6 +136,7 @@ def test_facebook_erreur_de_l_api_reprise_telle_quelle(item, monkeypatch):
 
 
 # --- YouTube ----------------------------------------------------------------------------------
+
 
 def test_youtube_oauth_puis_envoi_resumable(item, monkeypatch):
     def init(method, url, **kw):
@@ -123,12 +147,10 @@ def test_youtube_oauth_puis_envoi_resumable(item, monkeypatch):
         assert body["status"] == {"privacyStatus": "unlisted", "selfDeclaredMadeForKids": False}
         return Reply(200, None, {"location": "https://upload.example/session/1"})
 
-    s = use(monkeypatch,
-            Reply(200, {"access_token": "AT"}),
-            init,
-            Reply(200, {"id": "abC123"}))
-    where = social.youtube(item, {"client_id": "cid", "client_secret": "sec", "refresh_token": "rt",
-                                  "privacy_status": "unlisted"})
+    s = use(monkeypatch, Reply(200, {"access_token": "AT"}), init, Reply(200, {"id": "abC123"}))
+    where = social.youtube(
+        item, {"client_id": "cid", "client_secret": "sec", "refresh_token": "rt", "privacy_status": "unlisted"}
+    )
     assert where == "https://youtu.be/abC123"
     token_call, upload_init, put = s.calls
     assert token_call.url == "https://oauth2.googleapis.com/token"
@@ -147,16 +169,25 @@ def test_youtube_refus_du_jeton(item, monkeypatch):
 
 # --- Instagram --------------------------------------------------------------------------------
 
+
 def test_instagram_archive_puis_attend_la_transcodage(item, tmp_path, monkeypatch):
     folder = tmp_path / "publie"
-    s = use(monkeypatch,
-            Reply(200, {"id": "creation1"}),
-            Reply(200, {"status_code": "IN_PROGRESS"}),
-            Reply(200, {"status_code": "FINISHED"}),
-            Reply(200, {"id": "reel42"}))
-    where = social.instagram(item, {"ig_user_id": "1789", "access_token": "IGT",
-                                    "public_base_url": "https://mosquee.example/clips/",
-                                    "folder": str(folder)})
+    s = use(
+        monkeypatch,
+        Reply(200, {"id": "creation1"}),
+        Reply(200, {"status_code": "IN_PROGRESS"}),
+        Reply(200, {"status_code": "FINISHED"}),
+        Reply(200, {"id": "reel42"}),
+    )
+    where = social.instagram(
+        item,
+        {
+            "ig_user_id": "1789",
+            "access_token": "IGT",
+            "public_base_url": "https://mosquee.example/clips/",
+            "folder": str(folder),
+        },
+    )
     assert where == "https://www.instagram.com/reel/reel42"
     created = folder / "2026-11-06" / f"{social.published_name(item)}.mp4"
     assert created.exists() and created.read_bytes().startswith(b"\x00\x00\x00\x18")
@@ -173,13 +204,21 @@ def test_instagram_archive_puis_attend_la_transcodage(item, tmp_path, monkeypatc
 
 
 def test_instagram_erreur_de_transcodage(item, tmp_path, monkeypatch):
-    use(monkeypatch,
+    use(
+        monkeypatch,
         Reply(200, {"id": "c1"}),
-        Reply(200, {"status_code": "ERROR", "status": "Le format de la vidéo est refusé"}))
+        Reply(200, {"status_code": "ERROR", "status": "Le format de la vidéo est refusé"}),
+    )
     with pytest.raises(social.PublishError) as e:
-        social.instagram(item, {"ig_user_id": "1789", "access_token": "IGT",
-                                "public_base_url": "https://mosquee.example/clips",
-                                "folder": str(tmp_path)})
+        social.instagram(
+            item,
+            {
+                "ig_user_id": "1789",
+                "access_token": "IGT",
+                "public_base_url": "https://mosquee.example/clips",
+                "folder": str(tmp_path),
+            },
+        )
     assert "format de la vidéo" in str(e.value)
 
 
@@ -190,18 +229,19 @@ def test_instagram_sans_adresse_publique_pas_d_appel(item, monkeypatch):
     ok, why = publish.Instagram().availability(row)
     assert not ok and "public_base_url" in why
     # an address that is not an http(s) URL would make the API fetch nothing
-    row["settings"] = json.dumps({"ig_user_id": "1789", "access_token": "IGT",
-                                  "public_base_url": "/srv/clips"})
+    row["settings"] = json.dumps({"ig_user_id": "1789", "access_token": "IGT", "public_base_url": "/srv/clips"})
     ok, why = publish.Instagram().availability(row)
     assert not ok and "public address" in why
     # with a real address it becomes available, without any call
-    row["settings"] = json.dumps({"ig_user_id": "1789", "access_token": "IGT",
-                                  "public_base_url": "https://mosquee.example/clips"})
+    row["settings"] = json.dumps(
+        {"ig_user_id": "1789", "access_token": "IGT", "public_base_url": "https://mosquee.example/clips"}
+    )
     assert publish.Instagram().availability(row) == (True, "")
     assert s.calls == []
 
 
 # --- availability and wiring ------------------------------------------------------------------
+
 
 def test_jeton_absent_desactive_le_connecteur():
     ok, why = publish.YouTube().availability(None)

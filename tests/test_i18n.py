@@ -1,4 +1,5 @@
 """Server messages: English source, per-request language, complete catalogs."""
+
 import ast
 import json
 from pathlib import Path
@@ -26,9 +27,14 @@ def _sources() -> set[str]:
     out = set()
     for f in (ROOT / "sada").rglob("*.py"):
         for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_"
-                    and node.args and isinstance(node.args[0], ast.Constant)
-                    and isinstance(node.args[0].value, str)):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "_"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
                 out.add(node.args[0].value)
     return out
 
@@ -44,5 +50,6 @@ def test_catalogs_are_complete_and_valid():
         for src, tr in cat.items():
             # placeholders must survive translation
             import string
+
             names = {n for _, n, _, _ in string.Formatter().parse(src) if n}
             assert names == {n for _, n, _, _ in string.Formatter().parse(tr) if n}, (lang, src)

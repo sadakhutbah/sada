@@ -8,6 +8,7 @@ L'état se lit dans data/state/<run>/traitement.json : {"<index>": {etat, debut,
 etat : attente | en_cours | termine | echec. Un échec n'est pas relancé seul : le bouton « Relancer »
 du back-office remet la session en attente.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -24,7 +25,7 @@ from ..pipeline.output import SessionOutput
 from . import db, importer
 
 FICHIER = "traitement.json"
-FENETRE_H = 48            # runs plus anciens : historique, jamais traités d'office
+FENETRE_H = 48  # runs plus anciens : historique, jamais traités d'office
 _verrou = threading.Lock()
 
 
@@ -64,8 +65,11 @@ def _runs(mosque: dict):
     state = db.mosque_dirs(mosque)["state"]
     if not state.is_dir():
         return []
-    return sorted((d for d in state.iterdir() if runs.RUN_RE.match(d.name) and (d / runs.SESSIONS).exists()),
-                  key=lambda d: d.name, reverse=True)
+    return sorted(
+        (d for d in state.iterdir() if runs.RUN_RE.match(d.name) and (d / runs.SESSIONS).exists()),
+        key=lambda d: d.name,
+        reverse=True,
+    )
 
 
 def a_traiter(mosque: dict, now: dt.datetime | None = None) -> list[tuple[Path, int]]:
@@ -86,8 +90,11 @@ def a_traiter(mosque: dict, now: dt.datetime | None = None) -> list[tuple[Path, 
             e = etat.get(str(idx), {}).get("etat")
             if e == "attente":
                 todo.append((rd, idx))
-            elif e is None and _recent(rd.name, now) \
-                    and not SessionOutput(out / rd.name / runs.session_dir(idx)).is_transcribed():
+            elif (
+                e is None
+                and _recent(rd.name, now)
+                and not SessionOutput(out / rd.name / runs.session_dir(idx)).is_transcribed()
+            ):
                 todo.append((rd, idx))
     return sorted(todo, key=lambda t: (t[0].name, t[1]))
 
@@ -96,11 +103,20 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
     out = db.mosque_dirs(mosque)["output"]
     _maj(run_dir, idx, etat="en_cours", debut=_now(), fin=None, erreur=None)
     log(_("{run} session {session}: processing started", run=run_dir.name, session=runs.session_number(idx)))
-    cmd = [sys.executable, "-m", "sada.pipeline.run", str(run_dir / runs.SESSIONS),
-           "--only-session", str(idx), "--out", str(out)]
+    cmd = [
+        sys.executable,
+        "-m",
+        "sada.pipeline.run",
+        str(run_dir / runs.SESSIONS),
+        "--only-session",
+        str(idx),
+        "--out",
+        str(out),
+    ]
     # Identité de la mosquée dans les clips : logo et couleurs, quand ils sont configurés.
     if (mosque.get("logo_path") or "").strip():
         from . import branding
+
         logo = branding.path_for(mosque)
         # les clips n'incrustent que les images matricielles : un SVG (sans convertisseur) est ignoré
         if logo.exists() and logo.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
@@ -117,8 +133,7 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
         importer.import_run(conn, mosque, run_dir.name, log=log)
     except Exception as e:  # noqa: BLE001 — l'échec est montré dans le back-office
         _maj(run_dir, idx, etat="echec", fin=_now(), erreur=str(e)[:300])
-        log(_("{run} session {session}: failed: {error}", run=run_dir.name,
-                   session=runs.session_number(idx), error=e))
+        log(_("{run} session {session}: failed: {error}", run=run_dir.name, session=runs.session_number(idx), error=e))
         return False
     _maj(run_dir, idx, etat="termine", fin=_now(), erreur=None)
     log(_("{run} session {session}: clips ready", run=run_dir.name, session=runs.session_number(idx)))
@@ -183,9 +198,18 @@ def liste(mosque: dict, limite: int = 10) -> list[dict]:
         sess = {s.get("index"): s for s in data.get("sessions", [])}
         for k, v in sorted(lire(rd).items(), key=lambda kv: int(kv[0]), reverse=True):
             s = sess.get(int(k), {})
-            items.append({"run": rd.name, "session": int(k), "label": importer.khutba_label(dict(s, index=int(k))),
-                          "date": runs.run_date(rd.name), "etat": v.get("etat"), "debut": v.get("debut"),
-                          "fin": v.get("fin"), "erreur": v.get("erreur")})
+            items.append(
+                {
+                    "run": rd.name,
+                    "session": int(k),
+                    "label": importer.khutba_label(dict(s, index=int(k))),
+                    "date": runs.run_date(rd.name),
+                    "etat": v.get("etat"),
+                    "debut": v.get("debut"),
+                    "fin": v.get("fin"),
+                    "erreur": v.get("erreur"),
+                }
+            )
             if len(items) >= limite:
                 return items
     return items

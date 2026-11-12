@@ -3,6 +3,7 @@
 Le front n'a pas de suite de tests JavaScript : on lit le fichier de traductions comme du texte
 et on en reconstruit l'arbre des clés (littéraux d'objet, chaînes et commentaires seulement).
 """
+
 from __future__ import annotations
 
 import re
@@ -28,7 +29,7 @@ def _objet(texte: str, i: int) -> tuple[dict, int]:
         else:
             m = re.compile(r"[A-Za-z_$][\w$]*").match(texte, i)
             if m is None:
-                raise AssertionError(f"clé illisible près de : {texte[i:i + 40]!r}")
+                raise AssertionError(f"clé illisible près de : {texte[i : i + 40]!r}")
             cle, i = m.group(0), m.end()
         i = _blancs(texte, i)
         assert texte[i] == ":", f"« : » attendu après {cle!r}"
@@ -104,7 +105,7 @@ def _genres_du_pipeline() -> set[str]:
 def test_les_deux_langues_ont_les_memes_cles():
     """Une clé ajoutée en français doit l'être en anglais, et réciproquement."""
     fr, en = _chemins(_langue("fr")), _chemins(_langue("en"))
-    assert len(fr) > 100                              # le lecteur a bien parcouru tout l'arbre
+    assert len(fr) > 100  # le lecteur a bien parcouru tout l'arbre
     assert sorted(fr - en) == [], "manquent en anglais"
     assert sorted(en - fr) == [], "manquent en français"
 
@@ -112,7 +113,7 @@ def test_les_deux_langues_ont_les_memes_cles():
 def test_chaque_genre_de_clip_du_serveur_a_un_libelle():
     """« Clip 1 · clips.kinds.modele » : tout genre que le pipeline écrit en base a son libellé."""
     genres = _genres_du_pipeline()
-    assert {"extrait"} <= genres                 # l'extraction voit bien le code
+    assert {"extrait"} <= genres  # l'extraction voit bien le code
     for nom in ("fr", "en"):
         libelles = _langue(nom)["clips"]["kinds"]
         manquants = sorted(g for g in genres if not libelles.get(g))
@@ -122,7 +123,7 @@ def test_chaque_genre_de_clip_du_serveur_a_un_libelle():
 def test_les_cles_ecrites_en_dur_dans_les_ecrans_existent():
     """Un `t("a.b")` littéral dans un composant doit désigner un texte de la table française."""
     fr = _chemins(_langue("fr"))
-    fr |= {re.sub(r"_(zero|one|two|few|many|other)$", "", c) for c in fr}   # pluriels i18next
+    fr |= {re.sub(r"_(zero|one|two|few|many|other)$", "", c) for c in fr}  # pluriels i18next
     absentes = []
     for f in list(SRC.rglob("*.tsx")) + list(SRC.rglob("*.ts")):
         code = f.read_text(encoding="utf-8")

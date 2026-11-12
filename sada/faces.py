@@ -13,6 +13,7 @@ Privacy: no frame is written, no identity is computed, no template is
 kept. Only a score and a boolean leave this module. The model (232 KB, YuNet
 2023mar, MIT licence) is embedded in `sada/models/`.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -26,7 +27,7 @@ import numpy as np
 from . import source
 from .i18n import _
 
-FRAME_TIMEOUT = 5.0     # no frame for this long: source considered lost
+FRAME_TIMEOUT = 5.0  # no frame for this long: source considered lost
 MODEL = Path(__file__).resolve().parent / "models" / "face_detection_yunet_2023mar.onnx"
 
 
@@ -37,10 +38,11 @@ class FaceGate:
     `detect(image, roi)` must return the list of faces found in the ROI region,
     each face being a tuple whose last element is the score (0–1).
     """
-    detect: object                     # callable(image, roi) -> [(x, y, w, h, score), …]
-    roi: tuple[float, ...] = (0.0, 0.0, 1.0, 1.0)   # x0, y0, x1, y1 as fractions
-    threshold: float = 0.6             # minimum score for a frontal face
-    hold_s: float = 4.0                # a face seen counts as "present" for this delay
+
+    detect: object  # callable(image, roi) -> [(x, y, w, h, score), …]
+    roi: tuple[float, ...] = (0.0, 0.0, 1.0, 1.0)  # x0, y0, x1, y1 as fractions
+    threshold: float = 0.6  # minimum score for a frontal face
+    hold_s: float = 4.0  # a face seen counts as "present" for this delay
     _last_face: float | None = field(default=None, repr=False)
     _last_seen: float | None = field(default=None, repr=False)
     last_score: float | None = field(default=None, repr=False)
@@ -97,8 +99,7 @@ def yunet_detector(threshold: float = 0.6, size: tuple[int, int] = (320, 180)):
 class FaceMonitor(threading.Thread):
     """Camera reader thread; `present()` and `absence_run()` are safe from any thread."""
 
-    def __init__(self, url: str, gate: FaceGate, width: int = 320, height: int = 180,
-                 fps: float = 5.0, log=print):
+    def __init__(self, url: str, gate: FaceGate, width: int = 320, height: int = 180, fps: float = 5.0, log=print):
         super().__init__(daemon=True, name="faces")
         self.url, self.gate, self.width, self.height, self.fps, self.log = url, gate, width, height, fps, log
         self.stop_flag = threading.Event()
@@ -117,8 +118,23 @@ class FaceMonitor(threading.Thread):
     def run(self) -> None:
         while not self.stop_flag.is_set():
             vf = f"fps={self.fps:g},scale={self.width}:{self.height},format=bgr24"
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", *source.input_options(self.url),
-                   "-i", self.url, "-an", "-vf", vf, "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                *source.input_options(self.url),
+                "-i",
+                self.url,
+                "-an",
+                "-vf",
+                vf,
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "bgr24",
+                "-",
+            ]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self._read(self.proc)

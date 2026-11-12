@@ -1,4 +1,5 @@
 """Face at the minbar: pure decision (no camera) and effect on the state machine."""
+
 import datetime as dt
 
 import numpy as np
@@ -27,16 +28,16 @@ def detector(scores):
 def test_premiere_image_sans_visage_ne_dit_rien():
     g = FaceGate(detect=detector([0.0]))
     assert g.update(image(), now=0.0) is False
-    assert g.absence_run(0.0) is None          # never seen: no absence duration
+    assert g.absence_run(0.0) is None  # never seen: no absence duration
 
 
 def test_visage_detecte_puis_perdu():
     g = FaceGate(detect=detector([0.9, 0.0]), threshold=0.6, hold_s=4.0)
     assert g.update(image(), now=0.0) is True
-    assert g.update(image(), now=1.0) is True   # no longer seen, but within the hold
+    assert g.update(image(), now=1.0) is True  # no longer seen, but within the hold
     assert g.present(3.9) is True
     assert g.present(4.1) is False
-    assert g.absence_run(4.1) == 4.1            # since the last image with a face
+    assert g.absence_run(4.1) == 4.1  # since the last image with a face
 
 
 def test_score_sous_le_seuil_ignore():
@@ -90,7 +91,7 @@ class Pilot:
 def khutba(**params):
     m = Machine([at(12, 30)], MachineParams(**params))
     p = Pilot(m, at(12, 15))
-    for i in range(1000):                       # 12:15 -> 12:30, continuous voice
+    for i in range(1000):  # 12:15 -> 12:30, continuous voice
         if p.step(1.0, voice=float(i + 1)) is State.KHUTBA:
             return m, p
     raise AssertionError("la khutba n'a pas démarré")
@@ -110,12 +111,12 @@ def test_visage_de_retour_annule_la_grace():
     for i in range(5):
         p.t += 1.0
         p.m.tick(Signals(p.now, p.t, voice_run=0.0, silence_run=40.0, face_run=60.0 + i))
-    assert m.state is State.KHUTBA          # grace period in progress
+    assert m.state is State.KHUTBA  # grace period in progress
     p.m.tick(Signals(p.now, p.t + 1, voice_run=0.0, silence_run=41.0, face_run=1.0))
     for _ in range(40):
         p.t += 1.0
         p.m.tick(Signals(p.now, p.t, voice_run=5.0, silence_run=0.0, face_run=1.0))
-    assert m.state is State.KHUTBA          # the imam is back: we do not cut
+    assert m.state is State.KHUTBA  # the imam is back: we do not cut
 
 
 def test_sans_visage_ni_silence_on_ne_coupe_pas():
@@ -123,4 +124,4 @@ def test_sans_visage_ni_silence_on_ne_coupe_pas():
     for _ in range(120):
         p.t += 1.0
         p.m.tick(Signals(p.now, p.t, voice_run=0.0, silence_run=10.0, face_run=None))
-    assert m.state is State.KHUTBA          # detection unavailable: nothing changes
+    assert m.state is State.KHUTBA  # detection unavailable: nothing changes

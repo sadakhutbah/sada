@@ -4,6 +4,7 @@ Whisper translates or transcribes Arabic into approximate French (near-Hamidulla
 We therefore compare content words (without accents or punctuation, without stop words) rather than a raw string:
 one recovered meaning-bearing root is enough, and the score is deliberately lowered to stay cautious.
 """
+
 from __future__ import annotations
 
 import re
@@ -15,18 +16,111 @@ WIN_FR = 6
 
 # stop words: present everywhere in a translation, they do not discriminate
 STOP = {
-    "le", "la", "les", "l", "d", "de", "des", "du", "un", "une", "et", "ou", "a", "au", "aux", "en", "dans", "sur",
-    "par", "pour", "que", "qui", "quoi", "qu", "ce", "cette", "ces", "cet", "il", "elle", "ils", "elles", "on",
-    "nous", "vous", "je", "tu", "se", "sa", "son", "ses", "leur", "leurs", "est", "sont", "etait", "ete", "ont",
-    "avec", "sans", "ne", "pas", "plus", "tout", "tous", "toute", "toutes", "bien", "aussi", "comme", "ainsi",
-    "vers", "chez", "y", "puis", "mais", "donc", "si", "alors", "dont", "duquel",
+    "le",
+    "la",
+    "les",
+    "l",
+    "d",
+    "de",
+    "des",
+    "du",
+    "un",
+    "une",
+    "et",
+    "ou",
+    "a",
+    "au",
+    "aux",
+    "en",
+    "dans",
+    "sur",
+    "par",
+    "pour",
+    "que",
+    "qui",
+    "quoi",
+    "qu",
+    "ce",
+    "cette",
+    "ces",
+    "cet",
+    "il",
+    "elle",
+    "ils",
+    "elles",
+    "on",
+    "nous",
+    "vous",
+    "je",
+    "tu",
+    "se",
+    "sa",
+    "son",
+    "ses",
+    "leur",
+    "leurs",
+    "est",
+    "sont",
+    "etait",
+    "ete",
+    "ont",
+    "avec",
+    "sans",
+    "ne",
+    "pas",
+    "plus",
+    "tout",
+    "tous",
+    "toute",
+    "toutes",
+    "bien",
+    "aussi",
+    "comme",
+    "ainsi",
+    "vers",
+    "chez",
+    "y",
+    "puis",
+    "mais",
+    "donc",
+    "si",
+    "alors",
+    "dont",
+    "duquel",
     # verb « to say »: ubiquitous in a khutba that announces its quotations, never decisive
-    "dit", "dis", "dire", "disent", "declare", "declaree", "raconte", "relate", "mentionne", "rappelle",
+    "dit",
+    "dis",
+    "dire",
+    "disent",
+    "declare",
+    "declaree",
+    "raconte",
+    "relate",
+    "mentionne",
+    "rappelle",
 }
 # Quran words that linger in ALL the verses: they must not cause a detection on their own
 GENERIC = {
-    "allah", "dieu", "seigneur", "certes", "voici", "verite", "gens", "chose", "choses", "jour", "monde",
-    "terres", "cieux", "terre", "vie", "mort", "coeur", "coeurs", "homme", "hommes",
+    "allah",
+    "dieu",
+    "seigneur",
+    "certes",
+    "voici",
+    "verite",
+    "gens",
+    "chose",
+    "choses",
+    "jour",
+    "monde",
+    "terres",
+    "cieux",
+    "terre",
+    "vie",
+    "mort",
+    "coeur",
+    "coeurs",
+    "homme",
+    "hommes",
 }
 
 
@@ -64,14 +158,14 @@ class FrenchIndex:
         for vi, v in enumerate(verses):
             words = content_words(v.get("fr") or "")
             if len(words) < 3:
-                continue                     # translation missing or too short: not usable
+                continue  # translation missing or too short: not usable
             self.usable.add(vi)
             if len(words) <= win:
                 self.keys.append(" ".join(words))
                 self.owner.append(vi)
             else:
                 for i in range(len(words) - win + 1):
-                    self.keys.append(" ".join(words[i:i + win]))
+                    self.keys.append(" ".join(words[i : i + win]))
                     self.owner.append(vi)
 
     def __len__(self) -> int:

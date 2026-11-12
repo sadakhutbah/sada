@@ -4,7 +4,13 @@ from sada.pipeline.verses import VerseIndex, detect
 VERSES = [
     {"surah": 112, "ayah": 1, "surah_name": "Al-Ikhlas", "text": "قل هو الله أحد", "fr": "Dis : Il est Allah, Unique."},
     {"surah": 103, "ayah": 1, "surah_name": "Al-Asr", "text": "والعصر", "fr": ""},
-    {"surah": 2, "ayah": 153, "surah_name": "Al-Baqara", "text": "يا أيها الذين آمنوا استعينوا بالصبر والصلاة إن الله مع الصابرين", "fr": "Ô vous qui croyez !"},
+    {
+        "surah": 2,
+        "ayah": 153,
+        "surah_name": "Al-Baqara",
+        "text": "يا أيها الذين آمنوا استعينوا بالصبر والصلاة إن الله مع الصابرين",
+        "fr": "Ô vous qui croyez !",
+    },
     {"surah": 65, "ayah": 2, "surah_name": "At-Talaq", "text": "ومن يتق الله يجعل له مخرجا", "fr": ""},
 ]
 for v in VERSES:
@@ -49,7 +55,13 @@ def test_short_verse():
 
 def test_formula_in_several_verses_is_ambiguous_not_firm():
     vs = [dict(v) for v in VERSES] + [
-        {"surah": 5, "ayah": 120, "surah_name": "Al-Ma'ida", "text": "لله ملك السماوات والأرض وما فيهن وهو على كل شيء قدير", "fr": ""},
+        {
+            "surah": 5,
+            "ayah": 120,
+            "surah_name": "Al-Ma'ida",
+            "text": "لله ملك السماوات والأرض وما فيهن وهو على كل شيء قدير",
+            "fr": "",
+        },
         {"surah": 11, "ayah": 4, "surah_name": "Hud", "text": "الى الله مرجعكم وهو على كل شيء قدير", "fr": ""},
     ]
     for v in vs:
@@ -63,12 +75,20 @@ def test_formula_in_several_verses_is_ambiguous_not_firm():
 # ------------------------------------------------------------------ detection via the French translation
 
 VERSES_FR = VERSES + [
-    {"surah": 65, "ayah": 3, "surah_name": "At-Talaq",
-     "text": "وَمَن يَتَوَكَّلْ عَلَى اللَّهِ فَهُوَ حَسْبُهُ",
-     "fr": "Et quiconque place sa confiance en Allah, Il lui suffit. Allah atteint ce qu'Il se propose, et Allah a assigné à chaque chose sa mesure."},
-    {"surah": 2, "ayah": 286, "surah_name": "Al-Baqara",
-     "text": "لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا",
-     "fr": "Allah n'impose à aucune âme une charge supérieure à sa capacité."},
+    {
+        "surah": 65,
+        "ayah": 3,
+        "surah_name": "At-Talaq",
+        "text": "وَمَن يَتَوَكَّلْ عَلَى اللَّهِ فَهُوَ حَسْبُهُ",
+        "fr": "Et quiconque place sa confiance en Allah, Il lui suffit. Allah atteint ce qu'Il se propose, et Allah a assigné à chaque chose sa mesure.",
+    },
+    {
+        "surah": 2,
+        "ayah": 286,
+        "surah_name": "Al-Baqara",
+        "text": "لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا",
+        "fr": "Allah n'impose à aucune âme une charge supérieure à sa capacité.",
+    },
 ]
 for v in VERSES_FR:
     v["norm"] = normalize(v["text"])
@@ -103,7 +123,11 @@ def test_pas_de_faux_positif_sur_une_khutba_francaise_ordinaire():
     """The pitfall seen on the real recording: nearby religious text but not a verse."""
     idx = VerseIndex(VERSES_FR)
     segs = [
-        seg(0, 8, "Ne craignez pas l'avenir et ne désespérez jamais de la délivrance, même si toutes les portes vous semblent fermées"),
+        seg(
+            0,
+            8,
+            "Ne craignez pas l'avenir et ne désespérez jamais de la délivrance, même si toutes les portes vous semblent fermées",
+        ),
         seg(20, 28, "la volonté absolue d'Allah : son ordre s'accomplit inévitablement et rien ne peut l'entraver"),
         seg(40, 48, "les épreuves sont limitées, l'affliction a une fin déjà programmée"),
     ]
@@ -114,8 +138,10 @@ def test_citation_francaise_puis_recitation_arabe_sont_deux_occurrences():
     """If the imam translates then recites, these are two utterances: each has its own timestamp."""
     idx = VerseIndex(VERSES_FR)
     v = [x for x in VERSES_FR if x["surah"] == 65 and x["ayah"] == 3][0]
-    segs = [seg(0, 8, "quiconque place sa confiance en Allah, Il lui suffit, et Allah a assigné à chaque chose sa mesure"),
-            seg(80, 90, v["text"])]
+    segs = [
+        seg(0, 8, "quiconque place sa confiance en Allah, Il lui suffit, et Allah a assigné à chaque chose sa mesure"),
+        seg(80, 90, v["text"]),
+    ]
     ms = detect(segs, idx)
     assert [(m.ref, m.via) for m in ms] == [("65:3", "francais"), ("65:3", "arabe")], ms
 

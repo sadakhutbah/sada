@@ -1,4 +1,5 @@
 """The ASGI entry point must remain usable by the official `fastapi run` command."""
+
 from __future__ import annotations
 
 import importlib
@@ -12,4 +13,4 @@ def test_asgi_construit_l_application(tmp_path, monkeypatch):
     mod = importlib.import_module("sada.backoffice.asgi")
     assert mod.app.title.startswith("Sadā")
     assert mod.app.state.secure is False
-    assert (tmp_path / "asgi.db").exists()          # the database is created at startup
+    assert (tmp_path / "asgi.db").exists()  # the database is created at startup

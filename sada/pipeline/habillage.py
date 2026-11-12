@@ -12,6 +12,7 @@ Même grammaire que les clips (`clips.py`) : textes en ASS brûlés par libass, 
 même disque de logo. L'original n'est jamais modifié : le rendu écrit un nouveau fichier.
 Tout ce qui est pur (options, mise en page, ASS, graphe ffmpeg) se teste sans ffmpeg.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,16 +32,34 @@ from . import clips as clipmod
 # ------------------------------------------------------------------ options
 
 DEFAUTS: dict = {
-    "intro_on": True, "title": "", "subtitle": "", "intro_s": 5.0,
-    "lower_on": True, "speaker": "", "role": "", "lower_at": 2.0, "lower_s": 8.0,
-    "logo_on": True, "logo_pos": "tr", "logo_size": "m", "logo_opacity": 0.85,
+    "intro_on": True,
+    "title": "",
+    "subtitle": "",
+    "intro_s": 5.0,
+    "lower_on": True,
+    "speaker": "",
+    "role": "",
+    "lower_at": 2.0,
+    "lower_s": 8.0,
+    "logo_on": True,
+    "logo_pos": "tr",
+    "logo_size": "m",
+    "logo_opacity": 0.85,
     "bar_on": False,
-    "outro_on": True, "outro_text": "", "outro_link": "", "outro_s": 6.0,
+    "outro_on": True,
+    "outro_text": "",
+    "outro_link": "",
+    "outro_s": 6.0,
 }
 BOOLEENS = ("intro_on", "lower_on", "logo_on", "bar_on", "outro_on")
 #: bornes des nombres réglables (secondes ; opacité entre 0 et 1)
-BORNES = {"intro_s": (2.0, 15.0), "lower_at": (0.0, 600.0), "lower_s": (3.0, 30.0), "outro_s": (2.0, 20.0),
-          "logo_opacity": (0.3, 1.0)}
+BORNES = {
+    "intro_s": (2.0, 15.0),
+    "lower_at": (0.0, 600.0),
+    "lower_s": (3.0, 30.0),
+    "outro_s": (2.0, 20.0),
+    "logo_opacity": (0.3, 1.0),
+}
 TEXTES = {"title": 160, "subtitle": 160, "speaker": 80, "role": 90, "outro_text": 140, "outro_link": 100}
 POSITIONS = ("tl", "tr", "bl", "br")
 #: diamètre du filigrane, en fraction du petit côté de l'image
@@ -86,7 +105,7 @@ def normaliser(brut: dict | None, base: dict | None = None) -> dict:
                 raise ValueError(_("Unknown logo size."))
             o[k] = v
         else:
-            o[k] = re.sub(r"\s+", " ", str(v or "")).strip()[:TEXTES[k]]
+            o[k] = re.sub(r"\s+", " ", str(v or "")).strip()[: TEXTES[k]]
     return o
 
 
@@ -102,14 +121,14 @@ def verifier(o: dict) -> None:
 
 # ------------------------------------------------------------------ couleurs
 
-VERT = "#1C3A2E"           # vert profond du back-office, quand la mosquée n'a pas de couleur
-OR = "#F2C858"             # doré des clips
-IVOIRE = "&H00E3F1F7&"     # #F7F1E3 en BGR
+VERT = "#1C3A2E"  # vert profond du back-office, quand la mosquée n'a pas de couleur
+OR = "#F2C858"  # doré des clips
+IVOIRE = "&H00E3F1F7&"  # #F7F1E3 en BGR
 
 
 def _hex(value: str | None, defaut: str) -> tuple[int, int, int]:
     m = re.fullmatch(r"#?([0-9a-fA-F]{6})", (value or "").strip())
-    h = (m.group(1) if m else defaut.lstrip("#"))
+    h = m.group(1) if m else defaut.lstrip("#")
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
 
@@ -128,9 +147,11 @@ def couleurs(brand: dict | None) -> dict:
 
 # ------------------------------------------------------------------ cadre et chronologie
 
+
 @dataclass(frozen=True)
 class Cadre:
     """Image de sortie (W×H, images par seconde) et source (durée, son présent)."""
+
     w: int
     h: int
     fps: float
@@ -138,7 +159,7 @@ class Cadre:
     audio: bool = True
 
     @property
-    def u(self) -> float:          # unité : 1 px d'une image 1080 de petit côté
+    def u(self) -> float:  # unité : 1 px d'une image 1080 de petit côté
         return min(self.w, self.h) / 1080
 
 
@@ -164,6 +185,7 @@ def _ffprobe() -> str | None:
 
 def ffmpeg() -> str:
     from ..backoffice.importer import _ffmpeg
+
     exe = _ffmpeg()
     if not exe:
         raise RuntimeError(_("ffmpeg not found on this machine."))
@@ -175,8 +197,12 @@ def sonder(src: str) -> Cadre:
     exe = _ffprobe()
     if not exe:
         raise RuntimeError(_("ffprobe not found on this machine."))
-    p = subprocess.run([exe, "-v", "error", "-show_streams", "-show_format", "-of", "json", src],
-                       capture_output=True, text=True, timeout=60)
+    p = subprocess.run(
+        [exe, "-v", "error", "-show_streams", "-show_format", "-of", "json", src],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     if p.returncode != 0:
         raise RuntimeError(_("Unreadable source video."))
     d = json.loads(p.stdout or "{}")
@@ -211,6 +237,7 @@ def sonder(src: str) -> Cadre:
 @dataclass(frozen=True)
 class Chrono:
     """Où tombe chaque partie dans la vidéo habillée : [0, i) carton, [i, i+v) vidéo, [i+v, total) fin."""
+
     i: float
     v: float
     o: float
@@ -239,10 +266,11 @@ def fenetre_bandeau(o: dict, c: Chrono) -> tuple[float, float] | None:
 
 # ------------------------------------------------------------------ mise en page
 
+
 def _lignes(texte: str, police: str, taille: float, maxw: float, max_lignes: int = 3) -> list[str]:
     lignes = clipmod.wrap_px(texte, police, round(taille), maxw) or [texte]
     if len(lignes) > max_lignes:
-        lignes = lignes[:max_lignes - 1] + [" ".join(lignes[max_lignes - 1:])]
+        lignes = lignes[: max_lignes - 1] + [" ".join(lignes[max_lignes - 1 :])]
     return lignes
 
 
@@ -268,8 +296,14 @@ def mise_en_page(o: dict, cadre: Cadre, mosquee: str, logo: bool) -> dict:
     t_lignes = _lignes(o["title"], t_police, t_taille, maxw) if o["title"] else []
     t_pas = t_taille * (1.15 if titre_ar else 1.02)
     d_logo = round(200 * u) if logo else 0
-    blocs = [d_logo + 46 * u if logo else 0, 34 * u, 38 * u, len(t_lignes) * t_pas, 40 * u,
-             (36 * u + 38 * u) if o["subtitle"] else 0]
+    blocs = [
+        d_logo + 46 * u if logo else 0,
+        34 * u,
+        38 * u,
+        len(t_lignes) * t_pas,
+        40 * u,
+        (36 * u + 38 * u) if o["subtitle"] else 0,
+    ]
     y = (H - sum(blocs)) / 2
     intro = {"logo": None, "titre_ar": titre_ar, "titre": [], "pas": t_pas}
     if logo:
@@ -288,8 +322,13 @@ def mise_en_page(o: dict, cadre: Cadre, mosquee: str, logo: bool) -> dict:
     # écran de fin : logo, nom de la mosquée, filet, message, lien
     n_lignes = _lignes(mosquee, "EBGaramond-SemiBold.ttf", 84 * u, maxw, 2)
     m_lignes = _lignes(o["outro_text"], "SourceSans3-Regular.ttf", 42 * u, maxw * 0.9, 3) if o["outro_text"] else []
-    blocs = [d_logo + 50 * u if logo else 0, len(n_lignes) * 86 * u, 44 * u,
-             len(m_lignes) * 52 * u + (18 * u if m_lignes else 0), (54 * u if o["outro_link"] else 0)]
+    blocs = [
+        d_logo + 50 * u if logo else 0,
+        len(n_lignes) * 86 * u,
+        44 * u,
+        len(m_lignes) * 52 * u + (18 * u if m_lignes else 0),
+        (54 * u if o["outro_link"] else 0),
+    ]
     y = (H - sum(blocs)) / 2
     fin = {"logo": None, "nom": [], "message": [], "lien": None}
     if logo:
@@ -328,13 +367,23 @@ def mise_en_page(o: dict, cadre: Cadre, mosquee: str, logo: bool) -> dict:
     if p["filigrane"] and pos == "bl":
         bas = H - y_wm + round(26 * u)
     x0, y1 = round(72 * u), H - bas
-    p["bandeau"] = {"x": x0, "y": y1 - ph, "w": pw, "h": ph, "accent": accent, "pad": pad,
-                    "nom_y": y1 - ph + round(24 * u), "role_y": y1 - ph + round((24 + 56 + 10) * u),
-                    "nom_t": nom_t, "role_t": role_t}
+    p["bandeau"] = {
+        "x": x0,
+        "y": y1 - ph,
+        "w": pw,
+        "h": ph,
+        "accent": accent,
+        "pad": pad,
+        "nom_y": y1 - ph + round(24 * u),
+        "role_y": y1 - ph + round((24 + 56 + 10) * u),
+        "nom_t": nom_t,
+        "role_t": role_t,
+    }
     return p
 
 
 # ------------------------------------------------------------------ ASS
+
 
 def _t(x: float) -> str:
     return clipmod._ass_time(x)
@@ -354,8 +403,10 @@ def entete_ass(cadre: Cadre, col: dict) -> str:
     ombre = "&H78000000&"
 
     def style(nom, police, taille, couleur, gras=0, esp=0.0, contour=0, ombre_px=0, al=5, contour_c="&H00000000&"):
-        return (f"Style: {nom},{police},{round(taille)},{couleur},&H000000FF&,{contour_c},{ombre},{gras},0,0,0,100,100,"
-                f"{esp:.1f},0,1,{contour},{ombre_px},{al},0,0,0,1\n")
+        return (
+            f"Style: {nom},{police},{round(taille)},{couleur},&H000000FF&,{contour_c},{ombre},{gras},0,0,0,100,100,"
+            f"{esp:.1f},0,1,{contour},{ombre_px},{al},0,0,0,1\n"
+        )
 
     return (
         "[Script Info]\nScriptType: v4.00+\n"
@@ -385,18 +436,49 @@ def _carton_intro(o: dict, p: dict, cadre: Cadre, c: Chrono, mosquee: str, col: 
         return []
     W, u, it = cadre.w, cadre.u, p["intro"]
     fin = c.i - 0.15
-    ev = [_ev(2, 0.25, fin, "Kicker", f"{{\\an5\\pos({W / 2:.0f},{it['kicker']:.0f})\\fad(500,350)}}{_esc(mosquee.upper())}")]
+    ev = [
+        _ev(
+            2,
+            0.25,
+            fin,
+            "Kicker",
+            f"{{\\an5\\pos({W / 2:.0f},{it['kicker']:.0f})\\fad(500,350)}}{_esc(mosquee.upper())}",
+        )
+    ]
     style = "TitreAr" if it["titre_ar"] else "Titre"
     for n, (ligne, y) in enumerate(it["titre"]):
         d = 0.45 + 0.12 * n
-        ev.append(_ev(2, d, fin, style, f"{{\\an5\\move({W / 2:.0f},{y + 22 * u:.0f},{W / 2:.0f},{y:.0f},0,700)"
-                                        f"\\fad(550,350)}}{_esc(ligne)}"))
+        ev.append(
+            _ev(
+                2,
+                d,
+                fin,
+                style,
+                f"{{\\an5\\move({W / 2:.0f},{y + 22 * u:.0f},{W / 2:.0f},{y:.0f},0,700)\\fad(550,350)}}{_esc(ligne)}",
+            )
+        )
     # filet doré qui s'ouvre depuis le centre sous le titre
     lw, lh = 150 * u, max(2, round(3 * u))
-    ev.append(_ev(1, 0.7, fin, "Forme", f"{{\\an5\\pos({W / 2:.0f},{it['regle']:.0f})\\1c{_ass(col['gold'])}\\bord0\\shad0"
-                                       f"\\fscx0\\t(0,700,\\fscx100)\\fad(0,350)\\p1}}{_rect(lw, lh)}{{\\p0}}"))
+    ev.append(
+        _ev(
+            1,
+            0.7,
+            fin,
+            "Forme",
+            f"{{\\an5\\pos({W / 2:.0f},{it['regle']:.0f})\\1c{_ass(col['gold'])}\\bord0\\shad0"
+            f"\\fscx0\\t(0,700,\\fscx100)\\fad(0,350)\\p1}}{_rect(lw, lh)}{{\\p0}}",
+        )
+    )
     if it["sous_titre"]:
-        ev.append(_ev(2, 0.95, fin, "Sous", f"{{\\an5\\pos({W / 2:.0f},{it['sous_titre']:.0f})\\fad(500,350)}}{_esc(o['subtitle'])}"))
+        ev.append(
+            _ev(
+                2,
+                0.95,
+                fin,
+                "Sous",
+                f"{{\\an5\\pos({W / 2:.0f},{it['sous_titre']:.0f})\\fad(500,350)}}{_esc(o['subtitle'])}",
+            )
+        )
     return ev
 
 
@@ -408,15 +490,28 @@ def _bandeau(o: dict, p: dict, c: Chrono, col: dict) -> list[str]:
     d = round((b - a) * 1000)
     q = p["bandeau"]
     x, y, w, h = q["x"], q["y"], q["w"], q["h"]
-    ouvre, ferme = f"\\clip({x},{y},{x},{y + h})\\t(0,520,0.6,\\clip({x},{y},{x + w},{y + h}))", \
-        f"\\t({max(0, d - 450)},{d},1.6,\\clip({x},{y},{x},{y + h}))"
+    ouvre, ferme = (
+        f"\\clip({x},{y},{x},{y + h})\\t(0,520,0.6,\\clip({x},{y},{x + w},{y + h}))",
+        f"\\t({max(0, d - 450)},{d},1.6,\\clip({x},{y},{x},{y + h}))",
+    )
     ev = [
         # panneau vert profond, presque opaque, révélé en volet de gauche à droite
-        _ev(3, a, b, "Forme", f"{{\\an7\\pos({x},{y})\\1c{_ass(col['dark'])}\\bord0\\shad0{ouvre}{ferme}\\p1}}"
-                             f"{_rect(w, h)}{{\\p0}}"),
+        _ev(
+            3,
+            a,
+            b,
+            "Forme",
+            f"{{\\an7\\pos({x},{y})\\1c{_ass(col['dark'])}\\bord0\\shad0{ouvre}{ferme}\\p1}}{_rect(w, h)}{{\\p0}}",
+        ),
         # liseré doré à gauche : il arrive d'abord, il part en dernier
-        _ev(4, a, b, "Forme", f"{{\\an7\\pos({x},{y})\\1c{_ass(col['gold'])}\\bord0\\shad0\\fad(180,300)\\p1}}"
-                             f"{_rect(q['accent'], h)}{{\\p0}}"),
+        _ev(
+            4,
+            a,
+            b,
+            "Forme",
+            f"{{\\an7\\pos({x},{y})\\1c{_ass(col['gold'])}\\bord0\\shad0\\fad(180,300)\\p1}}"
+            f"{_rect(q['accent'], h)}{{\\p0}}",
+        ),
     ]
     tx = x + q["accent"] + q["pad"]
     texte = f"\\alpha&HFF&\\t(260,620,\\alpha&H00&)\\t({max(0, d - 520)},{max(0, d - 220)},\\alpha&HFF&)"
@@ -429,8 +524,16 @@ def _bandeau(o: dict, p: dict, c: Chrono, col: dict) -> list[str]:
 def _barre(p: dict, cadre: Cadre, c: Chrono, col: dict) -> list[str]:
     if not p["barre"]:
         return []
-    return [_ev(3, c.i, c.fin_video, "Forme", f"{{\\an7\\pos(0,{cadre.h - p['barre']})\\1c{_ass(col['gold'])}\\bord0\\shad0"
-                                              f"\\fad(600,400)\\p1}}{_rect(cadre.w, p['barre'])}{{\\p0}}")]
+    return [
+        _ev(
+            3,
+            c.i,
+            c.fin_video,
+            "Forme",
+            f"{{\\an7\\pos(0,{cadre.h - p['barre']})\\1c{_ass(col['gold'])}\\bord0\\shad0"
+            f"\\fad(600,400)\\p1}}{_rect(cadre.w, p['barre'])}{{\\p0}}",
+        )
+    ]
 
 
 def _carton_fin(o: dict, p: dict, cadre: Cadre, c: Chrono, mosquee: str, col: dict) -> list[str]:
@@ -440,15 +543,38 @@ def _carton_fin(o: dict, p: dict, cadre: Cadre, c: Chrono, mosquee: str, col: di
     a, b = c.fin_video + 0.3, c.total - 0.2
     ev = []
     for ligne, y in f["nom"]:
-        ev.append(_ev(2, a + 0.15, b, "FinNom", f"{{\\an5\\move({W / 2:.0f},{y + 18 * u:.0f},{W / 2:.0f},{y:.0f},0,650)"
-                                                f"\\fad(550,450)}}{_esc(ligne)}"))
+        ev.append(
+            _ev(
+                2,
+                a + 0.15,
+                b,
+                "FinNom",
+                f"{{\\an5\\move({W / 2:.0f},{y + 18 * u:.0f},{W / 2:.0f},{y:.0f},0,650)\\fad(550,450)}}{_esc(ligne)}",
+            )
+        )
     lw, lh = 150 * u, max(2, round(3 * u))
-    ev.append(_ev(1, a + 0.4, b, "Forme", f"{{\\an5\\pos({W / 2:.0f},{f['regle']:.0f})\\1c{_ass(col['gold'])}\\bord0\\shad0"
-                                          f"\\fscx0\\t(0,700,\\fscx100)\\fad(0,450)\\p1}}{_rect(lw, lh)}{{\\p0}}"))
+    ev.append(
+        _ev(
+            1,
+            a + 0.4,
+            b,
+            "Forme",
+            f"{{\\an5\\pos({W / 2:.0f},{f['regle']:.0f})\\1c{_ass(col['gold'])}\\bord0\\shad0"
+            f"\\fscx0\\t(0,700,\\fscx100)\\fad(0,450)\\p1}}{_rect(lw, lh)}{{\\p0}}",
+        )
+    )
     for ligne, y in f["message"]:
         ev.append(_ev(2, a + 0.6, b, "FinTexte", f"{{\\an5\\pos({W / 2:.0f},{y:.0f})\\fad(500,450)}}{_esc(ligne)}"))
     if f["lien"]:
-        ev.append(_ev(2, a + 0.85, b, "FinLien", f"{{\\an5\\pos({W / 2:.0f},{f['lien']:.0f})\\fad(500,450)}}{_esc(o['outro_link'])}"))
+        ev.append(
+            _ev(
+                2,
+                a + 0.85,
+                b,
+                "FinLien",
+                f"{{\\an5\\pos({W / 2:.0f},{f['lien']:.0f})\\fad(500,450)}}{_esc(o['outro_link'])}",
+            )
+        )
     return ev
 
 
@@ -457,12 +583,17 @@ def build_ass(o: dict, cadre: Cadre, mosquee: str, brand: dict | None = None, lo
     col = couleurs(brand)
     c = chrono(o, cadre.duree)
     p = mise_en_page(o, cadre, mosquee, logo)
-    ev = (_carton_intro(o, p, cadre, c, mosquee, col) + _bandeau(o, p, c, col) + _barre(p, cadre, c, col)
-          + _carton_fin(o, p, cadre, c, mosquee, col))
+    ev = (
+        _carton_intro(o, p, cadre, c, mosquee, col)
+        + _bandeau(o, p, c, col)
+        + _barre(p, cadre, c, col)
+        + _carton_fin(o, p, cadre, c, mosquee, col)
+    )
     return entete_ass(cadre, col) + "\n".join(ev) + ("\n" if ev else "")
 
 
 # ------------------------------------------------------------------ fond des cartons
+
 
 def fond_carton(path: str, cadre: Cadre, brand: dict | None = None) -> str:
     """Fond des cartons : dégradé radial du vert de la mosquée, cadre doré fin, comme un plateau de direct."""
@@ -473,7 +604,7 @@ def fond_carton(path: str, cadre: Cadre, brand: dict | None = None) -> str:
     W, H, u = cadre.w, cadre.h, cadre.u
     y, x = np.mgrid[0:H, 0:W].astype(np.float32)
     r = np.sqrt(((x - W / 2) / (W * 0.62)) ** 2 + ((y - H * 0.46) / (H * 0.78)) ** 2)
-    k = np.clip(1.0 - r, 0, 1) ** 1.3                     # 1 au centre, 0 aux bords
+    k = np.clip(1.0 - r, 0, 1) ** 1.3  # 1 au centre, 0 aux bords
     centre = np.array(col["green"], np.float32) * 0.92 + 255 * 0.04
     bord = np.array(col["green"], np.float32) * 0.30
     img = (bord + (centre - bord) * k[..., None]).clip(0, 255).astype(np.uint8)
@@ -492,7 +623,7 @@ def fond_carton(path: str, cadre: Cadre, brand: dict | None = None) -> str:
 
 # ------------------------------------------------------------------ graphe ffmpeg
 
-FONDU = 0.45          # fondu au noir entre les cartons et la vidéo
+FONDU = 0.45  # fondu au noir entre les cartons et la vidéo
 
 
 def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bool = False) -> tuple[str, list[str]]:
@@ -502,8 +633,15 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
     extra: list[str] = []
     n = 1
     fc: list[str] = []
-    v_fx = [f"scale={W}:{H}:force_original_aspect_ratio=decrease", f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black",
-            "setsar=1", f"fps={fps}", f"trim=duration={c.v:.3f}", "setpts=PTS-STARTPTS", "format=yuv420p"]
+    v_fx = [
+        f"scale={W}:{H}:force_original_aspect_ratio=decrease",
+        f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black",
+        "setsar=1",
+        f"fps={fps}",
+        f"trim=duration={c.v:.3f}",
+        "setpts=PTS-STARTPTS",
+        "format=yuv420p",
+    ]
     if c.i:
         v_fx.append(f"fade=t=in:st=0:d={FONDU}")
     if c.o:
@@ -511,10 +649,13 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
     fc.append(f"[0:v]{','.join(v_fx)}[v0]")
     if not apercu:
         if cadre.audio:
-            fc.append(f"[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,"
-                      f"atrim=duration={c.v:.3f},asetpts=PTS-STARTPTS"
-                      + (",afade=t=in:d=0.3" if c.i else "")
-                      + (f",afade=t=out:st={max(0.0, c.v - 0.6):.3f}:d=0.6" if c.o else "") + "[a0]")
+            fc.append(
+                f"[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,"
+                f"atrim=duration={c.v:.3f},asetpts=PTS-STARTPTS"
+                + (",afade=t=in:d=0.3" if c.i else "")
+                + (f",afade=t=out:st={max(0.0, c.v - 0.6):.3f}:d=0.6" if c.o else "")
+                + "[a0]"
+            )
         else:
             fc.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={c.v:.3f}[a0]")
 
@@ -526,13 +667,17 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
         sorties = [s for s, d in (("ci", c.i), ("co", c.o)) if d]
         fc.append(f"[{fond}:v]format=yuv420p,setsar=1,split={len(sorties)}" + "".join(f"[{s}]" for s in sorties))
         if c.i:
-            fc.append(f"[ci]trim=duration={c.i:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.5,"
-                      f"fade=t=out:st={c.i - FONDU:.3f}:d={FONDU}[iv]")
+            fc.append(
+                f"[ci]trim=duration={c.i:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.5,"
+                f"fade=t=out:st={c.i - FONDU:.3f}:d={FONDU}[iv]"
+            )
             if not apercu:
                 fc.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={c.i:.3f}[ia]")
         if c.o:
-            fc.append(f"[co]trim=duration={c.o:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0:d={FONDU},"
-                      f"fade=t=out:st={c.o - 0.6:.3f}:d=0.6[ov]")
+            fc.append(
+                f"[co]trim=duration={c.o:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0:d={FONDU},"
+                f"fade=t=out:st={c.o - 0.6:.3f}:d=0.6[ov]"
+            )
             if not apercu:
                 fc.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={c.o:.3f}[oa]")
     if c.i:
@@ -547,7 +692,9 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
     if apercu:
         fc.append("".join(segments_v) + f"concat=n={k}:v=1:a=0[cv]")
     else:
-        fc.append("".join(v + a for v, a in zip(segments_v, segments_a, strict=False)) + f"concat=n={k}:v=1:a=1[cv][ca]")
+        fc.append(
+            "".join(v + a for v, a in zip(segments_v, segments_a, strict=False)) + f"concat=n={k}:v=1:a=1[cv][ca]"
+        )
 
     courant = "cv"
     poses = []
@@ -566,15 +713,19 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
         for nom, (x, y, d) in poses:
             if nom == "wm":
                 a, b = c.i, c.fin_video
-                fx = (f"scale={d}:{d},colorchannelmixer=aa={o['logo_opacity']:.2f},"
-                      f"fade=t=in:st={a + 0.4:.3f}:d=0.8:alpha=1,fade=t=out:st={max(a, b - 0.7):.3f}:d=0.6:alpha=1")
+                fx = (
+                    f"scale={d}:{d},colorchannelmixer=aa={o['logo_opacity']:.2f},"
+                    f"fade=t=in:st={a + 0.4:.3f}:d=0.8:alpha=1,fade=t=out:st={max(a, b - 0.7):.3f}:d=0.6:alpha=1"
+                )
             elif nom == "li":
                 a, b = 0.0, c.i
                 fx = f"scale={d}:{d},fade=t=in:st=0.15:d=0.7:alpha=1,fade=t=out:st={max(0.2, b - 0.65):.3f}:d=0.45:alpha=1"
             else:
                 a, b = c.fin_video, c.total
-                fx = (f"scale={d}:{d},fade=t=in:st={a + 0.3:.3f}:d=0.7:alpha=1,"
-                      f"fade=t=out:st={max(a + 0.4, b - 0.8):.3f}:d=0.6:alpha=1")
+                fx = (
+                    f"scale={d}:{d},fade=t=in:st={a + 0.3:.3f}:d=0.7:alpha=1,"
+                    f"fade=t=out:st={max(a + 0.4, b - 0.8):.3f}:d=0.6:alpha=1"
+                )
             fc.append(f"[s{nom}]{fx}[{nom}]")
             fc.append(f"[{courant}][{nom}]overlay={x}:{y}:format=auto:enable='between(t,{a:.3f},{b:.3f})'[o{nom}]")
             courant = f"o{nom}"
@@ -584,11 +735,17 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
 
 # ------------------------------------------------------------------ rendu
 
-def _preparer(o: dict, src: str, td: Path, mosquee: str, brand: dict | None, logo_src: str | None,
-              cadre: Cadre) -> tuple[str, list[str], Chrono]:
+
+def _preparer(
+    o: dict, src: str, td: Path, mosquee: str, brand: dict | None, logo_src: str | None, cadre: Cadre
+) -> tuple[str, list[str], Chrono]:
     """Écrit l'ASS, le fond et le logo dans `td` ; rend (filter_complex, entrées supplémentaires, chronologie)."""
     besoin_logo = bool(logo_src) and (o["logo_on"] or o["intro_on"] or o["outro_on"])
-    lg = clipmod.logo_disc(str(logo_src), str(td / "logo.png"), size=round(220 * cadre.u), brand=brand) if besoin_logo else None
+    lg = (
+        clipmod.logo_disc(str(logo_src), str(td / "logo.png"), size=round(220 * cadre.u), brand=brand)
+        if besoin_logo
+        else None
+    )
     p = mise_en_page(o, cadre, mosquee, bool(lg))
     (td / "habillage.ass").write_text(build_ass(o, cadre, mosquee, brand, logo=bool(lg)), encoding="utf-8")
     c = chrono(o, cadre.duree)
@@ -613,14 +770,55 @@ def _entree(src: str, debut: float, duree: float) -> list[str]:
 
 
 def commande(o: dict, src: str, out: str, fc: str, extra: list[str], c: Chrono, debut: float = 0.0) -> list[str]:
-    return [ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostats", "-y", *_entree(src, debut, c.v), *extra,
-            "-filter_complex", fc, "-map", "[v]", "-map", "[ca]", "-t", f"{c.total:.3f}",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-progress", "pipe:1", str(Path(out).resolve())]
+    return [
+        ffmpeg(),
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostats",
+        "-y",
+        *_entree(src, debut, c.v),
+        *extra,
+        "-filter_complex",
+        fc,
+        "-map",
+        "[v]",
+        "-map",
+        "[ca]",
+        "-t",
+        f"{c.total:.3f}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-movflags",
+        "+faststart",
+        "-progress",
+        "pipe:1",
+        str(Path(out).resolve()),
+    ]
 
 
-def rendre(o: dict, src: str, out: str, mosquee: str, brand: dict | None = None, logo: str | None = None,
-           progres=None, log=print, debut: float = 0.0, fin: float | None = None) -> str:
+def rendre(
+    o: dict,
+    src: str,
+    out: str,
+    mosquee: str,
+    brand: dict | None = None,
+    logo: str | None = None,
+    progres=None,
+    log=print,
+    debut: float = 0.0,
+    fin: float | None = None,
+) -> str:
     """Vidéo habillée complète dans `out` (écrite à côté puis renommée : jamais de fichier à moitié servi).
 
     progres(fraction) est appelé pendant l'encodage, d'après le temps de sortie donné par ffmpeg."""
@@ -667,8 +865,16 @@ def instants_apercu(o: dict, c: Chrono) -> list[tuple[str, float]]:
     return out or [("video", c.i + c.v / 2)]
 
 
-def apercu(o: dict, src: str, out: str, mosquee: str, brand: dict | None = None, logo: str | None = None,
-           debut: float = 0.0, fin: float | None = None) -> str:
+def apercu(
+    o: dict,
+    src: str,
+    out: str,
+    mosquee: str,
+    brand: dict | None = None,
+    logo: str | None = None,
+    debut: float = 0.0,
+    fin: float | None = None,
+) -> str:
     """Planche JPEG d'aperçu : une image par élément actif, rendue par le même graphe que la vraie vidéo.
 
     Seul le début de la source est décodé (ce qu'il faut pour voir le bandeau) : l'aperçu d'un dars d'une
@@ -680,7 +886,11 @@ def apercu(o: dict, src: str, out: str, mosquee: str, brand: dict | None = None,
     with tempfile.TemporaryDirectory() as td:
         tdp = Path(td)
         besoin_logo = bool(logo) and (o["logo_on"] or o["intro_on"] or o["outro_on"])
-        lg = clipmod.logo_disc(str(logo), str(tdp / "logo.png"), size=round(220 * court.u), brand=brand) if besoin_logo else None
+        lg = (
+            clipmod.logo_disc(str(logo), str(tdp / "logo.png"), size=round(220 * court.u), brand=brand)
+            if besoin_logo
+            else None
+        )
         p = mise_en_page(o, court, mosquee, bool(lg))
         (tdp / "habillage.ass").write_text(build_ass(o, court, mosquee, brand, logo=bool(lg)), encoding="utf-8")
         c = chrono(o, court.duree)
@@ -691,8 +901,24 @@ def apercu(o: dict, src: str, out: str, mosquee: str, brand: dict | None = None,
         images = sorted({min(round(t * court.fps), max(0, round(c.total * court.fps) - 2)) for _, t in moments})
         sel = "+".join(f"eq(n\\,{i})" for i in images)
         fc = fc[: -len("[v]")] + f",select='{sel}'[v]"
-        cmd = [ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", *_entree(src, debut, court.duree), *extra, "-filter_complex", fc, "-map", "[v]",
-               "-t", f"{c.total:.3f}", "-fps_mode", "passthrough", "img_%02d.png"]
+        cmd = [
+            ffmpeg(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            *_entree(src, debut, court.duree),
+            *extra,
+            "-filter_complex",
+            fc,
+            "-map",
+            "[v]",
+            "-t",
+            f"{c.total:.3f}",
+            "-fps_mode",
+            "passthrough",
+            "img_%02d.png",
+        ]
         p_ = subprocess.run(cmd, cwd=td, capture_output=True, text=True, timeout=300)
         vues = sorted(tdp.glob("img_*.png"))
         if p_.returncode != 0 or not vues:

@@ -3,6 +3,7 @@
 Only the orchestrator calls them, from the same machine. They never go through the browser: the
 CSP, the CSRF and the permissions of the JSON API do not apply here.
 """
+
 from __future__ import annotations
 
 from urllib.parse import urlparse
@@ -41,8 +42,13 @@ def notification_settings(request: Request, conn: ConnDep, port: int = 0):
     if mid is None:
         return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
     r = db.one(conn, "SELECT * FROM notifications WHERE mosque_id = ?", mid) or {}
-    return {"mosque_id": mid, "mode": r.get("mode", ""), "webhook": r.get("webhook", ""),
-            "telegram_token": r.get("telegram_token", ""), "telegram_chat": r.get("telegram_chat", "")}
+    return {
+        "mosque_id": mid,
+        "mode": r.get("mode", ""),
+        "webhook": r.get("webhook", ""),
+        "telegram_token": r.get("telegram_token", ""),
+        "telegram_chat": r.get("telegram_chat", ""),
+    }
 
 
 @router.get("/internal/live-targets")
@@ -78,8 +84,11 @@ def screen_texts(request: Request, conn: ConnDep, port: int = 0):
     mosque = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
     if not mosque:
         return JSONResponse({"error": _("mosque not found")}, status_code=404)
-    return {"mosque_id": mid, "screens": screens_mod.saved(conn, mid),
-            "variables": variables_mod.variables(conn, mosque)}
+    return {
+        "mosque_id": mid,
+        "screens": screens_mod.saved(conn, mid),
+        "variables": variables_mod.variables(conn, mosque),
+    }
 
 
 @router.get("/internal/gabarit")
@@ -102,8 +111,7 @@ def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
     valeurs = variables_mod.variables(conn, mosquee)
     # une page par écran, chacune avec l'écran voulu visible : le moteur n'a pas à découper le HTML
     pages = {e: gabarit.pour_ecran(fichier, e) for e in gabarit.ECRANS}
-    return {"mosque_id": mid, "nom": mosquee.get("name") or "", "present": True,
-            "pages": pages, "variables": valeurs}
+    return {"mosque_id": mid, "nom": mosquee.get("name") or "", "present": True, "pages": pages, "variables": valeurs}
 
 
 @router.get("/internal/live-input")

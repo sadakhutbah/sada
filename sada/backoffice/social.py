@@ -7,6 +7,7 @@ protocol against a fake session instead of mocking our own code.
 Deliberately small: one function per network, returning the public address of what was published,
 raising `PublishError` with the platform's own message when it refuses. The caller logs it.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,10 +28,10 @@ GRAPH_VIDEO = "https://graph-video.facebook.com/v21.0"
 GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
 YOUTUBE_UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos"
 
-UPLOAD_TIMEOUT_S = 1800          # a clip is tens of megabytes on a mosque's connection
+UPLOAD_TIMEOUT_S = 1800  # a clip is tens of megabytes on a mosque's connection
 SESSION = requests.Session()
 SLEEP = time.sleep
-POLL_ATTEMPTS = 24               # Instagram transcodes: up to two minutes of polling
+POLL_ATTEMPTS = 24  # Instagram transcodes: up to two minutes of polling
 POLL_DELAY_S = 5.0
 
 
@@ -42,7 +43,7 @@ def _message(r) -> str:
     """The platform's error, verbatim if possible: an operator has to be able to act on it."""
     try:
         d = r.json()
-    except Exception:                                  # noqa: BLE001 - plain text or HTML error page
+    except Exception:  # noqa: BLE001 - plain text or HTML error page
         return (r.text or "").strip()[:300]
     err = d.get("error") if isinstance(d, dict) else None
     if isinstance(err, dict):
@@ -55,8 +56,7 @@ def _message(r) -> str:
 def _ok(r, what: str):
     """A response, or a `PublishError` naming the step that failed."""
     if r.status_code >= 400:
-        raise PublishError(_("{what}: HTTP {code} — {message}",
-                             what=what, code=r.status_code, message=_message(r)))
+        raise PublishError(_("{what}: HTTP {code} — {message}", what=what, code=r.status_code, message=_message(r)))
     return r
 
 
@@ -94,11 +94,25 @@ def archive(item, folder: str | Path) -> Path:
     out = dest / f"{base}.mp4"
     shutil.copy2(src, out)
     meta = {
-        "mosquee": m["name"], "khutba": k["label"], "date": k["date"], "run": k["run_id"],
-        "clip": {"numero": c["idx"], "type": c["kind"], "version": c["version"], "debut_s": c["start"],
-                 "fin_s": c["end"], "pourquoi": c["why"], "source": src.name},
-        "legende": item.caption, "valide_par": item.validated_by, "publie_par": item.published_by,
-        "publie_le": db.now_iso(), "musique": False, "sous_titres": "français seul",
+        "mosquee": m["name"],
+        "khutba": k["label"],
+        "date": k["date"],
+        "run": k["run_id"],
+        "clip": {
+            "numero": c["idx"],
+            "type": c["kind"],
+            "version": c["version"],
+            "debut_s": c["start"],
+            "fin_s": c["end"],
+            "pourquoi": c["why"],
+            "source": src.name,
+        },
+        "legende": item.caption,
+        "valide_par": item.validated_by,
+        "publie_par": item.published_by,
+        "publie_le": db.now_iso(),
+        "musique": False,
+        "sous_titres": "français seul",
     }
     (dest / f"{base}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
@@ -108,22 +122,38 @@ def facebook(item, settings: dict) -> str:
     """Video on the mosque's page. The description is the caption; returns the post's address."""
     path = Path(item.clip["file_path"])
     with path.open("rb") as f:
-        r = _ok(SESSION.post(
-            f"{GRAPH_VIDEO}/{settings['page_id']}/videos",
-            data={"description": caption_for(item, 5000), "access_token": settings["page_token"],
-                  "published": "true"},
-            files={"source": (path.name, f, "video/mp4")}, timeout=UPLOAD_TIMEOUT_S),
-            _("Facebook video upload"))
+        r = _ok(
+            SESSION.post(
+                f"{GRAPH_VIDEO}/{settings['page_id']}/videos",
+                data={
+                    "description": caption_for(item, 5000),
+                    "access_token": settings["page_token"],
+                    "published": "true",
+                },
+                files={"source": (path.name, f, "video/mp4")},
+                timeout=UPLOAD_TIMEOUT_S,
+            ),
+            _("Facebook video upload"),
+        )
     d = r.json() if r.content else {}
     return d.get("permalink_url") or f"https://www.facebook.com/{d.get('id', '')}"
 
 
 def google_token(settings: dict) -> str:
     """Access token from the refresh token the mosque generated once (OAuth, offline access)."""
-    d = _json(SESSION.post(GOOGLE_TOKEN, data={
-        "client_id": settings["client_id"], "client_secret": settings["client_secret"],
-        "refresh_token": settings["refresh_token"], "grant_type": "refresh_token"}, timeout=30),
-        _("Google token"))
+    d = _json(
+        SESSION.post(
+            GOOGLE_TOKEN,
+            data={
+                "client_id": settings["client_id"],
+                "client_secret": settings["client_secret"],
+                "refresh_token": settings["refresh_token"],
+                "grant_type": "refresh_token",
+            },
+            timeout=30,
+        ),
+        _("Google token"),
+    )
     if not d.get("access_token"):
         raise PublishError(_("Google token: response without access_token"))
     return d["access_token"]
@@ -142,23 +172,31 @@ def youtube(item, settings: dict) -> str:
     """Resumable upload to the mosque's channel; returns the short address."""
     token = google_token(settings)
     body = {
-        "snippet": {"title": youtube_title(item), "description": caption_for(item, 4900),
-                    "categoryId": settings.get("category_id") or "27", "defaultLanguage": "fr"},
-        "status": {"privacyStatus": settings.get("privacy_status") or "public",
-                   "selfDeclaredMadeForKids": False},
+        "snippet": {
+            "title": youtube_title(item),
+            "description": caption_for(item, 4900),
+            "categoryId": settings.get("category_id") or "27",
+            "defaultLanguage": "fr",
+        },
+        "status": {"privacyStatus": settings.get("privacy_status") or "public", "selfDeclaredMadeForKids": False},
     }
-    init = _ok(SESSION.post(f"{YOUTUBE_UPLOAD}?uploadType=resumable&part=snippet,status",
-                            headers={"Authorization": f"Bearer {token}",
-                                     "Content-Type": "application/json; charset=UTF-8"},
-                            data=json.dumps(body), timeout=60),
-               _("opening the YouTube upload"))
+    init = _ok(
+        SESSION.post(
+            f"{YOUTUBE_UPLOAD}?uploadType=resumable&part=snippet,status",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=UTF-8"},
+            data=json.dumps(body),
+            timeout=60,
+        ),
+        _("opening the YouTube upload"),
+    )
     where = init.headers.get("location") or init.headers.get("Location")
     if not where:
         raise PublishError(_("opening the YouTube upload: upload address missing from the response"))
     with Path(item.clip["file_path"]).open("rb") as f:
-        d = _json(SESSION.put(where, data=f, headers={"Content-Type": "video/mp4"},
-                              timeout=UPLOAD_TIMEOUT_S),
-                  _("sending the video to YouTube"))
+        d = _json(
+            SESSION.put(where, data=f, headers={"Content-Type": "video/mp4"}, timeout=UPLOAD_TIMEOUT_S),
+            _("sending the video to YouTube"),
+        )
     if not d.get("id"):
         raise PublishError(_("sending the video to YouTube: response without an identifier"))
     return f"https://youtu.be/{d['id']}"
@@ -168,9 +206,12 @@ def _wait_finished(creation_id: str, settings: dict) -> None:
     """Instagram transcodes asynchronously: the Reel is only publishable once FINISHED."""
     url = f"{GRAPH}/{creation_id}"
     for attempt in range(POLL_ATTEMPTS):
-        d = _json(SESSION.get(url, params={"fields": "status_code,status",
-                                           "access_token": settings["access_token"]}, timeout=30),
-                  _("Instagram Reel status"))
+        d = _json(
+            SESSION.get(
+                url, params={"fields": "status_code,status", "access_token": settings["access_token"]}, timeout=30
+            ),
+            _("Instagram Reel status"),
+        )
         status = d.get("status_code")
         if status == "FINISHED":
             return
@@ -192,15 +233,30 @@ def instagram(item, settings: dict) -> str:
     base = (settings.get("public_base_url") or "").rstrip("/")
     k = item.khutba
     video_url = f"{base}/{k['date'] or 'sans-date'}/{published_name(item)}.mp4"
-    d = _json(SESSION.post(f"{GRAPH}/{settings['ig_user_id']}/media", data={
-        "media_type": "REELS", "video_url": video_url, "caption": caption_for(item, 2200),
-        "share_to_feed": "true", "access_token": settings["access_token"]}, timeout=120),
-        _("creating the Instagram Reel"))
+    d = _json(
+        SESSION.post(
+            f"{GRAPH}/{settings['ig_user_id']}/media",
+            data={
+                "media_type": "REELS",
+                "video_url": video_url,
+                "caption": caption_for(item, 2200),
+                "share_to_feed": "true",
+                "access_token": settings["access_token"],
+            },
+            timeout=120,
+        ),
+        _("creating the Instagram Reel"),
+    )
     creation = d.get("id")
     if not creation:
         raise PublishError(_("creating the Instagram Reel: response without an identifier"))
     _wait_finished(creation, settings)
-    pub = _json(SESSION.post(f"{GRAPH}/{settings['ig_user_id']}/media_publish",
-                             data={"creation_id": creation, "access_token": settings["access_token"]},
-                             timeout=60), _("publishing the Instagram Reel"))
+    pub = _json(
+        SESSION.post(
+            f"{GRAPH}/{settings['ig_user_id']}/media_publish",
+            data={"creation_id": creation, "access_token": settings["access_token"]},
+            timeout=60,
+        ),
+        _("publishing the Instagram Reel"),
+    )
     return f"https://www.instagram.com/reel/{pub.get('id', '')}"

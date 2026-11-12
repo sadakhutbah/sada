@@ -5,6 +5,7 @@ exactly what will be broadcast, and the preview is drawn by `sada.scenes` itself
 mosque changes is stored; an emptied field goes back to the default instead of leaving a blank line
 on screen.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -30,8 +31,12 @@ def saved(conn, mosque_id: int) -> dict[str, dict[str, str]]:
     six screens and stays out of this view.
     """
     out: dict[str, dict[str, str]] = {}
-    for r in db.all_(conn, "SELECT screen, slot, text FROM screen_texts "
-                           "WHERE mosque_id = ? AND screen <> ?", mosque_id, variables_ecran.SCREEN):
+    for r in db.all_(
+        conn,
+        "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ? AND screen <> ?",
+        mosque_id,
+        variables_ecran.SCREEN,
+    ):
         out.setdefault(r["screen"], {})[r["slot"]] = r["text"]
     return out
 
@@ -40,11 +45,13 @@ def view(conn, mosque: dict) -> dict[str, dict[str, dict[str, str]]]:
     """Screen → slot, with the default, what is saved (empty = untouched) and the text in force."""
     keep = saved(conn, mosque["id"])
     eff = base.effective(keep)
-    return {s: {slot: {"default": base.DEFAULTS[s][slot],
-                       "value": keep.get(s, {}).get(slot, ""),
-                       "text": eff[s][slot]}
-                for slot in base.DEFAULTS[s]}
-            for s in base.SCREENS}
+    return {
+        s: {
+            slot: {"default": base.DEFAULTS[s][slot], "value": keep.get(s, {}).get(slot, ""), "text": eff[s][slot]}
+            for slot in base.DEFAULTS[s]
+        }
+        for s in base.SCREENS
+    }
 
 
 def save(conn, mosque: dict, payload, user_id=None, ip: str | None = None) -> dict:
@@ -54,21 +61,29 @@ def save(conn, mosque: dict, payload, user_id=None, ip: str | None = None) -> di
     except ValueError as e:
         raise InvalidScreens(str(e)) from e
     # Only the six engine screens: the common texts (`_commun`) have their own save route.
-    conn.execute("DELETE FROM screen_texts WHERE mosque_id = ? AND screen <> ?",
-                 (mosque["id"], variables_ecran.SCREEN))
+    conn.execute("DELETE FROM screen_texts WHERE mosque_id = ? AND screen <> ?", (mosque["id"], variables_ecran.SCREEN))
     for screen, slots in clean.items():
         for slot, text in slots.items():
-            if text:                                   # empty = default, nothing stored
-                conn.execute("INSERT INTO screen_texts (mosque_id, screen, slot, text, updated_at) "
-                             "VALUES (?,?,?,?,?)", (mosque["id"], screen, slot, text, db.now_iso()))
-    db.audit(conn, mosque["id"], user_id, "ecrans.configure", "mosque", mosque["id"], ip=ip,
-             champs=[f"{s}.{k}" for s, v in clean.items() for k, t in v.items() if t])
+            if text:  # empty = default, nothing stored
+                conn.execute(
+                    "INSERT INTO screen_texts (mosque_id, screen, slot, text, updated_at) VALUES (?,?,?,?,?)",
+                    (mosque["id"], screen, slot, text, db.now_iso()),
+                )
+    db.audit(
+        conn,
+        mosque["id"],
+        user_id,
+        "ecrans.configure",
+        "mosque",
+        mosque["id"],
+        ip=ip,
+        champs=[f"{s}.{k}" for s, v in clean.items() for k, t in v.items() if t],
+    )
     conn.commit()
     return view(conn, mosque)
 
 
-def import_gabarit(conn, mosque: dict, filename: str, content: bytes, user_id=None,
-                   ip: str | None = None) -> dict:
+def import_gabarit(conn, mosque: dict, filename: str, content: bytes, user_id=None, ip: str | None = None) -> dict:
     """Takes the texts of an `ecrans.html` template and keeps the file as the mosque's reference.
 
     Only non-empty texts the engine knows are applied; an empty value in the file never erases a
@@ -85,14 +100,30 @@ def import_gabarit(conn, mosque: dict, filename: str, content: bytes, user_id=No
     try:
         vue = save(conn, mosque, merged, user_id, ip)
     except Exception:
-        f.unlink(missing_ok=True)          # never keep a reference the texts were not applied from
+        f.unlink(missing_ok=True)  # never keep a reference the texts were not applied from
         raise
-    db.audit(conn, mosque["id"], user_id, "ecrans.gabarit", "mosque", mosque["id"], ip=ip,
-             fichier=f"ecrans{gabarit.EXT}",
-             repris=sum(len(v) for v in taken.values()), ignores=len(ignored), vides=len(empty))
+    db.audit(
+        conn,
+        mosque["id"],
+        user_id,
+        "ecrans.gabarit",
+        "mosque",
+        mosque["id"],
+        ip=ip,
+        fichier=f"ecrans{gabarit.EXT}",
+        repris=sum(len(v) for v in taken.values()),
+        ignores=len(ignored),
+        vides=len(empty),
+    )
     conn.commit()
-    return {"taken": taken, "ignored": ignored, "empty": empty, "screens": vue,
-            "gabarit": gabarit.view(mosque), "message": gabarit.summary(taken, ignored, empty)}
+    return {
+        "taken": taken,
+        "ignored": ignored,
+        "empty": empty,
+        "screens": vue,
+        "gabarit": gabarit.view(mosque),
+        "message": gabarit.summary(taken, ignored, empty),
+    }
 
 
 def valeurs_apercu(mosque: dict, screen: str) -> dict[str, str]:
@@ -103,13 +134,16 @@ def valeurs_apercu(mosque: dict, screen: str) -> dict[str, str]:
     montrent le même texte.
     """
     now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque))
-    nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf",
-                               kind="dars")
+    nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf", kind="dars")
     moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
-    return base.variables(moment, title=mosque.get("clip_title") or "",
-                          mosque=mosque.get("name") or "",
-                          heure=f"{moment.planned:%H} h {moment.planned:%M}",
-                          cours=nxt.title, jour=f"{moment.planned:%A}".capitalize())
+    return base.variables(
+        moment,
+        title=mosque.get("clip_title") or "",
+        mosque=mosque.get("name") or "",
+        heure=f"{moment.planned:%H} h {moment.planned:%M}",
+        cours=nxt.title,
+        jour=f"{moment.planned:%A}".capitalize(),
+    )
 
 
 def preview(mosque: dict, payload, screen: str) -> bytes:
@@ -121,13 +155,15 @@ def preview(mosque: dict, payload, screen: str) -> bytes:
     if screen not in base.SCREENS or screen not in scenes.SCENES:
         raise InvalidScreens(_("unknown screen: {screen}", screen=screen))
     logo = branding.path_for(mosque)
-    cfg = Config(title=mosque.get("clip_title") or "", mosque_name=mosque.get("name") or "",
-                 logo=str(logo) if logo and (mosque.get("logo_path") or "").strip() else "",
-                 screen_texts=clean)
+    cfg = Config(
+        title=mosque.get("clip_title") or "",
+        mosque_name=mosque.get("name") or "",
+        logo=str(logo) if logo and (mosque.get("logo_path") or "").strip() else "",
+        screen_texts=clean,
+    )
     now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque))
     # Stand-in for the next class: the preview announces a plausible one instead of a blank line.
-    nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf",
-                              kind="dars")
+    nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf", kind="dars")
     moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
     renderer = scenes.SceneRenderer(cfg)
     img = renderer.background().convert("RGBA")

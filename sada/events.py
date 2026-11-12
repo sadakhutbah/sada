@@ -19,6 +19,7 @@ maghrib, isha + `offset_min`), recomputed each day with the Mawaqit times.
 No I/O here apart from the programme file itself (tolerant read, atomic write): all the
 computation is testable.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -71,8 +72,13 @@ class EventInstance:
 
     def as_event(self) -> dict:
         """Canonical form of an event: the keys read by the machine and the scenes (those of SessionRec)."""
-        return {"kind": self.kind, "title": self.title, "speaker": self.speaker,
-                "series": self.series, "session_no": self.session}
+        return {
+            "kind": self.kind,
+            "title": self.title,
+            "speaker": self.speaker,
+            "series": self.series,
+            "session_no": self.session,
+        }
 
     @property
     def label(self) -> str:
@@ -129,9 +135,17 @@ class Event:
         start = self.starts_on(day, times)
         if start is None:
             return None
-        return EventInstance(starts=start, kind=self.kind, title=self.title, speaker=self.speaker,
-                             series=self.series, session=self.session, max_min=self.max_min,
-                             publish=self.publish, uid=self.uid)
+        return EventInstance(
+            starts=start,
+            kind=self.kind,
+            title=self.title,
+            speaker=self.speaker,
+            series=self.series,
+            session=self.session,
+            max_min=self.max_min,
+            publish=self.publish,
+            uid=self.uid,
+        )
 
 
 def uid_of(raw: Mapping, idx: int) -> str:
@@ -145,8 +159,9 @@ def _parse(raw: dict, idx: int) -> Event:
         raise ValueError(_("{where}: a JSON object is expected", where=where))
     kind = str(raw.get("kind", "dars")).strip().lower()
     if kind not in KINDS:
-        raise ValueError(_("{where}: unknown type {kind} (expected: {valid})",
-                           where=where, kind=repr(kind), valid=sorted(KINDS)))
+        raise ValueError(
+            _("{where}: unknown type {kind} (expected: {valid})", where=where, kind=repr(kind), valid=sorted(KINDS))
+        )
     title = str(raw.get("title", "")).strip()
     if not title:
         raise ValueError(_("{where}: title missing", where=where))
@@ -157,16 +172,29 @@ def _parse(raw: dict, idx: int) -> Event:
             raise ValueError(_("{where}: “recurrence” must be an object", where=where))
         wd = str(r.get("weekday", "")).strip().lower()
         if wd not in JOURS:
-            raise ValueError(_("{where}: unknown recurrence weekday {weekday} (expected: {valid})",
-                               where=where, weekday=repr(wd), valid=JOURS))
+            raise ValueError(
+                _(
+                    "{where}: unknown recurrence weekday {weekday} (expected: {valid})",
+                    where=where,
+                    weekday=repr(wd),
+                    valid=JOURS,
+                )
+            )
         after = str(r.get("after", "")).strip().lower() or None
         if after and after not in PRAYERS:
-            raise ValueError(_("{where}: unknown prayer {prayer} (expected: {valid})",
-                               where=where, prayer=repr(after), valid=PRAYERS))
+            raise ValueError(
+                _(
+                    "{where}: unknown prayer {prayer} (expected: {valid})",
+                    where=where,
+                    prayer=repr(after),
+                    valid=PRAYERS,
+                )
+            )
         if not after and not r.get("time"):
             raise ValueError(_("{where}: a recurrence needs “time” or “after”", where=where))
-        rec = Recurrence(weekday=JOURS.index(wd), time=r.get("time"), after=after,
-                         offset_min=float(r.get("offset_min", 0) or 0))
+        rec = Recurrence(
+            weekday=JOURS.index(wd), time=r.get("time"), after=after, offset_min=float(r.get("offset_min", 0) or 0)
+        )
     date = time = None
     if raw.get("date"):
         try:
@@ -179,12 +207,20 @@ def _parse(raw: dict, idx: int) -> Event:
     if date is None and rec is None:
         raise ValueError(_("{where}: neither “date” nor “recurrence”", where=where))
     session = raw.get("session")
-    return Event(raw=raw, kind=kind, title=title, speaker=str(raw.get("speaker", "") or "").strip(),
-                 series=str(raw.get("series", "") or "").strip(),
-                 session=int(session) if session not in (None, "") else None,
-                 max_min=float(raw["max_min"]) if raw.get("max_min") else None,
-                 publish=bool(raw.get("publish", True)), date=date, time=time, recurrence=rec,
-                 uid=uid_of(raw, idx))
+    return Event(
+        raw=raw,
+        kind=kind,
+        title=title,
+        speaker=str(raw.get("speaker", "") or "").strip(),
+        series=str(raw.get("series", "") or "").strip(),
+        session=int(session) if session not in (None, "") else None,
+        max_min=float(raw["max_min"]) if raw.get("max_min") else None,
+        publish=bool(raw.get("publish", True)),
+        date=date,
+        time=time,
+        recurrence=rec,
+        uid=uid_of(raw, idx),
+    )
 
 
 def loads(text: str) -> list[Event]:
@@ -230,7 +266,7 @@ def read_raw(path: str | Path) -> list[dict]:
     except (ValueError, OSError) as e:
         raise ValueError(str(e)) from e
     for i, raw in enumerate(items):
-        raw.setdefault("uid", uid_of(raw, i))       # same value as the one deduced from the position
+        raw.setdefault("uid", uid_of(raw, i))  # same value as the one deduced from the position
     return items
 
 
@@ -243,8 +279,9 @@ def write_raw(path: str | Path, items: Iterable[dict]) -> None:
     os.replace(tmp, p)
 
 
-def instances_on(events: Iterable[Event], day: dt.date,
-                 times: Mapping[str, object] | None = None) -> list[EventInstance]:
+def instances_on(
+    events: Iterable[Event], day: dt.date, times: Mapping[str, object] | None = None
+) -> list[EventInstance]:
     out = []
     for ev in events:
         if not ev.publish:
@@ -255,9 +292,13 @@ def instances_on(events: Iterable[Event], day: dt.date,
     return sorted(out, key=lambda i: i.starts)
 
 
-def next_instances(events: Iterable[Event], after: dt.datetime, count: int = 2,
-                   days: int = 21,
-                   times_for: Callable[[dt.date], Mapping[str, object] | None] | None = None) -> list[EventInstance]:
+def next_instances(
+    events: Iterable[Event],
+    after: dt.datetime,
+    count: int = 2,
+    days: int = 21,
+    times_for: Callable[[dt.date], Mapping[str, object] | None] | None = None,
+) -> list[EventInstance]:
     """Next events after `after` (Mawaqit times supplied by `times_for`)."""
     events = [e for e in events if e.publish]
     found: list[EventInstance] = []

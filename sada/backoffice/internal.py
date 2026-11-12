@@ -7,6 +7,7 @@ file. Nothing leaves the machine.
 
 The token file is created (mode 0600) by whichever process needs it first.
 """
+
 from __future__ import annotations
 
 import hmac
@@ -30,7 +31,7 @@ def token(path: str | Path | None = None) -> str:
         pass
     p.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)   # atomic: two processes may race
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # atomic: two processes may race
     except FileExistsError:
         return p.read_text().strip()
     with os.fdopen(fd, "w") as f:

@@ -4,6 +4,7 @@ Idempotent: a khutba is identified by (mosque, run, session) and a clip by (khut
 the import overwrites neither validation decisions nor corrections. Janaza sessions (excluded from the pipeline)
 are never imported.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,8 +48,17 @@ def _extract_video(rec: str | None, start: float | None, end: float | None, out:
         return None
     dur = (end - start) if end else None
     cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.2f}", "-i", rec]
-    cmd += (["-t", f"{dur:.2f}"] if dur else []) + ["-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
-                                                     "-movflags", "+faststart", str(out)]
+    cmd += (["-t", f"{dur:.2f}"] if dur else []) + [
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(out),
+    ]
     try:
         subprocess.run(cmd, check=True, timeout=600, capture_output=True)
         log(_("session video -> {path}", path=out))
@@ -98,8 +108,13 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
         duration = (end - start) if (start is not None and end is not None) else tr.get("duration")
         planned = s.get("planned") or ""
         n_verses = len(verses_mod.for_display(verses))
-        k = db.one(conn, "SELECT * FROM khutbas WHERE mosque_id = ? AND run_id = ? AND session_index = ?",
-                   mosque["id"], run_id, idx)
+        k = db.one(
+            conn,
+            "SELECT * FROM khutbas WHERE mosque_id = ? AND run_id = ? AND session_index = ?",
+            mosque["id"],
+            run_id,
+            idx,
+        )
         if not k:
             label = khutba_label(dict(s, index=idx))
             kind = s.get("kind") or "khutba"
@@ -107,15 +122,45 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
                 "INSERT INTO khutbas (mosque_id, run_id, session_index, label, planned, date, start_clock, end_clock, duration_s,"
                 " imam_id, speaker, theme, output_dir, recording, start_pos, end_pos, verses_count, kind, title, series, session_no, imported_at)"
                 " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (mosque["id"], run_id, idx, label, planned, date, s.get("start_clock"), s.get("end_clock"), duration,
-                 mosque.get("default_imam_id"), (s.get("speaker") or "").strip(), _theme(o.notes), str(sdir), rec_path, start, end,
-                 n_verses, kind, s.get("title") or "", s.get("series") or "", s.get("session_no"),
-                 db.now_iso()))
+                (
+                    mosque["id"],
+                    run_id,
+                    idx,
+                    label,
+                    planned,
+                    date,
+                    s.get("start_clock"),
+                    s.get("end_clock"),
+                    duration,
+                    mosque.get("default_imam_id"),
+                    (s.get("speaker") or "").strip(),
+                    _theme(o.notes),
+                    str(sdir),
+                    rec_path,
+                    start,
+                    end,
+                    n_verses,
+                    kind,
+                    s.get("title") or "",
+                    s.get("series") or "",
+                    s.get("session_no"),
+                    db.now_iso(),
+                ),
+            )
             k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", cur.lastrowid)
             res["khutbas_new"] += 1
-            db.audit(conn, mosque["id"], None, "import.khutba", "khutba", k["id"], run=run_id, session=runs.session_number(idx))
+            db.audit(
+                conn,
+                mosque["id"],
+                None,
+                "import.khutba",
+                "khutba",
+                k["id"],
+                run=run_id,
+                session=runs.session_number(idx),
+            )
         else:
-            if k["verses_count"] != n_verses:          # derived field: refreshed (no human data touched)
+            if k["verses_count"] != n_verses:  # derived field: refreshed (no human data touched)
                 conn.execute("UPDATE khutbas SET verses_count = ? WHERE id = ?", (n_verses, k["id"]))
             # La nature (khutba / dars / conférence) vient de sessions.json : une séance importée avant
             # que l'orchestrateur la renseigne, ou avant la colonne, resterait sinon « khutba » et
@@ -124,9 +169,17 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
             if (k["kind"] or "khutba") != kind:
                 ancien = khutba_label(dict(s, index=idx, kind=k["kind"] or "khutba", title=k["title"] or ""))
                 label = khutba_label(dict(s, index=idx)) if k["label"] == ancien else k["label"]
-                conn.execute("UPDATE khutbas SET kind = ?, title = ?, series = ?, session_no = ?, label = ? WHERE id = ?",
-                             (kind, k["title"] or s.get("title") or "", k["series"] or s.get("series") or "",
-                              k["session_no"] if k["session_no"] is not None else s.get("session_no"), label, k["id"]))
+                conn.execute(
+                    "UPDATE khutbas SET kind = ?, title = ?, series = ?, session_no = ?, label = ? WHERE id = ?",
+                    (
+                        kind,
+                        k["title"] or s.get("title") or "",
+                        k["series"] or s.get("series") or "",
+                        k["session_no"] if k["session_no"] is not None else s.get("session_no"),
+                        label,
+                        k["id"],
+                    ),
+                )
                 k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", k["id"])
         if extract_video and not (k["video_path"] and Path(k["video_path"]).exists()):
             v = _extract_video(rec_path, start, end, o.video, log)
@@ -138,11 +191,24 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
                 continue
             t = db.now_iso()
             cur = conn.execute(
-                "INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, \"end\", file_path, video_source, source_offset,"
+                'INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, "end", file_path, video_source, source_offset,'
                 " crop, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (mosque["id"], k["id"], ci, c["kind"], c["why"], c["start"], c["end"],
-                 str(o.clips / c["file"]), c["video_source"], c["source_offset"],
-                 json.dumps(c["crop"]) if c.get("crop") else None, t, t))
+                (
+                    mosque["id"],
+                    k["id"],
+                    ci,
+                    c["kind"],
+                    c["why"],
+                    c["start"],
+                    c["end"],
+                    str(o.clips / c["file"]),
+                    c["video_source"],
+                    c["source_offset"],
+                    json.dumps(c["crop"]) if c.get("crop") else None,
+                    t,
+                    t,
+                ),
+            )
             res["clips_new"] += 1
             db.audit(conn, mosque["id"], None, "import.clip", "clip", cur.lastrowid, file=c["file"])
     return res
@@ -153,7 +219,11 @@ def scan(conn, mosque: dict, extract_video: bool = True, log=print) -> list[dict
     out = db.mosque_dirs(mosque)["output"]
     results = []
     for d in sorted(out.glob("*")) if out.is_dir() else []:
-        if d.is_dir() and runs.RUN_RE.match(d.name) and any(SessionOutput(x).is_transcribed() for x in d.glob("session*")):
+        if (
+            d.is_dir()
+            and runs.RUN_RE.match(d.name)
+            and any(SessionOutput(x).is_transcribed() for x in d.glob("session*"))
+        ):
             try:
                 results.append(import_run(conn, mosque, d.name, extract_video, log))
             except Exception as e:  # noqa: BLE001

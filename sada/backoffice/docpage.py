@@ -149,7 +149,7 @@ def rendre(markdown: str) -> str:
 
         # Filet — inutile juste avant un titre : le titre porte déjà son filet
         if re.fullmatch(r"(-{3,}|\*{3,})", nue):
-            suivant = next((ligne.strip() for ligne in lignes[i + 1:] if ligne.strip()), "")
+            suivant = next((ligne.strip() for ligne in lignes[i + 1 :] if ligne.strip()), "")
             if not suivant.startswith("#"):
                 blocs.append("<hr>")
             i += 1
@@ -162,7 +162,7 @@ def rendre(markdown: str) -> str:
             while i < len(lignes) and not lignes[i].strip().startswith("```"):
                 code.append(lignes[i])
                 i += 1
-            i += 1                                   # la ligne de fermeture
+            i += 1  # la ligne de fermeture
             blocs.append("<pre><code>" + html.escape("\n".join(code)) + "</code></pre>")
             continue
 
@@ -232,9 +232,12 @@ def rendre(markdown: str) -> str:
         morceaux = []
         while i < len(lignes):
             n = lignes[i].strip()
-            if (not n or n.startswith("```")
-                    or re.match(r"^(#{1,6}\s|>|\||(\s*)([-*+]|\d+\.)\s)", lignes[i])
-                    or re.fullmatch(r"(-{3,})", n)):
+            if (
+                not n
+                or n.startswith("```")
+                or re.match(r"^(#{1,6}\s|>|\||(\s*)([-*+]|\d+\.)\s)", lignes[i])
+                or re.fullmatch(r"(-{3,})", n)
+            ):
                 break
             morceaux.append(n)
             i += 1
@@ -243,8 +246,15 @@ def rendre(markdown: str) -> str:
     return "\n".join(blocs)
 
 
-def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr",
-         alterne: tuple[str, str] | None = None, avis: str | None = None) -> str:
+def page(
+    markdown: str,
+    *,
+    titre: str,
+    source: str | None,
+    lang: str = "fr",
+    alterne: tuple[str, str] | None = None,
+    avis: str | None = None,
+) -> str:
     """Page complète, prête à servir en ``text/html``.
 
     ``source`` est l'adresse de la version texte du même document ; ``None`` quand il n'en existe
@@ -260,10 +270,16 @@ def page(markdown: str, *, titre: str, source: str | None, lang: str = "fr",
     pied = translate("Document served by Sadā. It is updated with the application.", lang)
     retour = translate("Back to the back office", lang)
     texte = translate("Plain text", lang)
-    lien = (f'<a href="{html.escape(source, quote=True)}">{texte}</a>' if source else "")
-    lien_langue = (f'<a href="{html.escape(alterne[0], quote=True)}">{html.escape(alterne[1])}</a>'
-                   if alterne else "")
+    lien = f'<a href="{html.escape(source, quote=True)}">{texte}</a>' if source else ""
+    lien_langue = f'<a href="{html.escape(alterne[0], quote=True)}">{html.escape(alterne[1])}</a>' if alterne else ""
     bandeau_avis = f'<p class="avis">{html.escape(avis)}</p>' if avis else ""
-    return _TEMPLATE.format(lang=lang, title=html.escape(nom), corps=rendre(markdown),
-                            lien_texte=lien, lien_langue=lien_langue, avis=bandeau_avis,
-                            pied=pied, retour=retour)
+    return _TEMPLATE.format(
+        lang=lang,
+        title=html.escape(nom),
+        corps=rendre(markdown),
+        lien_texte=lien,
+        lien_langue=lien_langue,
+        avis=bandeau_avis,
+        pied=pied,
+        retour=retour,
+    )

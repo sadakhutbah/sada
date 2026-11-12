@@ -9,6 +9,7 @@ The application is built from the environment (see `[tool.fastapi]` in pyproject
 The in-house command line (`python -m sada.backoffice serve`) remains available for the
 --host / --port options; it builds the same application.
 """
+
 from __future__ import annotations
 
 import os

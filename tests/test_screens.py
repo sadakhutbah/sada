@@ -3,6 +3,7 @@
 Le défaut vit dans `sada.screens` — le module avec lequel le moteur dessine : l'interface affiche
 donc exactement ce qui partira à l'antenne, et vider un champ ramène au défaut.
 """
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -16,15 +17,17 @@ def test_chaque_ecran_annonce_ses_champs_et_son_defaut(env):
     for champs in d.values():
         assert champs and all({"default", "value", "text"} <= set(c) for c in champs.values())
     assert d["avant"]["foot"]["text"] == "Merci de patienter, la diffusion commence très bientôt."
-    assert d["avant"]["foot"]["value"] == ""          # rien de personnalisé au départ
+    assert d["avant"]["foot"]["value"] == ""  # rien de personnalisé au départ
     assert d["avant"]["sub"]["default"] == "Début à {heure}"
 
 
 def test_personnalisation_enregistree_et_relue(env):
     from sada.backoffice import db
+
     c = client(env, "admin")
-    r = c.ecrire("/settings/screens", {"screens": {"avant": {"foot": "  Nous démarrons dans un instant.  "}}},
-                 methode="PUT")
+    r = c.ecrire(
+        "/settings/screens", {"screens": {"avant": {"foot": "  Nous démarrons dans un instant.  "}}}, methode="PUT"
+    )
     assert r.status_code == 200, r.text
     champs = r.json()["screens"]["avant"]
     assert champs["foot"]["value"] == "Nous démarrons dans un instant."
@@ -51,7 +54,7 @@ def test_refus_d_un_ecran_ou_d_un_champ_inconnu(env):
     assert r.status_code == 422 and "unknown field" in r.json()["message"]
     r = c.ecrire("/settings/screens", {"screens": {"avant": {"foot": "x" * 200}}}, methode="PUT")
     assert r.status_code == 422 and "160" in r.json()["message"]
-    assert c.get("/api/v1/settings").json()["screens"]["avant"]["foot"]["value"] == ""   # rien n'a bougé
+    assert c.get("/api/v1/settings").json()["screens"]["avant"]["foot"]["value"] == ""  # rien n'a bougé
 
 
 def test_ecrans_reserves_a_l_admin(env):
@@ -76,6 +79,7 @@ def test_apercu_est_une_vraie_image_du_moteur(env):
 
 def test_le_moteur_lit_les_textes_du_back_office(env):
     from sada.backoffice import internal
+
     c = client(env, "admin")
     c.ecrire("/settings/screens", {"screens": {"termine": {"foot": "À la semaine prochaine."}}}, methode="PUT")
     d = c.get("/api/v1/internal/screens", headers={internal.HEADER: internal.token()}).json()
@@ -89,7 +93,7 @@ def test_les_variables_remplacent_et_une_ligne_sans_valeur_disparait():
     t = screens.resolve("avant", {}, {"heure": "13:00"})
     assert t["sub"] == "Début à 13:00"
     t = screens.resolve("avant", {}, {"heure": ""})
-    assert t["sub"] == ""                                     # jamais « Début à » tout seul
+    assert t["sub"] == ""  # jamais « Début à » tout seul
     t = screens.resolve("entracte", {"entracte": {"foot": "Reprise à {heure}"}}, {"heure": ""})
     assert t["foot"] == ""
     t = screens.resolve("entracte", {}, {"heure": "18:30", "cours": "Tafsir"})
@@ -107,10 +111,16 @@ def test_les_ecrans_pleins_se_dessinent_avec_les_textes_personnalises():
     from sada import scenes
     from sada.config import Config
 
-    cfg = Config(screen_texts={"avant": {"eyebrow": "Bonjour"}, "priere": {"title": "Prière du vendredi"},
-                               "entracte": {"foot": "On revient tout de suite."},
-                               "termine": {"title": "À vendredi"}, "janaza": {"foot": "Merci."},
-                               "dars_fin": {"foot": "Bonne soirée."}})
+    cfg = Config(
+        screen_texts={
+            "avant": {"eyebrow": "Bonjour"},
+            "priere": {"title": "Prière du vendredi"},
+            "entracte": {"foot": "On revient tout de suite."},
+            "termine": {"title": "À vendredi"},
+            "janaza": {"foot": "Merci."},
+            "dars_fin": {"foot": "Bonne soirée."},
+        }
+    )
     import datetime as dt
 
     r = scenes.SceneRenderer(cfg)

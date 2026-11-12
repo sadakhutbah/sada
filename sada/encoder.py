@@ -11,6 +11,7 @@ of live_*.mkv and live_*_clean.mkv are aligned (clips are cut from the clean fil
 Changing scene = writing the content into the inactive layer then animating it (transitions.py): crossfade,
 slide-in, audio fade of the mic. The ffmpeg process is never restarted: the stream is not interrupted.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -32,7 +33,7 @@ def _zmq_esc(port: int) -> str:
     return "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + f":{port}"  # ":" escaped twice (graph then filter options)
 
 
-ZMQ_APORT = 5556                          # audio (azmq)
+ZMQ_APORT = 5556  # audio (azmq)
 ZMQ_ADDR = f"tcp://127.0.0.1:{ZMQ_APORT}"
 ZMQ_ESC = _zmq_esc(ZMQ_APORT)
 # video: one zmq filter (hence one port) per animated parameter of a transition, see Encoder._animate
@@ -53,19 +54,26 @@ class Encoder:
         self.run_dir = Path(run_dir)
         self.layer_png = {k: str(self.run_dir / f"scene_{k}.png") for k in ("fond", "a", "b")}
         # current layer values (also the graph's initial values if ffmpeg is restarted)
-        self.levels: dict[str, float] = {"fond": 1.0, "a_a": 1.0, "x_a": 0.0, "y_a": 0.0,
-                                         "a_b": 0.0, "x_b": 0.0, "y_b": 0.0}
-        self.active = "a"                    # layer of the displayed content
-        self.shown: tuple | None = None   # (scene key, layer): content shown or coming in
+        self.levels: dict[str, float] = {
+            "fond": 1.0,
+            "a_a": 1.0,
+            "x_a": 0.0,
+            "y_a": 0.0,
+            "a_b": 0.0,
+            "x_b": 0.0,
+            "y_b": 0.0,
+        }
+        self.active = "a"  # layer of the displayed content
+        self.shown: tuple | None = None  # (scene key, layer): content shown or coming in
         self.full = True
-        self.vol = 0.0                       # mic level (0..1), target of the last fade
-        self._mx = threading.Lock()          # protects pending / shown
-        self._anim = threading.Lock()        # one transition at a time
+        self.vol = 0.0  # mic level (0..1), target of the last fade
+        self._mx = threading.Lock()  # protects pending / shown
+        self._anim = threading.Lock()  # one transition at a time
         self._pending = None
         self._ev = threading.Event()
         self._worker: threading.Thread | None = None
         self.proc: subprocess.Popen | None = None
-        self.out_time = 0.0       # position (s) in the current recording, from -progress
+        self.out_time = 0.0  # position (s) in the current recording, from -progress
         self.restarts = 0
         self._lock = threading.Lock()
         self.mic_on = False
@@ -90,7 +98,9 @@ class Encoder:
             f"[0:v]scale={c.width}:{c.height}:force_original_aspect_ratio=decrease,"
             f"pad={c.width}:{c.height}:(ow-iw)/2:(oh-ih)/2,fps={c.fps},setsar=1,format=yuv420p"
             + ("[cam];" if not clean or copy else ",split=2[cam][camclean];")
-            + "[cam]" + ",".join(f"zmq@z{i}=bind_address={_zmq_esc(p)}" for i, p in enumerate(ZMQ_VPORTS)) + "[camz];"
+            + "[cam]"
+            + ",".join(f"zmq@z{i}=bind_address={_zmq_esc(p)}" for i, p in enumerate(ZMQ_VPORTS))
+            + "[camz];"
             # background: a single image, repeated in memory (no re-read)
             f"[1:v]format=rgba,loop=loop=-1:size=1,colorchannelmixer@fond=aa={L['fond']}[fond];"
             f"[2:v]format=rgba,fps={c.fps},colorchannelmixer@ca=aa={L['a_a']}[ca];"
@@ -107,19 +117,89 @@ class Encoder:
         slot = ["-re", "-f", "image2", "-loop", "1", "-framerate", str(c.fps), "-i"]
         out_clean: list[str] = []
         if clean:
-            vmap = ["-map", "0:v:0", "-c:v:0", "copy"] if copy else [
-                "-map", "[camclean]", "-c:v:0", "libx264", "-preset", "veryfast", "-crf", "18", "-g", str(c.fps * 2), "-pix_fmt", "yuv420p"]
-            out_clean = vmap + ["-map", "[aclean]", "-c:a:0", "aac", "-b:a:0", "160k", "-ar", "48000", "-f", "matroska", clean]
+            vmap = (
+                ["-map", "0:v:0", "-c:v:0", "copy"]
+                if copy
+                else [
+                    "-map",
+                    "[camclean]",
+                    "-c:v:0",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "18",
+                    "-g",
+                    str(c.fps * 2),
+                    "-pix_fmt",
+                    "yuv420p",
+                ]
+            )
+            out_clean = vmap + [
+                "-map",
+                "[aclean]",
+                "-c:a:0",
+                "aac",
+                "-b:a:0",
+                "160k",
+                "-ar",
+                "48000",
+                "-f",
+                "matroska",
+                clean,
+            ]
         return [
-            "ffmpeg", "-hide_banner", "-loglevel", "warning", "-nostats", "-progress", "pipe:1",
-            *source.input_options(c.camera_url), "-i", c.camera_url,
-            "-framerate", str(c.fps), "-i", self.layer_png["fond"],
-            *slot, self.layer_png["a"], *slot, self.layer_png["b"],
-            "-filter_complex", fg, "-map", "[v]", "-map", "[a]",
-            "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-b:v", c.video_bitrate,
-            "-maxrate", c.video_bitrate, "-bufsize", "5000k", "-g", str(c.fps * 2), "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-flags", "+global_header",
-            "-f", "tee", f"{self._tee_targets()}|[f=matroska]{rec}",
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            *source.input_options(c.camera_url),
+            "-i",
+            c.camera_url,
+            "-framerate",
+            str(c.fps),
+            "-i",
+            self.layer_png["fond"],
+            *slot,
+            self.layer_png["a"],
+            *slot,
+            self.layer_png["b"],
+            "-filter_complex",
+            fg,
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-tune",
+            "zerolatency",
+            "-b:v",
+            c.video_bitrate,
+            "-maxrate",
+            c.video_bitrate,
+            "-bufsize",
+            "5000k",
+            "-g",
+            str(c.fps * 2),
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-ar",
+            "48000",
+            "-flags",
+            "+global_header",
+            "-f",
+            "tee",
+            f"{self._tee_targets()}|[f=matroska]{rec}",
         ] + out_clean
 
     def _tee_targets(self) -> str:
@@ -135,15 +215,22 @@ class Encoder:
 
     def _spawn(self):
         rec, clean = self.new_recording()
-        self.log(_("ENCODER: starting ffmpeg -> {targets}  | recording {recording}{clean}",
-                   targets=" , ".join(self.cfg.rtmp_urls), recording=rec,
-                   clean=f"  | clean {clean}" if clean else ""))
+        self.log(
+            _(
+                "ENCODER: starting ffmpeg -> {targets}  | recording {recording}{clean}",
+                targets=" , ".join(self.cfg.rtmp_urls),
+                recording=rec,
+                clean=f"  | clean {clean}" if clean else "",
+            )
+        )
         if self._log_file:
             self._log_file.close()
         self._log_file = open(self.run_dir / "encoder.log", "ab")
         self.out_time = 0.0
         self.recordings.append((rec, clean))
-        self.proc = subprocess.Popen(self.ffmpeg_cmd(rec, clean), stdout=subprocess.PIPE, stderr=self._log_file, text=True, bufsize=1)
+        self.proc = subprocess.Popen(
+            self.ffmpeg_cmd(rec, clean), stdout=subprocess.PIPE, stderr=self._log_file, text=True, bufsize=1
+        )
         threading.Thread(target=self._read_progress, args=(self.proc,), daemon=True).start()
 
     def _read_progress(self, proc):
@@ -163,10 +250,15 @@ class Encoder:
                     return
                 if self.proc and self.proc.poll() is not None:
                     self.restarts += 1
-                    self.log(_("ENCODER: ffmpeg stopped (code {code}), automatic restart #{count}",
-                               code=self.proc.returncode, count=self.restarts))
+                    self.log(
+                        _(
+                            "ENCODER: ffmpeg stopped (code {code}), automatic restart #{count}",
+                            code=self.proc.returncode,
+                            count=self.restarts,
+                        )
+                    )
                     time.sleep(2.0)
-                    self._spawn()     # the restarted graph resumes from the current state (levels, vol)
+                    self._spawn()  # the restarted graph resumes from the current state (levels, vol)
 
     def stop(self):
         with self._lock:
@@ -215,7 +307,7 @@ class Encoder:
                 self._pending = (scene, full, content)
                 return
             if self.shown and self.shown[0] == scene:
-                self._pending = None                     # back to the displayed scene: nothing to animate
+                self._pending = None  # back to the displayed scene: nothing to animate
                 write_png_atomic(content, self.layer_png[self.shown[1]])
                 return
             if not self.wanted:
@@ -242,7 +334,7 @@ class Encoder:
             vide = Image.new("RGBA", image.size, (0, 0, 0, 0))
             for k in ("a", "b"):
                 write_png_atomic(vide, self.layer_png[k])
-            self.shown = (scene, self.active, cle)       # type: ignore[assignment]
+            self.shown = (scene, self.active, cle)  # type: ignore[assignment]
             self.full = full
             self.levels.update({"fond": 1.0 if full else 0.0, f"a_{self.active}": 0.0})
 
@@ -265,15 +357,15 @@ class Encoder:
                     write_png_atomic(job[2], self.layer_png[dst])
                     self.shown = (job[0], dst)
             while job:
-                time.sleep(tr.DELAI_CHARGEMENT)          # ffmpeg re-reads the PNG before we reveal it
-                with self._mx:                           # scene changed meanwhile (e.g. prayer -> janaza):
-                    if not self._pending:                # we prepare the most recent one directly
+                time.sleep(tr.DELAI_CHARGEMENT)  # ffmpeg re-reads the PNG before we reveal it
+                with self._mx:  # scene changed meanwhile (e.g. prayer -> janaza):
+                    if not self._pending:  # we prepare the most recent one directly
                         break
                     job, self._pending = self._pending, None
                     write_png_atomic(job[2], self.layer_png[dst])
                     self.shown = (job[0], dst)
             target = 1.0 if self.mic_on else 0.0
-            if target != self.vol:                       # audio fade, same start as the image
+            if target != self.vol:  # audio fade, same start as the image
                 expr = tr.volume_ramp(self.vol, target)
                 self.vol = target
                 if self.alive():
@@ -284,12 +376,20 @@ class Encoder:
                 p = tr.plan(src, self.full, job[1], scale=self.cfg.height / 720)
                 frames = self._animate(p)
                 self.active, self.full = dst, job[1]
-                self.log(_("TRANSITION -> {scene} (layer {layer}, {frames} frames)",
-                           scene=job[0], layer=dst, frames=frames))
+                self.log(
+                    _("TRANSITION -> {scene} (layer {layer}, {frames} frames)", scene=job[0], layer=dst, frames=frames)
+                )
 
     # ZeroMQ channel (port) per animated parameter: one zmq filter per channel on the camera chain
-    _TARGET = {"fond": "colorchannelmixer@fond aa", "a_a": "colorchannelmixer@ca aa", "a_b": "colorchannelmixer@cb aa",
-               "x_a": "overlay@ca x", "y_a": "overlay@ca y", "x_b": "overlay@cb x", "y_b": "overlay@cb y"}
+    _TARGET = {
+        "fond": "colorchannelmixer@fond aa",
+        "a_a": "colorchannelmixer@ca aa",
+        "a_b": "colorchannelmixer@cb aa",
+        "x_a": "overlay@ca x",
+        "y_a": "overlay@ca y",
+        "x_b": "overlay@cb x",
+        "y_b": "overlay@cb y",
+    }
 
     def _animate(self, p: tr.Plan) -> int:
         """Plays the transition frame by frame, paced on the stream (and not on the wall clock).
@@ -351,7 +451,7 @@ class Encoder:
         with self._mx:
             self.mic_on = on
             if not self.wanted:
-                self.vol = 1.0 if on else 0.0            # initial value of the graph at start-up
+                self.vol = 1.0 if on else 0.0  # initial value of the graph at start-up
                 return
             self._ensure_worker()
             self._ev.set()
@@ -370,8 +470,9 @@ class Encoder:
                 self.log(_("ZMQ “{message}” -> {reply}", message=msg, reply=rep.strip()))
                 return
             except Exception as e:  # noqa
-                self.log(_("ZMQ attempt {attempt} failed ({message}): {error}",
-                           attempt=attempt + 1, message=msg, error=e))
+                self.log(
+                    _("ZMQ attempt {attempt} failed ({message}): {error}", attempt=attempt + 1, message=msg, error=e)
+                )
             finally:
                 s.close()
             time.sleep(1.0)

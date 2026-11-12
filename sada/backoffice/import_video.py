@@ -5,6 +5,7 @@ data/output/<run>/source/. Elle est marquée « en attente » dans traitement.js
 traitement automatique la prend comme une session de direct (transcription, extraits, import),
 quelle que soit la date de l'enregistrement.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -20,7 +21,7 @@ from . import db, importer, traitement
 
 EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi", ".mts", ".webm"}
 KINDS = ("dars", "conference", "khutba")
-MAX_OCTETS = 50 * 1024 ** 3
+MAX_OCTETS = 50 * 1024**3
 
 
 class ImportRefuse(ValueError):
@@ -52,9 +53,15 @@ def preparer(meta: dict, now: dt.datetime | None = None) -> dict:
     no = (str(meta.get("session_no") or "")).strip()
     if no and not no.isdigit():
         raise ImportRefuse(_("The session number must be a number."))
-    return {"nom": _nom_sur(meta.get("filename") or ""), "kind": kind, "jour": jour,
-            "title": (meta.get("title") or "").strip()[:200], "speaker": (meta.get("speaker") or "").strip()[:120],
-            "series": (meta.get("series") or "").strip()[:120], "session_no": int(no) if no else None}
+    return {
+        "nom": _nom_sur(meta.get("filename") or ""),
+        "kind": kind,
+        "jour": jour,
+        "title": (meta.get("title") or "").strip()[:200],
+        "speaker": (meta.get("speaker") or "").strip()[:120],
+        "series": (meta.get("series") or "").strip()[:120],
+        "session_no": int(no) if no else None,
+    }
 
 
 def _run_id(dirs: dict, jour: dt.datetime, now: dt.datetime) -> str:
@@ -80,9 +87,12 @@ def sonder(path: Path) -> float | None:
     """Durée en secondes si le fichier contient une piste audio ; sinon ImportRefuse."""
     exe = _ffprobe()
     if not exe:
-        return None                      # pas de sonde : le pipeline jugera
-    p = subprocess.run([exe, "-v", "error", "-show_entries", "format=duration:stream=codec_type", "-of", "json", str(path)],
-                       capture_output=True, text=True)
+        return None  # pas de sonde : le pipeline jugera
+    p = subprocess.run(
+        [exe, "-v", "error", "-show_entries", "format=duration:stream=codec_type", "-of", "json", str(path)],
+        capture_output=True,
+        text=True,
+    )
     try:
         info = json.loads(p.stdout or "{}")
     except ValueError:
@@ -122,11 +132,35 @@ async def recevoir(mosque: dict, meta: dict, flux, log=print) -> str:
         raise
     rd = dirs["state"] / rid
     rd.mkdir(parents=True)
-    session = {"index": 0, "planned": "", "status": "done", "recording": 0, "start_pos": 0.0, "end_pos": duree,
-               "start_clock": None, "end_clock": None, "end_reason": "import", "kind": s["kind"], "title": s["title"],
-               "speaker": s["speaker"], "series": s["series"], "session_no": s["session_no"], "source": "import"}
-    runs.write(rd, {"run_id": rid, "recordings": [str(dest.resolve())], "recordings_clean": [str(dest.resolve())],
-                    "clock_sim": None, "sessions": [session], "mosque": mosque.get("name"), "source": "import"})
+    session = {
+        "index": 0,
+        "planned": "",
+        "status": "done",
+        "recording": 0,
+        "start_pos": 0.0,
+        "end_pos": duree,
+        "start_clock": None,
+        "end_clock": None,
+        "end_reason": "import",
+        "kind": s["kind"],
+        "title": s["title"],
+        "speaker": s["speaker"],
+        "series": s["series"],
+        "session_no": s["session_no"],
+        "source": "import",
+    }
+    runs.write(
+        rd,
+        {
+            "run_id": rid,
+            "recordings": [str(dest.resolve())],
+            "recordings_clean": [str(dest.resolve())],
+            "clock_sim": None,
+            "sessions": [session],
+            "mosque": mosque.get("name"),
+            "source": "import",
+        },
+    )
     traitement.mettre_en_file(rd, 0)
     log(_("video import {run}: {size} MB received, queued", run=rid, size=total // (1024 * 1024)))
     return rid

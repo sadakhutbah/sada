@@ -3,6 +3,7 @@
 The logo of the video scenes (config.logo, monogram on the overlay) is a separate setting: here we only
 handle the image of the interface (favicon + top bar).
 """
+
 from __future__ import annotations
 
 import io

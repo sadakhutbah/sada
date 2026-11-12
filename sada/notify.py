@@ -4,6 +4,7 @@ Nothing is published: these messages go to a private channel chosen by the mosqu
 Discord/Slack/n8n, or Telegram bot). Without a configured destination, notifications are printed
 in the log ("dry run") and the rest of the live is unaffected.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -33,8 +34,7 @@ def message_for(state: State, m: Machine) -> str | None:
     quoi = translate(KIND_NOUNS.get(m.kind, "the {kind}"), kind=m.kind)
     titre = f" · {m.rec.title}" if m.rec is not None and m.rec.title else ""
     if state == State.ARMED:
-        return _("Reminder: {what} at {time} is approaching; the live stream is being prepared.",
-                 what=quoi, time=ref)
+        return _("Reminder: {what} at {time} is approaching; the live stream is being prepared.", what=quoi, time=ref)
     if state in (State.KHUTBA, State.DARS):
         return _("The live stream has started ({what} at {time}{title}).", what=quoi, time=ref, title=titre)
     if state == State.STOPPED:
@@ -43,7 +43,7 @@ def message_for(state: State, m: Machine) -> str | None:
     return None
 
 
-def _http_post(url: str, payload: dict) -> None:      # pragma: no cover (network)
+def _http_post(url: str, payload: dict) -> None:  # pragma: no cover (network)
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=5) as r:
@@ -53,8 +53,14 @@ def _http_post(url: str, payload: dict) -> None:      # pragma: no cover (networ
 class Notifier:
     """Sends a short message to a private destination. `post` is injectable for tests."""
 
-    def __init__(self, webhook: str = "", telegram_token: str = "", telegram_chat: str = "",
-                 log: Callable[[str], None] = print, post: Callable[[str, dict], None] | None = None):
+    def __init__(
+        self,
+        webhook: str = "",
+        telegram_token: str = "",
+        telegram_chat: str = "",
+        log: Callable[[str], None] = print,
+        post: Callable[[str, dict], None] | None = None,
+    ):
         self.webhook = (webhook or "").strip()
         self.telegram_token = (telegram_token or "").strip()
         self.telegram_chat = (telegram_chat or "").strip()
@@ -85,12 +91,10 @@ class Notifier:
                 self.post(self.webhook, {"text": text})
             else:
                 url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-                self.post(url, {"chat_id": self.telegram_chat, "text": text,
-                                "disable_notification": False})
+                self.post(url, {"chat_id": self.telegram_chat, "text": text, "disable_notification": False})
             return True
-        except Exception as exc:                       # network, DNS, quota: we block nothing
-            self.log(_("notification not sent ({destination}): {error}",
-                       destination=self.destination, error=exc))
+        except Exception as exc:  # network, DNS, quota: we block nothing
+            self.log(_("notification not sent ({destination}): {error}", destination=self.destination, error=exc))
             return False
 
     def notify_state(self, state: State, m: Machine) -> bool:
@@ -104,8 +108,9 @@ def from_config(cfg, log: Callable[[str], None] = print, fetch: Callable[[str, s
     The orchestrator configuration takes precedence; without a destination, ask the back-office for
     the settings an administrator saved (Publications screen), once at startup.
     """
-    n = Notifier(getattr(cfg, "notify_url", ""), getattr(cfg, "telegram_token", ""),
-                 getattr(cfg, "telegram_chat", ""), log=log)
+    n = Notifier(
+        getattr(cfg, "notify_url", ""), getattr(cfg, "telegram_token", ""), getattr(cfg, "telegram_chat", ""), log=log
+    )
     if n.enabled:
         return n
     row = _backoffice_settings(getattr(cfg, "backoffice_url", ""), getattr(cfg, "api_port", None), fetch=fetch)
@@ -131,7 +136,7 @@ def _backoffice_settings(backoffice_url: str, api_port, fetch: Callable[[str, st
         return None
 
 
-def _http_get(url: str, token: str) -> dict:      # pragma: no cover (network)
+def _http_get(url: str, token: str) -> dict:  # pragma: no cover (network)
     req = urllib.request.Request(url, headers={"X-Internal-Token": token})
     with urllib.request.urlopen(req, timeout=3) as r:
         return json.loads(r.read(4096))
@@ -146,5 +151,7 @@ def from_settings(row: dict | None, log: Callable[[str], None] = print) -> Notif
     if row.get("mode") == "webhook":
         return Notifier(webhook=row.get("webhook", ""), log=log)
     if row.get("mode") == "telegram":
-        return Notifier(telegram_token=row.get("telegram_token", ""), telegram_chat=row.get("telegram_chat", ""), log=log)
+        return Notifier(
+            telegram_token=row.get("telegram_token", ""), telegram_chat=row.get("telegram_chat", ""), log=log
+        )
     return Notifier(log=log)

@@ -9,6 +9,7 @@ seconds.
 Privacy: no frame is written, no face or identity is computed; only a
 score and a boolean leave this module. A low-bitrate surveillance camera is enough.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -19,18 +20,19 @@ from dataclasses import dataclass, field
 from . import source
 from .i18n import _
 
-FRAME_TIMEOUT = 5.0     # no frame for this long: source considered lost
+FRAME_TIMEOUT = 5.0  # no frame for this long: source considered lost
 
 
 @dataclass
 class MotionGate:
     """Pure motion computation (no I/O): testable frame by frame."""
+
     width: int = 160
     height: int = 90
-    roi: tuple[float, ...] = (0.0, 0.0, 1.0, 1.0)                   # x0, y0, x1, y1 as fractions
-    threshold: float = 0.004        # share of changed pixels to call it "motion"
-    pixel_delta: int = 12           # level difference (0-255) counted as a real change
-    hold_s: float = 8.0             # duration for which a motion counts as "presence"
+    roi: tuple[float, ...] = (0.0, 0.0, 1.0, 1.0)  # x0, y0, x1, y1 as fractions
+    threshold: float = 0.004  # share of changed pixels to call it "motion"
+    pixel_delta: int = 12  # level difference (0-255) counted as a real change
+    hold_s: float = 8.0  # duration for which a motion counts as "presence"
     _prev: bytes | None = field(default=None, repr=False)
     _last_motion: float | None = None
     last_score: float | None = field(default=None, repr=False)
@@ -49,8 +51,9 @@ class MotionGate:
     def score(self, frame: bytes) -> float | None:
         """Share (0–1) of pixels that change clearly in the region. None for the first frame."""
         if len(frame) != self.width * self.height:
-            raise ValueError(_("frame of {got} bytes, expected {expected}",
-                               got=len(frame), expected=self.width * self.height))
+            raise ValueError(
+                _("frame of {got} bytes, expected {expected}", got=len(frame), expected=self.width * self.height)
+            )
         prev = self._prev
         self._prev = frame
         if prev is None:
@@ -60,8 +63,8 @@ class MotionGate:
         changed = 0
         for y in range(y0, y1):
             base = y * self.width
-            row_a = frame[base + x0:base + x1]
-            row_b = prev[base + x0:base + x1]
+            row_a = frame[base + x0 : base + x1]
+            row_b = prev[base + x0 : base + x1]
             for a, b in zip(row_a, row_b, strict=False):
                 if a - b > self.pixel_delta or b - a > self.pixel_delta:
                     changed += 1
@@ -100,8 +103,23 @@ class PresenceMonitor(threading.Thread):
     def run(self) -> None:
         while not self.stop_flag.is_set():
             vf = f"fps={self.fps:g},scale={self.gate.width}:{self.gate.height},format=gray"
-            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", *source.input_options(self.url),
-                   "-i", self.url, "-an", "-vf", vf, "-f", "rawvideo", "-pix_fmt", "gray", "-"]
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                *source.input_options(self.url),
+                "-i",
+                self.url,
+                "-an",
+                "-vf",
+                vf,
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "gray",
+                "-",
+            ]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 self._read(self.proc)

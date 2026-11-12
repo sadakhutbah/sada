@@ -8,6 +8,7 @@ Two ways to feed the live:
 
 A stored address is not a secret: it comes back in clear whenever the user is allowed to see the settings.
 """
+
 from __future__ import annotations
 
 import re
@@ -83,19 +84,34 @@ def effective(conn, mosque_id: int) -> str:
 def view(conn, mosque, host: str) -> dict:
     """What the screen shows: the stored mode, its address, and the address to give OBS."""
     cur = current(conn, mosque)
-    return {**cur, "configured": bool(db.one(conn, "SELECT 1 AS x FROM live_input WHERE mosque_id = ?", mosque["id"])),
-            "push_rtmp": push_rtmp(host, mosque), "push_rtsp": push_rtsp(mosque)}
+    return {
+        **cur,
+        "configured": bool(db.one(conn, "SELECT 1 AS x FROM live_input WHERE mosque_id = ?", mosque["id"])),
+        "push_rtmp": push_rtmp(host, mosque),
+        "push_rtsp": push_rtsp(mosque),
+    }
 
 
 def save(conn, mosque, mode, url, user) -> dict:
     mode, url, err = check(mode, url, mosque)
     if err:
         raise InvalidInput(err)
-    conn.execute("INSERT INTO live_input (mosque_id, mode, url, updated_at) VALUES (?, ?, ?, ?) "
-                 "ON CONFLICT(mosque_id) DO UPDATE SET mode = excluded.mode, url = excluded.url, "
-                 "updated_at = excluded.updated_at", (mosque["id"], mode, url, db.now_iso()))
-    db.audit(conn, mosque["id"], user["id"] if user else None, "direct.entree", "mosque", mosque["id"],
-             mode=mode, adresse=url)
+    conn.execute(
+        "INSERT INTO live_input (mosque_id, mode, url, updated_at) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(mosque_id) DO UPDATE SET mode = excluded.mode, url = excluded.url, "
+        "updated_at = excluded.updated_at",
+        (mosque["id"], mode, url, db.now_iso()),
+    )
+    db.audit(
+        conn,
+        mosque["id"],
+        user["id"] if user else None,
+        "direct.entree",
+        "mosque",
+        mosque["id"],
+        mode=mode,
+        adresse=url,
+    )
     return current(conn, mosque)
 
 
@@ -106,8 +122,18 @@ def probe(url: str, timeout: float = PROBE_TIMEOUT_S) -> tuple[bool, str]:
         return False, _("Stream cannot be checked from this server.")
     if url.startswith("rtmp"):
         return False, _("A push is checked once OBS is running: the encoder reads the relay, not this address.")
-    cmd = ["ffprobe", "-v", "error", "-rtsp_transport", "tcp", "-show_entries",
-           "stream=codec_type,width,height,avg_frame_rate", "-of", "csv=p=0", url]
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-rtsp_transport",
+        "tcp",
+        "-show_entries",
+        "stream=codec_type,width,height,avg_frame_rate",
+        "-of",
+        "csv=p=0",
+        url,
+    ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -116,8 +142,7 @@ def probe(url: str, timeout: float = PROBE_TIMEOUT_S) -> tuple[bool, str]:
         return False, _("Inspection impossible ({error}).", error=e.__class__.__name__)
     if r.returncode != 0:
         detail = (r.stderr or "").strip().splitlines()
-        return False, _("Stream unreachable: {detail}",
-                        detail=detail[-1][:160] if detail else _("no answer"))
+        return False, _("Stream unreachable: {detail}", detail=detail[-1][:160] if detail else _("no answer"))
     lignes, video = [ln for ln in r.stdout.splitlines() if ln.strip()], ""
     for ln in lignes:
         parts = ln.split(",")

@@ -15,6 +15,7 @@ fichier JSON (réglage `SADA_GLOSSARY`, sinon `data/glossary.json`) :
 Un terme déjà connu est remplacé (la traduction et les variantes du fichier gagnent) ; les autres
 sont ajoutés. Fichier absent ou illisible : les termes par défaut, sans erreur.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,11 +48,13 @@ DEFAULT_TERMS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("khutba", ("khutba", "khutbah", "khotba", "khoutba"), "le sermon"),
     ("dars", ("dars", "darse", "ders"), "le cours"),
     ("rasulullah", ("rasulullah", "rasul allah", "rasoulallah"), "le Messager d'Allah"),
-    ("sallallahu alayhi wa sallam", ("sallallahu alayhi wa sallam", "sallallahou alayhi wa sallam",
-                                     "sallallahu alayhi wasallam"), "paix et bénédiction sur lui"),
+    (
+        "sallallahu alayhi wa sallam",
+        ("sallallahu alayhi wa sallam", "sallallahou alayhi wa sallam", "sallallahu alayhi wasallam"),
+        "paix et bénédiction sur lui",
+    ),
     ("subhanallah", ("subhanallah", "subhan allah", "sobhanallah"), "gloire à Allah"),
-    ("al-hamdu lillah", ("al-hamdu lillah", "al hamdu lillah", "alhamdulillah", "el hamdoulillah"),
-     "louange à Allah"),
+    ("al-hamdu lillah", ("al-hamdu lillah", "al hamdu lillah", "alhamdulillah", "el hamdoulillah"), "louange à Allah"),
     ("in sha Allah", ("in sha allah", "inshallah", "inchallah", "incha allah"), "si Allah le veut"),
     ("mashallah", ("mashallah", "ma cha allah", "machaallah"), "ce qu'Allah a voulu"),
     ("bismillah", ("bismillah", "bismi allah", "bismillah"), "au nom d'Allah"),
@@ -100,7 +103,7 @@ DEFAULT_TERMS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("mumin", ("mumin", "moumin", "mu'min"), "le croyant"),
 )
 
-_PUNCT = " \t\n\r.,;:!?…«»\"()[]{}—–-"
+_PUNCT = ' \t\n\r.,;:!?…«»"()[]{}—–-'
 
 
 def normalize(text: str) -> str:
@@ -172,7 +175,7 @@ def _index(terms: list[dict]) -> dict[str, dict]:
 MAX_TERM_WORDS = 5
 
 
-SELF_TRANSLATION_WINDOW = 12   # mots suivant le terme où l'orateur donne souvent sa traduction
+SELF_TRANSLATION_WINDOW = 12  # mots suivant le terme où l'orateur donne souvent sa traduction
 _STOP = {"le", "la", "les", "l", "de", "des", "du", "d", "un", "une", "et", "ou", "a", "au", "aux", "en"}
 
 
@@ -186,7 +189,7 @@ def _translated_nearby(fr: str, words: list[dict], start: int) -> bool:
     want = _stems(fr)
     if not want:
         return False
-    near = " ".join(str(w.get("w") or "") for w in words[start:start + SELF_TRANSLATION_WINDOW])
+    near = " ".join(str(w.get("w") or "") for w in words[start : start + SELF_TRANSLATION_WINDOW])
     return bool(want & _stems(near))
 
 
@@ -205,15 +208,15 @@ def gloss_words(words: list[dict], terms: list[dict] | None = None) -> list[dict
     i = 0
     while i < len(out):
         for n in range(min(MAX_TERM_WORDS, len(out) - i), 0, -1):
-            key = normalize(" ".join(str(w.get("w") or "") for w in out[i:i + n]))
+            key = normalize(" ".join(str(w.get("w") or "") for w in out[i : i + n]))
             e = idx.get(key) if key else None
             if not e or e["term"] in used:
                 continue
             used.add(e["term"])
             if _translated_nearby(e["fr"], out, i + n):
-                i += n - 1   # l'orateur traduit lui-même juste après : pas de glose en double
+                i += n - 1  # l'orateur traduit lui-même juste après : pas de glose en double
                 break
-            out[i + n - 1]["gloss"] = f" ({e['fr']})"   # affichée par `display`, hors découpage des pages
+            out[i + n - 1]["gloss"] = f" ({e['fr']})"  # affichée par `display`, hors découpage des pages
             i += n - 1
             break
         i += 1
@@ -227,4 +230,4 @@ def display(word: dict) -> str:
     if not g:
         return raw
     core = raw.rstrip(_PUNCT)
-    return core + g + raw[len(core):]
+    return core + g + raw[len(core) :]

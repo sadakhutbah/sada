@@ -1,4 +1,5 @@
 """Local orchestrator API (sada.api): JSON only, commands and status."""
+
 import json
 import socket
 import urllib.error
@@ -19,6 +20,7 @@ class FakeOrch:
 
 def _serve(token=""):
     from sada.api import make_server
+
     orch = FakeOrch()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -37,8 +39,7 @@ def _get(url, token=""):
 
 
 def _post(url, token=""):
-    req = urllib.request.Request(url, data=b"", method="POST",
-                                 headers={"X-Token": token} if token else {})
+    req = urllib.request.Request(url, data=b"", method="POST", headers={"X-Token": token} if token else {})
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, json.loads(r.read())
@@ -89,7 +90,7 @@ def test_commande_parametree_transmise():
 def test_jeton_exige_quand_configure():
     orch, srv, base = _serve(token="secret")
     try:
-        assert _get(base + "/status")[0] == 401          # no page without the token, not even an HTML one
+        assert _get(base + "/status")[0] == 401  # no page without the token, not even an HTML one
         assert _post(base + "/stop")[0] == 401
         assert orch.calls == []
         assert _get(base + "/status", token="secret")[0] == 200
