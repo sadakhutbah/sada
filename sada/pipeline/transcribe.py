@@ -132,6 +132,14 @@ class LocalEngine:
             return None
         return (code, prob)
 
+    def silent(self, start: float, end: float) -> bool | None:
+        """Inconnu : la transcription locale passe déjà par un VAD, le silence n'y fait pas de segment.
+
+        Mesurer ici ne dirait rien de plus, et une plage jugée muette à tort priverait d'une reprise
+        une citation dite à voix basse.
+        """
+        return None
+
 
 def redo_loops(model, audio, segs: list[dict], *, sr: int = 16000, log=print, max_segments=None) -> int:
     """Boucles de répétition reprises sans langue imposée (voir `repair.redo_loops`)."""
@@ -230,6 +238,9 @@ def transcribe(
         segs.append(seg)
         if len(segs) % 20 == 0:
             log(f"  … {len(segs)} segments, {s.end:.0f}/{info.duration:.0f}s")
+    # Même filtre qu'à distance : un générique de sous-titres recopié sur de la musique n'est pas
+    # la khutba (le VAD écarte déjà le silence, d'où l'absence de mesure de niveau ici).
+    segs = repair.without_hallucinations(segs, log=log)
     # La langue est mesurée sur tous les segments, comme en distant : `info.language` ne regarde
     # que les 30 premières secondes (une khutba ouverte par la Fatiha passerait pour de l'arabe).
     lang, prob = measure_language(segs, info.language)

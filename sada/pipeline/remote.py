@@ -276,6 +276,55 @@ def _num(value, default: float = 0.0) -> float:
         return default
 
 
+SILENCE_MIN_S = 1.0  # une plage plus courte est une respiration, pas un silence d'intro
+SILENCE_MARGIN_S = 0.25  # les bornes de `silencedetect` et celles du segment ne tombent pas ensemble
+
+
+def silence_ranges(
+    wav: str, *, level_db: float = repair.SILENT_DB, min_s: float = SILENCE_MIN_S
+) -> list[tuple[float, float]] | None:
+    """Plages muettes du WAV, en un seul passage ffmpeg (`silencedetect`) ; None si ffmpeg échoue.
+
+    L'API n'a pas de détection d'activité : sur une intro sans son, Whisper écrit un générique
+    au lieu de ne rien dire. Mesurer la session entière coûte un ffmpeg, contre un par segment.
+    """
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-nostats",
+        "-i",
+        wav,
+        "-af",
+        f"silencedetect=noise={level_db:g}dB:d={min_s:g}",
+        "-f",
+        "null",
+        "-",
+    ]
+    try:
+        run = subprocess.run(cmd, capture_output=True, text=True)
+    except OSError:
+        return None
+    report = run.stderr or ""
+    if run.returncode != 0 and "silence_start" not in report:
+        return None
+    out: list[tuple[float, float]] = []
+    opened: float | None = None
+    for line in report.splitlines():
+        if "silence_start:" in line:
+            opened = _num(line.split("silence_start:", 1)[1].split()[0])
+        elif "silence_end:" in line and opened is not None:
+            out.append((opened, _num(line.split("silence_end:", 1)[1].split()[0])))
+            opened = None
+    duration = wav_duration(wav)
+    if opened is not None:  # le silence tient jusqu'à la fin du fichier
+        out.append((opened, duration))
+    if len(out) == 1 and duration > 0 and out[0][1] - out[0][0] >= duration - 1.0:
+        # Tout le fichier sous le seuil : c'est un réglage de niveau (micro coupé, gain à zéro),
+        # pas une intro muette. Écarter tous les segments ne dirait rien de la transcription.
+        return []
+    return out
+
+
 def _word(item) -> dict | None:
     """Mot de l'API, ramené à la forme locale `{"w", "s", "e"}`."""
     text = _text(item.get("word") if "word" in item else item.get("w"))
@@ -348,6 +397,11 @@ def merge(payloads: list[tuple[float, dict]]) -> list[dict]:
                 "text": text,
                 "avg_logprob": _logprob_of(raw),
             }
+            # Les deux scores du `verbose_json` qui disent « je n'entends rien » et « je me
+            # répète » : ils servent à écarter les hallucinations (voir `repair.invented`).
+            for key in ("no_speech_prob", "compression_ratio"):
+                if raw.get(key) is not None:
+                    seg[key] = round(_num(raw.get(key)), 3)
             if words:
                 seg["words"] = words
             out.append(seg)
@@ -547,6 +601,20 @@ class RemoteEngine:
     def __init__(self, s: Settings, wav: str, prompt: str, log, work: Path):
         self.settings, self.wav, self.prompt, self.log, self.work = s, wav, prompt, log, work
         self.sent = 0
+        self.silences: list[tuple[float, float]] | None = None
+        self.measured = False
+
+    def silent(self, start: float, end: float) -> bool | None:
+        """La plage est-elle entièrement muette ? Mesuré une fois, puis relu par intervalle.
+
+        `silencedetect` ne descend pas sous le bruit de fond d'une salle : une plage marquée
+        muette est un vrai silence (intro sans son, coupure de l'enregistrement), pas une pause.
+        """
+        if not self.measured:
+            self.silences, self.measured = silence_ranges(self.wav), True
+        if self.silences is None:
+            return None
+        return any(a - SILENCE_MARGIN_S <= start and end <= b + SILENCE_MARGIN_S for a, b in self.silences)
 
     def chunk(self, start: float, end: float) -> Path | None:
         if end - start < 0.5:
@@ -580,15 +648,17 @@ class RemoteEngine:
         pieces = []
         for raw in payload.get("segments") or []:
             logprob = _logprob_of(raw)
-            pieces.append(
-                {
-                    "text": _text(raw.get("text")),
-                    "avg_logprob": -9.0 if logprob is None else logprob,
-                    "start": _num(raw.get("start")),
-                    "end": _num(raw.get("end")),
-                    "words": _segment_words(raw, top, 0.0),
-                }
-            )
+            piece = {
+                "text": _text(raw.get("text")),
+                "avg_logprob": -9.0 if logprob is None else logprob,
+                "start": _num(raw.get("start")),
+                "end": _num(raw.get("end")),
+                "words": _segment_words(raw, top, 0.0),
+            }
+            for key in ("no_speech_prob", "compression_ratio"):
+                if raw.get(key) is not None:
+                    piece[key] = _num(raw.get(key))
+            pieces.append(piece)
         return pieces
 
     def detect_language(self, chunk) -> None:
@@ -625,7 +695,12 @@ def transcribe(
     language: str | None = None,
     source: dict | None = None,
 ) -> dict:
-    """Transcrit `wav` à distance et écrit `out_json`, dans la forme exacte du transcripteur local."""
+    """Transcrit `wav` à distance et écrit `out_json`, dans la forme exacte du transcripteur local.
+
+    `source` reste absent quand l'appelant ne le donne pas, comme en local : `run.py` le passe
+    toujours et réaffirme la clé après coup (`res["source"] = key`), un appel direct n'a rien à
+    déclarer. Un transcript sans `source` est relu sur la seule durée de l'audio (`transcript_matches`).
+    """
     s = settings()
     if not s.url:
         raise TranscriptionError(_("No distant transcription address: Settings → Transcription."))
@@ -664,6 +739,14 @@ def transcribe(
             # premier morceau rendrait inaudible une citation arabe du second.
             payloads.append((start, _transcribe_file(s, piece, prompt, language, log)))
         segs = merge(payloads)
+        retry = arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
+        engine = RemoteEngine(s, wav, prompt, log, Path(work))
+        # Une intro sans son fait écrire à Whisper des génériques de sous-titres (« ترجمة نانسي
+        # قنقر ») : ce n'est pas la khutba. L'API n'a pas de détection d'activité, d'où la mesure
+        # sur l'audio, recoupée avec les scores du fournisseur. Écartés avant la mesure de langue
+        # (un générique ne pèse pas sur la langue du discours) et avant les reprises (on ne renvoie
+        # pas un silence en arabe forcé).
+        segs = repair.without_hallucinations(segs, engine=engine, log=log)
         # Groq rend le NOM de la langue (« English ») et se trompe sur une khutba mêlée : la langue
         # stockée est celle que mesure `language.measure` sur toute la durée, en code ISO.
         lang, prob = measure_language(segs, language or _api_language(payloads))
@@ -683,9 +766,7 @@ def transcribe(
         # Les mêmes passes de reprise qu'en local, avec l'API comme moteur : les plages concernées
         # sont extraites par ffmpeg et renvoyées (`language=ar` pour l'arabe, température plus
         # haute pour les boucles).
-        retry = arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
         if retry:
-            engine = RemoteEngine(s, wav, prompt, log, Path(work))
             res["loops_redone"] = repair.redo_loops(engine, segs, log=log, max_segments=repair.LOOP_RETRY_MAX)
             res["arabic_recovered"] = repair.recover_arabic(
                 engine, segs, log=log, max_ranges=repair.RETRY_MAX, language=lang
