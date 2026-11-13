@@ -6,7 +6,7 @@ import { initReactI18next } from "react-i18next";
  *  The wording reuses word for word that of the template back-office: it is the reference. */
 const fr = {
   app: { name: "Sadā" },
-  player: { play: "Lire", pause: "Pause", seek: "Position", back: "Reculer de 10 s", forward: "Avancer de 10 s", mute: "Couper le son", unmute: "Remettre le son", volume: "Volume", speed: "Vitesse de lecture", fullscreen: "Plein écran", exitFullscreen: "Quitter le plein écran" },
+  player: { play: "Lire", pause: "Pause", seek: "Position", back: "Reculer de 10 s", forward: "Avancer de 10 s", mute: "Couper le son", unmute: "Remettre le son", volume: "Volume", speed: "Vitesse de lecture", fullscreen: "Plein écran", exitFullscreen: "Quitter le plein écran", subtitles: "Sous-titres", subtitlesKey: "Sous-titres (C)", subtitlesChoose: "Langue des sous-titres", subtitlesOff: "Aucun" },
   nav: {
     dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", clips: "Clips", publications: "Publication",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu",
@@ -447,7 +447,7 @@ const fr = {
 
 const en: typeof fr = {
   app: { name: "Sadā" },
-  player: { play: "Play", pause: "Pause", seek: "Position", back: "Back 10 s", forward: "Forward 10 s", mute: "Mute", unmute: "Unmute", volume: "Volume", speed: "Playback speed", fullscreen: "Full screen", exitFullscreen: "Exit full screen" },
+  player: { play: "Play", pause: "Pause", seek: "Position", back: "Back 10 s", forward: "Forward 10 s", mute: "Mute", unmute: "Unmute", volume: "Volume", speed: "Playback speed", fullscreen: "Full screen", exitFullscreen: "Exit full screen", subtitles: "Subtitles", subtitlesKey: "Subtitles (C)", subtitlesChoose: "Subtitle language", subtitlesOff: "None" },
   nav: {
     dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", clips: "Clips", publications: "Publishing",
     settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu",

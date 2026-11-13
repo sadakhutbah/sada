@@ -108,6 +108,14 @@ export default function SermonDetail() {
     ...(peutAssigner ? [{ cle: "rattachement", label: t("sermons.detail.assignment") }] : []),
   ];
   const avecVideo = Boolean(d.has_video || d.dressed);
+  // Subtitle tracks of the video on screen: the transcript itself, WebVTT read in place by the player.
+  // Times follow the file being played — the dressed video carries its opening card, the original
+  // recording wants `brut` — so no offset is guessed here. No track at all before a transcript exists.
+  const pistes = (d.subtitles ?? []).map((code: string) => ({
+    langue: code,
+    libelle: t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() }),
+    url: `/api/v1/sermons/${k.id}/habillage/sous-titres/${code}.vtt${habillee ? "" : "?brut=1"}`,
+  }));
   const ici = avecVideo ? () => Math.max(0, (video.current?.currentTime ?? tps + decalage) - decalage) : null;
 
   return (
@@ -150,6 +158,7 @@ export default function SermonDetail() {
                 key={habillee ? `habillee-${d.dressed.v}` : "brute"}
                 ref={video}
                 preload="metadata"
+                pistes={pistes}
                 onTimeUpdate={(e) => setTps(Math.max(0, e.currentTarget.currentTime - decalage))}
                 className="block max-h-[50vh] w-full bg-night object-contain"
                 src={habillee ? `/api/v1/sermons/${k.id}/habillage/video.mp4?v=${d.dressed.v}` : `/media/sermon/${k.id}.mp4`}

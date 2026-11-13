@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState, type Ref, type VideoHTMLAttributes } from "react";
+import { useCallback, useEffect, useRef, useState, type Ref, type VideoHTMLAttributes } from "react";
 import { useTranslation } from "react-i18next";
 
 /** Lecteur vidéo maison, aux couleurs de Sadā, sans dépendance.
  *  - Le <video> reste un vrai élément : `ref`, `onTimeUpdate`, `src`… passent tels quels, donc les
  *    pages qui sautent à un passage (SermonDetail) n'ont rien à changer.
- *  - Clavier quand le lecteur a le focus : espace / K lecture, ← → 5 s, M muet, F plein écran.
- *  - Les contrôles se masquent après 2,5 s de lecture sans mouvement et reviennent au toucher. */
+ *  - Clavier quand le lecteur a le focus : espace / K lecture, ← → 5 s, M muet, F plein écran, C sous-titres.
+ *  - Les contrôles se masquent après 2,5 s de lecture sans mouvement et reviennent au toucher.
+ *  - Sous-titres : des `<track>` WebVTT fournis par l'appelant, un bouton CC (langue ou aucun) et le
+ *    choix retenu d'une séance à l'autre. Sans piste, rien ne s'affiche : les clips ont leurs
+ *    sous-titres incrustés et ne passent aucune piste. */
 
 const VITESSES = [1, 1.25, 1.5, 2];
+/** Choix de langue retenu dans le navigateur : code de langue, absent = sous-titres désactivés. */
+const CLE_SOUS_TITRES = "sada-player-sous-titres";
+
+/** Une piste servie par le serveur : langue BCP 47, libellé déjà traduit, adresse du WebVTT. */
+export type Piste = { langue: string; libelle: string; url: string };
 
 function hms(s: number) {
   if (!Number.isFinite(s) || s < 0) s = 0;
@@ -16,9 +24,13 @@ function hms(s: number) {
   return (h ? `${h}:` : "") + `${mm}:${String(r).padStart(2, "0")}`;
 }
 
-type Props = VideoHTMLAttributes<HTMLVideoElement> & { ref?: Ref<HTMLVideoElement>; cadre?: string };
+type Props = VideoHTMLAttributes<HTMLVideoElement> & {
+  ref?: Ref<HTMLVideoElement>;
+  cadre?: string;
+  pistes?: Piste[];
+};
 
-export default function Player({ ref, className = "", cadre = "", ...video }: Props) {
+export default function Player({ ref, className = "", cadre = "", pistes = [], ...video }: Props) {
   const { t } = useTranslation();
   const boite = useRef<HTMLDivElement>(null);
   const v = useRef<HTMLVideoElement | null>(null);
@@ -32,6 +44,16 @@ export default function Player({ ref, className = "", cadre = "", ...video }: Pr
   const [plein, setPlein] = useState(false);
   const [visible, setVisible] = useState(true);
   const minuteur = useRef<number | undefined>(undefined);
+  // Sous-titres : langue choisie (vide = aucun), mémorisée par navigateur ; le menu est un popover du bouton CC.
+  const [langue, setLangue] = useState<string>(() => {
+    try { return window.localStorage.getItem(CLE_SOUS_TITRES) ?? ""; } catch { return ""; }  // stockage refusé
+  });
+  const [menu, setMenu] = useState(false);
+  const menuBoite = useRef<HTMLDivElement | null>(null);
+  const boutonCC = useRef<HTMLButtonElement | null>(null);
+  // Dernière langue regardée : C la remet, même après avoir tout désactivé.
+  const derniere = useRef(langue);
+  const actif = pistes.some((p) => p.langue === langue);
 
   const lier = (el: HTMLVideoElement | null) => {
     v.current = el;
@@ -64,14 +86,86 @@ export default function Player({ ref, className = "", cadre = "", ...video }: Pr
     setVitesse(n);
   };
 
+  /** Une seule piste à l'écran : la langue choisie en « showing », les autres en « hidden » (chargées,
+   *  prêtes à être choisies). Aucune langue : toutes cachées, rien ne s'affiche. */
+  const appliquerPistes = useCallback(() => {
+    const liste = v.current?.textTracks;
+    if (!liste) return;
+    for (let i = 0; i < liste.length; i += 1) {
+      liste[i].mode = langue && liste[i].language === langue ? "showing" : "hidden";
+    }
+  }, [langue]);
+
+  useEffect(() => {
+    appliquerPistes();
+  }, [appliquerPistes, pistes]);
+
+  /** Choix retenu pour ce navigateur : il vaut pour la prochaine khutba, et pour les clips sans piste. */
+  const choisir = (code: string) => {
+    setLangue(code);
+    if (code) derniere.current = code;
+    try {
+      if (code) window.localStorage.setItem(CLE_SOUS_TITRES, code);
+      else window.localStorage.removeItem(CLE_SOUS_TITRES);
+    } catch {
+      /* stockage refusé (navigation privée) : le choix vaut pour cette page */
+    }
+    setMenu(false);
+    boutonCC.current?.focus();  // le bouton reste l'arrêt de tabulation après la fermeture
+  };
+
+  const basculerSousTitres = () => {
+    if (!pistes.length) return;
+    const reprise = pistes.some((p) => p.langue === derniere.current) ? derniere.current : pistes[0].langue;
+    choisir(actif ? "" : reprise);
+  };
+
+  // Menu ouvert : le focus entre sur la langue retenue, et un clic dehors le referme.
+  useEffect(() => {
+    if (!menu) return;
+    const boite = menuBoite.current;
+    const items = Array.from(boite?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
+    (items.find((el) => el.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+    const dehors = (e: PointerEvent) => {
+      const cible = e.target as Node;
+      if (!boite?.contains(cible) && !boutonCC.current?.contains(cible)) setMenu(false);
+    };
+    document.addEventListener("pointerdown", dehors);
+    return () => document.removeEventListener("pointerdown", dehors);
+  }, [menu]);
+
+  /** Flèches, Début/Fin entre les langues ; Échap referme et rend le focus au bouton CC. */
+  const clavierMenu = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(menuBoite.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      setMenu(false);
+      boutonCC.current?.focus();
+      return;
+    }
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    let cible: HTMLButtonElement | undefined;
+    if (e.key === "ArrowDown") cible = items[(Math.max(0, i) + 1) % items.length];
+    else if (e.key === "ArrowUp") cible = items[(Math.max(0, i) - 1 + items.length) % items.length];
+    else if (e.key === "Home") cible = items[0];
+    else if (e.key === "End") cible = items[items.length - 1];
+    else return;
+    e.preventDefault();
+    e.stopPropagation();  // la flèche ne déplace pas la vidéo
+    cible?.focus();
+  };
+
   const clavier = (e: React.KeyboardEvent) => {
     if ((e.target as HTMLElement).tagName === "INPUT") return;
+    if (menu) return;  // le menu des sous-titres a son propre clavier
     const k = e.key.toLowerCase();
     if (k === " " || k === "k") basculer();
     else if (k === "arrowleft") aller((v.current?.currentTime ?? 0) - 5);
     else if (k === "arrowright") aller((v.current?.currentTime ?? 0) + 5);
     else if (k === "m") muter();
     else if (k === "f") ecran();
+    else if (k === "c") basculerSousTitres();
     else return;
     e.preventDefault();
     reveiller();
@@ -100,12 +194,21 @@ export default function Player({ ref, className = "", cadre = "", ...video }: Pr
         onPlay={(e) => { setLecture(true); reveiller(); video.onPlay?.(e); }}
         onPause={(e) => { setLecture(false); setVisible(true); video.onPause?.(e); }}
         onTimeUpdate={(e) => { setTps(e.currentTarget.currentTime); video.onTimeUpdate?.(e); }}
-        onLoadedMetadata={(e) => { setDuree(e.currentTarget.duration); video.onLoadedMetadata?.(e); }}
+        onLoadedMetadata={(e) => {
+          setDuree(e.currentTarget.duration);
+          appliquerPistes();  // un nouveau fichier remet les pistes à « disabled » : on réapplique le choix
+          video.onLoadedMetadata?.(e);
+        }}
         onDurationChange={(e) => setDuree(e.currentTarget.duration)}
         onProgress={(e) => { const b = e.currentTarget.buffered; if (b.length) setTampon(b.end(b.length - 1)); }}
         onVolumeChange={(e) => { setMuet(e.currentTarget.muted); setVolume(e.currentTarget.volume); }}
         className={`${className} ${plein ? "!h-full !max-h-none !w-full" : ""}`}
-      />
+      >
+        {/* Les navigateurs ne lisent que du WebVTT : une piste par langue, jamais affichée par défaut. */}
+        {pistes.map((p) => (
+          <track key={`${p.langue}-${p.url}`} kind="subtitles" src={p.url} srcLang={p.langue} label={p.libelle} />
+        ))}
+      </video>
 
       {/* Gros bouton central tant que la vidéo est à l'arrêt. */}
       {!lecture && (
@@ -158,6 +261,41 @@ export default function Player({ ref, className = "", cadre = "", ...video }: Pr
           </span>
 
           <span className="ml-auto flex items-center gap-1">
+            {pistes.length > 0 && (
+              <div className="relative">
+                <button
+                  ref={boutonCC}
+                  type="button"
+                  onClick={() => setMenu((m) => !m)}
+                  aria-label={t("player.subtitles")}
+                  aria-pressed={actif}
+                  aria-haspopup="menu"
+                  aria-expanded={menu}
+                  title={t("player.subtitlesKey")}
+                  className={`relative grid h-9 min-w-9 cursor-pointer place-items-center rounded-md px-1.5 focus-visible:outline-2 focus-visible:outline-leaf ${
+                    actif ? "text-leaf hover:bg-white/10" : "text-night-ink/70 hover:bg-white/10 hover:text-night-ink"
+                  }`}
+                >
+                  <span aria-hidden className="text-[0.72rem] leading-none font-bold tracking-[0.06em]">CC</span>
+                  {/* Désactivé : le sigle barré, comme sur les téléviseurs. */}
+                  {!actif && (
+                    <span aria-hidden
+                      className="absolute inset-x-1.5 top-1/2 h-[1.5px] -translate-y-1/2 -rotate-[18deg] rounded-full bg-current" />
+                  )}
+                </button>
+                {menu && (
+                  <div ref={menuBoite} role="menu" aria-label={t("player.subtitlesChoose")} onKeyDown={clavierMenu}
+                    className="absolute right-0 bottom-full z-30 mb-2 min-w-[11rem] overflow-hidden rounded-[8px] border border-white/15 bg-night/95 py-1 text-left text-[0.86rem] text-night-ink shadow-[0_10px_28px_rgba(10,16,12,0.45)] backdrop-blur-sm">
+                    <BoutonLangue coche={!actif} onClick={() => choisir("")}>{t("player.subtitlesOff")}</BoutonLangue>
+                    {pistes.map((p) => (
+                      <BoutonLangue key={p.langue} coche={langue === p.langue} onClick={() => choisir(p.langue)}>
+                        {p.libelle}
+                      </BoutonLangue>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <Bouton label={muet || volume === 0 ? t("player.unmute") : t("player.mute")} onClick={muter}>
               {muet || volume === 0
                 ? <path d="M3 9v6h4l5 5V4L7 9H3zm13.59 3L14 9.41 15.41 8 18 10.59 20.59 8 22 9.41 19.41 12 22 14.59 20.59 16 18 13.41 15.41 16 14 14.59z" />
@@ -203,6 +341,26 @@ function Bouton({ label, onClick, children }: { label: string; onClick: () => vo
       className="grid size-9 cursor-pointer place-items-center rounded-md text-night-ink hover:bg-white/10 hover:text-leaf focus-visible:outline-2 focus-visible:outline-leaf"
     >
       <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden="true">{children}</svg>
+    </button>
+  );
+}
+
+/** Une langue du menu des sous-titres : `menuitemradio`, cochée d'un trait de feuille. */
+function BoutonLangue({ coche, onClick, children }: {
+  coche: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={coche}
+      onClick={onClick}
+      className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left whitespace-nowrap hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none"
+    >
+      <span aria-hidden className="w-3.5 shrink-0 text-leaf">{coche ? "✓" : ""}</span>
+      <span className={coche ? "font-semibold" : ""}>{children}</span>
     </button>
   );
 }

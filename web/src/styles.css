@@ -83,3 +83,29 @@
   background-position: right 0.7rem center;
   background-size: 18px;
 }
+
+/* Sous-titres du lecteur : encre claire sur un fond nuit translucide, la DA « Manuscrit de nuit ».
+   La pile garde Amiri derrière Source Sans : les caractères arabes y tombent d'eux-mêmes, sans
+   dépendre du support de ::cue(:lang()). Chaque ligne arabe porte son sens droite-à-gauche dans le
+   WebVTT (marques RLE/PDF), le navigateur n'a donc rien à deviner. */
+video::cue {
+  background-color: rgba(11, 26, 20, 0.82);
+  color: var(--color-night-ink);
+  font-family: "Source Sans 3 Variable", "Source Sans 3", "Amiri", "Noto Naskh Arabic", serif;
+  font-size: 1.3rem;
+  line-height: 1.45;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+/* Navigateurs qui savent restreindre une piste par langue : l'arabe prend la naskh, un peu plus grande. */
+video::cue(:lang(ar)) {
+  font-family: var(--font-arabic);
+  font-size: 1.45rem;
+}
+
+/* Les contrôles maison occupent le bas du lecteur : la boîte des sous-titres remonte de leur hauteur,
+   sinon un sous-titre à l'arrêt passe sous la barre et devient illisible. Chromium et WebKit ;
+   Firefox les laisse en bas, mais ses contrôles s'effacent en lecture. */
+video::-webkit-media-text-track-container {
+  transform: translateY(-8rem);
+}
