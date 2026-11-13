@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { liste } from "../format";
-import { Btn, Card, Field, Tabs, Title, inputClass, toucher, toucherEnLigne } from "../ui";
+import { Bulle, Btn, Card, Dialogue, Field, Tabs, Title, inputClass, toucher, toucherEnLigne } from "../ui";
+import { idOnglet, idPanneau } from "../onglets";
 
 type Message = { ok: boolean; texte: string } | null;
 
@@ -60,58 +61,59 @@ function Parcourir({ depart, onChoix, onFermer }: { depart: string; onChoix: (ch
   useEffect(() => { api.folders(depart).then(setVue).catch((e) => setErreur(e.message)); }, [depart]);
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-night/50 p-4" role="dialog" aria-modal="true" aria-label={t("settings.folderTitle")}>
-      <div className="grid max-h-[85vh] w-full max-w-[640px] grid-rows-[auto_auto_1fr_auto] gap-3 rounded-[10px] border border-line bg-white p-4.5">
-        <Title>{t("settings.folderTitle")}</Title>
-        {erreur && <p role="alert" className="m-0 text-[0.9rem] text-[#7a1f20]">{erreur}</p>}
-        {!vue ? (
-          <p className="text-muted">{t("common.loading")}</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                className={`${inputClass} w-auto`}
-                aria-label={t("settings.folderRoots")}
-                value=""
-                onChange={(e) => e.target.value && ouvrir(e.target.value)}
-              >
-                <option value="">{t("settings.folderRoots")}</option>
-                {vue.roots.map((r: any) => <option key={r.path} value={r.path}>{r.label}</option>)}
-              </select>
-              <Btn type="button" variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.9rem]" disabled={!vue.parent} onClick={() => ouvrir(vue.parent)}>
-                {t("settings.folderUp")}
-              </Btn>
-            </div>
-            <div className="min-h-0 overflow-auto rounded-lg border border-line">
-              <p className="m-0 border-b border-line bg-paper-2 px-3 py-2 font-mono text-[0.85rem] text-muted">
-                {t("settings.folderCurrent")} : {vue.path}
-              </p>
-              {vue.entries.length === 0 ? (
-                <p className="m-0 px-3 py-3 text-[0.9rem] text-muted">{t("settings.folderEmpty")}</p>
-              ) : (
-                <ul className="m-0 list-none p-0">
-                  {vue.entries.map((e: any) => (
-                    <li key={e.path}>
-                      <button type="button" onClick={() => ouvrir(e.path)}
-                        className="w-full cursor-pointer border-0 border-b border-line bg-transparent px-3 py-2 text-left font-mono text-[0.88rem] hover:bg-paper-2">
-                        {e.name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            {!vue.writable && <p className="m-0 text-[0.85rem] text-[#7a1f20]">{t("settings.folderNotWritable")}</p>}
-          </>
-        )}
-        <div className="flex flex-wrap justify-end gap-2">
-          <Btn type="button" variante="ghost" onClick={onFermer}>{t("settings.folderCancel")}</Btn>
-          <Btn type="button" disabled={!vue || !vue.exists || !vue.writable} onClick={() => vue && onChoix(vue.path)}>
-            {t("settings.folderUse")}
-          </Btn>
-        </div>
+    // Le focus entre dans la fenêtre, Tab y tourne en rond, Échap la ferme et le
+    // focus revient au bouton « Parcourir » qui l'a ouverte.
+    <Dialogue label={t("settings.folderTitle")} onFermer={onFermer}
+      boite="grid max-h-[85vh] w-full max-w-[640px] grid-rows-[auto_auto_1fr_auto] gap-3 rounded-[10px] border border-line bg-white p-4.5">
+      <Title>{t("settings.folderTitle")}</Title>
+      {erreur && <p role="alert" className="m-0 text-[0.9rem] text-[#7a1f20]">{erreur}</p>}
+      {!vue ? (
+        <p className="text-muted">{t("common.loading")}</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className={`${inputClass} w-auto`}
+              aria-label={t("settings.folderRoots")}
+              value=""
+              onChange={(e) => e.target.value && ouvrir(e.target.value)}
+            >
+              <option value="">{t("settings.folderRoots")}</option>
+              {vue.roots.map((r: any) => <option key={r.path} value={r.path}>{r.label}</option>)}
+            </select>
+            <Btn type="button" variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.9rem]" disabled={!vue.parent} onClick={() => ouvrir(vue.parent)}>
+              {t("settings.folderUp")}
+            </Btn>
+          </div>
+          <div className="min-h-0 overflow-auto rounded-lg border border-line">
+            <p className="m-0 border-b border-line bg-paper-2 px-3 py-2 font-mono text-[0.85rem] text-muted">
+              {t("settings.folderCurrent")} : {vue.path}
+            </p>
+            {vue.entries.length === 0 ? (
+              <p className="m-0 px-3 py-3 text-[0.9rem] text-muted">{t("settings.folderEmpty")}</p>
+            ) : (
+              <ul className="m-0 list-none p-0">
+                {vue.entries.map((e: any) => (
+                  <li key={e.path}>
+                    <button type="button" onClick={() => ouvrir(e.path)}
+                      className="w-full cursor-pointer border-0 border-b border-line bg-transparent px-3 py-2 text-left font-mono text-[0.88rem] hover:bg-paper-2">
+                      {e.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {!vue.writable && <p className="m-0 text-[0.85rem] text-[#7a1f20]">{t("settings.folderNotWritable")}</p>}
+        </>
+      )}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Btn type="button" variante="ghost" onClick={onFermer}>{t("settings.folderCancel")}</Btn>
+        <Btn type="button" disabled={!vue || !vue.exists || !vue.writable} onClick={() => vue && onChoix(vue.path)}>
+          {t("settings.folderUse")}
+        </Btn>
       </div>
-    </div>
+    </Dialogue>
   );
 }
 
@@ -395,8 +397,10 @@ export default function Settings() {
         {/* Two sub-tabs: the connection to the live program, then where the stream goes. */}
         <Tabs items={[{ cle: "connexion", label: t("settings.liveConnection") },
                        { cle: "destinations", label: t("settings.destTitle") }]}
+          base="reglages-live" label={t("settings.tabs.live")}
           valeur={sousOnglet} onChange={(c) => { setSousOnglet(c); setMsg(null); }} />
-        {sousOnglet === "connexion" && <div className="grid max-w-[520px] gap-3.5">
+        {sousOnglet === "connexion" && <div className="grid max-w-[520px] gap-3.5"
+          role="tabpanel" id={idPanneau("reglages-live", "connexion")} aria-labelledby={idOnglet("reglages-live", "connexion")}>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
             <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8088" />
@@ -418,9 +422,11 @@ export default function Settings() {
           <p className="m-0 mb-2 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-green">{t("settings.inputKicker")}</p>
           <Tabs items={[{ cle: "camera", label: t("onboarding.cameraTitle") },
                         { cle: "push", label: t("onboarding.pushTitle") }]}
+            base="reglages-entree" label={t("settings.inputKicker")}
             valeur={entree.mode}
             onChange={(m) => { setEntree((e) => ({ ...e, mode: m === "push" ? "push" : "camera" })); setEssai(null); setMsg(null); }} />
-          <div className="mt-3 grid gap-1.5">
+          <div className="mt-3 grid gap-1.5"
+            role="tabpanel" id={idPanneau("reglages-entree", entree.mode)} aria-labelledby={idOnglet("reglages-entree", entree.mode)}>
             {entree.mode === "camera" ? (
               <Field label={t("onboarding.cameraUrl")} aide={t("onboarding.cameraUrlHelp")}>
                 <div className="flex gap-2">
@@ -529,10 +535,11 @@ export default function Settings() {
         </Field>
         <p className="m-0 text-[0.85rem] text-muted">{t("settings.modelNow", { label: d.model.label })}</p>
         <div className="flex flex-wrap items-center gap-3">
-          <Btn type="button" variante="ghost" disabled={modifie || test?.etat === "cours"} onClick={tester}
-            title={modifie ? t("settings.modelTestSave") : undefined}>
-            {t("settings.modelTest")}
-          </Btn>
+          <Bulle texte={t("settings.modelTestSave")} actif={modifie}>
+            <Btn type="button" variante="ghost" disabled={modifie || test?.etat === "cours"} onClick={tester}>
+              {t("settings.modelTest")}
+            </Btn>
+          </Bulle>
           {test && (
             <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#7a1f20]" : "text-muted"}`}>{test.texte}</span>
           )}
@@ -566,6 +573,7 @@ export default function Settings() {
           <div className="grid min-w-0 gap-3">
             <div className="grid gap-1.5">
               <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
+                base="reglages-ecrans" label={t("settings.tabs.screens")}
                 valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
               {/* Pas de panneau déplié : le mode d'emploi s'ouvre dans un onglet, la page ne bouge pas. */}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -600,7 +608,8 @@ export default function Settings() {
                 </button>
               </div>
             </div>
-            <div className="grid gap-3">
+            <div className="grid gap-3"
+              role="tabpanel" id={idPanneau("reglages-ecrans", ecranVue)} aria-labelledby={idOnglet("reglages-ecrans", ecranVue)}>
               {CHAMPS_ECRAN.map(({ champ, large }) => (
                 <Field key={champ} label={t(`settings.screenFields.${champ}`)}
                   className={large ? undefined : "max-w-[22rem]"}>
@@ -687,10 +696,11 @@ export default function Settings() {
               onChange={(e) => { setStockage((s) => ({ ...s, enabled: e.target.checked })); setMsg(null); }} />
             {t("settings.replayEnabled")}
           </label>
-          <Btn type="button" variante="ghost" className="mb-0.5 whitespace-nowrap" disabled={stockageModifie} onClick={testerStockage}
-            title={stockageModifie ? t("settings.replaySaveFirst") : undefined}>
-            {t("settings.replayTest")}
-          </Btn>
+          <Bulle texte={t("settings.replaySaveFirst")} actif={stockageModifie}>
+            <Btn type="button" variante="ghost" className="mb-0.5 whitespace-nowrap" disabled={stockageModifie} onClick={testerStockage}>
+              {t("settings.replayTest")}
+            </Btn>
+          </Bulle>
         </div>
         {essaiStockage && (
           <span role="status" className={`text-[0.88rem] ${essaiStockage.ok ? "text-green" : "text-[#7a1f20]"}`}>{essaiStockage.detail}</span>
@@ -726,9 +736,12 @@ export default function Settings() {
       <h1 className="m-0 font-serif text-[2.1rem] font-normal leading-[1.1] text-deeper">{t("settings.title")}</h1>
       {/* A single form for the whole screen: the tabs split it, a single button saves it. */}
       <form onSubmit={enregistrer}>
-        <Tabs items={onglets} valeur={onglet} onChange={(c) => { setOnglet(c); setMsg(null); }} />
+        <Tabs items={onglets} base="reglages" label={t("settings.title")}
+          valeur={onglet} onChange={(c) => { setOnglet(c); setMsg(null); }} />
         <Card>
-          <div key={onglet}>{contenu[onglet] ?? <p className="text-muted">{t("settings.soon")}</p>}</div>
+          <div key={onglet} role="tabpanel" id={idPanneau("reglages", onglet)} aria-labelledby={idOnglet("reglages", onglet)}>
+            {contenu[onglet] ?? <p className="text-muted">{t("settings.soon")}</p>}
+          </div>
           {avecEnregistrement && (
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <Btn type="submit" disabled={enCours || !modifie}>{enCours ? t("common.saving") : t("settings.save")}</Btn>

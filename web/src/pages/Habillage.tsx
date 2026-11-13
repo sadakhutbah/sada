@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, type Habillage as Etat, type HabillageOptions } from "../api";
 import { Btn, Card, Field, Kicker, Pill, Segmented, Tabs, inputClass } from "../ui";
+import { idOnglet, idPanneau } from "../onglets";
 
 /** Branding of an imported video (dars, lecture, khutba): the mosque's identity over the picture.
  *  A single form, split in tabs (opening, speaker, logo and colour, end screen). On the right, a live
@@ -95,6 +96,7 @@ export default function Habillage() {
               items={onglets.map((it) => ({ cle: it.cle, label: it.label }))}
               valeur={onglet}
               onChange={(c) => setOnglet(c as Onglet)}
+              base="habillage"
             />
             <div className="-mt-2 flex flex-wrap gap-1.5" aria-hidden>
               {onglets.map((it) => (
@@ -102,7 +104,8 @@ export default function Habillage() {
               ))}
             </div>
 
-            <fieldset disabled={lecture} className="m-0 grid min-w-0 gap-4 border-0 p-0">
+            <fieldset disabled={lecture} className="m-0 grid min-w-0 gap-4 border-0 p-0"
+              role="tabpanel" id={idPanneau("habillage", onglet)} aria-labelledby={idOnglet("habillage", onglet)}>
               {onglet === "ouverture" && (
                 <>
                   <Interrupteur label={t("habillage.introOn")} aide={t("habillage.introHelp")}

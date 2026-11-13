@@ -18,6 +18,7 @@ import Audit from "./pages/Audit";
 import Onboarding from "./pages/Onboarding";
 import FirstPassword from "./pages/FirstPassword";
 import { setCurrentSession } from "./session";
+import { Bulle } from "./ui";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -156,8 +157,13 @@ export default function App() {
                 <option key={l.code} value={l.code} className="text-ink">{l.label}</option>
               ))}
             </select>
-            {/* Le rôle passe en info-bulle sur grand écran : la barre tient sur une ligne même avec un badge. */}
-            <span className="text-[0.85rem] whitespace-nowrap text-night-link" title={roleLabel}>{session.user.name}</span>
+            {/* Le rôle passe en info-bulle sur grand écran : la barre tient sur une ligne même avec un badge.
+                La bulle se lit aussi au clavier (aria-describedby), pas seulement à la souris. */}
+            <Bulle texte={roleLabel} actif={roleLabel !== session.user.name}>
+              {/* Le nom porte la bulle : il prend le focus (tabindex 0) pour que le clavier
+                  l'atteigne, comme le demande le motif « tooltip » d'ARIA. */}
+              <span tabIndex={0} className="text-[0.85rem] whitespace-nowrap text-night-link focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf">{session.user.name}</span>
+            </Bulle>
             {roleLabel !== session.user.name && (
               <span className="text-[0.78rem] whitespace-nowrap text-night-muted min-[1120px]:hidden">{roleLabel}</span>
             )}

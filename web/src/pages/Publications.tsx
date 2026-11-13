@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Card, Field, Table, Tabs, Title, inputClass, tdClass } from "../ui";
+import { idOnglet, idPanneau } from "../onglets";
 
 type FieldDef = { name: string; label: string; value: string; secret: boolean; placeholder: string };
 type Feedback = { ok: boolean; text: string } | null;
@@ -56,7 +57,8 @@ function ConnectorForm({ c, onSaved }: { c: any; onSaved: () => void }) {
 }
 
 /** Notifications to the imam: channel, destination (secrets masked) and a test message. */
-function Notifications({ n, onSaved }: { n: any; onSaved: () => void }) {
+function Notifications({ n, onSaved, ...reste }:
+  { n: any; onSaved: () => void } & React.HTMLAttributes<HTMLElement>) {
   const { t } = useTranslation();
   const [v, setV] = useState({ mode: n.mode as string, webhook: "", telegram_token: "", telegram_chat: n.telegram_chat as string });
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -78,7 +80,7 @@ function Notifications({ n, onSaved }: { n: any; onSaved: () => void }) {
   const keepHint = (stored: string) => (stored ? t("publications.secretKeep") : undefined);
 
   return (
-    <Card>
+    <Card {...reste}>
       <Title>{t("publications.notifTitle")}</Title>
       <p className="mt-0 text-muted">{t("publications.notifHint")}</p>
       <p className="font-semibold">
@@ -140,8 +142,8 @@ export default function Publications() {
         { cle: "connectors", label: t("publications.tabConnectors"), compte: d?.connectors?.filter((c: any) => c.available).length },
         { cle: "notifications", label: t("publications.tabNotifications") },
         { cle: "history", label: t("publications.tabHistory"), compte: d?.publications?.length },
-      ]} valeur={vue} onChange={(c) => setVue(c)} />
-      {vue === "connectors" && <Card>
+      ]} valeur={vue} onChange={(c) => setVue(c)} base="publications" label={t("publications.title")} />
+      {vue === "connectors" && <Card role="tabpanel" id={idPanneau("publications", "connectors")} aria-labelledby={idOnglet("publications", "connectors")}>
         <Title>{t("publications.connectorsTitle")}</Title>
         {!d ? <p className="text-muted">{t("common.loading")}</p> : d.connectors.length === 0 ? (
           <p className="text-muted">{t("common.empty")}</p>
@@ -174,13 +176,15 @@ export default function Publications() {
       </Card>}
 
       {vue === "notifications" && d?.notifications &&
-        <Notifications key={`${d.notifications.mode}${d.notifications.active}`} n={d.notifications} onSaved={load} />}
+        <Notifications key={`${d.notifications.mode}${d.notifications.active}`} n={d.notifications} onSaved={load}
+          role="tabpanel" id={idPanneau("publications", "notifications")} aria-labelledby={idOnglet("publications", "notifications")} />}
 
-      {vue === "notifications" && d && !d.notifications && <Card>
-        <p className="m-0 text-muted">{t("publications.notificationsAdminOnly")}</p>
-      </Card>}
+      {vue === "notifications" && d && !d.notifications &&
+        <Card role="tabpanel" id={idPanneau("publications", "notifications")} aria-labelledby={idOnglet("publications", "notifications")}>
+          <p className="m-0 text-muted">{t("publications.notificationsAdminOnly")}</p>
+        </Card>}
 
-      {vue === "history" && <Card>
+      {vue === "history" && <Card role="tabpanel" id={idPanneau("publications", "history")} aria-labelledby={idOnglet("publications", "history")}>
         <Title>{t("publications.history")}</Title>
         {!d ? <p className="text-muted">{t("common.loading")}</p> : (d.publications ?? []).length === 0 ? (
           <p className="text-muted">{t("publications.noHistory")}</p>

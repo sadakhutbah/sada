@@ -1,8 +1,21 @@
-import type { ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState } from "react";
+import { idOnglet, idPanneau } from "./onglets";
+import type { Onglet } from "./onglets";
+import type {
+  FocusEvent as FocusReact,
+  HTMLAttributes,
+  KeyboardEvent as ToucheReact,
+  MouseEvent as SourisReact,
+  ReactElement,
+  ReactNode,
+} from "react";
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+/** Card accepts the panel attributes (role, id, aria-labelledby) without adding a wrapper:
+ *  a tab panel must not introduce a box the layout did not have. */
+export function Card({ children, className = "", ...reste }:
+  { children: ReactNode; className?: string } & HTMLAttributes<HTMLElement>) {
   return (
-    <section className={`rounded-[10px] border border-line bg-white p-4.5 ${className}`}>{children}</section>
+    <section className={`rounded-[10px] border border-line bg-white p-4.5 ${className}`} {...reste}>{children}</section>
   );
 }
 
@@ -73,23 +86,77 @@ export function Pill({ statut, label }: { statut: string; label: string }) {
   );
 }
 
-/** Top-level tabs: separate pills, the active one filled in deep green (.tabs in the back-office). */
+/* ---------------------------------------------------------------------------
+ * Onglets — comportements repris de la bibliothèque vercel-labs/ui (onglets,
+ * sélecteurs segmentés), écrits ici sans dépendance : rôles tablist/tab, un
+ * seul onglet atteint au Tab (roving tabindex), flèches gauche/droite,
+ * Début/Fin, et panneau relié à son onglet par aria-controls/aria-labelledby.
+ * ------------------------------------------------------------------------- */
+
+/** Clavier et roving tabindex communs à Tabs et Segmented. L'onglet retenu est
+ *  le seul arrêt de tabulation ; les flèches changent d'onglet et posent le
+ *  focus dessus (activation automatique, le panneau étant peu coûteux). */
+function useOnglets(items: Onglet[], valeur: string, onChange: (cle: string) => void) {
+  const boutons = useRef<Record<string, HTMLButtonElement | null>>({});
+  const ouverts = items.filter((it) => !it.eteint);
+  const choisi = ouverts.some((it) => it.cle === valeur) ? valeur : (ouverts[0]?.cle ?? "");
+  const aller = (cle: string) => { onChange(cle); boutons.current[cle]?.focus(); };
+
+  const clavier = (e: ToucheReact<HTMLButtonElement>) => {
+    if (!ouverts.length) return;
+    // En écriture de droite à gauche, la flèche de gauche avance.
+    const pas = getComputedStyle(e.currentTarget).direction === "rtl" ? -1 : 1;
+    const i = Math.max(0, ouverts.findIndex((it) => it.cle === choisi));
+    let cible: Onglet | undefined;
+    if (e.key === "ArrowRight") cible = ouverts[(i + pas + ouverts.length) % ouverts.length];
+    else if (e.key === "ArrowLeft") cible = ouverts[(i - pas + ouverts.length) % ouverts.length];
+    else if (e.key === "Home") cible = ouverts[0];
+    else if (e.key === "End") cible = ouverts[ouverts.length - 1];
+    else return;
+    e.preventDefault();          /* la flèche ne fait pas défiler la page */
+    if (cible) aller(cible.cle);
+  };
+
+  return {
+    choisi,
+    clavier,
+    tabIndex: (it: Onglet) => (it.eteint ? -1 : it.cle === choisi ? 0 : -1),
+    ref: (cle: string) => (el: HTMLButtonElement | null) => { boutons.current[cle] = el; },
+  };
+}
+
+/** Top-level tabs: separate pills, the active one filled in deep green (.tabs in the back-office).
+ *  `base` (optional) links each tab to the panel that follows it: the panel carries
+ *  `role="tabpanel"`, `id={idPanneau(base, cle)}` and `aria-labelledby={idOnglet(base, cle)}`. */
 export function Tabs({
   items,
   valeur,
   onChange,
+  base,
+  label,
 }: {
-  items: { cle: string; label: string; compte?: number; eteint?: boolean }[];
+  items: Onglet[];
   valeur: string;
   onChange: (cle: string) => void;
+  base?: string;
+  label?: string;
 }) {
+  const { choisi, clavier, tabIndex, ref } = useOnglets(items, valeur, onChange);
   return (
     // Téléphone : une seule ligne qui défile dans son propre conteneur, jamais la page.
-    <div className="mb-3.5 flex flex-wrap gap-2 max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none]">
+    <div role="tablist" aria-label={label}
+      className="mb-3.5 flex flex-wrap gap-2 max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none]">
       {items.map((it) => (
         <button
           key={it.cle}
           type="button"          /* a tab never submits the form around it */
+          role="tab"
+          id={base ? idOnglet(base, it.cle) : undefined}
+          aria-selected={it.cle === choisi}
+          aria-controls={base ? idPanneau(base, it.cle) : undefined}
+          tabIndex={tabIndex(it)}
+          ref={ref(it.cle)}
+          onKeyDown={clavier}
           onClick={() => onChange(it.cle)}
           disabled={it.eteint}
           className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[0.93rem] font-semibold max-md:min-h-11 pointer-coarse:min-h-11 ${
@@ -113,22 +180,36 @@ export function Tabs({
 }
 
 /** Segmented selector: a single block, for the sub-tabs of one screen.
- *  `compte` (optional) shows a small total next to the label. */
+ *  `compte` (optional) shows a small total next to the label.
+ *  Même clavier que Tabs. `base` relie l'onglet à son panneau quand il y en a un. */
 export function Segmented({
   items,
   valeur,
   onChange,
+  base,
+  label,
 }: {
-  items: { cle: string; label: string; compte?: number; eteint?: boolean }[];
+  items: Onglet[];
   valeur: string;
   onChange: (cle: string) => void;
+  base?: string;
+  label?: string;
 }) {
+  const { choisi, clavier, tabIndex, ref } = useOnglets(items, valeur, onChange);
   return (
-    <div className="mb-3 inline-flex max-w-full flex-wrap gap-0.5 rounded-[9px] border border-line bg-paper-2 p-[3px] max-md:flex max-md:w-fit max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none]">
+    <div role="tablist" aria-label={label}
+      className="mb-3 inline-flex max-w-full flex-wrap gap-0.5 rounded-[9px] border border-line bg-paper-2 p-[3px] max-md:flex max-md:w-fit max-md:flex-nowrap max-md:overflow-x-auto max-md:[scrollbar-width:none]">
       {items.map((it) => (
         <button
           key={it.cle}
           type="button"          /* a tab never submits the form around it */
+          role="tab"
+          id={base ? idOnglet(base, it.cle) : undefined}
+          aria-selected={it.cle === choisi}
+          aria-controls={base ? idPanneau(base, it.cle) : undefined}
+          tabIndex={tabIndex(it)}
+          ref={ref(it.cle)}
+          onKeyDown={clavier}
           onClick={() => onChange(it.cle)}
           disabled={it.eteint}
           className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border-0 px-3.5 py-1 text-[0.88rem] font-semibold max-md:min-h-11 max-md:px-3 pointer-coarse:min-h-11 ${
@@ -148,6 +229,127 @@ export function Segmented({
           {it.eteint && <span className="inline-block size-[7px] rounded-full border-[1.5px] border-muted" />}
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Info-bulle — comme celle de vercel-labs/ui : elle précise son déclencheur au
+ * survol ET au focus clavier, Échap la referme (le focus reste où il est), et
+ * le texte reste attaché par aria-describedby même quand rien n'est affiché.
+ * ------------------------------------------------------------------------- */
+
+/** Courte précision posée sur un élément (bouton, nom…). Un seul enfant, qui
+ *  reçoit aria-describedby ; `actif={false}` ne rend que l'enfant. */
+export function Bulle({ texte, children, actif = true, place = "bas" }: {
+  texte: string;
+  children: ReactNode;
+  actif?: boolean;
+  place?: "bas" | "haut";
+}) {
+  const id = useId();
+  const [ouvert, setOuvert] = useState(false);
+  // Échap la referme : elle ne revient qu'après une nouvelle entrée du pointeur
+  // (mouseenter) ou du focus, pas toute seule.
+  const montre = actif && ouvert;
+
+  const enfant = isValidElement(children) ? (children as ReactElement<Record<string, any>>) : null;
+  const avant = (enfant?.props ?? {}) as Record<string, any>;
+
+  if (!actif) return <>{children}</>;
+
+  const declencheur = enfant
+    ? cloneElement(enfant, {
+        "aria-describedby": [avant["aria-describedby"], id].filter(Boolean).join(" ") || undefined,
+        onFocus: (e: FocusReact) => { avant.onFocus?.(e); setOuvert(true); },
+        onBlur: (e: FocusReact) => { avant.onBlur?.(e); setOuvert(false); },
+        onMouseEnter: (e: SourisReact) => { avant.onMouseEnter?.(e); setOuvert(true); },
+        onMouseLeave: (e: SourisReact) => { avant.onMouseLeave?.(e); setOuvert(false); },
+        onKeyDown: (e: ToucheReact) => {
+          avant.onKeyDown?.(e);
+          // Échap ferme la bulle, pas la modale derrière elle.
+          if (e.key === "Escape" && montre) { e.stopPropagation(); setOuvert(false); }
+        },
+      })
+    : children;
+
+  return (
+    <span className="relative inline-flex min-w-0">
+      {declencheur}
+      <span
+        role="tooltip"
+        id={id}
+        className={`pointer-events-none absolute left-0 z-40 w-max max-w-[16rem] rounded-[6px] bg-night px-2 py-1 text-[0.78rem] leading-snug font-normal text-paper shadow-[0_6px_18px_rgba(10,16,12,0.3)] ${
+          place === "haut" ? "bottom-full mb-1.5" : "top-full mt-1.5"
+        } ${montre ? "" : "hidden"}`}
+      >
+        {texte}
+      </span>
+    </span>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Modale — piège à focus, Échap, retour du focus au déclencheur (mêmes règles
+ * que la boîte de dialogue de vercel-labs/ui, sans dépendance).
+ * ------------------------------------------------------------------------- */
+
+const FOCUSABLES =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+
+/** Le focus entre dans la boîte à l'ouverture, Tab y tourne en rond, Échap
+ *  appelle `onFermer`, et le focus revient au déclencheur à la fermeture. */
+function usePiegeFocus<T extends HTMLElement = HTMLDivElement>(actif: boolean, onFermer: () => void) {
+  const boite = useRef<T | null>(null);
+  // La fermeture change à chaque rendu : on la lit par référence, pas par dépendance.
+  const fermer = useRef(onFermer);
+  useEffect(() => { fermer.current = onFermer; }, [onFermer]);
+
+  useEffect(() => {
+    if (!actif) return;
+    const dedans = boite.current;
+    const avant = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      Array.from(dedans?.querySelectorAll<HTMLElement>(FOCUSABLES) ?? []).filter((el) => el.getClientRects().length > 0);
+
+    (focusables()[0] ?? dedans)?.focus();
+
+    const touche = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); fermer.current(); return; }
+      if (e.key !== "Tab" || !dedans) return;
+      const liste = focusables();
+      if (!liste.length) { e.preventDefault(); return; }
+      const premier = liste[0], dernier = liste[liste.length - 1];
+      const ici = document.activeElement;
+      const dehors = !dedans.contains(ici);
+      if (!e.shiftKey && (ici === dernier || dehors)) { e.preventDefault(); premier.focus(); }
+      else if (e.shiftKey && (ici === premier || dehors)) { e.preventDefault(); dernier.focus(); }
+    };
+
+    document.addEventListener("keydown", touche, true);
+    return () => {
+      document.removeEventListener("keydown", touche, true);
+      if (avant && document.contains(avant)) avant.focus();
+    };
+  }, [actif]);
+
+  return boite;
+}
+
+/** Modale du site : voile sombre, boîte centrée, piège à focus, Échap, et focus
+ *  rendu au déclencheur à la fermeture. `boite` reprend les classes de la page,
+ *  donc rien ne change visuellement. */
+export function Dialogue({ label, onFermer, boite = "", children }: {
+  label: string;
+  onFermer: () => void;
+  boite?: string;
+  children: ReactNode;
+}) {
+  const ref = usePiegeFocus(true, onFermer);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-night/50 p-4"
+      role="dialog" aria-modal="true" aria-label={label}>
+      <div ref={ref} tabIndex={-1} className={boite}>{children}</div>
     </div>
   );
 }

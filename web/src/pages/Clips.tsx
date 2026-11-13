@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Card, Pill, Tabs } from "../ui";
+import { idOnglet, idPanneau } from "../onglets";
 import { dateFr, libelles, liste, mmss } from "../format";
 
 /** Review queue: one entry per clip, like the template back-office items.
@@ -77,9 +78,9 @@ export default function Clips() {
         <p className="mt-1.5 mb-0 max-w-[70ch] text-[0.92rem] text-muted">{t("clips.intro")}</p>
       </div>
 
-      <Tabs items={onglets} valeur={statut} onChange={setStatut} />
+      <Tabs items={onglets} valeur={statut} onChange={setStatut} base="clips" label={t("clips.title")} />
 
-      <Card>
+      <Card role="tabpanel" id={idPanneau("clips", statut)} aria-labelledby={idOnglet("clips", statut)}>
         {!data ? <p className="text-muted">{t("common.loading")}</p> : items.length === 0 ? (
           <p className="text-muted">{t("common.empty")}</p>
         ) : (

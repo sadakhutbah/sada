@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { currentSession } from "../session";
 import { Btn, Card, Field, Kicker, Pill, Segmented, Title, inputClass } from "../ui";
+import { idOnglet, idPanneau } from "../onglets";
 import { dateFr, mmss } from "../format";
 
 /** Sheet for a khutba, same grammar as the clip sheet.
@@ -229,6 +230,7 @@ export default function SermonDetail() {
             <Segmented
               items={onglets}
               valeur={ongletActif}
+              base="khutba"
               onChange={(cle) => {
                 setOnglet(cle); setMessage(null);
                 if (ajuste && cle !== "clip") setParams({}, { replace: true });
@@ -237,7 +239,8 @@ export default function SermonDetail() {
           </div>
           {message && <Bandeau ko={message.ko}>{message.texte}</Bandeau>}
 
-          <div className="relative mt-1 max-h-[70vh] min-h-0 flex-1 overflow-y-auto pr-1 min-[1000px]:max-h-none">
+          <div className="relative mt-1 max-h-[70vh] min-h-0 flex-1 overflow-y-auto pr-1 min-[1000px]:max-h-none"
+            role="tabpanel" id={idPanneau("khutba", ongletActif)} aria-labelledby={idOnglet("khutba", ongletActif)}>
             {ongletActif === "transcription" && (
               <Transcription
                 lignes={d.transcript}

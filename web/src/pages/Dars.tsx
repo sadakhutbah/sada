@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type AgendaEvent, type EventForm, type EventsList } from "../api";
 import { currentSession } from "../session";
 import { Btn, Field, Pill, Segmented, inputClass } from "../ui";
+import { idOnglet, idPanneau } from "../onglets";
 import { ListeSeances } from "./Sermons";
 
 /** Dars and conference agenda: the schedule the orchestrator reads, as an editable list.
@@ -413,12 +414,14 @@ function Formulaire({ liste, depart, id, jourDe, onAnnuler, onEnregistre }: {
         <Segmented
           valeur={onglet}
           onChange={setOnglet}
+          base="dars-form"
           items={[{ cle: "event", label: t("dars.tabs.event") }, { cle: "schedule", label: t("dars.tabs.schedule") }]}
         />
       </div>
 
       {onglet === "event" ? (
-        <div className="grid gap-3.5 sm:grid-cols-2">
+        <div className="grid gap-3.5 sm:grid-cols-2"
+          role="tabpanel" id={idPanneau("dars-form", "event")} aria-labelledby={idOnglet("dars-form", "event")}>
           <Field label={t("dars.kind")}>
             <select className={inputClass} value={f.kind} onChange={maj("kind")}>
               {Object.entries(liste.kinds).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
@@ -446,7 +449,8 @@ function Formulaire({ liste, depart, id, jourDe, onAnnuler, onEnregistre }: {
           </label>
         </div>
       ) : (
-        <div className="grid gap-3.5 sm:grid-cols-2">
+        <div className="grid gap-3.5 sm:grid-cols-2"
+          role="tabpanel" id={idPanneau("dars-form", "schedule")} aria-labelledby={idOnglet("dars-form", "schedule")}>
           <div className="sm:col-span-2 [&>div]:mb-0">
             <span className="mb-1 block text-[0.9rem] font-semibold">{t("dars.mode")}</span>
             <Segmented
