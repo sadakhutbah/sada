@@ -662,7 +662,11 @@ export default function Settings() {
             </div>
           </>
         )}
-        <p className="m-0 text-[0.85rem] text-muted">{t("settings.transcriptionNow", { label: tx.label ?? "—" })}</p>
+        <p className="m-0 text-[0.85rem] text-muted">
+          {tx.mode === "distant"
+            ? t("settings.transcriptionNow", { label: tx.label })
+            : t("settings.transcriptionNowLocal")}
+        </p>
       </div>
     ),
     processing: (
