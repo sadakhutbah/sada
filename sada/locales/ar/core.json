@@ -60,6 +60,7 @@
   "Template: screen {screen} rendered in {duration:.0f} ms (over budget)": "القالب: رُسمت الشاشة {screen} في {duration:.0f} مللي ثانية (يتجاوز الميزانية)",
   "Template: three failures in a row — back to the engine drawing for this live stream": "القالب: ثلاثة إخفاقات متتالية — العودة إلى رسم المحرك لهذا البث",
   "Template: {name} — this file will be shown on air": "القالب: {name} — سيُعرض هذا الملف على الهواء",
+  "Template: the file also provides the live banner ({screens})": "القالب: الملف يوفّر أيضًا شريط البث المباشر ({screens})",
   "The application is ready. Next: create an administrator account, then start the server.": "التطبيق جاهز. التالي: أنشئ حساب مسؤول ثم شغّل الخادم.",
   "The bucket does not exist (check the name and the account).": "الحاوية غير موجودة (تحقق من الاسم أو الحساب).",
   "The live stream has started ({what} at {time}{title}).": "بدأ البث المباشر ({what} في {time}{title}).",

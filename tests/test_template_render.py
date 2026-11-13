@@ -85,6 +85,22 @@ def test_le_fichier_ne_peut_pas_executer_de_script(rendu):
     assert rendu.image(pour_ecran(page_six(), "avant"))
 
 
+def test_le_bandeau_est_rendu_sur_fond_transparent(rendu):
+    """Le bandeau doit laisser voir la caméra : la capture est transparente hors du panneau."""
+    page = """<!doctype html><html><head><meta charset="utf-8"><style>
+    html, body { width:100%; height:100%; background:#0b1f16; }
+    html:has(.bandeau[data-actif]), body:has(.bandeau[data-actif]) { background: transparent; }
+    .bandeau { display:none; }
+    .bandeau[data-actif] { display:block; width:600px; height:100px; background:rgba(14,43,30,.96); }
+    </style></head><body><div class="bandeau" data-actif></div></body></html>"""
+    png = rendu.image(page, omit_background=True)
+    img = Image.open(io.BytesIO(png)).convert("RGBA")
+    assert img.size == (1280, 720)
+    alpha = img.getchannel("A")
+    transparents = sum(1 for a in alpha.getdata() if a < 50)
+    assert transparents > 400000  # l'essentiel de l'écran laisse voir la caméra
+
+
 def test_sans_navigateur_demarre_le_rendu_refuse():
     r = TemplateRender()
     with pytest.raises(RenderUnavailable):

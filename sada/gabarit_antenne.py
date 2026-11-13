@@ -25,6 +25,10 @@ log = logging.getLogger("sada.gabarit_antenne")
 # Les six écrans que le gabarit doit fournir, dans l'ordre du fichier.
 ECRANS = ("avant", "priere", "entracte", "termine", "janaza", "dars_fin")
 
+# Le bandeau du direct (scènes khutba et dars) est optionnel : un gabarit qui ne le fournit pas
+# reste valide, et le moteur dessine alors son propre bandeau.
+BANDEAUX = ("khutba", "dars")
+
 
 class AntenneGabarit:
     """Rend les écrans du direct avec le fichier importé, quand la mosquée en a un.
@@ -81,6 +85,9 @@ class AntenneGabarit:
         self.page = pages
         self._variables = data.get("variables") or {}
         self.log(_("Template: {name} — this file will be shown on air", name=data.get("nom") or "imported"))
+        banners = [e for e in BANDEAUX if pages.get(e)]
+        if banners:
+            self.log(_("Template: the file also provides the live banner ({screens})", screens=", ".join(banners)))
         return True
 
     # ------------------------------------------------------------------- rendu
@@ -92,6 +99,8 @@ class AntenneGabarit:
         "dars_fin": "arabe_dars",
         "termine": "",
         "entracte": "",
+        "khutba": "arabe_khutba",
+        "dars": "arabe_dars",
     }
 
     def valeurs(self, ecran: str, moment=None) -> dict[str, str]:
@@ -99,8 +108,17 @@ class AntenneGabarit:
 
         Aucune ligne arabe n'est inventée : si la mosquée n'en a pas saisi, la place reste vide.
         Les textes fixes de l'écran (titre, sous-titre, pied) viennent du fichier lui-même.
+        Pour le bandeau (khutba, dars), les textes de la séance en cours sont aussi fournis :
+        titre, deuxième ligne, orateur, série et séance.
         """
-        valeurs = {"mosquee": self._variables.get("nom") or getattr(self.cfg, "mosque_name", "") or ""}
+        valeurs = {
+            "mosquee": self._variables.get("nom") or getattr(self.cfg, "mosque_name", "") or "",
+            "logo": self._variables.get("logo", ""),
+            "ligne2": "",
+            "orateur": "",
+            "serie": "",
+            "seance": "",
+        }
         nxt = getattr(moment, "next_event", None) if moment is not None else None
         planned = getattr(moment, "planned", None) if moment is not None else None
         valeurs["heure"] = f"{planned:%H} h {planned:%M}" if planned else ""
@@ -108,6 +126,27 @@ class AntenneGabarit:
         valeurs["titre"] = getattr(self.cfg, "title", "") or ""
         slot = self.ARABE.get(ecran, "")
         valeurs["arabe"] = self._variables.get(slot, "") if slot else ""
+        if ecran in BANDEAUX:
+            ev = getattr(moment, "event", None) if moment is not None else None
+            if ecran == "khutba":
+                valeurs["titre"] = getattr(self.cfg, "title", "") or ""
+                valeurs["ligne2"] = valeurs["mosquee"]
+            else:  # dars
+                if ev is None:
+                    valeurs["titre"] = "Dars"
+                    valeurs["ligne2"] = valeurs["mosquee"]
+                else:
+                    valeurs["titre"] = ev.get("title") or "Dars"
+                    bits = [valeurs["mosquee"]] if valeurs["mosquee"] else []
+                    if ev.get("speaker"):
+                        valeurs["orateur"] = ev["speaker"]
+                        bits.append(ev["speaker"])
+                    no = ev.get("session_no")
+                    if ev.get("series"):
+                        valeurs["serie"] = ev["series"]
+                        valeurs["seance"] = str(no) if no else ""
+                        bits.append(ev["series"] + (f" · séance {no}" if no else ""))
+                    valeurs["ligne2"] = "  ·  ".join(bits)
         return valeurs
 
     def _rendre(self, ecran: str, moment=None) -> bytes:
@@ -115,18 +154,24 @@ class AntenneGabarit:
             self._rendu = self._rendu_factory(self.cfg)
             self._rendu.start()
         page = (self.page or {}).get(ecran, "")
-        return self._rendu.image(page, self.valeurs(ecran, moment))
+        return self._rendu.image(page, self.valeurs(ecran, moment), omit_background=ecran in BANDEAUX)
 
     def image(self, ecran: str, moment=None) -> bytes | None:
         """Image 1280×720 de l'écran, ou ``None`` : l'appelant affiche alors le dessin du moteur.
 
         Une image déjà rendue pour cet écran est réutilisée telle quelle : le direct ne redessine
-        pas ce qui n'a pas changé.
+        pas ce qui n'a pas changé. Le bandeau (khutba, dars) reflète la séance en cours : un
+        événement différent le redessine.
         """
-        if not self.actif or ecran not in ECRANS:
+        if not self.actif or (ecran not in ECRANS and ecran not in BANDEAUX):
             return None
+        if not (self.page or {}).get(ecran):
+            return None  # écran absent du fichier : on ne devine pas
+        valeurs = self.valeurs(ecran, moment)
         with self._lock:
             signature = self.variable_de_l_instant(ecran)
+            if ecran in BANDEAUX:
+                signature += "|" + repr(sorted(valeurs.items()))
             deja = self._dernieres.get(ecran)
             if deja and deja[0] == signature:
                 return deja[1]

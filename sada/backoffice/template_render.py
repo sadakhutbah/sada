@@ -227,7 +227,13 @@ class _Cdp:
                 return
             await asyncio.sleep(0.02)
 
-    async def screenshot(self) -> bytes:
+    async def screenshot(self, omit_background: bool = False) -> bytes:
+        # « omitBackground » de Page.captureScreenshot est ignoré par chrome-headless-shell :
+        # on force donc le fond par défaut du document, transparent pour le bandeau, blanc sinon.
+        await self.call(
+            "Emulation.setDefaultBackgroundColorOverride",
+            {"color": {"r": 0, "g": 0, "b": 0, "a": 0 if omit_background else 255}},
+        )
         data = await self.call("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False})
         return base64.b64decode(data["data"])
 
@@ -361,8 +367,12 @@ class TemplateRender:
         self._thread = self._loop = self._cdp = self._proc = self._profile = None
 
     # --------------------------------------------------------------------- render
-    def image(self, page: str, variables: dict | None = None) -> bytes:
-        """PNG of one screen. Raises ``RenderUnavailable`` if the browser is gone."""
+    def image(self, page: str, variables: dict | None = None, omit_background: bool = False) -> bytes:
+        """PNG of one screen. Raises ``RenderUnavailable`` if the browser is gone.
+
+        ``omit_background`` captures a transparent page (the banner over the camera) instead of the
+        opaque background of the full screens.
+        """
         if self._loop is None or self._cdp is None:
             raise RenderUnavailable(_("rendering browser not started"))
         if variables:
@@ -372,7 +382,7 @@ class TemplateRender:
 
             async def run() -> bytes:
                 await self._cdp.show(page)  # type: ignore[union-attr]
-                return await self._cdp.screenshot()  # type: ignore[union-attr]
+                return await self._cdp.screenshot(omit_background)  # type: ignore[union-attr]
 
             future = asyncio.run_coroutine_threadsafe(run(), self._loop)
             try:

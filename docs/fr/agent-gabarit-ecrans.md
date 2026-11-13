@@ -111,6 +111,45 @@ Les six écrans, avec leur texte par défaut (à reprendre comme contenu de dép
   - sub : rien
   - foot : `Prochain cours : …` avec la date
 
+### Le bandeau du direct (optionnel)
+
+Pendant la khutba et le dars, l'image diffusée est la caméra : un bandeau s'affiche en bas à gauche,
+par-dessus, avec le médaillon, le titre de la session, une deuxième ligne (mosquée, orateur, série)
+et le titre en arabe. Tu peux le fournir avec deux sections supplémentaires, `khutba` et `dars` :
+
+- leur fond est **transparent** — tout ce qui n'est pas le panneau laisse voir la caméra ;
+- le panneau doit reproduire le dessin du moteur : panneau vert foncé, filet or à gauche, médaillon,
+  titre serif ivoire, deuxième ligne, séparateur, titre arabe or ;
+- tu peux utiliser le logo avec `<img src="{logo}" alt="">` (absente si la mosquée n'en a pas) ;
+- un fichier qui ne les fournit pas reste valide : le moteur dessine alors son bandeau par défaut.
+
+Pour que l'aperçu soit transparent (et non le fond vert des écrans pleins), neutralise le fond du
+document quand c'est le bandeau qui est actif :
+
+```css
+html:has(.ecran[data-ecran="khutba"][data-actif]),
+html:has(.ecran[data-ecran="dars"][data-actif]),
+body:has(.ecran[data-ecran="khutba"][data-actif]),
+body:has(.ecran[data-ecran="dars"][data-actif]) { background: transparent; }
+.ecran[data-ecran="khutba"], .ecran[data-ecran="dars"] { background: transparent; }
+```
+
+Structure d'un bandeau (le `<div class="bandeau">` porte le panneau) :
+
+```html
+<section class="ecran" data-ecran="khutba">
+  <div class="bandeau">
+    <span class="medaillon"><img src="{logo}" alt=""></span>
+    <span class="bandeau-texte">
+      <span class="bandeau-titre">{titre}</span>
+      <span class="bandeau-ligne2">{ligne2}</span>
+    </span>
+    <span class="bandeau-sep"></span>
+    <span class="bandeau-arabe">{arabe}</span>
+  </div>
+</section>
+```
+
 ## 4. Les variables
 
 Dans les textes, certaines accolades sont remplacées au moment du direct. Le gabarit doit les
@@ -118,6 +157,10 @@ afficher **telles quelles** quand il est ouvert hors direct (tu les laisses dans
 
 `{heure}` heure de la session annoncée · `{date}` date du jour · `{jour}` jour du prochain cours ·
 `{cours}` titre du cours · `{titre}` titre de la mosquée · `{mosquee}` nom de la mosquée.
+
+Pour le bandeau : `{ligne2}` deuxième ligne (mosquée · orateur · série, séance n) · `{arabe}` titre
+arabe saisi par la mosquée · `{orateur}` nom de l'orateur · `{serie}` nom de la série · `{seance}`
+numéro de séance · `{logo}` adresse du logo de la mosquée.
 
 Si une des valeurs est vide, la ligne concernée disparaît à l'antenne. Ne mets donc pas
 « Début à {heure} » sur la même ligne qu'autre chose : garde chaque variable dans son propre élément

@@ -109,8 +109,9 @@ def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
     if not fichier:
         return {"mosque_id": mid, "nom": "", "present": False, "pages": {}, "variables": {}}
     valeurs = variables_mod.variables(conn, mosquee)
-    # une page par écran, chacune avec l'écran voulu visible : le moteur n'a pas à découper le HTML
-    pages = {e: gabarit.pour_ecran(fichier, e) for e in gabarit.ECRANS}
+    # une page par écran (plein ou bandeau), chacune avec l'écran voulu visible : le moteur n'a pas
+    # à découper le HTML. Un écran absent du fichier donne une page vide, et le moteur dessine alors.
+    pages = {e: gabarit.pour_ecran(fichier, e) for e in gabarit.CONNUS}
     return {"mosque_id": mid, "nom": mosquee.get("name") or "", "present": True, "pages": pages, "variables": valeurs}
 
 

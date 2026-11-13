@@ -13,6 +13,8 @@ import io
 from types import SimpleNamespace
 from typing import Any
 
+from PIL import Image
+
 from .. import scenes
 from .. import screens as base
 from ..config import Config
@@ -126,17 +128,18 @@ def import_gabarit(conn, mosque: dict, filename: str, content: bytes, user_id=No
     }
 
 
-def valeurs_apercu(mosque: dict, screen: str) -> dict[str, str]:
+def valeurs_apercu(mosque: dict, screen: str, conn=None) -> dict[str, str]:
     """Les valeurs des variables pour un aperçu : les mêmes que celles que le moteur emploiera.
 
     Le direct n'a pas de « prochaine classe » connue à la seconde près dans un aperçu ; on annonce
     donc un cours plausible, exactement comme le fait l'image du moteur, pour que les deux aperçus
-    montrent le même texte.
+    montrent le même texte. Le bandeau (khutba, dars) reçoit en plus son titre, sa deuxième ligne,
+    son orateur, sa série et sa séance.
     """
     now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque))
     nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf", kind="dars")
     moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
-    return base.variables(
+    valeurs = base.variables(
         moment,
         title=mosque.get("clip_title") or "",
         mosque=mosque.get("name") or "",
@@ -144,6 +147,25 @@ def valeurs_apercu(mosque: dict, screen: str) -> dict[str, str]:
         cours=nxt.title,
         jour=f"{moment.planned:%A}".capitalize(),
     )
+    # Textes communs (logo, ligne arabe) et bandeau : les mêmes variables que le moteur posera.
+    valeurs["logo"] = branding.url(mosque) if (mosque.get("logo_path") or "").strip() else ""
+    arabes = variables_ecran.lire(conn, mosque["id"]) if conn is not None else {}
+    slot = {"khutba": "arabe_khutba", "dars": "arabe_dars"}.get(screen, "")
+    valeurs["arabe"] = arabes.get(slot, "") if slot else ""
+    valeurs["ligne2"] = ""
+    valeurs["orateur"] = ""
+    valeurs["serie"] = ""
+    valeurs["seance"] = ""
+    if screen == "khutba":
+        valeurs["ligne2"] = valeurs["mosquee"]
+    elif screen == "dars":
+        # Un dars plausible, pour que le bandeau ne soit pas vide dans l'aperçu.
+        valeurs["titre"] = nxt.title
+        valeurs["ligne2"] = f"{valeurs['mosquee']}  ·  {nxt.title}"
+        valeurs["orateur"] = ""
+        valeurs["serie"] = nxt.title
+        valeurs["seance"] = "1"
+    return valeurs
 
 
 def preview(mosque: dict, payload, screen: str) -> bytes:
@@ -152,7 +174,7 @@ def preview(mosque: dict, payload, screen: str) -> bytes:
         clean = base.check(payload or {})
     except ValueError as e:
         raise InvalidScreens(str(e)) from e
-    if screen not in base.SCREENS or screen not in scenes.SCENES:
+    if screen not in scenes.SCENES:
         raise InvalidScreens(_("unknown screen: {screen}", screen=screen))
     logo = branding.path_for(mosque)
     cfg = Config(
@@ -166,7 +188,13 @@ def preview(mosque: dict, payload, screen: str) -> bytes:
     nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf", kind="dars")
     moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
     renderer = scenes.SceneRenderer(cfg)
-    img = renderer.background().convert("RGBA")
+    spec = scenes.SCENES[screen]
+    if spec.full:
+        img = renderer.background().convert("RGBA")
+    else:
+        # Bandeau du direct : la caméra est derrière le bandeau, l'aperçu pose donc ce dernier sur
+        # un fond neutre — pas sur le fond vert des écrans pleins, qui laisserait croire le contraire.
+        img = Image.new("RGBA", (renderer.W, renderer.H), (24, 26, 24, 255))
     img.alpha_composite(renderer.content(screen, moment))
     out = io.BytesIO()
     img.convert("RGB").save(out, "PNG")

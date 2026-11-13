@@ -111,6 +111,45 @@ The six screens, with their default text (to reuse as starting content):
   - sub: nothing
   - foot: `Next class: …` with the date
 
+### The live banner (optional)
+
+During the khutba and the dars, the image on air is the camera: a banner shows in the bottom-left,
+on top of it, with the medallion, the session title, a second line (mosque, speaker, series) and
+the title in Arabic. You can provide it with two extra sections, `khutba` and `dars`:
+
+- their background is **transparent** — everything outside the panel lets the camera show through;
+- the panel must reproduce the engine's drawing: dark green panel, gold fillet on the left,
+  medallion, ivory serif title, second line, separator, gold Arabic title;
+- you can use the logo with `<img src="{logo}" alt="">` (absent if the mosque has none);
+- a file that does not provide them stays valid: the engine then draws its own banner.
+
+For the preview to be transparent (rather than the green background of the full screens), neutralise
+the document background when the banner is the active screen:
+
+```css
+html:has(.ecran[data-ecran="khutba"][data-actif]),
+html:has(.ecran[data-ecran="dars"][data-actif]),
+body:has(.ecran[data-ecran="khutba"][data-actif]),
+body:has(.ecran[data-ecran="dars"][data-actif]) { background: transparent; }
+.ecran[data-ecran="khutba"], .ecran[data-ecran="dars"] { background: transparent; }
+```
+
+Structure of a banner (the `<div class="bandeau">` carries the panel):
+
+```html
+<section class="ecran" data-ecran="khutba">
+  <div class="bandeau">
+    <span class="medaillon"><img src="{logo}" alt=""></span>
+    <span class="bandeau-texte">
+      <span class="bandeau-titre">{titre}</span>
+      <span class="bandeau-ligne2">{ligne2}</span>
+    </span>
+    <span class="bandeau-sep"></span>
+    <span class="bandeau-arabe">{arabe}</span>
+  </div>
+</section>
+```
+
 ## 4. The variables
 
 In the texts, some braces are replaced at the time of the live. The template must show them **as
@@ -118,6 +157,10 @@ they are** when it is opened outside a live (you leave them in the HTML):
 
 `{heure}` time of the announced session · `{date}` today's date · `{jour}` day of the next class ·
 `{cours}` title of the class · `{titre}` mosque title · `{mosquee}` mosque name.
+
+For the banner: `{ligne2}` second line (mosque · speaker · series, session n) · `{arabe}` Arabic
+title entered by the mosque · `{orateur}` speaker's name · `{serie}` series name · `{seance}`
+session number · `{logo}` the mosque's logo address.
 
 If one of the values is empty, the line concerned disappears on air. So do not put
 “Starts at {heure}” on the same line as something else: keep each variable in its own element

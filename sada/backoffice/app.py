@@ -278,7 +278,7 @@ def create_app(
             page = gabarit.pour_ecran(f.read_text(encoding="utf-8", errors="replace"), ecran)
             # Les variables d'écran sont remplies comme sur le direct, sinon l'aperçu affiche
             # « Début à {heure} » quand le moteur affiche « Début à 14 h 36 ».
-            page = gabarit.remplir(page, screens_mod.valeurs_apercu(ctx.mosque, ecran))
+            page = gabarit.remplir(page, screens_mod.valeurs_apercu(ctx.mosque, ecran, ctx.conn))
             return HTMLResponse(page, headers={"Cache-Control": "no-store"})
         return FileResponse(f, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-store"})
 
