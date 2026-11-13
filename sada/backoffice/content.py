@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import os
 import shutil
 import threading
 import traceback
@@ -19,7 +20,7 @@ from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import translate, verses
 from ..pipeline.output import SessionOutput
-from . import db
+from . import db, importer
 
 # Clip statuses, in the order of the filter tabs. Protocol keys only: the front end translates them.
 CLIP_STATUSES = ("a_valider", "valide", "publie", "rejete")
@@ -265,8 +266,12 @@ def remove_subtitle(conn, k: dict, sid: int, user: dict, ip=None) -> int:
 
 
 def can_regenerate(clip: dict) -> tuple[bool, str]:
-    if not shutil.which("ffmpeg"):
+    exe = importer._ffmpeg()
+    if not exe:
         return False, _("ffmpeg not found on this machine")
+    if not shutil.which("ffmpeg"):
+        # A user service does not inherit the login PATH; the render calls ffmpeg by name.
+        os.environ["PATH"] = str(Path(exe).parent) + os.pathsep + os.environ.get("PATH", "")
     if not clip.get("video_source") or not Path(clip["video_source"]).exists():
         return False, _("clip source video not found")
     if clip.get("source_offset") is None:
