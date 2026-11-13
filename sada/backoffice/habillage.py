@@ -161,6 +161,19 @@ def ligne(conn, kid: int) -> dict | None:
     return db.one(conn, "SELECT * FROM habillages WHERE khutba_id = ?", kid)
 
 
+def version_habillee(conn, k: dict) -> dict | None:
+    """La vidéo habillée prête, celle qu'on affiche : son décalage d'intro recale la transcription."""
+    h = ligne(conn, k["id"])
+    if not (h and h["status"] == "pret" and fichier_video(k).exists()):
+        return None
+    try:
+        o = rendu.normaliser(json.loads(h["options"] or "{}"), rendu.DEFAUTS)
+        decalage = rendu.chrono(o, 0.0).i
+    except (ValueError, TypeError):
+        decalage = 0.0
+    return {"offset_s": decalage, "finished_at": h["finished_at"] or ""}
+
+
 def etat(conn, k: dict, m: dict) -> dict:
     """Ce que l'écran affiche : options (enregistrées ou préremplies), statut, fichiers prêts."""
     h = ligne(conn, k["id"])

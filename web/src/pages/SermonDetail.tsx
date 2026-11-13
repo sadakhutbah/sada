@@ -30,6 +30,10 @@ export default function SermonDetail() {
   const ajuste = Number(params.get("clip")) || null;
   useEffect(() => { if (ajuste) setOnglet("clip"); }, [ajuste]);
   const video = useRef<HTMLVideoElement | null>(null);
+  // Dressed video ready: shown by default; the raw recording stays reachable as history.
+  const [brute, setBrute] = useState(false);
+  const habillee = Boolean(d?.dressed) && !brute;
+  const decalage: number = habillee ? d.dressed.offset_s : 0; // the intro shifts the dressed video
 
   const perms = currentSession()?.user.permissions ?? [];
   const peutCorriger = perms.includes("validate");
@@ -59,7 +63,7 @@ export default function SermonDetail() {
   const aller = (secondes: number) => {
     const v = video.current;
     if (!v) return;
-    v.currentTime = Math.max(0, secondes);
+    v.currentTime = Math.max(0, secondes) + decalage;
     setTps(Math.max(0, secondes));
     v.play().catch(() => {});
   };
@@ -102,7 +106,8 @@ export default function SermonDetail() {
     ...(peutClip ? [{ cle: "clip", label: t(clipAjuste ? "clipForm.adjustTab" : "clipForm.newTab") }] : []),
     ...(peutAssigner ? [{ cle: "rattachement", label: t("sermons.detail.assignment") }] : []),
   ];
-  const ici = d.has_video ? () => video.current?.currentTime ?? tps : null;
+  const avecVideo = Boolean(d.has_video || d.dressed);
+  const ici = avecVideo ? () => Math.max(0, (video.current?.currentTime ?? tps + decalage) - decalage) : null;
 
   return (
     <div className="grid gap-5">
@@ -127,7 +132,7 @@ export default function SermonDetail() {
           <Fait label={t("sermons.detail.verses")}><span className="tabular-nums">{d.verses.length}</span></Fait>
           <Fait label={t("sermons.clips")}><span className="tabular-nums">{d.clips.length}</span></Fait>
         </dl>
-        {d.has_video && (
+        {avecVideo && (
           <Link to={`/khutbas/${k.id}/habillage`}
             className="inline-flex min-h-11 items-center gap-2 justify-self-start rounded-[9px] border border-leaf bg-leaf px-4 py-2 font-semibold text-night no-underline hover:bg-leaf-2">
             <span aria-hidden className="size-2.5 rounded-full bg-deep" /> {t("habillage.open")}
@@ -139,13 +144,14 @@ export default function SermonDetail() {
         {/* Left column: the video, then the clips it produced. */}
         <div className="grid gap-4">
           <div className="overflow-hidden rounded-[10px] bg-night">
-            {d.has_video ? (
+            {avecVideo ? (
               <Player
+                key={habillee ? "habillee" : "brute"}
                 ref={video}
                 preload="metadata"
-                onTimeUpdate={(e) => setTps(e.currentTarget.currentTime)}
+                onTimeUpdate={(e) => setTps(Math.max(0, e.currentTarget.currentTime - decalage))}
                 className="block max-h-[50vh] w-full bg-night object-contain"
-                src={`/media/sermon/${k.id}.mp4`}
+                src={habillee ? `/api/v1/sermons/${k.id}/habillage/video.mp4` : `/media/sermon/${k.id}.mp4`}
               />
             ) : (
               <div className="grid h-[30vh] min-h-[200px] place-items-center px-6 text-center">
@@ -155,10 +161,27 @@ export default function SermonDetail() {
             {/* Banner: where playback is, and which passage it is. */}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-white/10 px-3.5 py-2 text-[0.82rem] text-night-muted">
               <span className="tabular-nums">
-                {d.has_video ? `${mmss(tps)} / ${mmss(k.duration_s)}` : mmss(k.duration_s)}
+                {avecVideo ? `${mmss(tps)} / ${mmss(k.duration_s)}` : mmss(k.duration_s)}
               </span>
               <span>{k.label} · {t("sermons.detail.clipCount", { count: d.clips.length })}</span>
             </div>
+            {/* Dressed version ready: it is the one shown; the raw recording is kept as history. */}
+            {d.dressed && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-3.5 py-2 text-[0.82rem] text-night-muted">
+                <div role="group" aria-label={t("sermons.detail.version")} className="inline-flex overflow-hidden rounded-[7px] border border-white/15">
+                  {[false, true].map((b) => (
+                    <button key={String(b)} type="button" aria-pressed={brute === b} onClick={() => { setBrute(b); setTps(0); }}
+                      className={`min-h-9 px-3 font-semibold ${brute === b ? "bg-leaf text-night" : "bg-transparent text-night-muted hover:text-white"}`}>
+                      {b ? t("sermons.detail.rawVersion") : t("sermons.detail.dressedVersion")}
+                    </button>
+                  ))}
+                </div>
+                <a href={habillee ? `/api/v1/sermons/${k.id}/habillage/video.mp4?download=1` : `/media/sermon/${k.id}.mp4`}
+                  download className="inline-flex min-h-9 items-center font-semibold text-leaf no-underline hover:underline">
+                  {t("sermons.detail.download")}
+                </a>
+              </div>
+            )}
           </div>
 
           <Card>
@@ -219,13 +242,13 @@ export default function SermonDetail() {
               <Transcription
                 lignes={d.transcript}
                 tps={tps}
-                video={Boolean(d.has_video)}
+                video={avecVideo}
                 peutCorriger={peutCorriger}
                 aller={aller}
                 corriger={(r, valeur) => enregistrer(() => api.correction(kid, r.i, r.field, valeur))}
               />
             )}
-            {ongletActif === "versets" && <Versets versets={d.verses} video={Boolean(d.has_video)} aller={aller} />}
+            {ongletActif === "versets" && <Versets versets={d.verses} video={avecVideo} aller={aller} />}
             {ongletActif === "notes" && (
               d.notes ? (
                 <div className="whitespace-pre-wrap text-[0.95rem] leading-relaxed text-ink">{d.notes}</div>
@@ -247,7 +270,7 @@ export default function SermonDetail() {
                     mode="ajuster"
                     initial={{ start: clipAjuste.start, end: clipAjuste.end, title: clipAjuste.title ?? "", kind: clipAjuste.kind }}
                     kinds={mc.kinds} min={mc.min} max={mc.max} duree={mc.duration}
-                    ici={ici} ecouter={d.has_video ? aller : undefined}
+                    ici={ici} ecouter={avecVideo ? aller : undefined}
                     onSubmit={async (v) => {
                       setMessage(null);
                       try {
@@ -263,7 +286,7 @@ export default function SermonDetail() {
                 <FormulaireClip
                   mode="creer"
                   kinds={mc.kinds} min={mc.min} max={mc.max} duree={mc.duration}
-                  ici={ici} ecouter={d.has_video ? aller : undefined}
+                  ici={ici} ecouter={avecVideo ? aller : undefined}
                   onSubmit={async (v) => {
                     setMessage(null);
                     try {

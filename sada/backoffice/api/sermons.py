@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
-from .. import auth, content, db, import_video, importer, traitement
+from .. import auth, content, db, habillage, import_video, importer, traitement
 from ..context import CtxDep, Invalid, NotFound, imam_filter, khutba_or_404
 from .common import _a_table, _ok
 
@@ -134,6 +134,8 @@ def sermon(ctx: CtxDep, kid: int):
         "imam": imam,
         "imams": auth.imams(ctx.conn, ctx.mosque["id"]) if ctx.can("assign") else [],
         "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
+        # Dressed version ready: it becomes the video shown, the raw one stays available as history.
+        "dressed": habillage.version_habillee(ctx.conn, k),
         # Clip chosen by hand: possible only if a source video can be cut (same circuit as regeneration).
         "manual_clip": _manual_clip(ctx, k, data),
     }
