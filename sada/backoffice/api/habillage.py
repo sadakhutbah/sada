@@ -99,3 +99,24 @@ def habillage_sous_titres(kid: int, langue: str, ctx: CtxDep, brut: bool = False
         media_type="application/x-subrip; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{nom}"', "Cache-Control": "private, no-cache"},
     )
+
+
+@router.get("/sermons/{kid}/habillage/sous-titres/{langue}.vtt")
+def habillage_sous_titres_vtt(kid: int, langue: str, ctx: CtxDep, brut: bool = False):
+    """Le WebVTT d'une langue, servi en ligne pour le `<track>` du lecteur.
+
+    `brut=1` l'aligne sur la vidéo d'origine, sinon sur la vidéo habillée (carton d'ouverture compris).
+    Aucune vidéo habillée n'est exigée : dès que la transcription existe, le lecteur a ses sous-titres ;
+    sans transcription, l'adresse n'existe pas (404)."""
+    k = khutba_or_404(ctx, kid)
+    if not habillage.langues_disponibles(ctx.conn, k):
+        raise NotFound()
+    try:
+        contenu = habillage.sous_titres_vtt(ctx.conn, k, langue.strip().lower(), brut=brut)
+    except ValueError as e:
+        raise Invalid(str(e)) from e
+    return Response(
+        contenu,
+        media_type="text/vtt; charset=utf-8",
+        headers={"Content-Disposition": "inline", "Cache-Control": "private, no-cache"},
+    )

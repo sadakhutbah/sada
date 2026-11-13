@@ -199,3 +199,68 @@ def test_decoupage_et_carton_dans_une_vraie_session(env):
     k = dict(db.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"]))
     k.update(video_path=None, recording=str(rec), start_pos=100.0, end_pos=120.0)
     assert bo.alignements(env["conn"], k) == {"habille": -95.0, "brut": -100.0}
+
+
+# ------------------------------------------------------------------ WebVTT (lu par le lecteur)
+
+
+def test_format_vtt():
+    texte = s.vtt(s.cues([{"start": 0.0, "end": 3.0, "text": "La patience est une lumière."}]))
+    lignes = texte.splitlines()
+    assert lignes[0] == "WEBVTT"
+    assert lignes[1] == ""
+    assert lignes[2] == "00:00:00.000 --> 00:00:03.000"  # point décimal, heure pleine
+    assert lignes[3] == "La patience est une lumière."
+    assert "," not in lignes[2]  # jamais l'horodatage .srt dans un .vtt
+    assert not lignes[2].strip().isdigit()  # pas de numéro de bloc
+    assert texte.endswith("\n")
+
+
+def test_vtt_arabe_en_droite_a_gauche():
+    texte = s.vtt(s.cues([{"start": 0.0, "end": 2.0, "text": VERSE}]))
+    assert f"\u202b{VERSE}\u202c" in texte
+
+
+def test_vtt_vide_reste_valide():
+    # Rien à afficher dans la vidéo : un en-tête seul, jamais un fichier cassé.
+    assert s.vtt([]) == "WEBVTT\n"
+
+
+def test_api_vtt_en_ligne_des_la_transcription(env):
+    """Pas besoin de vidéo habillée : la transcription suffit, et le fichier se lit sur place."""
+    c = client(env, "admin")
+    assert c.get(f"/api/v1/sermons/{env['kid']}").json()["subtitles"] == ["ar", "fr"]
+
+    r = c.get(f"/api/v1/sermons/{env['kid']}/habillage/sous-titres/fr.vtt?brut=1")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/vtt")
+    assert r.headers["content-disposition"] == "inline"
+    corps = r.content.decode("utf-8")
+    assert corps.startswith("WEBVTT\n\n00:00:00.000 -->")
+    assert "la patience" in corps
+
+
+def test_api_vtt_suit_la_video_choisie(env):
+    c = client(env, "admin")
+    brut = c.get(f"/api/v1/sermons/{env['kid']}/habillage/sous-titres/fr.vtt?brut=1").text
+    assert "00:00:05.000 -->" not in brut
+
+    habille(env)
+    fr = c.get(f"/api/v1/sermons/{env['kid']}/habillage/sous-titres/fr.vtt").text
+    assert fr.splitlines()[2].startswith("00:00:05.000 -->")  # carton d'ouverture de 5 s
+    ar = c.get(f"/api/v1/sermons/{env['kid']}/habillage/sous-titres/ar.vtt").text
+    assert VERSE in ar
+    # `brut` reste aligné sur la vidéo d'origine, même une fois la vidéo habillée en place
+    assert c.get(f"/api/v1/sermons/{env['kid']}/habillage/sous-titres/fr.vtt?brut=1").text == brut
+
+
+def test_api_vtt_sans_transcription_est_introuvable(env):
+    from sada.backoffice import db
+    from sada.pipeline.output import SessionOutput
+
+    k = db.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
+    assert k
+    SessionOutput(k["output_dir"]).transcript.unlink()
+    c = client(env, "admin")
+    assert c.get(f"/api/v1/sermons/{env['kid']}/habillage/sous-titres/fr.vtt").status_code == 404
+    assert c.get(f"/api/v1/sermons/{env['kid']}").json()["subtitles"] == []

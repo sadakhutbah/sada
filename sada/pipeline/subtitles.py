@@ -1,8 +1,10 @@
-"""SRT subtitles of the long-form video: one file per language, uploaded separately to YouTube.
+"""SRT and WebVTT subtitles of the long-form video: one file per language.
 
 YouTube takes SRT (or WebVTT), never the ASS burned into the clips: these files are plain text built
 from the timestamped segments the pipeline already produced (`transcript.json`, `translations.json`,
 `verses.json`), with the corrections made in the back-office. Nothing is written into the picture.
+The same cues are served as SRT (to upload to YouTube) and as WebVTT (read in place by the player's
+`<track>`), so both files stay aligned on the same transcript.
 
 Two shifts move the cues from session time to the file's time:
 
@@ -51,6 +53,19 @@ def timestamp(t: float) -> str:
     minutes, ms = divmod(ms, 60_000)
     seconds, ms = divmod(ms, 1000)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{ms:03d}"
+
+
+def timestamp_vtt(t: float) -> str:
+    """WebVTT timecode `HH:MM:SS.mmm`: same clock as SRT, a dot instead of the comma."""
+    return timestamp(t).replace(",", ".")
+
+
+def _rtl(line: str) -> str:
+    """An Arabic line between bidi embedding marks, so the player lays it out right to left.
+
+    WebVTT has no direction setting: the cue text itself carries it, and browsers that ignore the
+    marks still read the text as is (the marks are invisible)."""
+    return f"\u202b{line}\u202c" if is_arabic(line) else line
 
 
 def _clean(text: str) -> str:
@@ -193,6 +208,19 @@ def srt(cues: list[dict]) -> str:
             f"{number}\n{timestamp(cue['start'])} --> {timestamp(cue['end'])}\n" + "\n".join(cue["lines"]) + "\n"
         )
     return "\n".join(blocks)
+
+
+def vtt(cues: list[dict]) -> str:
+    """The WebVTT file read by a browser's `<track>`: `WEBVTT` header, no cue number, dot in the timecode.
+
+    A file with no cue keeps its header only: a track that has nothing to say is valid, and a player
+    must not receive a broken file. Arabic lines carry their own right-to-left direction."""
+    blocks = [
+        f"{timestamp_vtt(cue['start'])} --> {timestamp_vtt(cue['end'])}\n"
+        + "\n".join(_rtl(line) for line in cue["lines"])
+        for cue in cues
+    ]
+    return ("WEBVTT\n\n" + "\n\n".join(blocks) + "\n") if blocks else "WEBVTT\n"
 
 
 # ------------------------------------------------------------------ languages

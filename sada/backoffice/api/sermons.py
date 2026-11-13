@@ -136,6 +136,8 @@ def sermon(ctx: CtxDep, kid: int):
         "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
         # Dressed version ready: it becomes the video shown, the raw one stays available as history.
         "dressed": habillage.version_habillee(ctx.conn, k),
+        # Languages the player can show: what the transcript holds, dressed video or not.
+        "subtitles": habillage.langues_disponibles(ctx.conn, k),
         # Clip chosen by hand: possible only if a source video can be cut (same circuit as regeneration).
         "manual_clip": _manual_clip(ctx, k, data),
     }

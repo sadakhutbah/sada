@@ -268,7 +268,7 @@ def pistes(conn, k: dict) -> dict[str, list[dict]]:
 
 
 def langues_disponibles(conn, k: dict) -> list[str]:
-    """Langues des fichiers proposés au téléchargement (aucune sans vidéo habillée : le .srt la suit)."""
+    """Langues de la transcription : les .srt (téléchargés) comme les .vtt (lus par le lecteur) en découlent."""
     return list(pistes(conn, k))
 
 
@@ -288,6 +288,21 @@ def sous_titres_srt(conn, k: dict, langue: str, brut: bool = False) -> tuple[str
     if not texte.strip():
         raise ValueError(_("No subtitles in this language for this video."))
     return nom_sous_titres(k, langue, brut), texte.encode("utf-8")
+
+
+def sous_titres_vtt(conn, k: dict, langue: str, brut: bool = False) -> bytes:
+    """Le WebVTT d'une langue, lu sur place par le `<track>` du lecteur.
+
+    Il ne dépend pas de la vidéo habillée : dès que la transcription existe, le lecteur peut afficher
+    les sous-titres (`brut` : alignés sur la vidéo d'origine, sinon sur la vidéo habillée).
+    Une langue sans sous-titre lève ValueError ; une langue connue dont plus rien ne tombe dans la
+    vidéo rend un fichier vide valide, qu'un lecteur accepte sans erreur."""
+    disponibles = pistes(conn, k)
+    if langue not in disponibles:
+        raise ValueError(_("No subtitles in this language for this video."))
+    return sous_titres.vtt(
+        sous_titres.cues(disponibles[langue], alignements(conn, k)["brut" if brut else "habille"])
+    ).encode("utf-8")
 
 
 def recover_interrupted(conn) -> None:
