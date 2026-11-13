@@ -90,9 +90,9 @@ export default function App() {
         {/* Large écran : une ligne. Tablette : la navigation passe sur une seconde ligne qui défile
             dans son propre conteneur. Téléphone : bouton « Menu » qui déplie la liste. La page ne
             doit jamais être plus large que l'écran (sinon iOS dézoome tout le site). */}
-        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 min-[1120px]:flex-nowrap">
           {/* Brand on two lines: the program, then the mosque below in small text. */}
-          <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-w-0 shrink-0 items-center gap-2.5">
             {/* Identité produit : la marque منبر ; le logo de la mosquée reste dans les écrans live et les clips. */}
             <img src="/sada-mark-or.svg" alt="" className="h-[26px] w-auto shrink-0" />
             <span className="flex min-w-0 flex-col">
@@ -121,7 +121,7 @@ export default function App() {
             id="menu-principal"
             className={`${menuOuvert ? "flex" : "hidden"} order-last w-full flex-col gap-0.5 border-t border-white/10 pt-2
               md:flex md:flex-row md:flex-nowrap md:items-center md:overflow-x-auto md:border-t-0 md:pt-0
-              min-[1120px]:order-none min-[1120px]:ml-auto min-[1120px]:w-auto min-[1120px]:overflow-visible`}
+              min-[1120px]:order-none min-[1120px]:ml-auto min-[1120px]:w-auto min-[1120px]:min-w-0 min-[1120px]:shrink`}
           >
             {lien("/", "dashboard")}
             {lien("/khutbas", "sermons")}
@@ -134,7 +134,7 @@ export default function App() {
           <div
             className={`${menuOuvert ? "flex" : "hidden"} order-last w-full flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/10 py-2
               md:order-none md:ml-auto md:flex md:w-auto md:flex-nowrap md:gap-2.5 md:border-t-0 md:py-0
-              min-[1120px]:ml-0 min-[1120px]:border-l min-[1120px]:border-white/15 min-[1120px]:pl-3`}
+              min-[1120px]:ml-0 min-[1120px]:shrink-0 min-[1120px]:border-l min-[1120px]:border-white/15 min-[1120px]:pl-3`}
           >
             <select
               aria-label="Langue"
