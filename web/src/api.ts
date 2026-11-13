@@ -199,6 +199,8 @@ export const api = {
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
   adresseInstance: (public_url: string) => ecrire<any>("PUT", "/settings/instance", { public_url }),
   modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),
+  transcription: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/transcription", corps),
+  testerTranscription: () => ecrire<{ ok: boolean; message: string }>("POST", "/settings/transcription/test"),
   traitement: (clips: string, enabled: boolean) =>
     ecrire<any>("PUT", "/settings/processing", { clips, enabled: enabled ? "1" : "0" }),
   testerModele: () => ecrire<any>("POST", "/settings/model/test"),

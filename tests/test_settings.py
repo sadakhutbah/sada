@@ -17,6 +17,7 @@ def test_les_sections_sont_annoncees(env):
         "replays",
         "folders",
         "model",
+        "transcription",
         "processing",
         "connectors",
         "access",

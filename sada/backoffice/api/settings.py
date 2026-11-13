@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, Response
 from ... import notify
 from ...i18n import _
 from ...pipeline import llm
+from ...pipeline import remote as remote_transcription
 from ...pipeline import settings as pipeline_settings
 from .. import auth, branding, db, destinations, instance, live_input, publish, storage, variables_ecran
 from .. import dirs as dirs_mod
@@ -20,7 +21,19 @@ from .common import _mosque, _notification_settings, _ok
 
 router = APIRouter()
 
-SECTIONS = ("mosque", "logo", "screens", "live", "replays", "folders", "model", "processing", "connectors", "access")
+SECTIONS = (
+    "mosque",
+    "logo",
+    "screens",
+    "live",
+    "replays",
+    "folders",
+    "model",
+    "transcription",
+    "processing",
+    "connectors",
+    "access",
+)
 
 
 def _host(ctx) -> str:
@@ -93,6 +106,7 @@ def settings(ctx: CtxDep):
         "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
         "gabarit": gabarit_mod.view(ctx.mosque),
         "model": _model_view(),
+        "transcription": remote_transcription.view(),
         "processing": _processing_view(),
     }
 
@@ -391,6 +405,55 @@ async def input_test(ctx: CtxDep):
         raise Invalid(err)
     ok, detail = live_input.probe(url)
     return {"ok": ok, "detail": detail, "url": url}
+
+
+@router.put("/settings/transcription")
+async def transcription_save(ctx: CtxDep):
+    """Local ou distant : écrit le réglage que `sada.pipeline.remote` lit à chaque transcription."""
+    f = await ctx.body()
+    ctx.require("admin")
+    mode = (f.get("mode") or "").strip().lower()
+    if mode not in remote_transcription.MODES:
+        raise Invalid(_("Unknown transcription mode."))
+    provider = (f.get("provider") or remote_transcription.DEFAULT_PROVIDER).strip().lower()
+    if provider not in remote_transcription.PROVIDERS and provider != remote_transcription.CUSTOM:
+        raise Invalid(_("Unknown transcription provider."))
+    url = (f.get("url") or "").strip()
+    model = (f.get("model") or "").strip()
+    if provider == remote_transcription.CUSTOM:
+        if not re.match(r"^https?://", url):
+            raise Invalid(_("The transcription address must start with http:// or https://."))
+        if not model:
+            raise Invalid(_("The model is required for a custom address."))
+    key = str(f.get("key") or "").strip()
+    if key == db.MASK:  # masque renvoyé tel quel : la clé enregistrée reste
+        key = ""
+    vue = remote_transcription.save_config(mode=mode, provider=provider, url=url, model=model, key=key)
+    db.audit(
+        ctx.conn,
+        ctx.mosque["id"],
+        ctx.user["id"],
+        "transcription.configure",
+        "mosque",
+        ctx.mosque["id"],
+        ip=ctx.ip,
+        methode=mode,
+        fournisseur=provider,
+        modele=vue["model"],
+        cle=vue["has_key"],
+    )
+    return _ok(
+        _("Transcription saved. The pipeline applies it at the next run."),
+        transcription=vue,
+    )
+
+
+@router.post("/settings/transcription/test")
+def transcription_test(ctx: CtxDep):
+    """Le fournisseur répond-il vraiment ? Envoie un court extrait généré (jamais la clé en retour)."""
+    ctx.require("admin")
+    ok, msg = remote_transcription.probe()
+    return JSONResponse({"ok": ok, "message": msg}, status_code=200 if ok else 422)
 
 
 @router.post("/settings/model/test")

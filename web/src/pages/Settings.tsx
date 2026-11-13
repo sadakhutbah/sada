@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { liste } from "../format";
-import { Bulle, Btn, Card, Dialogue, Field, Tabs, Title, inputClass, toucher, toucherEnLigne } from "../ui";
+import { Bulle, Btn, Card, Dialogue, Field, Segmented, Tabs, Title, inputClass, toucher, toucherEnLigne } from "../ui";
 import { idOnglet, idPanneau } from "../onglets";
 
 type Message = { ok: boolean; texte: string } | null;
@@ -35,6 +35,10 @@ const CHAMPS_MOSQUEE = [
   "state_dir", "output_dir", "publish_dir",
 ] as const;
 const CHAMPS_MODELE = ["enabled", "url", "model", "protocol"] as const;
+// La transcription se règle à part : mode distant, fournisseur, adresse, modèle, clé (jamais relue).
+const CHAMPS_TRANSCRIPTION = [
+  "transcription_mode", "transcription_provider", "transcription_url", "transcription_model", "transcription_key",
+] as const;
 
 /** Form values from the server response (all as text, as the API expects). */
 function depuisServeur(d: any): Record<string, string> {
@@ -44,6 +48,12 @@ function depuisServeur(d: any): Record<string, string> {
   for (const k of ["url", "model", "protocol"]) f[k] = d.model[k] ?? "";
   f.clips = String(d.processing?.clips ?? 3);
   f.clips_enabled = d.processing?.enabled === false ? "0" : "1";
+  // La clé ne revient jamais de l'API : le champ repart vide, et vide veut dire « garder l'ancienne ».
+  f.transcription_mode = d.transcription?.mode === "distant" ? "distant" : "local";
+  f.transcription_provider = d.transcription?.provider ?? "groq";
+  f.transcription_url = d.transcription?.url ?? "";
+  f.transcription_model = d.transcription?.model ?? "";
+  f.transcription_key = "";
   return f;
 }
 
@@ -151,6 +161,7 @@ export default function Settings() {
   const [stockageInitial, setStockageInitial] = useState("");
   const [essaiStockage, setEssaiStockage] = useState<{ ok: boolean; detail: string } | null>(null);
   const [test, setTest] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
+  const [essaiTranscription, setEssaiTranscription] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
   const [ecrans, setEcrans] = useState<Ecrans>({});
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
@@ -248,6 +259,16 @@ export default function Settings() {
         for (const k of CHAMPS_MODELE) modele[k] = f[k];
         await api.modele(modele);
       }
+      if (CHAMPS_TRANSCRIPTION.some((k) => f[k] !== avant[k])) {
+        // Noms de l'API, pas ceux du formulaire : mode, fournisseur, adresse, modèle, clé.
+        await api.transcription({
+          mode: f.transcription_mode,
+          provider: f.transcription_provider,
+          url: f.transcription_url,
+          model: f.transcription_model,
+          key: f.transcription_key,
+        });
+      }
       if (JSON.stringify(cibles) !== ciblesInitiales) await api.destinations(cibles);
       if (entreeModifiee) await api.saveInput(entree.mode, entree.url);
       if (stockageModifie) {
@@ -258,6 +279,7 @@ export default function Settings() {
       if (adresseModifiee) await api.adresseInstance(adresse.trim());
       await charger();
       setTest(null);
+      setEssaiTranscription(null);
       setMsg({ ok: true, texte: t("settings.saved") });
     } catch (err: any) {
       setMsg({ ok: false, texte: err.message });
@@ -293,6 +315,17 @@ export default function Settings() {
       setTest({ etat: "ok", texte: r.message });
     } catch (err: any) {
       setTest({ etat: "echec", texte: err.message });
+    }
+  };
+
+  /** Teste le réglage enregistré : un court extrait part au fournisseur et le texte entendu revient. */
+  const testerTranscription = async () => {
+    setEssaiTranscription({ etat: "cours", texte: t("settings.transcriptionTesting") });
+    try {
+      const r = await api.testerTranscription();
+      setEssaiTranscription({ etat: "ok", texte: r.message });
+    } catch (err: any) {
+      setEssaiTranscription({ etat: "echec", texte: err.message });
     }
   };
 
@@ -355,6 +388,12 @@ export default function Settings() {
     { cle: "publish_dir", defaut: defauts.publish, label: t("settings.publishDir"), quoi: t("settings.shortPublish") },
   ];
   const fuseaux: string[] = typeof (Intl as any).supportedValuesOf === "function" ? (Intl as any).supportedValuesOf("timeZone") : [];
+  // Tarif public du fournisseur préréglé, arrondi au millième : une ligne discrète, pas un tableau.
+  const tx = d.transcription ?? {};
+  const presetTx = (tx.providers ?? []).find((p: any) => p.key === f.transcription_provider);
+  const prixTx = typeof presetTx?.price_per_hour === "number" ? presetTx.price_per_hour : null;
+  const prix = (v: number) =>
+    new Intl.NumberFormat(i18n.language, { style: "currency", currency: "USD", maximumFractionDigits: 3 }).format(v);
 
   const contenu: Record<string, React.ReactNode> = {
     mosque: (
@@ -544,6 +583,86 @@ export default function Settings() {
             <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#7a1f20]" : "text-muted"}`}>{test.texte}</span>
           )}
         </div>
+      </div>
+    ),
+    transcription: (
+      <div className="grid max-w-[560px] gap-3.5">
+        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.transcriptionHint")}</p>
+        {/* Deux modes dans un seul contrôle : le formulaire s'allonge, la page ne bouge pas. */}
+        <div>
+          <span className="mb-1 block text-[0.9rem] font-semibold">{t("settings.transcriptionMode")}</span>
+          <Segmented
+            items={[
+              { cle: "local", label: t("settings.transcriptionLocal") },
+              { cle: "distant", label: t("settings.transcriptionDistant") },
+            ]}
+            base="reglages-transcription" label={t("settings.transcriptionMode")}
+            valeur={f.transcription_mode}
+            onChange={(c) => {
+              setF((x) => ({ ...x, transcription_mode: c }));
+              setMsg(null); setEssaiTranscription(null);
+            }}
+          />
+          <p className="m-0 max-w-[72ch] text-[0.84rem] leading-[1.5] text-muted">
+            {t(f.transcription_mode === "distant" ? "settings.transcriptionDistantHelp" : "settings.transcriptionLocalHelp")}
+          </p>
+        </div>
+        {f.transcription_mode === "distant" && (
+          <>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Field label={t("settings.transcriptionProvider")}>
+                <select className={inputClass} value={f.transcription_provider}
+                  onChange={(e) => {
+                    // Changer de fournisseur reprend son adresse et son modèle ; la clé, elle, reste.
+                    const p = e.target.value;
+                    setF((x) => ({ ...x, transcription_provider: p, transcription_url: "", transcription_model: "" }));
+                    setMsg(null); setEssaiTranscription(null);
+                  }}>
+                  {(tx.providers ?? []).map((p: any) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                  <option value="custom">{t("settings.transcriptionCustom")}</option>
+                </select>
+              </Field>
+              <Field label={t("settings.transcriptionModel")}>
+                <input className={inputClass} value={f.transcription_model} spellCheck={false}
+                  placeholder={presetTx?.model ?? "whisper-1"} onChange={maj("transcription_model")} />
+              </Field>
+            </div>
+            {f.transcription_provider === "custom" ? (
+              <Field label={t("settings.transcriptionUrl")} aide={t("settings.transcriptionUrlHelp")}>
+                <input className={`${inputClass} font-mono text-[0.88rem]`} value={f.transcription_url}
+                  placeholder="https://exemple.org/v1" inputMode="url" spellCheck={false} autoComplete="off"
+                  onChange={maj("transcription_url")} />
+              </Field>
+            ) : (
+              <p className="m-0 font-mono text-[0.82rem] text-muted">{presetTx?.url}</p>
+            )}
+            <Field label={t("settings.transcriptionKey")} aide={t("settings.transcriptionKeyHelp")}>
+              <input className={inputClass} type="password" value={f.transcription_key} spellCheck={false}
+                placeholder={tx.has_key ? t("settings.transcriptionKeySet") : "sk-…"}
+                autoComplete="new-password" onChange={maj("transcription_key")} />
+            </Field>
+            <p className="m-0 text-[0.85rem] text-muted">
+              {prixTx !== null
+                ? t("settings.transcriptionCost", { price: prix(prixTx) })
+                : t("settings.transcriptionCostUnknown")}
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Bulle texte={t("settings.transcriptionTestSave")} actif={modifie}>
+                <Btn type="button" variante="ghost" disabled={modifie || essaiTranscription?.etat === "cours"}
+                  onClick={testerTranscription}>
+                  {t("settings.transcriptionTest")}
+                </Btn>
+              </Bulle>
+              {essaiTranscription && (
+                <span role="status"
+                  className={`text-[0.9rem] ${essaiTranscription.etat === "echec" ? "text-[#7a1f20]" : "text-muted"}`}>
+                  {essaiTranscription.texte}
+                </span>
+              )}
+            </div>
+          </>
+        )}
+        <p className="m-0 text-[0.85rem] text-muted">{t("settings.transcriptionNow", { label: tx.label ?? "—" })}</p>
       </div>
     ),
     processing: (

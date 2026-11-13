@@ -275,6 +275,12 @@ def transcribe(
     arabic_retry: bool | None = None,
     hotwords: str | None = None,
 ) -> dict:
+    # Réglage « Local / Distant » (Réglages → Transcription) : le distant rend exactement la même
+    # forme de résultat, l'aval ne sait pas d'où il vient. Aucun repli silencieux vers le local.
+    from . import remote
+
+    if remote.enabled():
+        return remote.transcribe(wav, out_json, log=log, arabic_retry=arabic_retry, hotwords=hotwords)
     from faster_whisper import WhisperModel
 
     name, device, ctype = pick_model(prefer, log)
