@@ -76,6 +76,16 @@ def fichier_video(k: dict) -> Path:
     return dossier(k) / "video-habillee.mp4"
 
 
+def fichier_rendu_en_cours(k: dict) -> Path:
+    """Le rendu s'écrit à part : la vidéo habillée précédente reste affichée jusqu'à ce qu'il aboutisse."""
+    return dossier(k) / "video-habillee.en-cours.mp4"
+
+
+def fichier_options_rendues(k: dict) -> Path:
+    """Options de la vidéo habillée en place (celles du formulaire peuvent déjà avoir changé)."""
+    return dossier(k) / "video-habillee.json"
+
+
 def fichier_apercu(k: dict) -> Path:
     return dossier(k) / "apercu.jpg"
 
@@ -164,14 +174,16 @@ def ligne(conn, kid: int) -> dict | None:
 def version_habillee(conn, k: dict) -> dict | None:
     """La vidéo habillée prête, celle qu'on affiche : son décalage d'intro recale la transcription."""
     h = ligne(conn, k["id"])
-    if not (h and h["status"] == "pret" and fichier_video(k).exists()):
+    if not (h and fichier_video(k).exists()):
         return None
+    rendues = fichier_options_rendues(k)
     try:
-        o = rendu.normaliser(json.loads(h["options"] or "{}"), rendu.DEFAUTS)
+        brut = rendues.read_text(encoding="utf-8") if rendues.exists() else (h["options"] or "{}")
+        o = rendu.normaliser(json.loads(brut), rendu.DEFAUTS)
         decalage = rendu.chrono(o, 0.0).i
     except (ValueError, TypeError):
         decalage = 0.0
-    return {"offset_s": decalage, "finished_at": h["finished_at"] or ""}
+    return {"offset_s": decalage, "v": int(fichier_video(k).stat().st_mtime)}
 
 
 def etat(conn, k: dict, m: dict) -> dict:
@@ -186,7 +198,8 @@ def etat(conn, k: dict, m: dict) -> dict:
     except ValueError:
         options = prerempli(conn, k, m)
     video = fichier_video(k)
-    pret = bool(h and h["status"] == "pret" and video.exists())
+    # Vidéo habillée en place : elle reste disponible pendant un nouveau rendu, ou après un échec.
+    pret = bool(h and video.exists())
     apercu = fichier_apercu(k)
     brand, logo = marque(m)
     return {
@@ -199,6 +212,7 @@ def etat(conn, k: dict, m: dict) -> dict:
         "duration_s": (h or {}).get("duration_s"),
         "video_ready": pret,
         "size_mb": round(video.stat().st_size / 1048576, 1) if pret else None,
+        "video_v": int(video.stat().st_mtime) if pret else 0,
         "preview_ready": apercu.exists(),
         "preview_v": int(apercu.stat().st_mtime) if apercu.exists() else 0,
         "has_source": source(k) is not None,
@@ -300,9 +314,11 @@ def lancer(conn, db_path: str, k: dict, m: dict, brut: dict, user: dict, ip=None
 
 def _rendre(db_path: str, kid: int, log=print) -> None:
     conn = db.connect(db_path)
+    k = None
     try:
         h = ligne(conn, kid)
         k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", kid)
+        assert k is not None
         m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", k["mosque_id"])
         o = rendu.normaliser(json.loads(h["options"]))
         src = source(k)
@@ -319,10 +335,11 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
                     (round(f, 3), db.now_iso(), kid),
                 )
 
+        tmp = fichier_rendu_en_cours(k)
         out = rendu.rendre(
             o,
             src[0],
-            str(fichier_video(k)),
+            str(tmp),
             m.get("name") or "",
             brand,
             logo,
@@ -332,6 +349,11 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
             fin=src[2],
         )
         duree = rendu.sonder(out).duree
+        # Le nouveau rendu remplace l'ancien d'un coup : l'ancienne vidéo est supprimée à cet instant.
+        final = fichier_video(k)
+        Path(out).replace(final)
+        fichier_options_rendues(k).write_text(json.dumps(o, ensure_ascii=False), encoding="utf-8")
+        out = str(final)
         conn.execute(
             "UPDATE habillages SET status = 'pret', progress = 1, error = '', file_path = ?, duration_s = ?, "
             "finished_at = ?, updated_at = ? WHERE khutba_id = ?",
@@ -340,6 +362,8 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
         db.audit(conn, m["id"], None, "habillage.pret", "khutba", kid, duree=round(duree))
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
+        if k:
+            fichier_rendu_en_cours(k).unlink(missing_ok=True)
         conn.execute(
             "UPDATE habillages SET status = 'echec', error = ?, finished_at = ?, updated_at = ? WHERE khutba_id = ?",
             (sans_chemin(str(e))[:400], db.now_iso(), db.now_iso(), kid),

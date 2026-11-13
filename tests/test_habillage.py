@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -368,6 +369,81 @@ def test_api_apercu_puis_rendu(env, video):
     assert retenu["outro_link"] == "mosquee-exemple.fr" and retenu["logo_pos"] == "bl" and "title" not in retenu
     actions = [a["action"] for a in db.all_(conn, "SELECT action FROM audit")]
     assert "habillage.lance" in actions and "habillage.pret" in actions
+
+
+def test_nouveau_rendu_garde_l_ancienne_video_jusqu_au_remplacement(env, video, monkeypatch):
+    from sada.backoffice import habillage as bo
+    from sada.pipeline import habillage as rendu
+
+    conn, kid = env["conn"], env["kid"]
+    conn.execute("UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
+    c = client(env, "admin")
+    assert (
+        c.ecrire(
+            f"/sermons/{kid}/habillage",
+            {
+                "options": {
+                    "title": "Un",
+                    "intro_s": "2",
+                    "speaker": "Cheikh Test",
+                    "outro_s": "2",
+                    "lower_at": "0.5",
+                    "lower_s": "3",
+                }
+            },
+        ).status_code
+        == 200
+    )
+    k = conn.execute("SELECT * FROM khutbas WHERE id = ?", (kid,)).fetchone()
+    k = dict(k)
+    ancienne = bo.fichier_video(k).read_bytes()
+
+    # Pendant le rendu, l'ancienne vidéo reste servie ; un échec ne la touche pas.
+    def echoue(o, src, sortie, *a, **kw):
+        assert bo.fichier_video(k).exists() and sortie != str(bo.fichier_video(k))
+        Path(sortie).write_bytes(b"partiel")
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(rendu, "rendre", echoue)
+    c.ecrire(
+        f"/sermons/{kid}/habillage",
+        {
+            "options": {
+                "title": "Deux",
+                "intro_s": "4",
+                "speaker": "Cheikh Test",
+                "outro_s": "2",
+                "lower_at": "0.5",
+                "lower_s": "3",
+            }
+        },
+    )
+    d = c.get(f"/api/v1/sermons/{kid}/habillage").json()
+    assert d["status"] == "echec" and d["video_ready"]
+    assert bo.fichier_video(k).read_bytes() == ancienne and not bo.fichier_rendu_en_cours(k).exists()
+    assert c.get(f"/api/v1/sermons/{kid}/habillage/video.mp4").status_code == 200
+    # le décalage affiché reste celui de la vidéo en place, pas des nouvelles options
+    assert c.get(f"/api/v1/sermons/{kid}").json()["dressed"]["offset_s"] == 2
+
+    monkeypatch.undo()
+    assert (
+        c.ecrire(
+            f"/sermons/{kid}/habillage",
+            {
+                "options": {
+                    "title": "Trois",
+                    "intro_s": "4",
+                    "speaker": "Cheikh Test",
+                    "outro_s": "2",
+                    "lower_at": "0.5",
+                    "lower_s": "3",
+                }
+            },
+        ).status_code
+        == 200
+    )
+    assert bo.fichier_video(k).read_bytes() != ancienne and not bo.fichier_rendu_en_cours(k).exists()
+    assert c.get(f"/api/v1/sermons/{kid}").json()["dressed"]["offset_s"] == 4
 
 
 def test_rendu_interrompu_marque_en_echec(env):

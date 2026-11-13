@@ -146,12 +146,12 @@ export default function SermonDetail() {
           <div className="overflow-hidden rounded-[10px] bg-night">
             {avecVideo ? (
               <Player
-                key={habillee ? "habillee" : "brute"}
+                key={habillee ? `habillee-${d.dressed.v}` : "brute"}
                 ref={video}
                 preload="metadata"
                 onTimeUpdate={(e) => setTps(Math.max(0, e.currentTarget.currentTime - decalage))}
                 className="block max-h-[50vh] w-full bg-night object-contain"
-                src={habillee ? `/api/v1/sermons/${k.id}/habillage/video.mp4` : `/media/sermon/${k.id}.mp4`}
+                src={habillee ? `/api/v1/sermons/${k.id}/habillage/video.mp4?v=${d.dressed.v}` : `/media/sermon/${k.id}.mp4`}
               />
             ) : (
               <div className="grid h-[30vh] min-h-[200px] place-items-center px-6 text-center">

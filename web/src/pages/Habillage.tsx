@@ -327,7 +327,7 @@ function Statut({ etat, kid }: { etat: Etat; kid: number }) {
       {etat.status === "echec" && <p className="m-0 text-[0.9rem] text-[#7a1f20]">{t("habillage.failed", { e: etat.error })}</p>}
       {etat.video_ready && (
         <>
-          <video controls preload="metadata" src={`/api/v1/sermons/${kid}/habillage/video.mp4`} className="block w-full rounded-[8px] bg-night" />
+          <video controls preload="metadata" src={`/api/v1/sermons/${kid}/habillage/video.mp4?v=${etat.video_v}`} className="block w-full rounded-[8px] bg-night" />
           <div className="flex flex-wrap items-center gap-2.5">
             <a href={`/api/v1/sermons/${kid}/habillage/video.mp4?download=1`}
               className="inline-flex min-h-11 items-center gap-1.5 rounded-[9px] border border-leaf bg-leaf px-4 py-2.5 font-semibold text-night no-underline hover:bg-leaf-2">

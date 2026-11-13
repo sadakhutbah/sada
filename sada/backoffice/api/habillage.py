@@ -74,9 +74,8 @@ def habillage_apercu_image(kid: int, ctx: CtxDep):
 @router.get("/sermons/{kid}/habillage/video.mp4")
 def habillage_video(kid: int, ctx: CtxDep, download: bool = False):
     k = khutba_or_404(ctx, kid)
-    h = habillage.ligne(ctx.conn, kid)
     f = habillage.fichier_video(k)
-    if not h or h["status"] != "pret" or not f.exists():
+    if not habillage.ligne(ctx.conn, kid) or not f.exists():
         raise NotFound()
     if download:
         return FileResponse(f, media_type="video/mp4", filename=habillage.nom_telechargement(k))
