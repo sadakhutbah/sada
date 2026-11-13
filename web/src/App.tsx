@@ -16,6 +16,7 @@ import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Onboarding from "./pages/Onboarding";
+import FirstPassword from "./pages/FirstPassword";
 import { setCurrentSession } from "./session";
 
 export default function App() {
@@ -49,6 +50,15 @@ export default function App() {
 
   if (!pret) return <p className="px-4 py-16 text-center text-muted">{t("common.loading")}</p>;
   if (!session) return <Login onLogin={(s) => { setCurrentSession(s); setCsrf(s.csrf); setSession(s); }} />;
+  // Password chosen by an administrator: the person sets their own before anything else.
+  if (session.user.must_change_password)
+    return (
+      <FirstPassword
+        nom={session.user.name}
+        onDone={() => api.session().then((s) => { setCurrentSession(s); setCsrf(s.csrf); setSession(s); })}
+        onLogout={() => api.logout().catch(() => {}).finally(() => { setCurrentSession(null); setCsrf(""); setSession(null); })}
+      />
+    );
 
   const lien = (to: string, cle: string, perm?: string, compte?: number) =>
     perm && !session.user.permissions.includes(perm) ? null : (

@@ -480,6 +480,6 @@ def test_migration_8_sur_une_base_en_version_6(tmp_path):
     try:
         assert db.one(conn, "SELECT name FROM sqlite_master WHERE name = 'habillages'")
         assert "habillage_defaults" in {r[1] for r in conn.execute("PRAGMA table_info(mosques)")}
-        assert max(r[0] for r in conn.execute("SELECT version FROM schema_migrations")) == migrations.LATEST >= 8
+        assert max(r[0] for r in conn.execute("SELECT version FROM schema_migrations")) == migrations.LATEST
     finally:
         conn.close()

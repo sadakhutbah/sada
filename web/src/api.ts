@@ -1,7 +1,8 @@
 /** JSON API client of the back-office. One rule: no session = back to sign-in. */
 import i18n from "./i18n";
 export type Session = {
-  user: { id: number; name: string; role: string; role_label: string; permissions: string[] };
+  user: { id: number; name: string; role: string; role_label: string; permissions: string[];
+          must_change_password?: boolean };
   mosque: { id: number; slug: string; name: string; timezone: string; logo: string; clip_title: string;
             needs_onboarding?: boolean };
   csrf: string;

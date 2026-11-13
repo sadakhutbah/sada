@@ -174,9 +174,10 @@ def create_user(
     return cur.lastrowid
 
 
-def set_password(conn, user_id: int, password: str) -> None:
+def set_password(conn, user_id: int, password: str, keep_session: int | None = None) -> None:
+    """Signs the account out everywhere, except `keep_session` (the person changing their own password)."""
     conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), user_id))
-    conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))  # signs out everywhere
+    conn.execute("DELETE FROM auth_sessions WHERE user_id = ? AND id IS NOT ?", (user_id, keep_session))
 
 
 def authenticate(conn, username: str, password: str) -> dict | None:

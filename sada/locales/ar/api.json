@@ -131,5 +131,6 @@
   "Change your own password from your account.": "غيّر كلمة مرورك من حسابك.",
   "Password too short (at least {n} characters).": "كلمة المرور قصيرة جدًا (على الأقل {n} حرفًا).",
   "Password of “{username}” changed.": "تمّ تغيير كلمة مرور «{username}».",
-  "Unknown account.": "حساب غير معروف."
+  "Unknown account.": "حساب غير معروف.",
+  "Choose a password different from the current one.": "اختر كلمة مرور مختلفة عن الحالية."
 }

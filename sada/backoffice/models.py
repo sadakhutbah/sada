@@ -61,6 +61,8 @@ users = sa.Table(
     sa.Column("last_login_at", sa.Text),
     # Permissions choisies à la main (liste JSON) ; vide : celles du rôle.
     sa.Column("permissions", sa.Text, nullable=False, server_default=_d("''")),
+    # Compte créé ou mot de passe fixé par un admin : la personne doit choisir le sien avant tout.
+    sa.Column("must_change_password", sa.Integer, nullable=False, server_default=_d("0")),
 )
 
 auth_sessions = sa.Table(

@@ -48,6 +48,9 @@ class Ctx:
         self.ip = request.client.host if request.client else None
 
     def can(self, perm: str) -> bool:
+        # Password set by an administrator: no right at all until the person has chosen their own.
+        if self.user and self.user.get("must_change_password"):
+            return False
         return auth.can(self.user, perm)
 
     def require(self, perm: str) -> None:

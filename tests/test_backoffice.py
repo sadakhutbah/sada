@@ -388,6 +388,28 @@ def test_permissions_par_compte(env):
     assert auth.permissions(u) == ["journal"]
 
 
+def test_compte_cree_par_admin_doit_changer_son_mot_de_passe(env):
+    admin = client(env, "admin")
+    assert admin.ecrire("/users", {"username": "nouvel", "role": "responsable", "password": PW}).status_code == 200
+    c = client(env, "nouvel")
+    s = c.get("/api/v1/session").json()
+    assert s["user"]["must_change_password"] and s["user"]["permissions"] == []
+    assert c.get("/api/v1/audit").status_code == 403
+    # même mot de passe refusé
+    assert c.ecrire("/account/password", {"current": PW, "new": PW, "confirm": PW}).status_code == 422
+    nouveau = "un-autre-mot-de-passe"
+    r = c.ecrire("/account/password", {"current": PW, "new": nouveau, "confirm": nouveau})
+    assert r.status_code == 200, r.text
+    # même session, droits rendus
+    s = c.get("/api/v1/session").json()
+    assert not s["user"]["must_change_password"] and "journal" in s["user"]["permissions"]
+    assert c.get("/api/v1/audit").status_code == 200
+    # mot de passe refixé par l'admin : la séquence recommence
+    uid = db.one(env["conn"], "SELECT id FROM users WHERE username = 'nouvel'")["id"]
+    assert admin.ecrire(f"/users/{uid}/password", {"password": PW}).status_code == 200
+    assert db.one(env["conn"], "SELECT must_change_password FROM users WHERE id = ?", uid)["must_change_password"] == 1
+
+
 # ------------------------------------------------------------------ live (real orchestrator API)
 
 

@@ -145,6 +145,11 @@ def _users_permissions(conn: sqlite3.Connection) -> None:
     _add_columns(conn, "users", (("permissions", "TEXT NOT NULL DEFAULT ''"),))
 
 
+def _users_mdp_impose(conn: sqlite3.Connection) -> None:
+    """Migration 10 : mot de passe à changer à la première connexion."""
+    _add_columns(conn, "users", (("must_change_password", "INTEGER NOT NULL DEFAULT 0"),))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -155,6 +160,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(7, "clips : création manuelle et bornes ajustées (origin, title, created_by, bounds_by)", _clips_manuels),
     Migration(8, "habillage des vidéos (habillages, mosques.habillage_defaults)", _habillage),
     Migration(9, "users : permissions par compte", _users_permissions),
+    Migration(10, "users : mot de passe à changer", _users_mdp_impose),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

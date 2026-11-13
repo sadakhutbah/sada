@@ -42,7 +42,10 @@ async def account_password(ctx: CtxDep):
         raise Invalid(_("Current password is incorrect."))
     if f.get("new") != f.get("confirm"):
         raise Invalid(_("The two new passwords differ."))
-    await run_in_threadpool(auth.set_password, ctx.conn, ctx.user["id"], f.get("new", ""))
+    if f.get("new") == f.get("current"):
+        raise Invalid(_("Choose a password different from the current one."))
+    await run_in_threadpool(auth.set_password, ctx.conn, ctx.user["id"], f.get("new", ""), ctx.session["id"])
+    ctx.conn.execute("UPDATE users SET must_change_password = 0 WHERE id = ?", (ctx.user["id"],))
     db.audit(
         ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", ctx.user["id"], ip=ctx.ip
     )
@@ -63,6 +66,8 @@ async def user_create(ctx: CtxDep):
         f.get("display_name", ""),
         f.get("permissions"),
     )
+    # The administrator chose the password: the person replaces it at first sign-in.
+    ctx.conn.execute("UPDATE users SET must_change_password = 1 WHERE id = ?", (uid,))
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
@@ -91,6 +96,7 @@ async def user_password(uid: int, ctx: CtxDep):
     if len(pw) < auth.MIN_PASSWORD:
         raise Invalid(_("Password too short (at least {n} characters).", n=auth.MIN_PASSWORD))
     await run_in_threadpool(auth.set_password, ctx.conn, uid, pw)  # also signs the account out everywhere
+    ctx.conn.execute("UPDATE users SET must_change_password = 1 WHERE id = ?", (uid,))
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", uid, ip=ctx.ip)
     return _ok(_("Password of “{username}” changed.", username=u["username"]))
 
@@ -104,6 +110,7 @@ async def user_update(uid: int, ctx: CtxDep):
         raise NotFound()
     if f.get("password"):
         await run_in_threadpool(auth.set_password, ctx.conn, uid, f["password"])
+        ctx.conn.execute("UPDATE users SET must_change_password = ? WHERE id = ?", (int(uid != ctx.user["id"]), uid))
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", uid, ip=ctx.ip)
     role = f.get("role") or u["role"]
     actif = f.get("active")
