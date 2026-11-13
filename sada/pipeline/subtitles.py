@@ -81,8 +81,11 @@ def _words(passage: dict) -> list[dict]:
     if words:
         start, end = float(passage["start"]), float(passage["end"])
         return [
-            {"w": str(word["w"]).strip(), "s": min(max(float(word["s"]), start), end),
-             "e": min(max(float(word["e"]), start), end)}
+            {
+                "w": str(word["w"]).strip(),
+                "s": min(max(float(word["s"]), start), end),
+                "e": min(max(float(word["e"]), start), end),
+            }
             for word in words
             if str(word.get("w") or "").strip()
         ]
@@ -107,7 +110,7 @@ def _break(words: list[dict]) -> int | None:
         penalty = abs(len(first) - len(second))
         if words[cut - 1]["w"][-1:] in ",;:.!?…":
             penalty -= 8
-        if words[cut - 1]["w"].lower().strip(".,;:!?«»\"()") in WEAK:
+        if words[cut - 1]["w"].lower().strip('.,;:!?«»"()') in WEAK:
             penalty += 6
         if best is None or penalty < best[0]:
             best = (penalty, cut)

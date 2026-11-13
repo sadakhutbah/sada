@@ -197,7 +197,6 @@ def version_habillee(conn, k: dict) -> dict | None:
     return {"offset_s": decalage_carton(conn, k), "v": int(fichier_video(k).stat().st_mtime)}
 
 
-
 def etat(conn, k: dict, m: dict) -> dict:
     """Ce que l'écran affiche : options (enregistrées ou préremplies), statut, fichiers prêts."""
     h = ligne(conn, k["id"])
@@ -289,7 +288,6 @@ def sous_titres_srt(conn, k: dict, langue: str, brut: bool = False) -> tuple[str
     if not texte.strip():
         raise ValueError(_("No subtitles in this language for this video."))
     return nom_sous_titres(k, langue, brut), texte.encode("utf-8")
-
 
 
 def recover_interrupted(conn) -> None:

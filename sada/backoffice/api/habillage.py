@@ -99,4 +99,3 @@ def habillage_sous_titres(kid: int, langue: str, ctx: CtxDep, brut: bool = False
         media_type="application/x-subrip; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{nom}"', "Cache-Control": "private, no-cache"},
     )
-
