@@ -353,6 +353,41 @@ def test_admin_cree_un_imam(env):
     assert login(client(env), "nouvel").status_code == 200
 
 
+def test_permissions_par_compte(env):
+    import json as _json
+
+    c = client(env, "admin")
+    uid = env["ids"]["imam"]
+    # l'imam reçoit le droit de publier en plus de son rôle
+    perms = _json.dumps(["live", "validate", "publish"])
+    r = c.ecrire(f"/users/{uid}", {"permissions": perms}, methode="PATCH")
+    assert r.status_code == 200, r.text
+    u = db.one(env["conn"], "SELECT * FROM users WHERE id = ?", uid)
+    assert auth.can(u, "publish") and not auth.can(u, "history_all")
+    d = c.get("/api/v1/users").json()
+    row = next(x for x in d["items"] if x["id"] == uid)
+    assert row["custom"] and row["permissions"] == ["live", "validate", "publish"]
+    assert d["role_perms"]["imam"] == ["live", "validate"] and "publish" in d["perms"]
+    imam = client(env, "imam")
+    assert "publish" in imam.get("/api/v1/session").json()["user"]["permissions"]
+    # retour aux droits du rôle
+    assert c.ecrire(f"/users/{uid}", {"permissions": ""}, methode="PATCH").status_code == 200
+    u = db.one(env["conn"], "SELECT * FROM users WHERE id = ?", uid)
+    assert not auth.can(u, "publish") and auth.custom_permissions(u) is None
+    # permission inconnue refusée ; un admin ne peut pas se retirer l'administration
+    assert c.ecrire(f"/users/{uid}", {"permissions": '["voler"]'}, methode="PATCH").status_code == 422
+    me = env["ids"]["admin"]
+    assert c.ecrire(f"/users/{me}", {"permissions": '["live"]'}, methode="PATCH").status_code == 422
+    # création avec des permissions choisies
+    r = c.ecrire(
+        "/users",
+        {"username": "benevole", "role": "imam", "password": PW, "permissions": '["journal"]'},
+    )
+    assert r.status_code == 200, r.text
+    u = db.one(env["conn"], "SELECT * FROM users WHERE username = 'benevole'")
+    assert auth.permissions(u) == ["journal"]
+
+
 # ------------------------------------------------------------------ live (real orchestrator API)
 
 

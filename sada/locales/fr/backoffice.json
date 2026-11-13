@@ -176,5 +176,14 @@
   "{slot}: HTML tags are not accepted": "{slot} : les balises HTML ne sont pas acceptées",
   "{slot}: {max} characters at most": "{slot} : {max} caractères au maximum",
   "{what}: HTTP {code} — {message}": "{what} : HTTP {code} — {message}",
-  "{what}: unexpected response": "{what} : réponse inattendue"
+  "{what}: unexpected response": "{what} : réponse inattendue",
+  "unknown permission: {perm}": "permission inconnue : {perm}",
+  "invalid permission list": "liste de permissions invalide",
+  "Drive the live": "Piloter le direct",
+  "See every session of the mosque": "Voir toutes les séances de la mosquée",
+  "Correct and validate clips": "Corriger et valider les clips",
+  "Publish clips": "Publier les clips",
+  "Assign sessions, import, dress videos": "Attribuer les séances, importer, habiller les vidéos",
+  "Read the log": "Consulter le journal",
+  "Administration (accounts, settings, connectors)": "Administration (comptes, réglages, connecteurs)"
 }

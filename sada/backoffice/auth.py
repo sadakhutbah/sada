@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import threading
 import time
@@ -54,8 +55,59 @@ COOKIE = "sada_session"
 _ph = PasswordHasher()  # argon2id, argon2-cffi default parameters (RFC 9106 "low memory")
 
 
+#: Source labels of the permissions, translated by `perm_labels`.
+PERM_LABELS = {
+    "live": "Drive the live",
+    "history_all": "See every session of the mosque",
+    "validate": "Correct and validate clips",
+    "publish": "Publish clips",
+    "assign": "Assign sessions, import, dress videos",
+    "journal": "Read the log",
+    "admin": "Administration (accounts, settings, connectors)",
+}
+
+
+def perm_labels() -> dict[str, str]:
+    return {p: _(PERM_LABELS[p]) for p in PERMS}
+
+
+def role_permissions(role: str) -> list[str]:
+    return [p for p in PERMS if role in PERMS[p]]
+
+
+def custom_permissions(user: dict) -> list[str] | None:
+    """Permissions set by hand on the account, or None when it follows its role."""
+    raw = (user.get("permissions") or "").strip()
+    if not raw:
+        return None
+    try:
+        return [p for p in json.loads(raw) if p in PERMS]
+    except (ValueError, TypeError):
+        return None
+
+
+def permissions(user: dict) -> list[str]:
+    custom = custom_permissions(user)
+    return role_permissions(user["role"]) if custom is None else custom
+
+
+def normalize_permissions(value) -> str:
+    """Form value -> stored column: '' (follow the role) or a sorted JSON list of known permissions."""
+    if value in (None, "", "role"):
+        return ""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.lstrip().startswith("[") else [v for v in value.split(",") if v]
+        except ValueError as e:
+            raise ValueError(_("invalid permission list")) from e
+    unknown = [p for p in value if p not in PERMS]
+    if unknown:
+        raise ValueError(_("unknown permission: {perm}", perm=unknown[0]))
+    return json.dumps([p for p in PERMS if p in value])
+
+
 def can(user: dict | None, perm: str) -> bool:
-    return bool(user) and user["role"] in PERMS[perm]
+    return bool(user) and perm in permissions(user)
 
 
 def hash_password(pw: str) -> str:
@@ -96,7 +148,9 @@ def imam_id(conn, mosque_id: int, value) -> int | None:
     return iid if iid in {u["id"] for u in imams(conn, mosque_id)} else None
 
 
-def create_user(conn, mosque_id: int, username: str, password: str, role: str, display_name: str = "") -> int:
+def create_user(
+    conn, mosque_id: int, username: str, password: str, role: str, display_name: str = "", perms=None
+) -> int:
     username = username.strip()
     if role not in ROLES:
         raise ValueError(_("unknown role: {role}", role=role))
@@ -105,8 +159,17 @@ def create_user(conn, mosque_id: int, username: str, password: str, role: str, d
     if db.one(conn, "SELECT id FROM users WHERE username = ?", username):
         raise ValueError(_("the username “{username}” already exists", username=username))
     cur = conn.execute(
-        "INSERT INTO users (mosque_id, username, display_name, password_hash, role, created_at) VALUES (?,?,?,?,?,?)",
-        (mosque_id, username, display_name.strip() or username, hash_password(password), role, db.now_iso()),
+        "INSERT INTO users (mosque_id, username, display_name, password_hash, role, permissions, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            mosque_id,
+            username,
+            display_name.strip() or username,
+            hash_password(password),
+            role,
+            normalize_permissions(perms),
+            db.now_iso(),
+        ),
     )
     return cur.lastrowid
 

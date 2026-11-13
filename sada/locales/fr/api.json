@@ -127,5 +127,9 @@
   "; ignored: {runs}": " ; ignorées : {runs}",
   "Failed: {error}": "Échec : {error}",
   "Error: {error}": "Erreur : {error}",
-  "Warning: no administrator. Create one: python -m sada.backoffice create-admin --username admin": "Attention : aucun administrateur. Créez-en un : python -m sada.backoffice create-admin --username admin"
+  "Warning: no administrator. Create one: python -m sada.backoffice create-admin --username admin": "Attention : aucun administrateur. Créez-en un : python -m sada.backoffice create-admin --username admin",
+  "Change your own password from your account.": "Changez votre propre mot de passe depuis votre compte.",
+  "Password too short (at least {n} characters).": "Mot de passe trop court (au moins {n} caractères).",
+  "Password of “{username}” changed.": "Mot de passe de « {username} » modifié.",
+  "Unknown account.": "Compte inconnu."
 }

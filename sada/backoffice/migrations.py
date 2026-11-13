@@ -140,6 +140,11 @@ def _habillage(conn: sqlite3.Connection) -> None:
     conn.executescript(_create_ddl())
 
 
+def _users_permissions(conn: sqlite3.Connection) -> None:
+    """Migration 9 : permissions choisies compte par compte (vide : celles du rôle)."""
+    _add_columns(conn, "users", (("permissions", "TEXT NOT NULL DEFAULT ''"),))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -149,6 +154,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(6, "sous-titres ajoutés à un instant précis (added_subtitles)", _tables_du_modele),
     Migration(7, "clips : création manuelle et bornes ajustées (origin, title, created_by, bounds_by)", _clips_manuels),
     Migration(8, "habillage des vidéos (habillages, mosques.habillage_defaults)", _habillage),
+    Migration(9, "users : permissions par compte", _users_permissions),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

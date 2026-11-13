@@ -176,5 +176,14 @@
   "{slot}: HTML tags are not accepted": "{slot}: لا تُقبل وسوم HTML",
   "{slot}: {max} characters at most": "{slot}: {max} حرفاً كحد أقصى",
   "{what}: HTTP {code} — {message}": "{what}: HTTP {code} — {message}",
-  "{what}: unexpected response": "{what}: استجابة غير متوقعة"
+  "{what}: unexpected response": "{what}: استجابة غير متوقعة",
+  "unknown permission: {perm}": "صلاحية غير معروفة: {perm}",
+  "invalid permission list": "قائمة صلاحيات غير صالحة",
+  "Drive the live": "إدارة البث المباشر",
+  "See every session of the mosque": "رؤية كل جلسات المسجد",
+  "Correct and validate clips": "تصحيح المقاطع واعتمادها",
+  "Publish clips": "نشر المقاطع",
+  "Assign sessions, import, dress videos": "إسناد الجلسات والاستيراد وتغليف الفيديوهات",
+  "Read the log": "الاطلاع على السجل",
+  "Administration (accounts, settings, connectors)": "الإدارة (الحسابات، الإعدادات، الموصلات)"
 }

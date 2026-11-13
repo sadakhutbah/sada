@@ -127,5 +127,9 @@
   "; ignored: {runs}": "؛ تمّ تجاهل: {runs}",
   "Failed: {error}": "فشل: {error}",
   "Error: {error}": "خطأ: {error}",
-  "Warning: no administrator. Create one: python -m sada.backoffice create-admin --username admin": "تحذير: لا يوجد مدير. أنشئ واحدًا: python -m sada.backoffice create-admin --username admin"
+  "Warning: no administrator. Create one: python -m sada.backoffice create-admin --username admin": "تحذير: لا يوجد مدير. أنشئ واحدًا: python -m sada.backoffice create-admin --username admin",
+  "Change your own password from your account.": "غيّر كلمة مرورك من حسابك.",
+  "Password too short (at least {n} characters).": "كلمة المرور قصيرة جدًا (على الأقل {n} حرفًا).",
+  "Password of “{username}” changed.": "تمّ تغيير كلمة مرور «{username}».",
+  "Unknown account.": "حساب غير معروف."
 }

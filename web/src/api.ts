@@ -174,6 +174,7 @@ export const api = {
     ecrire<any>("POST", "/account/password", { current, new: nouveau, confirm }),
   creerCompte: (corps: Record<string, string>) => ecrire<any>("POST", "/users", corps),
   majCompte: (id: number, corps: Record<string, string>) => ecrire<any>("PATCH", `/users/${id}`, corps),
+  mdpCompte: (id: number, password: string) => ecrire<any>("POST", `/users/${id}/password`, { password }),
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
   adresseInstance: (public_url: string) => ecrire<any>("PUT", "/settings/instance", { public_url }),
   modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),

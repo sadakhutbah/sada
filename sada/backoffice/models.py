@@ -59,6 +59,8 @@ users = sa.Table(
     sa.Column("active", sa.Integer, nullable=False, server_default=_d("1")),
     sa.Column("created_at", sa.Text, nullable=False),
     sa.Column("last_login_at", sa.Text),
+    # Permissions choisies à la main (liste JSON) ; vide : celles du rôle.
+    sa.Column("permissions", sa.Text, nullable=False, server_default=_d("''")),
 )
 
 auth_sessions = sa.Table(
