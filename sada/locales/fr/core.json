@@ -60,6 +60,7 @@
   "Template: screen {screen} rendered in {duration:.0f} ms (over budget)": "Gabarit : écran {screen} rendu en {duration:.0f} ms (au-delà du budget)",
   "Template: three failures in a row — back to the engine drawing for this live stream": "Gabarit : trois échecs de suite — retour au dessin du moteur pour ce direct",
   "Template: {name} — this file will be shown on air": "Gabarit : {name} — ce fichier sera affiché à l'antenne",
+  "Template: the file also provides the live banner ({screens})": "Gabarit : le fichier fournit aussi le bandeau du direct ({screens})",
   "The application is ready. Next: create an administrator account, then start the server.": "L'application est prête. Suite : créez un compte administrateur, puis lancez le serveur.",
   "The bucket does not exist (check the name and the account).": "Le compartiment n'existe pas (nom ou compte).",
   "The live stream has started ({what} at {time}{title}).": "Le direct a commencé ({what} de {time}{title}).",

@@ -222,12 +222,14 @@ class Orchestrator:
         """Le fichier de la mosquée pour cet écran ; ``False`` s'il n'en fournit pas.
 
         Une image déjà rendue pour cet état n'est pas réécrite : le direct n'a rien à changer.
+        Les écrans pleins passent en fond opaque ; le bandeau (khutba, dars) reste transparent hors
+        de son panneau et passe en calque de contenu, la caméra restant visible autour.
         """
         if self.gabarit is None or not self.gabarit.actif:
             return False
-        from .gabarit_antenne import ECRANS
+        from .gabarit_antenne import BANDEAUX, ECRANS
 
-        if scene not in ECRANS:
+        if scene not in ECRANS and scene not in BANDEAUX:
             return False
         png = self.gabarit.image(scene, moment)
         if png is None:
@@ -240,7 +242,10 @@ class Orchestrator:
                 _("Template: image of screen {screen} unreadable ({error}) — engine drawing", screen=scene, error=e)
             )
             return False
-        self.encoder.show_image(scene, full, image, cle)
+        if scene in BANDEAUX:
+            self.encoder.show(scene, full, image)
+        else:
+            self.encoder.show_image(scene, full, image, cle)
         return True
 
     def _envoyer_rediffusions(self):

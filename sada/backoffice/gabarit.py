@@ -58,8 +58,26 @@ def view(mosque: dict) -> dict:
 
 ECRANS = ("avant", "priere", "entracte", "termine", "janaza", "dars_fin")
 
+# Le bandeau du direct (scènes khutba et dars) est optionnel : un gabarit à six écrans reste
+# valide, et le moteur dessine alors son propre bandeau.
+BANDEAUX = ("khutba", "dars")
+CONNUS = ECRANS + BANDEAUX
 
-VARIABLES = ("heure", "date", "jour", "cours", "titre", "mosquee")
+
+VARIABLES = (
+    "heure",
+    "date",
+    "jour",
+    "cours",
+    "titre",
+    "mosquee",
+    "ligne2",
+    "arabe",
+    "orateur",
+    "serie",
+    "seance",
+    "logo",
+)
 
 
 def remplir(page: str, valeurs: dict[str, str]) -> str:
@@ -98,13 +116,15 @@ def pour_ecran(page: str, ecran: str) -> str:
     Le modèle pose ``data-actif`` sur un seul écran et sa feuille de style n'affiche que celui-là.
     On déplace l'attribut : le fichier conservé ne bouge pas, l'aperçu suit l'onglet ouvert.
     """
-    if ecran not in ECRANS:
+    if ecran not in CONNUS:
         return page
     sans = re.sub(r"\s+data-actif(?=[\s>])", "", page)
     motif = re.compile(rf"<[a-zA-Z][^>]*data-ecran=\"{re.escape(ecran)}\"[^>]*>")
     m = motif.search(sans)
     if not m:
-        return page  # écran absent du fichier : on ne devine pas
+        # Le bandeau est optionnel : un fichier qui ne le fournit pas ne montre rien pour cet onglet.
+        # Pour un écran plein, le fichier est censé le fournir ; on renvoie la page telle quelle.
+        return "" if ecran in BANDEAUX else page
     balise = m.group(0)
     return sans[: m.start()] + balise[:-1] + " data-actif>" + sans[m.end() :]
 

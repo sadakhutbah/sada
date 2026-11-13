@@ -22,6 +22,12 @@ type RapportImport = { pris: number; ignores: number; vides: number; liste: stri
 
 const ECRANS = ["avant", "priere", "entracte", "termine", "janaza", "dars_fin"] as const;
 
+// Le bandeau du direct (khutba, dars) n'a pas de champs : ses textes viennent des réglages et de
+// la séance en cours. On l'affiche dans la même liste, mais son panneau montre seulement une note.
+const BANDEAUX = ["khutba", "dars"] as const;
+const ONGLETS_ECRANS = [...ECRANS, ...BANDEAUX] as const;
+const EST_BANDEAU = (c: string): boolean => (BANDEAUX as readonly string[]).includes(c);
+
 // Deux par ligne ; le pied de page occupe la largeur, les autres tiennent à deux.
 const CHAMPS_ECRAN = [
   { champ: "eyebrow", large: false },
@@ -695,7 +701,7 @@ export default function Settings() {
         <div className="grid items-start gap-x-5 gap-y-3 sm:grid-cols-[minmax(0,1fr)_250px]">
           <div className="grid min-w-0 gap-3">
             <div className="grid gap-1.5">
-              <Tabs items={ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
+              <Tabs items={ONGLETS_ECRANS.map((c) => ({ cle: c, label: t(`settings.screenNames.${c}`) }))}
                 base="reglages-ecrans" label={t("settings.tabs.screens")}
                 valeur={ecranVue} onChange={(c) => { setEcranVue(c); setMsg(null); }} />
               {/* Pas de panneau déplié : le mode d'emploi s'ouvre dans un onglet, la page ne bouge pas. */}
@@ -733,20 +739,28 @@ export default function Settings() {
             </div>
             <div className="grid gap-3"
               role="tabpanel" id={idPanneau("reglages-ecrans", ecranVue)} aria-labelledby={idOnglet("reglages-ecrans", ecranVue)}>
-              {CHAMPS_ECRAN.map(({ champ, large }) => (
-                <Field key={champ} label={t(`settings.screenFields.${champ}`)}
-                  className={large ? undefined : "max-w-[22rem]"}>
-                  <input className={inputClass}
-                    placeholder={d.screens[ecranVue]?.[champ]?.default ?? ""}
-                    value={ecrans[ecranVue]?.[champ] ?? ""}
-                    onChange={(e) => {
-                      setEcrans((x) => ({ ...x, [ecranVue]: { ...(x[ecranVue] ?? {}), [champ]: e.target.value } }));
-                      setMsg(null);
-                    }} />
-                </Field>
-              ))}
+              {EST_BANDEAU(ecranVue) ? (
+                <p className="m-0 max-w-[58ch] rounded-[8px] border border-line bg-paper px-3 py-2 text-[0.84rem] leading-[1.5] text-muted">
+                  {t("settings.screensBannerHint")}
+                </p>
+              ) : (
+                CHAMPS_ECRAN.map(({ champ, large }) => (
+                  <Field key={champ} label={t(`settings.screenFields.${champ}`)}
+                    className={large ? undefined : "max-w-[22rem]"}>
+                    <input className={inputClass}
+                      placeholder={d.screens[ecranVue]?.[champ]?.default ?? ""}
+                      value={ecrans[ecranVue]?.[champ] ?? ""}
+                      onChange={(e) => {
+                        setEcrans((x) => ({ ...x, [ecranVue]: { ...(x[ecranVue] ?? {}), [champ]: e.target.value } }));
+                        setMsg(null);
+                      }} />
+                  </Field>
+                ))
+              )}
             </div>
-            <p className="m-0 max-w-[62ch] text-[0.8rem] leading-[1.5] text-muted">{t("settings.screensVars")}</p>
+            {!EST_BANDEAU(ecranVue) && (
+              <p className="m-0 max-w-[62ch] text-[0.8rem] leading-[1.5] text-muted">{t("settings.screensVars")}</p>
+            )}
           </div>
           <figure className="m-0 grid gap-1.5 sm:sticky sm:top-3">
             {/* Un seul aperçu : le fichier importé, ou à défaut le dessin du moteur. Deux cadres

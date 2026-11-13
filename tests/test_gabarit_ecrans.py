@@ -316,3 +316,41 @@ def test_l_apercu_remplit_les_variables_comme_le_moteur(env, stockage):
     assert "{heure}" not in html
     assert " h " in html  # « 14 h 36 », la forme du moteur
     assert "{mosquee}" not in html
+
+
+PAGE_BANDEAU = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>.ecran{display:none}</style></head>
+<body>
+<section class="ecran" data-ecran="avant" data-actif><p>AVANT</p></section>
+<section class="ecran" data-ecran="priere"><p>PRIERE</p></section>
+<section class="ecran" data-ecran="entracte"><p>ENTRACTE</p></section>
+<section class="ecran" data-ecran="termine"><p>TERMINE</p></section>
+<section class="ecran" data-ecran="janaza"><p>JANAZA</p></section>
+<section class="ecran" data-ecran="dars_fin"><p>DARS</p></section>
+<section class="ecran" data-ecran="khutba"><div class="bandeau"><span>{titre}</span><span>{ligne2}</span><span>{arabe}</span></div></section>
+<section class="ecran" data-ecran="dars"><div class="bandeau"><span>{titre}</span><span>{ligne2}</span><span>{orateur}</span></div></section>
+<script type="application/json" id="sada-screens">{bloc}</script>
+</body></html>"""
+
+
+def _page_bandeau() -> bytes:
+    return PAGE_BANDEAU.replace("{bloc}", json.dumps(_bloc(), ensure_ascii=False)).encode()
+
+
+def test_l_apercu_du_bandeau_suit_l_onglet_et_remplit_les_valeurs(env, stockage):
+    c = client(env, "admin")
+    url = _envoi(c, _page_bandeau()).json()["gabarit"]["url"]
+    base = url.split("?")[0]
+    html = c.get(f"{base}?ecran=khutba").text
+    assert 'data-ecran="khutba" data-actif' in html
+    assert html.count("data-actif") == 1
+    # le titre et la deuxième ligne du bandeau sont posés comme sur le direct, plus de variable nue
+    for variable in ("{titre}", "{ligne2}", "{arabe}", "{mosquee}", "{orateur}", "{serie}", "{seance}"):
+        assert variable not in html, variable
+
+
+def test_un_gabarit_sans_bandeau_ne_devine_pas(env, stockage):
+    c = client(env, "admin")
+    url = _envoi(c, _page_six()).json()["gabarit"]["url"]
+    base = url.split("?")[0]
+    html = c.get(f"{base}?ecran=khutba").text
+    assert html.strip() == ""  # pas de section bandeau dans le fichier : l'aperçu n'invente rien

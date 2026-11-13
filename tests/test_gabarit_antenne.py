@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from sada.gabarit_antenne import ECRANS, AntenneGabarit
+from sada.gabarit_antenne import BANDEAUX, ECRANS, AntenneGabarit
 
 
 class FauxRendu:
@@ -19,6 +19,7 @@ class FauxRendu:
 
     def __init__(self, cfg):
         self.appels: list[str] = []
+        self.transparents: list[str] = []
         self.demarre = False
         self.ferme = False
         self.echoue = False
@@ -30,8 +31,10 @@ class FauxRendu:
     def close(self):
         self.ferme = True
 
-    def image(self, page, variables):
+    def image(self, page, variables=None, omit_background=False):
         self.appels.append(page)
+        if omit_background:
+            self.transparents.append(page)
         if self.echoue:
             raise RuntimeError("navigateur tombé")
         import io
@@ -44,6 +47,7 @@ class FauxRendu:
 
 
 PAGES = {e: f"<html><!-- écran {e} --></html>" for e in ECRANS}
+PAGES_BANDEAU = {e: f"<html><!-- bandeau {e} --></html>" for e in BANDEAUX}
 
 
 def antenne(monkeypatch, **kw):
@@ -142,3 +146,83 @@ def test_l_instant_de_l_ecran_est_stable_hors_entracte(monkeypatch):
     assert a.variable_de_l_instant("avant") == ""
     avant = a.variable_de_l_instant("entracte")
     assert len(avant) == 8 and avant.count(":") == 2
+
+
+def _pages_bannieres():
+    return {**PAGES, **PAGES_BANDEAU}
+
+
+def test_un_bandeau_fourni_est_signale(monkeypatch):
+    appels: list = []
+    reponse = {
+        "present": True,
+        "nom": "Mosquée d'essai",
+        "pages": _pages_bannieres(),
+        "variables": {"arabe_khutba": "خطبة", "arabe_dars": "درس"},
+    }
+    a = AntenneGabarit(object(), FauxRendu, fetch=lambda url, token: reponse, log_fn=appels.append)
+    assert a.charger("http://bo", 0) is True
+    assert any("also provides the live banner" in m and "khutba" in m and "dars" in m for m in appels)
+
+
+def test_un_gabarit_sans_bandeau_reste_valide(monkeypatch):
+    appels: list = []
+    reponse = {"present": True, "nom": "Mosquée d'essai", "pages": PAGES, "variables": {}}
+    a = AntenneGabarit(object(), FauxRendu, fetch=lambda url, token: reponse, log_fn=appels.append)
+    assert a.charger("http://bo", 0) is True
+    assert a.actif is True
+    assert not any("also provides the live banner" in m for m in appels)
+    # pas de section bandeau dans le fichier : le moteur dessine son propre bandeau
+    assert a.image("khutba") is None
+
+
+def test_le_bandeau_est_rendu_en_fond_transparent(monkeypatch):
+    a = antenne(monkeypatch)
+    a.page = _pages_bannieres()
+    assert a.image("khutba") is not None
+    rendu = FauxRendu.instances[-1]
+    assert PAGES_BANDEAU["khutba"] in rendu.transparents
+    a.image("avant")
+    assert PAGES["avant"] not in rendu.transparents  # l'écran plein reste opaque
+
+
+def test_le_bandeau_change_avec_la_seance(monkeypatch):
+    from types import SimpleNamespace
+
+    a = antenne(monkeypatch)
+    a.page = _pages_bannieres()
+    m1 = SimpleNamespace(
+        event={"title": "Cours A", "speaker": "Ustadh X", "series": "Série", "session_no": 1},
+        next_event=None,
+        planned=None,
+    )
+    m2 = SimpleNamespace(
+        event={"title": "Cours B", "speaker": "Ustadh Y", "series": "Série", "session_no": 2},
+        next_event=None,
+        planned=None,
+    )
+    assert a.image("dars", m1) is not None
+    assert a.image("dars", m1) is not None  # même séance : pas de nouveau rendu
+    assert a.image("dars", m2) is not None  # autre séance : nouveau rendu
+    assert len(FauxRendu.instances[-1].appels) == 2
+
+
+def test_les_valeurs_du_bandeau_comprennent_titre_ligne2_et_orateur(monkeypatch):
+    from types import SimpleNamespace
+
+    a = antenne(monkeypatch)
+    a._variables = {"nom": "Mosquée d'essai", "arabe_dars": "درس", "logo": "logo.png"}
+    m = SimpleNamespace(
+        event={"title": "Tafsir", "speaker": "Ustadh X", "series": "Série", "session_no": 3},
+        next_event=None,
+        planned=None,
+    )
+    v = a.valeurs("dars", m)
+    assert v["titre"] == "Tafsir"
+    assert v["orateur"] == "Ustadh X"
+    assert v["serie"] == "Série"
+    assert v["seance"] == "3"
+    assert "Ustadh X" in v["ligne2"]
+    assert "Série" in v["ligne2"] and "séance 3" in v["ligne2"]
+    assert v["arabe"] == "درس"
+    assert v["logo"] == "logo.png"
