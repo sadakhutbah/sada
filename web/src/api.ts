@@ -101,6 +101,8 @@ export type Habillage = {
   status: "" | "en_cours" | "pret" | "echec";
   progress: number; error: string; started_at: string; finished_at: string; duration_s: number | null;
   video_ready: boolean; video_v: number; size_mb: number | null; preview_ready: boolean; preview_v: number;
+  /** Langues des .srt alignés sur la vidéo habillée (aucune tant qu'elle n'est pas rendue). */
+  subtitles: string[];
   has_source: boolean; has_logo: boolean; can_edit: boolean; mosque: string;
   colors: { green: string; gold: string };
 };

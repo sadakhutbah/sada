@@ -139,6 +139,12 @@ const fr = {
     ready: "Vidéo habillée prête", download: "Télécharger", watch: "Regarder",
     size_mb: "{{n}} Mo", failed: "Le rendu a échoué : {{e}}", progress: "{{n}} %",
     colors: "Couleurs de la mosquée",
+    subtitles: {
+      title: "Sous-titres (.srt)",
+      help: "À téléverser à part sur YouTube plutôt qu'incrustés : YouTube Studio › Sous-titres › Ajouter, une langue à la fois. Les temps suivent la vidéo habillée, carton d'ouverture compris.",
+      original: "Version alignée sur la vidéo d'origine :",
+      langs: { ar: "Arabe", fr: "Français", en: "Anglais" },
+    },
   },
   clips: {
     title: "File de validation des clips",
@@ -571,6 +577,12 @@ const en: typeof fr = {
     ready: "Branded video ready", download: "Download", watch: "Watch",
     size_mb: "{{n}} MB", failed: "Rendering failed: {{e}}", progress: "{{n}}%",
     colors: "Mosque colours",
+    subtitles: {
+      title: "Subtitles (.srt)",
+      help: "Upload them separately on YouTube instead of burning them in: YouTube Studio › Subtitles › Add, one language at a time. The times follow the branded video, opening card included.",
+      original: "Version aligned on the original video:",
+      langs: { ar: "Arabic", fr: "French", en: "English" },
+    },
   },
   clips: {
     title: "Clip review queue",

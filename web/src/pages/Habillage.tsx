@@ -337,6 +337,33 @@ function Statut({ etat, kid }: { etat: Etat; kid: number }) {
             </a>
             {etat.size_mb !== null && <span className="text-[0.85rem] text-muted tabular-nums">{t("habillage.size_mb", { n: etat.size_mb })}</span>}
           </div>
+          {etat.subtitles.length > 0 && (
+            <div className="grid gap-2 border-t border-line pt-3">
+              <p className="m-0 text-[0.95rem] font-semibold text-deeper">{t("habillage.subtitles.title")}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {etat.subtitles.map((code) => (
+                  <a key={code} href={`/api/v1/sermons/${kid}/habillage/sous-titres/${code}.srt`}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-[9px] border border-line bg-white px-3 py-2 text-[0.9rem] font-semibold text-deep no-underline hover:border-leaf hover:bg-paper-2">
+                    ↓ {t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() })}
+                    <span className="text-[0.78rem] font-normal text-muted">.srt</span>
+                  </a>
+                ))}
+              </div>
+              <p className="m-0 text-[0.82rem] text-muted">{t("habillage.subtitles.help")}</p>
+              <p className="m-0 text-[0.8rem] text-muted">
+                {t("habillage.subtitles.original")}{" "}
+                {etat.subtitles.map((code, rang) => (
+                  <span key={code}>
+                    {rang > 0 && " · "}
+                    <a href={`/api/v1/sermons/${kid}/habillage/sous-titres/${code}.srt?brut=1`}
+                      className="underline decoration-leaf underline-offset-4 hover:text-deep">
+                      {t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() })}
+                    </a>
+                  </span>
+                ))}
+              </p>
+            </div>
+          )}
         </>
       )}
     </Card>
