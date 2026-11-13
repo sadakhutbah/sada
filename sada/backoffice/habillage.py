@@ -18,6 +18,8 @@ from pathlib import Path
 from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import habillage as rendu
+from ..pipeline import subtitles as sous_titres
+from ..pipeline import verses
 from . import db
 
 #: réglages qui décrivent la mosquée et pas une vidéo : retenus pour la prochaine fois
@@ -93,6 +95,12 @@ def fichier_apercu(k: dict) -> Path:
 def nom_telechargement(k: dict) -> str:
     """Nom proposé au téléchargement : la date et le genre, jamais le chemin sur la machine."""
     return f"sada-{k.get('kind') or 'session'}-{(k.get('date') or '')[:10] or k['id']}-habillee.mp4"
+
+
+def nom_sous_titres(k: dict, langue: str, brut: bool = False) -> str:
+    """Nom du .srt téléchargé : date, genre, langue ; `-original` pour l'alignement sur la vidéo source."""
+    base = f"sada-{k.get('kind') or 'session'}-{(k.get('date') or '')[:10] or k['id']}"
+    return f"{base}-sous-titres-{langue}{'-original' if brut else ''}.srt"
 
 
 def marque(m: dict) -> tuple[dict | None, str | None]:
@@ -171,19 +179,23 @@ def ligne(conn, kid: int) -> dict | None:
     return db.one(conn, "SELECT * FROM habillages WHERE khutba_id = ?", kid)
 
 
-def version_habillee(conn, k: dict) -> dict | None:
-    """La vidéo habillée prête, celle qu'on affiche : son décalage d'intro recale la transcription."""
+def decalage_carton(conn, k: dict) -> float:
+    """Durée du carton d'ouverture de la vidéo habillée en place (0 s sans rendu, ou sans carton)."""
     h = ligne(conn, k["id"])
-    if not (h and fichier_video(k).exists()):
-        return None
     rendues = fichier_options_rendues(k)
     try:
-        brut = rendues.read_text(encoding="utf-8") if rendues.exists() else (h["options"] or "{}")
-        o = rendu.normaliser(json.loads(brut), rendu.DEFAUTS)
-        decalage = rendu.chrono(o, 0.0).i
-    except (ValueError, TypeError):
-        decalage = 0.0
-    return {"offset_s": decalage, "v": int(fichier_video(k).stat().st_mtime)}
+        brut = rendues.read_text(encoding="utf-8") if rendues.exists() else ((h or {}).get("options") or "{}")
+        return rendu.chrono(rendu.normaliser(json.loads(brut), rendu.DEFAUTS), 0.0).i
+    except (ValueError, TypeError, OSError):
+        return 0.0
+
+
+def version_habillee(conn, k: dict) -> dict | None:
+    """La vidéo habillée prête, celle qu'on affiche : son décalage d'intro recale la transcription."""
+    if not (ligne(conn, k["id"]) and fichier_video(k).exists()):
+        return None
+    return {"offset_s": decalage_carton(conn, k), "v": int(fichier_video(k).stat().st_mtime)}
+
 
 
 def etat(conn, k: dict, m: dict) -> dict:
@@ -211,6 +223,7 @@ def etat(conn, k: dict, m: dict) -> dict:
         "finished_at": (h or {}).get("finished_at") or "",
         "duration_s": (h or {}).get("duration_s"),
         "video_ready": pret,
+        "subtitles": langues_disponibles(conn, k) if pret else [],
         "size_mb": round(video.stat().st_size / 1048576, 1) if pret else None,
         "video_v": int(video.stat().st_mtime) if pret else 0,
         "preview_ready": apercu.exists(),
@@ -242,6 +255,41 @@ def _enregistrer(conn, k: dict, o: dict, **champs) -> None:
 def sans_chemin(message: str) -> str:
     """Message d'erreur montrable : un chemin de la machine n'en garde que le nom du fichier."""
     return re.sub(r"(?:[A-Za-z]:)?[/\\][^\s:'\"]+", lambda x: Path(x.group(0)).name, message)
+
+
+# ------------------------------------------------------------------ sous-titres (.srt, à part sur YouTube)
+
+
+def pistes(conn, k: dict) -> dict[str, list[dict]]:
+    """Passages par langue de la vidéo (corrections et sous-titres ajoutés compris), dans le temps de la session."""
+    from . import content
+
+    data = content.load(conn, k)
+    return sous_titres.tracks(data["segments"], verses.shown(data["verses"], ambiguous=True), data["translations"])
+
+
+def langues_disponibles(conn, k: dict) -> list[str]:
+    """Langues des fichiers proposés au téléchargement (aucune sans vidéo habillée : le .srt la suit)."""
+    return list(pistes(conn, k))
+
+
+def alignements(conn, k: dict) -> dict[str, float]:
+    """Décalage des temps de la session : vidéo habillée (carton + coupe), vidéo d'origine (coupe seule)."""
+    src = source(k)
+    debut = float(src[1]) if src else 0.0
+    return {"habille": decalage_carton(conn, k) - debut, "brut": -debut}
+
+
+def sous_titres_srt(conn, k: dict, langue: str, brut: bool = False) -> tuple[str, bytes]:
+    """(nom du fichier, contenu UTF-8). Une langue sans sous-titre lève ValueError, avec un message montrable."""
+    disponibles = pistes(conn, k)
+    if langue not in disponibles:
+        raise ValueError(_("No subtitles in this language for this video."))
+    texte = sous_titres.srt(sous_titres.cues(disponibles[langue], alignements(conn, k)["brut" if brut else "habille"]))
+    if not texte.strip():
+        raise ValueError(_("No subtitles in this language for this video."))
+    return nom_sous_titres(k, langue, brut), texte.encode("utf-8")
+
 
 
 def recover_interrupted(conn) -> None:

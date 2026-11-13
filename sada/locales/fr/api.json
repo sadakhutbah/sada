@@ -132,5 +132,6 @@
   "Password too short (at least {n} characters).": "Mot de passe trop court (au moins {n} caractères).",
   "Password of “{username}” changed.": "Mot de passe de « {username} » modifié.",
   "Unknown account.": "Compte inconnu.",
-  "Choose a password different from the current one.": "Choisissez un mot de passe différent de l'actuel."
+  "Choose a password different from the current one.": "Choisissez un mot de passe différent de l'actuel.",
+  "No subtitles in this language for this video.": "Pas de sous-titres dans cette langue pour cette vidéo."
 }

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from ...i18n import _
 from .. import habillage
@@ -80,3 +80,23 @@ def habillage_video(kid: int, ctx: CtxDep, download: bool = False):
     if download:
         return FileResponse(f, media_type="video/mp4", filename=habillage.nom_telechargement(k))
     return FileResponse(f, media_type="video/mp4")
+
+
+@router.get("/sermons/{kid}/habillage/sous-titres/{langue}.srt")
+def habillage_sous_titres(kid: int, langue: str, ctx: CtxDep, brut: bool = False):
+    """Le .srt d'une langue, aligné sur la vidéo habillée (`brut=1` : sur la vidéo d'origine).
+
+    Toujours servi en pièce jointe : c'est un fichier à déposer dans YouTube Studio, pas une page."""
+    k = khutba_or_404(ctx, kid)
+    if not habillage.version_habillee(ctx.conn, k):
+        raise NotFound()
+    try:
+        nom, contenu = habillage.sous_titres_srt(ctx.conn, k, langue.strip().lower(), brut=brut)
+    except ValueError as e:
+        raise Invalid(str(e)) from e
+    return Response(
+        contenu,
+        media_type="application/x-subrip; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nom}"', "Cache-Control": "private, no-cache"},
+    )
+
