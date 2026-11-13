@@ -12,7 +12,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from ...i18n import _
-from .. import db, destinations, gabarit, internal, live_input, storage
+from .. import branding, db, destinations, gabarit, internal, live_input, storage
 from .. import screens as screens_mod
 from .. import variables_ecran as variables_mod
 from ..context import ConnDep
@@ -109,6 +109,10 @@ def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
     if not fichier:
         return {"mosque_id": mid, "nom": "", "present": False, "pages": {}, "variables": {}}
     valeurs = variables_mod.variables(conn, mosquee)
+    # The engine renders the page from a local file: a server-relative logo address would not load.
+    # The logo is therefore embedded in the page itself.
+    if valeurs.get("logo"):
+        valeurs["logo"] = branding.data_url(mosquee)
     # une page par écran (plein ou bandeau), chacune avec l'écran voulu visible : le moteur n'a pas
     # à découper le HTML. Un écran absent du fichier donne une page vide, et le moteur dessine alors.
     pages = {e: gabarit.pour_ecran(fichier, e) for e in gabarit.CONNUS}

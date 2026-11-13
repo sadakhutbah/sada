@@ -6,6 +6,7 @@ handle the image of the interface (favicon + top bar).
 
 from __future__ import annotations
 
+import base64
 import io
 from pathlib import Path
 
@@ -20,6 +21,15 @@ EXT = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp"
 def path_for(mosque: dict) -> Path:
     rel = (mosque.get("logo_path") or "").strip()
     return (paths.ROOT / rel) if rel else DIR / f"{mosque['slug']}.png"
+
+
+def data_url(mosque: dict) -> str:
+    """Logo embedded as a data: URL (pages rendered from a local file); empty if the file is missing."""
+    f = path_for(mosque)
+    mime = EXT.get(f.suffix.lower())
+    if not mime or not f.is_file():
+        return ""
+    return f"data:{mime};base64,{base64.b64encode(f.read_bytes()).decode('ascii')}"
 
 
 def version(mosque: dict) -> str:
