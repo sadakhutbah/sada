@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from sada.pipeline import repair
 from sada.pipeline import settings as reglages
 from sada.pipeline import transcribe as T
 
@@ -110,19 +111,47 @@ def test_segments_non_suspects_ne_coutent_rien():
     deja_ar = {"start": 0, "end": 4, "avg_logprob": -0.4, "text": "بسم الله الرحمن الرحيم"}
     sur = {"start": 5, "end": 8, "avg_logprob": -0.25, "text": "la patience est une lumière pour les croyants"}
     court = {"start": 9, "end": 9.4, "avg_logprob": -1.2, "text": "voie"}
-    assert not T.looks_suspect(deja_ar)
-    assert not T.looks_suspect(sur)
-    assert not T.looks_suspect(court)
+    assert not repair.looks_suspect(deja_ar)
+    assert not repair.looks_suspect(sur)
+    assert not repair.looks_suspect(court)
     model = FakeModel(pieces=_arabic_piece())
     assert T.recover_arabic(model, _audio(), [deja_ar, sur, court], log=lambda *_: None) == 0
     assert model.detected == [] and model.calls == []
 
 
-def test_plafond_de_segments_examines():
-    segs = [{"start": i * 2.0, "end": i * 2.0 + 1.5, "avg_logprob": -1.2, "text": "voie aran"} for i in range(10)]
+def test_plafond_de_plages_reprises():
+    segs = [{"start": i * 20.0, "end": i * 20.0 + 1.5, "avg_logprob": -1.2, "text": "voie aran"} for i in range(10)]
     model = FakeModel(lang="fr", prob=0.9)
-    T.recover_arabic(model, _audio(60), segs, log=lambda *_: None, max_segments=3)
+    T.recover_arabic(model, _audio(400), segs, log=lambda *_: None, max_segments=3)
     assert len(model.detected) == 3
+
+
+def test_passages_voisins_envoyes_en_une_seule_plage():
+    """Deux passages proches partent ensemble : le contexte manquait au segment isolé."""
+    segs = [
+        {"start": 100.0, "end": 104.0, "avg_logprob": -1.2, "text": "ce qu'on appelle aran"},
+        {"start": 104.5, "end": 109.0, "avg_logprob": -1.1, "text": "la ilaha illa Allah"},
+    ]
+    model = FakeModel(lang="ar", prob=0.9)
+    T.recover_arabic(model, _audio(200), segs, log=lambda *_: None)
+    assert len(model.detected) == 1
+    assert model.detected[0] == 9 * 16000  # 100 -> 109 s d'un seul tenant
+
+
+def test_discours_arabe_reprend_la_translitteration_pas_l_ecriture_arabe():
+    """Dans une khutba arabe, seul ce que le moteur a écrit en latin est repris."""
+    translit = {
+        "start": 100.0,
+        "end": 106.0,
+        "avg_logprob": -0.2,
+        "text": "awaluhaa nafadu al-mashia'a ilaahi al-mutlaqa",
+    }
+    ecrit = {"start": 110.0, "end": 116.0, "avg_logprob": -0.2, "text": "فإذا يقدر الله سبحانه أمرا"}
+    model = FakeModel(pieces=[Piece(" " + VERSE_AR, 0.0, 5.0, -0.2)])
+    assert T.recover_arabic(model, _audio(200), [translit, ecrit], log=lambda *_: None, language="ar") == 1
+    assert translit["recovered"] == "ar" and "recovered" not in ecrit
+    # translittération manifeste : ni détection ni écart de vraisemblance, un seul envoi
+    assert model.detected == [] and len(model.calls) == 1
 
 
 def test_reglage_arabic_retry_prioritaire(monkeypatch, tmp_path):

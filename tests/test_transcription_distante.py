@@ -11,6 +11,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from sada.pipeline import remote as R
+from sada.pipeline import repair
+from sada.pipeline.language import measure as measure_language
 
 pytest.importorskip("fastapi")
 
@@ -269,6 +271,214 @@ def test_meme_forme_que_la_transcription_locale(monkeypatch, serveur, tmp_path):
     assert distant["language"] == local["language"]
     assert distant["hotwords"] is True and local["hotwords"] is True
     assert all(isinstance(s["start"], float) and isinstance(s["end"], float) for s in distant["segments"])
+
+
+# ------------------------------------------------------------------ langue et passes de reprise
+
+
+def test_la_langue_rendue_en_clair_devient_un_code_iso(monkeypatch, serveur, tmp_path):
+    """Groq rend « English » sur une khutba arabe : la langue stockée est celle qu'on mesure."""
+    _Handler.plan = [
+        (
+            200,
+            {
+                "language": "English",
+                "duration": 30.0,
+                "segments": [
+                    {"start": 0.0, "end": 4.0, "text": " الحمد لله رب العالمين", "avg_logprob": -0.2},
+                    # même propos en translittération : c'est de l'arabe, pas du français
+                    {
+                        "start": 4.0,
+                        "end": 10.0,
+                        "text": " awaluhaa nafadu al-mashia'a ilaahi al-mutlaqa",
+                        "avg_logprob": -0.3,
+                    },
+                    {
+                        "start": 10.0,
+                        "end": 20.0,
+                        "text": " Chers frères, la patience est une lumière.",
+                        "avg_logprob": -0.2,
+                    },
+                    {"start": 20.0, "end": 26.0, "text": " حيث يقول الله عز وجل", "avg_logprob": -0.2},
+                    {"start": 26.0, "end": 30.0, "text": " et cela nous suffit.", "avg_logprob": -0.2},
+                ],
+            },
+        )
+    ]
+    _reglage(monkeypatch, serveur)
+    wav = _wav(tmp_path / "audio.wav", 30.0)
+    res = R.transcribe(str(wav), str(tmp_path / "t.json"), log=lambda *_: None, arabic_retry=False)
+    assert res["language"] == "ar"
+    # 16 s d'arabe sur 30 s de parole : la probabilité dit la même chose des deux côtés
+    assert res["language_probability"] == pytest.approx(16 / 30, abs=0.005)
+
+
+def test_noms_de_langue_normalises_en_code_iso():
+    from sada.pipeline.language import code_of, measure
+
+    assert code_of("English") == "en"
+    assert code_of("french") == "fr"
+    assert code_of("Arabic") == "ar"
+    assert code_of("ar") == "ar" and code_of("ara") == "ar"
+    assert code_of("Haitian Creole") == "ht"
+    assert code_of("klingon") == ""
+    assert code_of(None) == ""
+    # un discours français cité en arabe reste mesuré comme français
+    segs = [
+        {"start": 0.0, "end": 4.0, "text": "بسم الله الرحمن الرحيم"},
+        {"start": 4.0, "end": 60.0, "text": "Chers frères, parlons de la patience."},
+    ]
+    assert measure(segs, "Arabic")[0] == "fr"
+    assert measure(segs, "Arabic")[1] == pytest.approx(1 - 4 / 60, abs=0.002)
+
+
+def test_les_passes_de_reprise_tournent_aussi_en_distant(monkeypatch, serveur, tmp_path):
+    """Boucle de répétition et arabe translittéré : les mêmes reprises qu'en local, par l'API."""
+    _Handler.plan = [
+        (
+            200,
+            {
+                "language": "English",
+                "duration": 40.0,
+                "segments": [
+                    {
+                        "start": 0.0,
+                        "end": 8.0,
+                        "text": " Face aux épreuves, le croyant garde espoir.",
+                        "avg_logprob": -0.2,
+                    },
+                    {
+                        "start": 10.0,
+                        "end": 14.0,
+                        "text": " al-kufr, al-kufr, al-kufr, al-kufr, al-kufr",
+                        "avg_logprob": -0.5,
+                    },
+                    {
+                        "start": 20.0,
+                        "end": 26.0,
+                        "text": " awaluhaa nafadu al-mashia'a ilaahi al-mutlaqa",
+                        "avg_logprob": -0.3,
+                    },
+                    {"start": 26.0, "end": 32.0, "text": " حيث يقول الله عز وجل", "avg_logprob": -0.2},
+                ],
+            },
+        ),
+        # reprise de la boucle : plus de répétition
+        (
+            200,
+            {
+                "language": "fr",
+                "segments": [{"start": 0.0, "end": 4.0, "text": " la patience est une lumière", "avg_logprob": -0.2}],
+            },
+        ),
+        # reprise de la plage translittérée : arabe forcé, écriture arabe
+        (
+            200,
+            {
+                "language": "ar",
+                "segments": [
+                    {"start": 0.0, "end": 6.0, "text": " أولاها نفاد المشيئة الإلهية المطلقة", "avg_logprob": -0.15},
+                ],
+            },
+        ),
+    ]
+    _reglage(monkeypatch, serveur)
+    wav = _wav(tmp_path / "audio.wav", 40.0)
+    res = R.transcribe(
+        str(wav),
+        str(tmp_path / "t.json"),
+        log=lambda *_: None,
+        hotwords="tawba, taqwa",
+        source={"recording": "x", "start": 0, "end": 40},
+    )
+    assert len(_Handler.seen) == 3  # un envoi principal, la boucle, la plage arabe
+    segs = res["segments"]
+    assert segs[1]["text"] == "la patience est une lumière" and segs[1]["recovered"] == "loop"
+    assert segs[2]["text"].startswith("أولاها") and segs[2]["recovered"] == "ar"
+    assert segs[3]["text"] == "حيث يقول الله عز وجل"  # déjà en arabe : rien à reprendre
+    # mêmes clés de reprise que le local, et la provenance notée par le transcripteur
+    assert res["loops_redone"] == 1 and res["arabic_recovered"] == 1
+    assert res["source"] == {"recording": "x", "start": 0, "end": 40}
+
+    # ce qui part réellement pour l'arabe : langue imposée, pas de glossaire latin en prompt
+    corps = _Handler.seen[2]["body"]
+    assert b'name="language"' in corps and b"\r\n\r\nar\r\n" in corps
+    assert b'name="prompt"' not in corps
+    # une boucle est rejouée à température plus haute que le premier envoi
+    assert b'name="temperature"' in corps
+
+
+def test_sur_une_vraie_reponse_groq_arabe_translittere_est_repris():
+    """Extraits réels de la réponse Groq du 13/11 (khutba de 549 s) : « English », arabe en latin."""
+    segments = [
+        {"start": 60.0, "end": 90.0, "text": "Al-Fatiha", "avg_logprob": -0.409},
+        {
+            "start": 90.0,
+            "end": 97.04,
+            "text": "al-talaq, haytu yaqul Allah عز و جل باذا عوذ بالله من الشيطان الرجيم",
+            "avg_logprob": -0.146,
+        },
+        {"start": 97.0, "end": 105.8, "text": "إِنَّ اللَّهَ بَالِغُ أَمْرِهِ", "avg_logprob": -0.15},
+        {"start": 116.1, "end": 121.3, "text": "awaluhaa nafadu al-mashia'a ilaahi al-mutlaqa", "avg_logprob": -0.36},
+        {"start": 121.3, "end": 125.3, "text": "innama shia'a Allahi nafidhatu la mahala", "avg_logprob": -0.36},
+        {"start": 125.3, "end": 130.2, "text": "wala yumkinu la ayi shay'in an ya'jiza amra", "avg_logprob": -0.36},
+        {
+            "start": 131.2,
+            "end": 162.2,
+            "text": "faindama yuqadiru Allah subhanahu wa ta amran fa innahu yatahqaqu bi asbabin wa turqin la natawakaa",
+            "avg_logprob": -0.04,
+        },
+        {
+            "start": 370.9,
+            "end": 378.4,
+            "text": "Face aux pertes et aux échecs qui nous attristent, rappelons-nous de ce hadith",
+            "avg_logprob": -0.15,
+        },
+        {"start": 392.7, "end": 397.3, "text": "Ikhwatil kiram, akhawatil karimat", "avg_logprob": -0.23},
+    ]
+    langue, probabilite = measure_language(segments, "English")
+    assert langue == "ar"  # et non « English »
+    assert 0.5 < probabilite < 0.9
+
+    candidats = [seg for seg in segments if repair._candidate(seg, arabic_sermon=True)]
+    plages = repair.ranges(candidats)
+    assert [round(debut) for debut, _fin, _membres in plages] == [60, 116, 393]
+    assert round(plages[1][1]) == 162  # toute la plage translittérée, pas quelques segments
+    # le passage français reste français : il n'est jamais candidat
+    assert all(seg["start"] != 370.9 for seg in candidats)
+
+
+def test_le_local_ecrit_les_memes_cles_de_reprise(monkeypatch, tmp_path):
+    import faster_whisper
+
+    from sada.pipeline import transcribe as T
+
+    monkeypatch.setenv("SADA_TRANSCRIPTION_CONFIG", str(tmp_path / "absent.json"))
+    monkeypatch.delenv("SADA_TRANSCRIPTION_MODE", raising=False)
+    monkeypatch.setattr(faster_whisper, "WhisperModel", _Model)
+    monkeypatch.setattr(T, "pick_model", lambda prefer, log: ("tiny", "cpu", "int8"))
+    wav = _wav(tmp_path / "audio.wav", 15.0)
+    res = T.transcribe(str(wav), str(tmp_path / "t.json"), "cpu", log=lambda *_: None, source={"recording": "x"})
+    assert res["loops_redone"] == 0 and res["arabic_recovered"] == 0
+    assert res["source"] == {"recording": "x"}
+    assert res["language"] == "fr" and res["language_probability"] == 1.0
+
+
+def test_le_glossaire_part_en_prompt_borne_a_224_tokens(monkeypatch, serveur, tmp_path):
+    long = ", ".join(f"terme{i}" for i in range(400))
+    prompt = R.prompt_text(long)
+    assert prompt and R.estimate_tokens(prompt) <= R.PROMPT_MAX_TOKENS
+    assert prompt.startswith("terme0,") and not prompt.endswith(",")
+    # jamais un terme coupé en deux
+    assert all(terme in long for terme in prompt.split(", "))
+
+    _Handler.plan = [
+        (200, {"language": "fr", "segments": [{"start": 0.0, "end": 2.0, "text": " Ça marche.", "avg_logprob": -0.2}]})
+    ]
+    _reglage(monkeypatch, serveur)
+    wav = _wav(tmp_path / "audio.wav", 4.0)
+    R.transcribe(str(wav), str(tmp_path / "t.json"), log=lambda *_: None, hotwords=long, arabic_retry=False)
+    assert b'name="prompt"' in _Handler.seen[0]["body"]
 
 
 # ------------------------------------------------------------------ réessais et erreurs

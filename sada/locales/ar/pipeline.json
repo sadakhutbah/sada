@@ -67,7 +67,7 @@
   "Transcription: {count} segments in {seconds} s": "التفريغ: {count} مقطعًا نصيًا في {seconds} ث",
   "  loop recovered at {seconds:.1f}s: {heard}": "  تم استدراك التكرار عند {seconds:.1f} ث: {heard}",
   "  Arabic passage recovered at {seconds:.1f}s: {heard}": "  تم استدراك مقطع عربي عند {seconds:.1f} ث: {heard}",
-  "Arabic passages retranscribed: {replaced} (out of {tried} segments examined)": "المقاطع العربية المعاد تفريغها: {replaced} (من {tried} مقطعًا فُحص)",
+  "Arabic passages retranscribed: {replaced} (out of {tried} passages examined)": "المقاطع العربية المعاد تفريغها: {replaced} (من {tried} مقطعًا فُحص)",
   "Loading {model}/{device} failed: {error} -> fallback to CPU int8": "فشل تحميل {model}/{device}: {error} -> الرجوع إلى المعالج int8",
   "  retry impossible at {seconds:.1f}s: {error}": "  تعذّرت الإعادة عند {seconds:.1f} ث: {error}",
   "  Arabic retranscription impossible at {seconds:.1f}s: {error}": "  تعذّرت إعادة التفريغ بالعربية عند {seconds:.1f} ث: {error}",

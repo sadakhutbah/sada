@@ -29,7 +29,7 @@ from ..text import duration as fmt_t
 from ..text import is_arabic, is_translit_word
 from . import clips as clipmod
 from . import llm
-from .transcribe import is_loop
+from .repair import is_loop
 
 CAND_MIN, CAND_MAX = 30.0, 75.0
 CAND_MAX_HARD = 90.0  # tolérance pour finir la phrase en cours (on ne coupe jamais un mot)

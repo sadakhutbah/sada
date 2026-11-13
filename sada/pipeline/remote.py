@@ -3,9 +3,15 @@
 Pour les mosquées sans carte graphique : l'audio part chez un fournisseur (Groq, OpenAI, ou toute
 adresse compatible), qui rend des segments et des mots horodatés. Le résultat a **la même forme**
 que celui de Whisper local (`transcribe.transcribe`) : `model`, `device`, `compute_type`,
-`language`, `language_probability`, `duration`, `elapsed_s`, `hotwords`, `segments` (avec `words`),
-et `arabic_recovered` quand une reprise a eu lieu (`loops_redone` reste le fait du moteur local).
+`language` (code ISO-639-1, mesuré sur toute la durée), `language_probability`, `duration`,
+`elapsed_s`, `hotwords`, `segments` (avec `words`), et les mêmes clés de reprise que le local —
+`loops_redone`, `arabic_recovered` — plus `source` quand l'appelant sait d'où vient l'audio.
 Tout l'aval le lit sans savoir d'où il vient.
+
+Les passes de reprise sont celles du local (`repair`) : le fournisseur rend souvent l'arabe en
+lettres latines (« al-talaq, haytu yaqul Allah ») là où Whisper local écrit l'arabe ; les plages
+concernées sont extraites par ffmpeg et renvoyées avec `language=ar`, et les boucles de répétition
+sont rejouées à température plus haute. Seul le moteur change, la politique est la même.
 
 Les enregistrements longs sont découpés (ffmpeg -> mp3 mono 16 kHz) en morceaux sous la limite de
 taille de l'API, avec un léger chevauchement ; segments et mots sont recollés avec des horodatages
@@ -41,8 +47,10 @@ import httpx
 
 from .. import paths
 from ..i18n import _
-from ..text import arabic_ratio
-from . import glossary
+from ..text import is_arabic_char
+from . import glossary, repair
+from .language import code_of
+from .language import measure as measure_language
 from .settings import arabic_retry_enabled
 
 CONFIG_KEYS = ("mode", "provider", "url", "model", "key")
@@ -54,7 +62,10 @@ BYTES_PER_SECOND = 6000
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
 MAX_CHUNK_S = 1500.0  # 25 min : un morceau reste court à téléverser et à transcrire
 OVERLAP_S = 2.0  # léger chevauchement : aucun mot perdu à la coupure
-PROMPT_MAX = 900  # le glossaire part en `prompt` : les API le tronquent au-delà
+# Le glossaire part en `prompt` : Whisper n'en garde que 224 tokens (Groq comme OpenAI).
+PROMPT_MAX_TOKENS = 224
+PROMPT_MAX = 900  # garde-fou en caractères, quelle que soit l'estimation
+
 
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 5
@@ -370,20 +381,6 @@ def _payload_text(payload: dict) -> str:
     return _text(payload.get("text"))
 
 
-def _payload_logprob(payload: dict) -> float:
-    """Moyenne pondérée par la durée, comme la transcription locale."""
-    total = 0.0
-    weight = 0.0
-    for raw in payload.get("segments") or []:
-        d = max(0.01, _num(raw.get("end")) - _num(raw.get("start")))
-        lp = raw.get("avg_logprob")
-        if lp is None:
-            continue
-        total += _num(lp) * d
-        weight += d
-    return total / weight if weight else -9.0
-
-
 # --------------------------------------------------------------------------- appel HTTP
 
 
@@ -483,14 +480,16 @@ def _post(s: Settings, audio: Path, fields: dict, log) -> dict:
     )
 
 
-def _transcribe_file(s: Settings, audio: Path, prompt: str, language: str | None, log) -> dict:
+def _transcribe_file(
+    s: Settings, audio: Path, prompt: str, language: str | None, log, *, temperature: float = 0.0
+) -> dict:
     """Un morceau : `verbose_json`, segments ET mots horodatés, langue si elle est connue."""
     fields: dict = {
         "model": s.model,
         "response_format": "verbose_json",
         # liste : httpx répète le champ, comme l'exige `timestamp_granularities` (tableau)
         "timestamp_granularities[]": ["segment", "word"],
-        "temperature": "0",
+        "temperature": f"{temperature:g}",
     }
     if language:
         fields["language"] = language
@@ -499,52 +498,119 @@ def _transcribe_file(s: Settings, audio: Path, prompt: str, language: str | None
     return _post(s, audio, fields, log)
 
 
-# --------------------------------------------------------------------------- reprise des citations arabes
+def estimate_tokens(text: str) -> int:
+    """Estimation prudente des tokens Whisper d'un texte latin ou arabe (aucun tokenizer embarqué).
 
-
-def _recover_arabic(s: Settings, wav: str, segs: list[dict], prompt: str, log, max_segments: int = 40) -> int:
-    """Retranscrit en arabe forcé les passages que le fournisseur a rendus en français incohérent.
-
-    Même logique que la reprise locale (`transcribe.recover_arabic`), sans `detect_language` : ces
-    API n'en ont pas, le segment suspect part directement en arabe. Le coût reste borné
-    (`max_segments`) et un segment n'est remplacé que si l'arabe est plus probable.
+    L'arabe se découpe plus fin que le latin (~2 caractères par token contre ~4) : compter les deux
+    scripts séparément évite de croire qu'un glossaire arabe tient dans la fenêtre de 224 tokens.
     """
-    from . import transcribe as local
+    total = 0
+    for word in text.split():
+        arabic = sum(1 for char in word if is_arabic_char(char))
+        total += 1 + (len(word) - arabic) // 4 + arabic // 2
+    return total
 
-    replaced, tried = 0, 0
-    with tempfile.TemporaryDirectory(prefix="sada-remote-ar-") as work:
-        for seg in segs:
-            if tried >= max_segments:
-                break
-            if not local.looks_suspect(seg):
-                continue
-            length = seg["end"] - seg["start"]
-            if length < 0.5:
-                continue
-            tried += 1
-            piece = cut(wav, Path(work) / "seg.mp3", seg["start"], length)
-            try:
-                payload = _transcribe_file(s, piece, prompt, "ar", log)
-            except TranscriptionError as e:
-                log(_("  Arabic retranscription impossible at {seconds:.1f}s: {error}", seconds=seg["start"], error=e))
-                continue
-            text = _payload_text(payload)
-            if not text or arabic_ratio(text) < 0.5:
-                continue
-            lp = _payload_logprob(payload)
-            sure = local.translit_ratio(seg.get("text") or "") >= local.TRANSLIT_SURE
-            before = seg.get("avg_logprob")
-            if not sure and lp <= (float(before) if before is not None else -9.0) + local.RETRY_MARGIN:
-                continue
-            words = []
-            for raw in payload.get("segments") or []:
-                words += _segment_words(raw, payload.get("words") or [], seg["start"])
-            seg.update(text=text, avg_logprob=round(lp, 3), recovered="ar")
-            if words:
-                seg["words"] = words
-            replaced += 1
-            log(_("  Arabic passage recovered at {seconds:.1f}s: {heard}", seconds=seg["start"], heard=text[:60]))
-    return replaced
+
+def prompt_text(text: str, *, max_tokens: int = PROMPT_MAX_TOKENS) -> str:
+    """Le glossaire tel qu'il part en `prompt` : coupé par termes dans la fenêtre de 224 tokens.
+
+    Un terme n'est jamais coupé en deux (il perdrait son sens) et la liste s'arrête au dernier
+    terme qui tient : la fin du glossaire est sacrifiée plutôt que l'envoi refusé.
+    """
+    text = _text(text)
+    if not text:
+        return ""
+    terms = [term.strip() for term in text.split(",")] if "," in text else text.split()
+    kept: list[str] = []
+    used = 0
+    for term in terms:
+        if not term:
+            continue
+        cost = estimate_tokens(term) + 1  # +1 pour le séparateur
+        if used + cost > max_tokens:
+            break
+        kept.append(term)
+        used += cost
+    return ", ".join(kept)[:PROMPT_MAX]
+
+
+# --------------------------------------------------------------------------- reprise des passages arabes
+
+
+class RemoteEngine:
+    """Moteur distant des passes de reprise : ffmpeg pour la plage, API pour le texte.
+
+    Même contrat que `transcribe.LocalEngine` : la politique de reprise (`repair`) ne sait pas
+    d'où vient le texte, seul l'envoi change.
+    """
+
+    def __init__(self, s: Settings, wav: str, prompt: str, log, work: Path):
+        self.settings, self.wav, self.prompt, self.log, self.work = s, wav, prompt, log, work
+        self.sent = 0
+
+    def chunk(self, start: float, end: float) -> Path | None:
+        if end - start < 0.5:
+            return None
+        self.sent += 1
+        return cut(self.wav, self.work / f"pass{self.sent:03d}.mp3", start, end - start)
+
+    def transcribe(
+        self,
+        chunk,
+        *,
+        language: str | None = None,
+        temperatures: tuple[float, ...] = (0.0,),
+        compression_ratio_threshold: float | None = None,
+    ) -> list[dict]:
+        """Un envoi, au dernier cran de température : l'API ne rejoue pas la série du local.
+
+        `compression_ratio_threshold` n'existe pas côté fournisseur et est ignoré. Le glossaire ne
+        part pas en arabe forcé : un prompt latin pousserait la sortie vers la translittération,
+        précisément ce que la reprise corrige.
+        """
+        payload = _transcribe_file(
+            self.settings,
+            chunk,
+            "" if language else self.prompt,
+            language,
+            self.log,
+            temperature=max(temperatures),
+        )
+        top = payload.get("words") or []
+        pieces = []
+        for raw in payload.get("segments") or []:
+            logprob = _logprob_of(raw)
+            pieces.append(
+                {
+                    "text": _text(raw.get("text")),
+                    "avg_logprob": -9.0 if logprob is None else logprob,
+                    "start": _num(raw.get("start")),
+                    "end": _num(raw.get("end")),
+                    "words": _segment_words(raw, top, 0.0),
+                }
+            )
+        return pieces
+
+    def detect_language(self, chunk) -> None:
+        """Ces API n'ont pas de détection de langue : seul l'écart de vraisemblance décide."""
+        return None
+
+
+def _api_language(payloads: list[tuple[float, dict]]) -> str:
+    """Code ISO de la langue rendue par l'API, prise sur le morceau le plus long (le plus représentatif)."""
+    best, longest = "", -1.0
+    for _offset, payload in payloads:
+        code = code_of(payload.get("language"))
+        if not code:
+            continue
+        length = (
+            _num(payload.get("duration"))
+            or _num(payload.get("end"))
+            or max((_num(seg.get("end")) for seg in payload.get("segments") or []), default=0.0)
+        )
+        if length > longest:
+            best, longest = code, length
+    return best
 
 
 # --------------------------------------------------------------------------- entrée du pipeline
@@ -557,10 +623,9 @@ def transcribe(
     arabic_retry: bool | None = None,
     hotwords: str | None = None,
     language: str | None = None,
+    source: dict | None = None,
 ) -> dict:
     """Transcrit `wav` à distance et écrit `out_json`, dans la forme exacte du transcripteur local."""
-    from . import transcribe as local
-
     s = settings()
     if not s.url:
         raise TranscriptionError(_("No distant transcription address: Settings → Transcription."))
@@ -569,14 +634,14 @@ def transcribe(
     duration = wav_duration(wav)
     if duration <= 0:
         raise TranscriptionError(_("Unreadable audio: {name}", name=Path(wav).name))
-    prompt = (_text(glossary.hotwords() if hotwords is None else hotwords))[:PROMPT_MAX]
+    prompt = prompt_text(glossary.hotwords() if hotwords is None else hotwords)
     plan = chunk_plan(duration)
     log(_("Distant transcription: {provider}", provider=s.label()))
     log(
         _(
             "Distant transcription: {count} chunk(s), {seconds:.0f} s at most, {overlap:.0f} s overlap",
             count=len(plan),
-            seconds=max(length for _, length in plan),
+            seconds=max(length for _start, length in plan),
             overlap=OVERLAP_S,
         )
     )
@@ -598,26 +663,33 @@ def transcribe(
             # La langue n'est transmise que si l'appelant la connaît : imposer la langue détectée du
             # premier morceau rendrait inaudible une citation arabe du second.
             payloads.append((start, _transcribe_file(s, piece, prompt, language, log)))
-    segs = merge(payloads)
-    detected = _text(next((p.get("language") for _, p in payloads if _text(p.get("language"))), ""))
-    lang = language or detected or "und"
-    res = {
-        "model": s.model,
-        "device": "distant",
-        "compute_type": s.provider,
-        "language": lang,
-        "language_probability": 1.0 if (language or detected) else 0.0,
-        "duration": round(duration, 2),
-        "elapsed_s": round(time.time() - t0, 1),
-        "hotwords": bool(prompt),
-        "segments": segs,
-    }
-    retry = arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
-    if retry and local.dominant_language(segs, lang) != "ar":
-        recovered = _recover_arabic(s, wav, segs, prompt, log)
-        if recovered:
-            res["arabic_recovered"] = recovered
-            log(_("Arabic passages retranscribed: {replaced}", replaced=recovered))
+        segs = merge(payloads)
+        # Groq rend le NOM de la langue (« English ») et se trompe sur une khutba mêlée : la langue
+        # stockée est celle que mesure `language.measure` sur toute la durée, en code ISO.
+        lang, prob = measure_language(segs, language or _api_language(payloads))
+        res = {
+            "model": s.model,
+            "device": "distant",
+            "compute_type": s.provider,
+            "language": lang,
+            "language_probability": prob,
+            "duration": round(duration, 2),
+            "elapsed_s": round(time.time() - t0, 1),
+            "hotwords": bool(prompt),
+            "segments": segs,
+        }
+        if source:
+            res["source"] = source
+        # Les mêmes passes de reprise qu'en local, avec l'API comme moteur : les plages concernées
+        # sont extraites par ffmpeg et renvoyées (`language=ar` pour l'arabe, température plus
+        # haute pour les boucles).
+        retry = arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
+        if retry:
+            engine = RemoteEngine(s, wav, prompt, log, Path(work))
+            res["loops_redone"] = repair.redo_loops(engine, segs, log=log, max_segments=repair.LOOP_RETRY_MAX)
+            res["arabic_recovered"] = repair.recover_arabic(
+                engine, segs, log=log, max_ranges=repair.RETRY_MAX, language=lang
+            )
     Path(out_json).write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
     log(_("Transcription: {count} segments in {seconds} s", count=len(segs), seconds=res["elapsed_s"]))
     return res

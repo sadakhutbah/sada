@@ -92,7 +92,9 @@ def process(
         log(_("[{label}] cached transcript was made on another excerpt: transcribing again", label=label))
         res = None
     if not res:
-        res = tr.transcribe(wav, str(o.transcript), model, log, arabic_retry=arabic_retry)
+        res = tr.transcribe(wav, str(o.transcript), model, log, arabic_retry=arabic_retry, source=key)
+        # Le transcripteur note lui-même ce dont il est parti (même clé des deux côtés, local et
+        # distant) ; on la réaffirme pour un cache relu écrit par une version qui l'ignorait.
         res["source"] = key
         o.write(o.transcript, res)
     segs = res["segments"]

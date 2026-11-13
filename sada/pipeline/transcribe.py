@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import time
 from pathlib import Path
 
 from ..i18n import _
-from ..text import arabic_ratio, is_translit_word
-from . import glossary, settings
+from . import glossary, repair, settings
+from .language import measure as measure_language
 
 CUDA_LIBS = [
     str(Path.home() / ".local/share/raphael/cuda12/nvidia" / p / "lib") for p in ("cublas", "cudnn", "cuda_nvrtc")
@@ -19,13 +18,14 @@ CUDA_LIBS = [
 # Order of preference. large-v3 (~3 GB in int8) is only used if free VRAM allows it AND it is cached/downloadable.
 MODELS = [("large-v3", 3400), ("large-v3-turbo", 2000), ("medium", 1800), ("small", 900)]
 
-# --- passages arabes dans un discours français ---------------------------------
-SUSPECT_LOGPROB = -0.75  # en dessous : Whisper doute, souvent une citation arabe rendue en français
-DETECT_MIN_PROB = 0.55  # probabilité minimale pour croire detect_language quand il dit « ar »
-RETRY_MARGIN = 0.05  # l'arabe doit être plus probable que le français de ce petit écart
-TRANSLIT_SUSPECT = 0.35  # part des mots en arabe translittéré : passage arabe à retranscrire
-TRANSLIT_SURE = 0.5  # au-delà, le passage est arabe sans autre vérification
-RETRY_MAX = 150  # plafond de segments retranscrits par session (coût CPU borné)
+# Les passes de reprise (boucles, arabe translittéré) vivent dans `repair`, partagées avec le
+# distant : la politique est la même, seul le moteur qui retranscrit une plage change.
+SUSPECT_LOGPROB = repair.SUSPECT_LOGPROB
+DETECT_MIN_PROB = repair.DETECT_MIN_PROB
+RETRY_MARGIN = repair.RETRY_MARGIN
+TRANSLIT_SUSPECT = repair.TRANSLIT_SUSPECT
+TRANSLIT_SURE = repair.TRANSLIT_SURE
+RETRY_MAX = repair.RETRY_MAX
 
 
 def setup_env():
@@ -79,108 +79,63 @@ def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
     return ("large-v3-turbo" if prefer in (None, "large-v3-turbo", "large-v3") else prefer, "cpu", "int8")
 
 
-def dominant_language(segs: list[dict], detected: str) -> str:
-    """Langue du discours sur toute la durée. `info.language` ne regarde que les 30 premières
-    secondes : un cours en français qui s'ouvre sur une récitation passe pour de l'arabe."""
-    arabic = re.compile(r"[\u0600-\u06FF]")
-    ar = sum(max(0.0, s["end"] - s["start"]) for s in segs if arabic.search(s.get("text") or ""))
-    total = sum(max(0.0, s["end"] - s["start"]) for s in segs)
-    if not total:
-        return detected
-    return "ar" if ar / total >= 0.5 else ("fr" if detected == "ar" else detected)
+class LocalEngine:
+    """Moteur local des passes de reprise : faster-whisper sur le tableau numpy du WAV 16 kHz."""
 
+    def __init__(self, model, audio, *, sr: int = 16000):
+        self.model, self.audio, self.sr = model, audio, sr
 
-def _text_of(pieces) -> str:
-    return " ".join((p.text or "").strip() for p in pieces if (p.text or "").strip())
+    def chunk(self, start: float, end: float):
+        piece = self.audio[int(start * self.sr) : int(end * self.sr)]
+        return piece if len(piece) >= self.sr * 0.5 else None
 
-
-def _logprob_of(pieces) -> float:
-    """Moyenne pondérée par la durée : une longue phrase arabe pèse plus qu'un mot isolé."""
-    total = sum(max(0.01, p.end - p.start) for p in pieces)
-    if not total:
-        return -9.0
-    return sum(p.avg_logprob * max(0.01, p.end - p.start) for p in pieces) / total
-
-
-def translit_ratio(text: str) -> float:
-    """Share of the words that look like Arabic transliterated in Latin letters."""
-    words = [w for w in text.split() if w.strip('.,;:!?«»"()')]
-    if not words:
-        return 0.0
-    return sum(1 for w in words if is_translit_word(w)) / len(words)
-
-
-def is_loop(text: str) -> bool:
-    """Boucle de répétition de Whisper (« al-kufr, al-kufr, al-kufr… ») : un mot recopié sur tout le segment."""
-    words = [w.strip('.,;:!?«»"()').lower() for w in text.split()]
-    words = [w for w in words if w]
-    return len(words) >= 5 and len(set(words)) / len(words) <= 0.3
-
-
-def redo_loops(model, audio, segs: list[dict], *, sr: int = 16000, log=print) -> int:
-    """Retranscrit sans langue imposée les segments réduits à une boucle de répétition.
-
-    Ces boucles recouvrent souvent de la parole française : les forcer en arabe fait traduire le
-    français en arabe. Le segment est remplacé seulement si la nouvelle version n'est plus une boucle.
-    """
-    done = 0
-    for seg in segs:
-        if not is_loop(seg.get("text") or ""):
-            continue
-        chunk = audio[int(seg["start"] * sr) : int(seg["end"] * sr)]
-        if len(chunk) < sr * 0.5:
-            continue
-        try:
-            it, _info = model.transcribe(
-                chunk,
-                beam_size=5,
-                condition_on_previous_text=False,
-                temperature=(0.2, 0.4, 0.6),
-                compression_ratio_threshold=2.0,
-                word_timestamps=True,
-                vad_filter=False,
-            )
-            pieces = list(it)
-        except Exception as e:  # noqa: BLE001
-            log(_("  retry impossible at {seconds:.1f}s: {error}", seconds=seg["start"], error=e))
-            continue
-        text = _text_of(pieces)
-        if not text or is_loop(text):
-            continue
-        words = [
-            {"w": w.word.strip(), "s": round(seg["start"] + w.start, 2), "e": round(seg["start"] + w.end, 2)}
-            for p in pieces
-            for w in (p.words or [])
-            if w.word.strip()
+    def transcribe(
+        self,
+        chunk,
+        *,
+        language: str | None = None,
+        temperatures: tuple[float, ...] = (0.0,),
+        compression_ratio_threshold: float | None = None,
+    ) -> list[dict]:
+        options: dict = {
+            "beam_size": 5,
+            "condition_on_previous_text": False,
+            "temperature": temperatures,
+            "word_timestamps": True,
+            "vad_filter": False,
+        }
+        if compression_ratio_threshold is not None:
+            options["compression_ratio_threshold"] = compression_ratio_threshold
+        if language:
+            options["language"] = language
+        pieces, _info = self.model.transcribe(chunk, **options)
+        return [
+            {
+                "text": piece.text or "",
+                "avg_logprob": piece.avg_logprob,
+                "start": piece.start,
+                "end": piece.end,
+                "words": [
+                    {"w": word.word.strip(), "s": word.start, "e": word.end}
+                    for word in (piece.words or [])
+                    if (word.word or "").strip()
+                ],
+            }
+            for piece in pieces
         ]
-        seg.update(text=text, avg_logprob=round(_logprob_of(pieces), 3), recovered="loop")
-        if words:
-            seg["words"] = words
-        done += 1
-        log(_("  loop recovered at {seconds:.1f}s: {heard}", seconds=seg["start"], heard=text[:60]))
-    return done
+
+    def detect_language(self, chunk):
+        """("ar", 0.9) ou None : une détection qui échoue ne doit pas perdre la transcription."""
+        try:
+            code, prob = self.model.detect_language(chunk)[:2]
+        except Exception:  # noqa: BLE001
+            return None
+        return (code, prob)
 
 
-def looks_suspect(seg: dict) -> bool:
-    """Segment French on paper but probably a mis-transcribed Arabic passage.
-
-    Multilingual Whisper decides the language of each 30 s window: a Quran quotation inside a
-    French khutba is written as incoherent French (« ce qu'on appelle aran »). Three cheap signals:
-    already-Arabic text (nothing to do), a low average log-probability, or a long stretch with very
-    few words. Only the segments that pass this filter pay for a language detection.
-    """
-    text = (seg.get("text") or "").strip()
-    if not text or arabic_ratio(text) > 0.3 or is_loop(text):
-        return False
-    if (seg.get("end", 0.0) - seg.get("start", 0.0)) < 0.6:
-        return False
-    if len(text.split()) >= 3 and translit_ratio(text) >= TRANSLIT_SUSPECT:
-        return True
-    lp = seg.get("avg_logprob")
-    if lp is None or lp < SUSPECT_LOGPROB:
-        return True
-    words = text.split()
-    return (seg["end"] - seg["start"]) >= 3.0 and len(words) <= 4
+def redo_loops(model, audio, segs: list[dict], *, sr: int = 16000, log=print, max_segments=None) -> int:
+    """Boucles de répétition reprises sans langue imposée (voir `repair.redo_loops`)."""
+    return repair.redo_loops(LocalEngine(model, audio, sr=sr), segs, log=log, max_segments=max_segments)
 
 
 def recover_arabic(
@@ -190,81 +145,25 @@ def recover_arabic(
     *,
     sr: int = 16000,
     log=print,
-    max_segments: int = 40,
-    min_prob: float = 0.55,
-    margin: float = 0.05,
+    max_segments: int = repair.RETRY_MAX,
+    min_prob: float = repair.DETECT_MIN_PROB,
+    margin: float = repair.RETRY_MARGIN,
+    language: str = "",
 ) -> int:
-    """Retranscrit en arabe les segments que Whisper a rendus en français incohérent.
+    """Passages arabes repris en arabe forcé (voir `repair.recover_arabic`).
 
-    Le coût est borné : seuls les segments suspects (`looks_suspect`, plafonnés à `max_segments`)
-    passent par `detect_language`, et seuls ceux que le modèle reconnaît comme arabes sont
-    retranscrits. Un segment n'est remplacé que si l'arabe est plus probable que le français
-    (`avg_logprob` supérieur de `margin`) et si le texte obtenu est bien arabe. Les bornes du
-    segment sont conservées (le montage ne bouge pas) ; les mots horodatés sont ramenés au temps
-    de la session. Renvoie le nombre de segments remplacés.
+    `max_segments` borne le nombre de plages envoyées au moteur (une plage peut couvrir plusieurs
+    segments voisins).
     """
-    replaced, tried = 0, 0
-    for seg in segs:
-        if tried >= max_segments:
-            break
-        if not looks_suspect(seg):
-            continue
-        a, b = int(seg["start"] * sr), int(seg["end"] * sr)
-        chunk = audio[a:b]
-        if len(chunk) < sr * 0.5:
-            continue
-        tried += 1
-        # Arabe déjà écrit en lettres latines : la langue est connue, detect_language (qui se trompe
-        # sur ces passages mêlés) et l'écart de probabilité ne sont plus des garde-fous utiles.
-        sure = translit_ratio(seg.get("text") or "") >= TRANSLIT_SURE
-        if not sure:
-            try:
-                lang, prob = model.detect_language(chunk)[:2]
-            except Exception as e:  # noqa: BLE001 — une détection qui échoue ne doit pas perdre la transcription
-                log(_("  language detection impossible at {seconds:.1f}s: {error}", seconds=seg["start"], error=e))
-                continue
-            if lang != "ar" or prob < min_prob:
-                continue
-        try:
-            it, _info = model.transcribe(
-                chunk,
-                language="ar",
-                beam_size=5,
-                condition_on_previous_text=False,
-                temperature=0.0,
-                word_timestamps=True,
-                vad_filter=False,
-            )
-            pieces = list(it)
-        except Exception as e:  # noqa: BLE001
-            log(_("  Arabic retranscription impossible at {seconds:.1f}s: {error}", seconds=seg["start"], error=e))
-            continue
-        text = _text_of(pieces)
-        if arabic_ratio(text) < 0.5:
-            continue
-        lp = _logprob_of(pieces)
-        if not sure and lp <= float(seg.get("avg_logprob") or -9.0) + margin:
-            continue
-        words = [
-            {"w": w.word.strip(), "s": round(seg["start"] + w.start, 2), "e": round(seg["start"] + w.end, 2)}
-            for p in pieces
-            for w in (p.words or [])
-            if w.word.strip()
-        ]
-        seg.update(text=text, avg_logprob=round(lp, 3), recovered="ar")
-        if words:
-            seg["words"] = words
-        replaced += 1
-        log(_("  Arabic passage recovered at {seconds:.1f}s: {heard}", seconds=seg["start"], heard=text[:60]))
-    if replaced:
-        log(
-            _(
-                "Arabic passages retranscribed: {replaced} (out of {tried} segments examined)",
-                replaced=replaced,
-                tried=tried,
-            )
-        )
-    return replaced
+    return repair.recover_arabic(
+        LocalEngine(model, audio, sr=sr),
+        segs,
+        log=log,
+        max_ranges=max_segments,
+        min_prob=min_prob,
+        margin=margin,
+        language=language,
+    )
 
 
 def transcribe(
@@ -274,13 +173,15 @@ def transcribe(
     log=print,
     arabic_retry: bool | None = None,
     hotwords: str | None = None,
+    source: dict | None = None,
 ) -> dict:
     # Réglage « Local / Distant » (Réglages → Transcription) : le distant rend exactement la même
     # forme de résultat, l'aval ne sait pas d'où il vient. Aucun repli silencieux vers le local.
     from . import remote
 
     if remote.enabled():
-        return remote.transcribe(wav, out_json, log=log, arabic_retry=arabic_retry, hotwords=hotwords)
+        return remote.transcribe(wav, out_json, log=log, arabic_retry=arabic_retry, hotwords=hotwords, source=source)
+
     from faster_whisper import WhisperModel
 
     name, device, ctype = pick_model(prefer, log)
@@ -329,26 +230,32 @@ def transcribe(
         segs.append(seg)
         if len(segs) % 20 == 0:
             log(f"  … {len(segs)} segments, {s.end:.0f}/{info.duration:.0f}s")
+    # La langue est mesurée sur tous les segments, comme en distant : `info.language` ne regarde
+    # que les 30 premières secondes (une khutba ouverte par la Fatiha passerait pour de l'arabe).
+    lang, prob = measure_language(segs, info.language)
     res = {
         "model": name,
         "device": device,
         "compute_type": ctype,
-        "language": info.language,
-        "language_probability": round(info.language_probability, 3),
+        "language": lang,
+        "language_probability": prob,
         "duration": info.duration,
         "elapsed_s": round(time.time() - t0, 1),
         "hotwords": bool(hw),
         "segments": segs,
     }
-    # Une khutba en français peut citer le Coran : dans ce cas seulement, les passages que Whisper
-    # a rendus en français incohérent sont retentés en arabe forcé.
+    if source:
+        res["source"] = source
+    # Deux passes de reprise, les mêmes qu'à distance : boucles de répétition, puis passages arabes
+    # que Whisper a rendus en français incohérent ou en translittération.
     retry = settings.arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
     if retry:
-        res["loops_redone"] = redo_loops(model, audio, segs, log=log)
-    if retry and dominant_language(segs, info.language) != "ar":
-        res["arabic_recovered"] = recover_arabic(
-            model, audio, segs, log=log, max_segments=RETRY_MAX, min_prob=DETECT_MIN_PROB, margin=RETRY_MARGIN
+        engine = LocalEngine(model, audio)
+        res["loops_redone"] = repair.redo_loops(engine, segs, log=log, max_segments=repair.LOOP_RETRY_MAX)
+        res["arabic_recovered"] = repair.recover_arabic(
+            engine, segs, log=log, max_ranges=RETRY_MAX, min_prob=DETECT_MIN_PROB, margin=RETRY_MARGIN, language=lang
         )
+
     Path(out_json).write_text(json.dumps(res, ensure_ascii=False, indent=1))
     log(_("Transcription: {count} segments in {seconds} s", count=len(segs), seconds=res["elapsed_s"]))
     return res

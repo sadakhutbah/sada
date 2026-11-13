@@ -51,7 +51,7 @@ def test_session_header_follows_kind_and_mosque():
 
 
 def test_dominant_language_over_whole_talk():
-    from sada.pipeline.transcribe import dominant_language
+    from sada.pipeline.language import dominant_language
 
     def seg(s, e, t):
         return {"start": s, "end": e, "text": t}
