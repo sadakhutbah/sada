@@ -96,6 +96,14 @@ export type HabillageOptions = {
   outro_on: boolean; outro_text: string; outro_link: string; outro_s: number;
 };
 
+/** Completeness of one subtitle track: `complete` only when the whole sermon is known in that language. */
+export type TrackState = { done: number; total: number; complete: boolean };
+/** Background completion of the subtitle tracks (translations missing from an older session). */
+export type TranslationJob = {
+  status: "" | "en_cours" | "pret" | "echec";
+  progress: number; error: string; started_at: string; finished_at: string;
+};
+
 export type Habillage = {
   options: HabillageOptions;
   status: "" | "en_cours" | "pret" | "echec";
@@ -103,6 +111,9 @@ export type Habillage = {
   video_ready: boolean; video_v: number; size_mb: number | null; preview_ready: boolean; preview_v: number;
   /** Langues des .srt alignés sur la vidéo habillée (aucune tant qu'elle n'est pas rendue). */
   subtitles: string[];
+  /** Complétude de chaque piste : une piste partielle reste téléchargeable, l'écran le dit. */
+  subtitles_state: Record<string, TrackState>;
+  translation: TranslationJob;
   has_source: boolean; has_logo: boolean; can_edit: boolean; mosque: string;
   colors: { green: string; gold: string };
 };
@@ -167,6 +178,13 @@ export const api = {
     ecrire<any>("POST", `/sermons/${kid}/subtitles`, { start: String(start), end: String(end), text }),
   retirerSousTitre: (kid: number, sid: number) => ecrire<any>("POST", `/sermons/${kid}/subtitles/${sid}/delete`),
   habillage: (kid: number) => demande<Habillage>(`/sermons/${kid}/habillage`),
+  /** État des pistes (complétude + traduction de fond) : ce que l'écran interroge pendant l'attente. */
+  etatSousTitres: (kid: number) =>
+    demande<{ languages: Record<string, TrackState>; translation: TranslationJob }>(
+      `/sermons/${kid}/habillage/sous-titres`),
+  /** Traduit en fond les passages manquants ; rend la main aussitôt (l'état suit par sondage). */
+  traduireSousTitres: (kid: number) =>
+    ecrire<Habillage & { message: string }>("POST", `/sermons/${kid}/habillage/sous-titres`),
   habillageApercu: (kid: number, options: HabillageOptions) =>
     ecrire<Habillage & { message: string }>("POST", `/sermons/${kid}/habillage/apercu`, { options }),
   habillageLancer: (kid: number, options: HabillageOptions) =>

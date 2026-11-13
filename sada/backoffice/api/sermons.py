@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
-from .. import auth, content, db, habillage, import_video, importer, traitement
+from .. import auth, content, db, habillage, import_video, importer, traduction, traitement
 from ..context import CtxDep, Invalid, NotFound, imam_filter, khutba_or_404
 from .common import _a_table, _ok
 
@@ -123,6 +123,7 @@ def sermon(ctx: CtxDep, kid: int):
     clips = db.all_(ctx.conn, "SELECT * FROM clips WHERE khutba_id = ? ORDER BY idx", kid)
     notes = SessionOutput(k["output_dir"]).notes
     imam = db.one(ctx.conn, "SELECT display_name FROM users WHERE id = ?", k["imam_id"]) if k["imam_id"] else None
+    titres = habillage.langues(ctx.conn, k, data)
     return {
         "sermon": k,
         "segments": segments,
@@ -136,8 +137,11 @@ def sermon(ctx: CtxDep, kid: int):
         "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
         # Dressed version ready: it becomes the video shown, the raw one stays available as history.
         "dressed": habillage.version_habillee(ctx.conn, k),
-        # Languages the player can show: what the transcript holds, dressed video or not.
-        "subtitles": habillage.langues_disponibles(ctx.conn, k),
+        # Languages the player can show: what the transcript holds, dressed video or not. A language
+        # still being translated is served with the passages it already has, labelled in the menu.
+        "subtitles": list(titres["passages"]),
+        "subtitles_state": titres["languages"],
+        "translation": traduction.etat(k),
         # Clip chosen by hand: possible only if a source video can be cut (same circuit as regeneration).
         "manual_clip": _manual_clip(ctx, k, data),
     }

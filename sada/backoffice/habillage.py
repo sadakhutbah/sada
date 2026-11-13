@@ -19,8 +19,7 @@ from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import habillage as rendu
 from ..pipeline import subtitles as sous_titres
-from ..pipeline import verses
-from . import db
+from . import db, traduction
 
 #: réglages qui décrivent la mosquée et pas une vidéo : retenus pour la prochaine fois
 IDENTITE = (
@@ -213,6 +212,7 @@ def etat(conn, k: dict, m: dict) -> dict:
     pret = bool(h and video.exists())
     apercu = fichier_apercu(k)
     brand, logo = marque(m)
+    sous_titres_vue = langues(conn, k)
     return {
         "options": options,
         "status": (h or {}).get("status") or "",
@@ -222,7 +222,11 @@ def etat(conn, k: dict, m: dict) -> dict:
         "finished_at": (h or {}).get("finished_at") or "",
         "duration_s": (h or {}).get("duration_s"),
         "video_ready": pret,
-        "subtitles": langues_disponibles(conn, k) if pret else [],
+        # Pistes téléchargeables : seulement quand la vidéo habillée existe (le .srt est calé sur elle).
+        # La complétude de chaque langue, elle, se lit toujours : elle décide du bouton de traduction.
+        "subtitles": list(sous_titres_vue["passages"]) if pret else [],
+        "subtitles_state": sous_titres_vue["languages"],
+        "translation": traduction.etat(k),
         "size_mb": round(video.stat().st_size / 1048576, 1) if pret else None,
         "video_v": int(video.stat().st_mtime) if pret else 0,
         "preview_ready": apercu.exists(),
@@ -259,17 +263,25 @@ def sans_chemin(message: str) -> str:
 # ------------------------------------------------------------------ sous-titres (.srt, à part sur YouTube)
 
 
-def pistes(conn, k: dict) -> dict[str, list[dict]]:
-    """Passages par langue de la vidéo (corrections et sous-titres ajoutés compris), dans le temps de la session."""
-    from . import content
+def langues(conn, k: dict, data: dict | None = None) -> dict:
+    """Passages et complétude de chaque piste, en une lecture de la session (`data` évite de la relire)."""
+    return traduction.plan(conn, k, data)
 
-    data = content.load(conn, k)
-    return sous_titres.tracks(data["segments"], verses.shown(data["verses"], ambiguous=True), data["translations"])
+
+def pistes(conn, k: dict) -> dict[str, list[dict]]:
+    """Passages par langue de la vidéo (corrections et sous-titres ajoutés compris), dans le temps de la session.
+
+    Chaque piste couvre tout le sermon : paroles de la langue telles quelles + tout le reste traduit.
+    """
+    return langues(conn, k)["passages"]
 
 
 def langues_disponibles(conn, k: dict) -> list[str]:
-    """Langues de la transcription : les .srt (téléchargés) comme les .vtt (lus par le lecteur) en découlent."""
-    return list(pistes(conn, k))
+    """Langues servies par les .srt (téléchargés) et les .vtt (lus par le lecteur) : celles qui ont un passage.
+
+    Une langue peut être servie avant d'être complète (traduction en cours) : `langues()` dit où elle en est.
+    """
+    return list(langues(conn, k)["passages"])
 
 
 def alignements(conn, k: dict) -> dict[str, float]:
@@ -279,9 +291,9 @@ def alignements(conn, k: dict) -> dict[str, float]:
     return {"habille": decalage_carton(conn, k) - debut, "brut": -debut}
 
 
-def sous_titres_srt(conn, k: dict, langue: str, brut: bool = False) -> tuple[str, bytes]:
+def sous_titres_srt(conn, k: dict, langue: str, brut: bool = False, passages: dict | None = None) -> tuple[str, bytes]:
     """(nom du fichier, contenu UTF-8). Une langue sans sous-titre lève ValueError, avec un message montrable."""
-    disponibles = pistes(conn, k)
+    disponibles = passages if passages is not None else pistes(conn, k)
     if langue not in disponibles:
         raise ValueError(_("No subtitles in this language for this video."))
     texte = sous_titres.srt(sous_titres.cues(disponibles[langue], alignements(conn, k)["brut" if brut else "habille"]))
@@ -290,14 +302,14 @@ def sous_titres_srt(conn, k: dict, langue: str, brut: bool = False) -> tuple[str
     return nom_sous_titres(k, langue, brut), texte.encode("utf-8")
 
 
-def sous_titres_vtt(conn, k: dict, langue: str, brut: bool = False) -> bytes:
+def sous_titres_vtt(conn, k: dict, langue: str, brut: bool = False, passages: dict | None = None) -> bytes:
     """Le WebVTT d'une langue, lu sur place par le `<track>` du lecteur.
 
     Il ne dépend pas de la vidéo habillée : dès que la transcription existe, le lecteur peut afficher
     les sous-titres (`brut` : alignés sur la vidéo d'origine, sinon sur la vidéo habillée).
     Une langue sans sous-titre lève ValueError ; une langue connue dont plus rien ne tombe dans la
     vidéo rend un fichier vide valide, qu'un lecteur accepte sans erreur."""
-    disponibles = pistes(conn, k)
+    disponibles = passages if passages is not None else pistes(conn, k)
     if langue not in disponibles:
         raise ValueError(_("No subtitles in this language for this video."))
     return sous_titres.vtt(

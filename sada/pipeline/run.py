@@ -116,22 +116,19 @@ def process(
     log(_("notes -> {path} (summary: {method})", path=o.notes, method=extra["summary"].get("method")))
     manifest = []
     o.clips.mkdir(exist_ok=True)
-    # Extraits d'abord, traduction ensuite : une khutba de 20 minutes devient 1-3 clips d'environ
-    # une minute, traduire toute la séance brûlerait le modèle pour du texte que personne ne lira.
-    # La sélection est décidée par sada.pipeline.select : le code génère les candidats (fenêtres
-    # 30-75 s propres), un petit modèle les note par lots de 5, le code retient les N meilleurs
-    # espacés — repli heuristique sans modèle. Le résumé ne porte plus les bornes des clips.
+    # Extraits d'abord, traduction ensuite : la sélection est décidée par sada.pipeline.select :
+    # le code génère les candidats (fenêtres 30-75 s propres), un petit modèle les note par lots
+    # de 5, le code retient les N meilleurs espacés — repli heuristique sans modèle.
     wins = []
     if nclips:
         wins = selmod.select_clips(segs, res["duration"], nclips, use_llm=use_llm, log=log)
     if nclips and not wins:
         log(_("no publishable clip: nothing is edited"))
-    # No clips to subtitle: translating the session would burn the model for text nobody reads.
-    trs = (
-        trmod.translate_session(segs, ms, o.translations, use_llm, log=log, only=[(w["start"], w["end"]) for w in wins])
-        if nclips
-        else {"seg": {}, "verse_fr": {}}
-    )
+    # Traduction des deux sens : la piste `fr` couvre tout le sermon en français (paroles
+    # françaises + arabe traduit), la piste `ar` tout le sermon en arabe (arabe + français traduit).
+    # Les caches par session ne retraduisent jamais un segment : relancer le pipeline est gratuit.
+    tracks_tr = trmod.translate_tracks(segs, ms, o.translations, o.translations_ar, use_llm, log=log)
+    trs = tracks_tr[0]
     if nclips:
         vsrc, voff = src, start
         if clip_video:

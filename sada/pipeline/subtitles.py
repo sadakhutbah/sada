@@ -1,8 +1,16 @@
-"""SRT and WebVTT subtitles of the long-form video: one file per language.
+"""SRT and WebVTT subtitles of the long-form video: one file per language, the whole sermon in each.
 
 YouTube takes SRT (or WebVTT), never the ASS burned into the clips: these files are plain text built
 from the timestamped segments the pipeline already produced (`transcript.json`, `translations.json`,
-`verses.json`), with the corrections made in the back-office. Nothing is written into the picture.
+`translations_ar.json`, `verses.json`), with the corrections made in the back-office. Nothing is
+written into the picture.
+
+A track of language X covers the WHOLE sermon said in X: what was said in X as it was said, and
+everything said in the other language translated into X. `ar` = Arabic speech + French speech
+translated into Arabic; `fr` = French speech + Arabic speech translated into French. A passage
+whose translation is not known yet is left out (never approximated) and the track is reported as
+incomplete (`plan`), so the back-office can show « translation running » instead of a finished file.
+
 The same cues are served as SRT (to upload to YouTube) and as WebVTT (read in place by the player's
 `<track>`), so both files stay aligned on the same transcript.
 
@@ -25,6 +33,8 @@ import re
 
 from ..text import is_arabic
 from . import clips as clipmod
+from .translate import segment_ar, verse_fr
+from .verses import recited_arabic
 
 #: a subtitle line holds about 42 characters (YouTube's own guidance), two lines per cue
 WIDTH = 42
@@ -226,34 +236,143 @@ def vtt(cues: list[dict]) -> str:
 # ------------------------------------------------------------------ languages
 
 
-def tracks(segments: list[dict], matches: list[dict], translations: dict) -> dict[str, list[dict]]:
-    """Passages per language, in session time, for the segments the pipeline already knows.
+def _mid(seg: dict) -> float:
+    return (float(seg["start"]) + float(seg["end"])) / 2
 
-    `ar`: what was said, as transcribed (and corrected);
-    `fr`: what the clips display — French speech, the translation of Arabic speech, the Hamidullah
-    verse; a passage without translation is left out rather than approximated.
-    A language produced by a later translation step would be added here (and only then offered by
-    the back-office), on the same pattern.
+
+def _verse_fr(translations: dict, m: dict) -> str:
+    """Hamidullah translation of the verse (the excerpt picked for the recited part), never a model's."""
+    try:
+        return verse_fr(translations, m) or ""
+    except (KeyError, TypeError):
+        return str(m.get("verse_fr") or "")
+
+
+def units(segments: list[dict], matches: list[dict], translations: dict, translated: dict | None = None) -> list[dict]:
+    """Stretches of speech of the sermon, each with its text in every language it can be read in.
+
+    A unit is `{"start", "end", "ar", "fr", "ar_words", "fr_words", "verse", "coran"}`; `ar`/`fr` is
+    None when that language does not know the passage yet (untranslated speech, or a Quranic passage
+    deliberately left out). `translated` is the French→Arabic cache (`translations_ar.json`).
+
+    A detected verse is ONE unit over the segments it covers: Arabic side the exact Quranic text
+    (`recited_arabic`), French side the reference translation — a model never translates a verse.
     """
-    arabic: list[dict] = []
-    french: list[dict] = []
-    for segment in segments:
-        shown = clipmod.subtitle(segment, matches, translations)
-        text = str(segment["text"]).strip()
-        passage = {"start": float(segment["start"]), "end": float(segment["end"]), "text": text}
-        if segment.get("words"):
-            passage["words"] = segment["words"]
+    translated = translated or {}
+    order = sorted(matches, key=lambda m: (float(m["start"]), float(m["end"])))
+    taken = [False] * len(segments)
+    out: list[dict] = []
+    for m in order:
+        a, b = float(m["start"]) - 0.3, float(m["end"]) + 0.3
+        picked = []
+        for i, seg in enumerate(segments):
+            if taken[i]:
+                continue
+            span = max(1e-6, float(seg["end"]) - float(seg["start"]))
+            overlap = min(float(seg["end"]), b) - max(float(seg["start"]), a)
+            if a <= _mid(seg) <= b or overlap / span > 0.5:
+                picked.append(i)
+        if not picked:
+            continue
+        for i in picked:
+            taken[i] = True
+        heard = str(m.get("heard") or "")
+        exact = recited_arabic(m) if (m.get("verse_text") and heard) else ""
+        if not exact:  # older verses.json without the Quranic text: the transcription is all we have
+            exact = " ".join(str(segments[i].get("text") or "").strip() for i in picked).strip()
+        out.append(
+            {
+                "start": min(float(segments[i]["start"]) for i in picked),
+                "end": max(float(segments[i]["end"]) for i in picked),
+                "ar": exact or None,
+                "fr": _verse_fr(translations, m) or None,
+                "ar_words": None,
+                "fr_words": None,
+                "verse": m.get("ref"),
+                "coran": False,
+            }
+        )
+    for i, seg in enumerate(segments):
+        if taken[i]:
+            continue
+        text = str(seg.get("text") or "").strip()
+        if not text:
+            continue
+        words = seg.get("words")
+        unit = {
+            "start": float(seg["start"]),
+            "end": float(seg["end"]),
+            "ar": None,
+            "fr": None,
+            "ar_words": None,
+            "fr_words": None,
+            "verse": None,
+            "coran": False,
+        }
         if is_arabic(text):
-            arabic.append(passage)
-        if shown.get("fr"):
-            french.append(
-                {
-                    "start": passage["start"],
-                    "end": passage["end"],
-                    "text": shown["fr"],
-                    # word timestamps belong to the original text: a translation has none
-                    **({"words": passage["words"]} if passage.get("words") and shown["fr"].strip() == text else {}),
-                }
-            )
-    produced = {"ar": arabic, "fr": french}
-    return {code: passages for code, passages in produced.items() if passages}
+            unit["ar"] = text
+            unit["ar_words"] = words
+            shown = clipmod.subtitle(seg, [], translations)
+            if shown.get("fr"):
+                unit["fr"] = shown["fr"]
+                # word timestamps belong to the original text: a translation has none
+                if words and str(shown["fr"]).strip() == text:
+                    unit["fr_words"] = words
+            elif shown.get("kind") == "recitation":
+                # unmatched Quranic quotation: nothing on screen rather than an improvised translation
+                unit["coran"] = True
+        else:
+            unit["fr"] = text
+            unit["fr_words"] = words
+            unit["ar"] = (segment_ar(translated, seg) or {}).get("ar") or None
+        out.append(unit)
+    return sorted(out, key=lambda u: (u["start"], u["end"]))
+
+
+def _passages(units_: list[dict]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {"ar": [], "fr": []}
+    for unit in units_:
+        for code in ("ar", "fr"):
+            text = unit[code]
+            if not text:
+                continue
+            passage = {"start": unit["start"], "end": unit["end"], "text": text}
+            if unit.get(f"{code}_words"):
+                passage["words"] = unit[f"{code}_words"]
+            out[code].append(passage)
+    return {code: passages for code, passages in out.items() if passages}
+
+
+def _languages(units_: list[dict]) -> dict[str, dict]:
+    """How much of each track is known: `{"done", "total", "complete"}` per language."""
+    out = {}
+    for code in ("ar", "fr"):
+        # an unmatched Quranic quotation has no French text BY CHOICE: it must not keep a track
+        # « incomplete » for ever, the human corrects it from the transcript when they recognise it.
+        done = sum(1 for u in units_ if u[code] or (code == "fr" and u.get("coran")))
+        out[code] = {"done": done, "total": len(units_), "complete": bool(units_) and done == len(units_)}
+    return out
+
+
+def plan(segments: list[dict], matches: list[dict], translations: dict, translated: dict | None = None) -> dict:
+    """Everything the subtitles need from the session: passages per language and completeness.
+
+    `segments` are session-time segments (corrections applied), `matches` the verses to show,
+    `translations` the Arabic→French cache, `translated` the French→Arabic one. One read, one answer,
+    so a caller that needs both never builds the units twice.
+    """
+    units_ = units(segments, matches, translations, translated)
+    return {"passages": _passages(units_), "languages": _languages(units_), "units": len(units_)}
+
+
+def tracks(segments: list[dict], matches: list[dict], translations: dict, translated: dict | None = None) -> dict:
+    """Passages per language, in session time: the whole sermon in each language it can be read in.
+
+    Only the languages that hold at least one cue are returned; `plan` gives the completeness.
+    """
+    return plan(segments, matches, translations, translated)["passages"]
+
+
+def coverage(segments: list[dict], matches: list[dict], translations: dict, translated: dict | None = None) -> dict:
+    """`{"ar": {"done", "total", "complete"}, "fr": …}`: a language is complete only when all of it is known."""
+    return plan(segments, matches, translations, translated)["languages"]

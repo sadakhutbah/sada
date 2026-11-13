@@ -111,11 +111,19 @@ export default function SermonDetail() {
   // Subtitle tracks of the video on screen: the transcript itself, WebVTT read in place by the player.
   // Times follow the file being played — the dressed video carries its opening card, the original
   // recording wants `brut` — so no offset is guessed here. No track at all before a transcript exists.
-  const pistes = (d.subtitles ?? []).map((code: string) => ({
-    langue: code,
-    libelle: t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() }),
-    url: `/api/v1/sermons/${k.id}/habillage/sous-titres/${code}.vtt${habillee ? "" : "?brut=1"}`,
-  }));
+  // A track still being translated is readable (it has the passages known so far) and says so in the menu.
+  const etats = d.subtitles_state ?? {};
+  const pistes = (d.subtitles ?? []).map((code: string) => {
+    const piste = etats[code];
+    const partiel = piste && !piste.complete
+      ? ` · ${t("habillage.subtitles.partial", { done: piste.done, total: piste.total })}`
+      : "";
+    return {
+      langue: code,
+      libelle: t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() }) + partiel,
+      url: `/api/v1/sermons/${k.id}/habillage/sous-titres/${code}.vtt${habillee ? "" : "?brut=1"}`,
+    };
+  });
   const ici = avecVideo ? () => Math.max(0, (video.current?.currentTime ?? tps + decalage) - decalage) : null;
 
   return (

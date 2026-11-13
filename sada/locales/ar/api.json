@@ -133,5 +133,11 @@
   "Password of “{username}” changed.": "تمّ تغيير كلمة مرور «{username}».",
   "Unknown account.": "حساب غير معروف.",
   "Choose a password different from the current one.": "اختر كلمة مرور مختلفة عن الحالية.",
-  "No subtitles in this language for this video.": "لا ترجمة نصّية بهذه اللغة لهذا الفيديو."
+  "No subtitles in this language for this video.": "لا ترجمة نصّية بهذه اللغة لهذا الفيديو.",
+  "Translation started: the track will be complete in a moment.": "انطلقت الترجمة: ستكتمل المسار بعد قليل.",
+  "subtitles are already being translated for this video": "ترجمة هذا الفيديو قيد الإنجاز بالفعل",
+  "translation incomplete: the language model is not available": "الترجمة غير مكتملة: نموذج اللغة غير متاح",
+  "translation incomplete: the model did not answer for every passage": "الترجمة غير مكتملة: لم يجب النموذج عن كل المقطع",
+  "translation: {count} French segment(s) without Arabic translation": "الترجمة: {count} مقطعًا فرنسيًا بلا ترجمة عربية",
+  "translation: {segments} French segment(s) into Arabic via {model}": "الترجمة: {segments} مقطعًا فرنسيًا إلى العربية عبر {model}"
 }

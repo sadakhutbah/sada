@@ -44,6 +44,7 @@ def load(conn, k: dict) -> dict:
     tr = o.read(o.transcript, {"segments": []})
     segs = copy.deepcopy(tr.get("segments", []))
     trans = o.read(o.translations, translate.empty())
+    trans_ar = o.read(o.translations_ar, translate.empty_ar())
     ms = o.read(o.verses, [])
     corr = corrections(conn, k["id"])
     for i, s in enumerate(segs):
@@ -63,6 +64,7 @@ def load(conn, k: dict) -> dict:
     return {
         "segments": segs,
         "translations": trans,
+        "translations_ar": trans_ar,
         "verses": ms,
         "corrections": corr,
         "duration": tr.get("duration"),

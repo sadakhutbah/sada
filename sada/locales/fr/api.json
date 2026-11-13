@@ -133,5 +133,11 @@
   "Password of “{username}” changed.": "Mot de passe de « {username} » modifié.",
   "Unknown account.": "Compte inconnu.",
   "Choose a password different from the current one.": "Choisissez un mot de passe différent de l'actuel.",
-  "No subtitles in this language for this video.": "Pas de sous-titres dans cette langue pour cette vidéo."
+  "No subtitles in this language for this video.": "Pas de sous-titres dans cette langue pour cette vidéo.",
+  "Translation started: the track will be complete in a moment.": "Traduction lancée : la piste sera complète dans un instant.",
+  "subtitles are already being translated for this video": "les sous-titres de cette vidéo sont déjà en cours de traduction",
+  "translation incomplete: the language model is not available": "traduction incomplète : le modèle de langue n'est pas disponible",
+  "translation incomplete: the model did not answer for every passage": "traduction incomplète : le modèle n'a pas répondu pour tous les passages",
+  "translation: {count} French segment(s) without Arabic translation": "traduction : {count} segment(s) français sans traduction arabe",
+  "translation: {segments} French segment(s) into Arabic via {model}": "traduction : {segments} segment(s) français vers l'arabe via {model}"
 }

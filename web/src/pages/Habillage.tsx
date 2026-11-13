@@ -31,19 +31,24 @@ export default function Habillage() {
     api.habillage(kid).then((e) => { setEtat(e); setO(e.options); }).catch((e) => setErreur(e?.message ?? t("common.error")));
   }, [kid, t]);
 
-  // While rendering, the status is polled every 2 s; the form keeps what is being typed.
-  const enCours = etat?.status === "en_cours";
+  // While rendering (or translating the subtitle tracks), the status is polled every 2 s; the form
+  // keeps what is being typed.
+  const renduEnCours = etat?.status === "en_cours";
+  const traductionEnCours = etat?.translation?.status === "en_cours";
   useEffect(() => {
-    if (!enCours) return;
+    if (!renduEnCours && !traductionEnCours) return;
     const h = window.setInterval(() => { api.habillage(kid).then(setEtat).catch(() => {}); }, 2000);
     return () => window.clearInterval(h);
-  }, [enCours, kid]);
+  }, [renduEnCours, traductionEnCours, kid]);
+
+  /** Relit l'état après une action (traduction lancée), sans toucher au formulaire en cours. */
+  const rafraichir = () => { api.habillage(kid).then(setEtat).catch(() => {}); };
 
   if (erreur) return <p className="text-[#7a1f20]">{erreur}</p>;
   if (!etat || !o) return <p className="text-muted">{t("common.loading")}</p>;
 
   const lecture = !etat.can_edit;
-  const bloque = lecture || !etat.has_source || occupe !== "" || enCours;
+  const bloque = lecture || !etat.has_source || occupe !== "" || renduEnCours;
   const maj = (champs: Partial<HabillageOptions>) => setO({ ...o, ...champs });
 
   async function agir(quoi: "apercu" | "rendu", e?: FormEvent) {
@@ -239,6 +244,7 @@ export default function Habillage() {
           </Card>
 
           {etat.status !== "" && <Statut etat={etat} kid={kid} />}
+          {etat.has_source && <SousTitres etat={etat} kid={kid} onChange={rafraichir} />}
         </div>
       </div>
     </div>
@@ -329,43 +335,107 @@ function Statut({ etat, kid }: { etat: Etat; kid: number }) {
       )}
       {etat.status === "echec" && <p className="m-0 text-[0.9rem] text-[#7a1f20]">{t("habillage.failed", { e: etat.error })}</p>}
       {etat.video_ready && (
-        <>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <a href={`/api/v1/sermons/${kid}/habillage/video.mp4?download=1`}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-[9px] border border-leaf bg-leaf px-4 py-2.5 font-semibold text-night no-underline hover:bg-leaf-2">
-              ↓ {t("habillage.download")}
-            </a>
-            {etat.size_mb !== null && <span className="text-[0.85rem] text-muted tabular-nums">{t("habillage.size_mb", { n: etat.size_mb })}</span>}
-          </div>
-          {etat.subtitles.length > 0 && (
-            <div className="grid gap-2 border-t border-line pt-3">
-              <p className="m-0 text-[0.95rem] font-semibold text-deeper">{t("habillage.subtitles.title")}</p>
-              <div className="flex flex-wrap items-center gap-2">
-                {etat.subtitles.map((code) => (
-                  <a key={code} href={`/api/v1/sermons/${kid}/habillage/sous-titres/${code}.srt`}
-                    className="inline-flex min-h-11 items-center gap-1.5 rounded-[9px] border border-line bg-white px-3 py-2 text-[0.9rem] font-semibold text-deep no-underline hover:border-leaf hover:bg-paper-2">
-                    ↓ {t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() })}
-                    <span className="text-[0.78rem] font-normal text-muted">.srt</span>
-                  </a>
-                ))}
-              </div>
-              <p className="m-0 text-[0.82rem] text-muted">{t("habillage.subtitles.help")}</p>
-              <p className="m-0 text-[0.8rem] text-muted">
-                {t("habillage.subtitles.original")}{" "}
-                {etat.subtitles.map((code, rang) => (
-                  <span key={code}>
-                    {rang > 0 && " · "}
-                    <a href={`/api/v1/sermons/${kid}/habillage/sous-titres/${code}.srt?brut=1`}
-                      className="underline decoration-leaf underline-offset-4 hover:text-deep">
-                      {t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() })}
-                    </a>
-                  </span>
-                ))}
-              </p>
-            </div>
-          )}
-        </>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <a href={`/api/v1/sermons/${kid}/habillage/video.mp4?download=1`}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-[9px] border border-leaf bg-leaf px-4 py-2.5 font-semibold text-night no-underline hover:bg-leaf-2">
+            ↓ {t("habillage.download")}
+          </a>
+          {etat.size_mb !== null && <span className="text-[0.85rem] text-muted tabular-nums">{t("habillage.size_mb", { n: etat.size_mb })}</span>}
+        </div>
       )}
+    </Card>
+  );
+}
+
+/** Subtitle tracks: the .srt of the dressed video and the background translation that fills the
+ *  language not spoken yet. A track is offered as soon as it has passages, with its count, so a
+ *  partial track is never mistaken for a complete one. */
+function SousTitres({ etat, kid, onChange }: { etat: Etat; kid: number; onChange: () => void }) {
+  const { t } = useTranslation();
+  const [envoi, setEnvoi] = useState(false);
+  const [note, setNote] = useState("");
+  const etats = etat.subtitles_state ?? {};
+  // Une langue est partielle tant que tout le sermon n'y est pas traduit : c'est ce qui ouvre le
+  // bouton de traduction, avant même que la vidéo habillée existe (la piste du lecteur marche déjà).
+  const partielles = Object.entries(etats).filter(([, piste]) => !piste.complete).map(([code]) => code);
+  const enCours = etat.translation.status === "en_cours";
+  // Rien à dire quand tout est traduit et qu'aucune vidéo habillée n'existe encore : pas de carte vide.
+  if (!etat.subtitles.length && !partielles.length && !enCours && etat.translation.status !== "echec") return null;
+  const traduire = async () => {
+    setEnvoi(true);
+    setNote("");
+    try {
+      await api.traduireSousTitres(kid);
+      onChange();
+    } catch (e: any) {
+      setNote(e?.message ?? t("common.error"));
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  return (
+    <Card className="grid gap-3">
+
+      <div className="grid gap-2">
+        <p className="m-0 text-[0.95rem] font-semibold text-deeper">{t("habillage.subtitles.title")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {etat.subtitles.map((code) => {
+            const piste = etat.subtitles_state?.[code];
+            return (
+              <a key={code} href={`/api/v1/sermons/${kid}/habillage/sous-titres/${code}.srt`}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-[9px] border border-line bg-white px-3 py-2 text-[0.9rem] font-semibold text-deep no-underline hover:border-leaf hover:bg-paper-2">
+                ↓ {t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() })}
+                <span className="text-[0.78rem] font-normal text-muted">.srt</span>
+                {piste && !piste.complete && (
+                  <span className="rounded-full bg-paper-2 px-2 py-0.5 text-[0.72rem] font-semibold text-muted tabular-nums">
+                    {t("habillage.subtitles.partial", { done: piste.done, total: piste.total })}
+                  </span>
+                )}
+              </a>
+            );
+          })}
+        </div>
+        {enCours && (
+          <div className="grid gap-1.5" role="status">
+            <p className="m-0 text-[0.85rem] text-muted">
+              {t("habillage.subtitles.translating", { n: Math.round(etat.translation.progress * 100) })}
+            </p>
+            <div className="h-1.5 w-full max-w-[16rem] overflow-hidden rounded-full bg-paper-2">
+              <div className="h-full rounded-full bg-leaf transition-[width] duration-700"
+                style={{ width: `${Math.max(3, Math.round(etat.translation.progress * 100))}%` }} />
+            </div>
+          </div>
+        )}
+        {etat.translation.status === "echec" && etat.translation.error && (
+          <p className="m-0 text-[0.85rem] text-[#7a1f20]">
+            {t("habillage.subtitles.failed", { e: etat.translation.error })}
+          </p>
+        )}
+        {partielles.length > 0 && !enCours && etat.can_edit && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={traduire} disabled={envoi}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-[9px] border border-leaf bg-white px-3 py-2 text-[0.9rem] font-semibold text-deep hover:bg-paper-2 disabled:opacity-60">
+              {envoi ? t("habillage.subtitles.starting") : t("habillage.subtitles.translate")}
+            </button>
+            {note && <span className="text-[0.85rem] text-[#7a1f20]">{note}</span>}
+          </div>
+        )}
+        <p className="m-0 text-[0.82rem] text-muted">{t("habillage.subtitles.help")}</p>
+        {etat.subtitles.length > 0 && (
+          <p className="m-0 text-[0.8rem] text-muted">
+            {t("habillage.subtitles.original")}{" "}
+            {etat.subtitles.map((code, rang) => (
+              <span key={code}>
+                {rang > 0 && " · "}
+                <a href={`/api/v1/sermons/${kid}/habillage/sous-titres/${code}.srt?brut=1`}
+                  className="underline decoration-leaf underline-offset-4 hover:text-deep">
+                  {t(`habillage.subtitles.langs.${code}`, { defaultValue: code.toUpperCase() })}
+                </a>
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
     </Card>
   );
 }

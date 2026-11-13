@@ -20,6 +20,10 @@ class SessionOutput:
         self.verses = self.dir / "verses.json"
         self.notes = self.dir / "notes.md"
         self.translations = self.dir / "translations.json"
+        #: French→Arabic cache of the subtitle tracks (the other direction of `translations`)
+        self.translations_ar = self.dir / "translations_ar.json"
+        #: state of the background job that completes the subtitle tracks
+        self.translation_job = self.dir / "translation_job.json"
         self.video = self.dir / "khutba.mp4"  # excerpt from the live, written by the back-office
         self.clips = self.dir / "clips"
         self.manifest = self.clips / "manifest.json"
