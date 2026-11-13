@@ -57,7 +57,7 @@ export default function App() {
         to={to}
         end={to === "/"}
         className={({ isActive }) =>
-          `flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[0.95rem] font-semibold whitespace-nowrap no-underline transition-colors max-md:min-h-11 pointer-coarse:min-h-11 ${
+          `flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 min-[1120px]:px-2 text-[0.95rem] font-semibold whitespace-nowrap no-underline transition-colors max-md:min-h-11 pointer-coarse:min-h-11 ${
             isActive ? "bg-leaf/15 text-white" : "text-night-link hover:bg-leaf/20 hover:text-white"
           }`
         }
