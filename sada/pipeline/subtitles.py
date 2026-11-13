@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import re
 
-from ..text import is_arabic
+from ..text import has_translit, is_arabic
 from . import clips as clipmod
-from .translate import segment_ar, verse_fr
+from .repair import is_loop
+from .translate import segment_ar, segment_fr, verse_fr
 from .verses import recited_arabic
 
 #: a subtitle line holds about 42 characters (YouTube's own guidance), two lines per cue
@@ -296,8 +297,8 @@ def units(segments: list[dict], matches: list[dict], translations: dict, transla
         if taken[i]:
             continue
         text = str(seg.get("text") or "").strip()
-        if not text:
-            continue
+        if not text or is_loop(text):
+            continue  # une boucle de répétition est une hallucination : rien à l'écran
         words = seg.get("words")
         unit = {
             "start": float(seg["start"]),
@@ -321,6 +322,10 @@ def units(segments: list[dict], matches: list[dict], translations: dict, transla
             elif shown.get("kind") == "recitation":
                 # unmatched Quranic quotation: nothing on screen rather than an improvised translation
                 unit["coran"] = True
+        elif has_translit(text):
+            # arabe phonétique mêlé au français : la piste attend sa traduction, jamais le texte brut
+            unit["fr"] = (segment_fr(translations, seg) or {}).get("fr") or None
+            unit["ar"] = (segment_ar(translated, seg) or {}).get("ar") or None
         else:
             unit["fr"] = text
             unit["fr_words"] = words

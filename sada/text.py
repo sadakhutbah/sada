@@ -115,3 +115,20 @@ def is_translit_word(word: str) -> bool:
     """Word of Arabic written in Latin letters (« qawluhu », « al-ghada », « na'imul »)."""
     w = word.strip('.,;:!?«»"()').lower().replace("’", "'")
     return bool(w) and w not in FRENCH_HINT and (w in _TRANSLIT_WORDS or bool(_TRANSLIT_SHAPE.match(w)))
+
+
+def has_translit(text: str, run: int = 2) -> bool:
+    """Texte en lettres latines qui contient de l'arabe phonétique à traduire.
+
+    Vrai dès `run` mots translittérés d'affilée (« walha an alati lahwin ») ou quand ils font la
+    moitié du texte (« faqala, »). Un mot isolé (« dunya », « fitna ») ne compte pas : la glose de
+    l'orateur l'explique déjà. Ces segments ne peuvent pas aller tels quels dans la piste française.
+    """
+    words = (text or "").split()
+    if not words or is_arabic(text):
+        return False
+    best = cur = 0
+    for w in words:
+        cur = cur + 1 if is_translit_word(w) else 0
+        best = max(best, cur)
+    return best >= run or sum(map(is_translit_word, words)) / len(words) >= 0.5

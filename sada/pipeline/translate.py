@@ -35,9 +35,10 @@ import json
 from pathlib import Path
 
 from ..i18n import _
-from ..text import is_arabic
+from ..text import has_translit, is_arabic
 from . import glossary as glossmod
 from . import llm
+from .repair import is_loop
 from .verses import formula_fr, match_for, shown
 
 #: segments per model call: a long sermon would otherwise overflow the context and the answer
@@ -85,6 +86,19 @@ def with_correction(tr: dict, seg: dict, fr: str) -> dict:
     return out
 
 
+def needs_fr(text: str) -> bool:
+    """Segment à faire traduire en français : arabe écrit, ou français mêlé d'arabe phonétique.
+
+    Whisper écrit souvent une citation arabe en lettres latines (« dhahabu 'l-ladda ») : sans
+    traduction elle partirait telle quelle dans la piste française. Une boucle de répétition
+    (« shukr, shukr, shukr… ») est une hallucination : elle n'a rien à traduire.
+    """
+    text = str(text or "").strip()
+    if not text or is_loop(text):
+        return False
+    return is_arabic(text) or has_translit(text)
+
+
 def _chunks(todo: list, size: int) -> list[list]:
     """Model calls of `size` segments; one empty call when only the verses are left to do."""
     if not todo:
@@ -101,7 +115,9 @@ def _prompt_fr(rows: list[tuple[int, dict]], verses: list[dict]) -> str:
     return (
         "Tu prépares les sous-titres FRANÇAIS d'un court extrait vidéo d'une khutba du vendredi (sermon). "
         "Voici les segments en arabe transcrits automatiquement par Whisper (des erreurs de transcription sont possibles : "
-        "corrige-les mentalement d'après le contexte, ex. « صورة الطلاق » = « سورة الطلاق »).\n"
+        "corrige-les mentalement d'après le contexte, ex. « صورة الطلاق » = « سورة الطلاق »). Certains sont écrits en "
+        "lettres latines (arabe phonétique, souvent mêlé de français, ex. « dhahabu 'l-ladda, wa baqiya 'l-ithm ») : "
+        "rends-les ENTIÈREMENT en français, en traduisant l'arabe et en gardant le français tel qu'il a été dit.\n"
         "Rends UNIQUEMENT un objet JSON, sans texte autour :\n"
         '{"seg": {"<numéro>": {"fr": "traduction", "coran": false}}, "verse_fr": {"<clé>": "extrait"}}\n'
         "Règles pour seg :\n"
@@ -109,7 +125,8 @@ def _prompt_fr(rows: list[tuple[int, dict]], verses: list[dict]) -> str:
         "- concise (c'est un sous-titre) : garde le sens, évite les tournures lourdes ; pas d'emoji ; « Allah » pour الله ;\n"
         "- formules rituelles : traductions usuelles (ex. « que la paix et les bénédictions d'Allah soient sur lui ») ;\n"
         '- si le segment est une RÉCITATION du Coran (verset), mets "coran": true et une traduction quand même ;\n'
-        "- un segment peut commencer ou finir au milieu d'une phrase : traduis seulement ce qu'il contient, pour que les traductions se suivent.\n"
+        "- un segment peut commencer ou finir au milieu d'une phrase : traduis seulement ce qu'il contient, pour que les traductions se suivent ;\n"
+        "- jamais de commentaire sur la traduction ni de translittération dans la réponse : seulement le sous-titre.\n"
         "Règles pour verse_fr : pour chaque clé ci-dessous, recopie MOT POUR MOT le passage de la traduction Hamidullah "
         "qui correspond à la partie récitée (entendue) ; ce doit être une sous-chaîne exacte de la traduction fournie "
         "(sinon recopie-la entière).\n\n"
@@ -205,7 +222,7 @@ def translate_session(
     cache_path = Path(cache_path)
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else empty()
     vms = shown(matches, ambiguous=True)
-    ar = [(i, s) for i, s in enumerate(segments) if is_arabic(s["text"])]
+    ar = [(i, s) for i, s in enumerate(segments) if needs_fr(s["text"])]
     todo = [(i, s) for i, s in ar if _seg_key(s["text"]) not in cache["seg"]]
     vtodo = [m for m in vms if verse_key(m) not in cache["verse_fr"]]
     if (todo or vtodo) and use_llm:
