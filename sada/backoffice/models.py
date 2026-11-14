@@ -251,6 +251,19 @@ live_targets = sa.Table(
     sa.Column("updated_at", sa.Text),
 )
 
+# Programme of each mosque (dars, conferences, hand-entered khutbas): one row per event, the
+# entry kept as JSON so the engine (`sada.events`) stays the only judge of its validity.
+events = sa.Table(
+    "events",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("uid", sa.Text, nullable=False),
+    sa.Column("data", sa.Text, nullable=False),
+    sa.Column("position", sa.Integer, nullable=False, server_default=_d("0")),
+    sa.UniqueConstraint("mosque_id", "uid"),
+)
+
 live_input = sa.Table(
     "live_input",
     metadata,

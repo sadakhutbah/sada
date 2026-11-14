@@ -1,4 +1,4 @@
-"""Dars and conference agenda: read, create, edit and delete the JSON program."""
+"""Dars and conference agenda: read, create, edit and delete the programme stored per mosque."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ pytest.importorskip("fastapi")
 from test_backoffice import client  # noqa: E402,F401
 
 from sada import events  # noqa: E402
+from sada.backoffice import events_store  # noqa: E402
 
 
 @pytest.fixture
@@ -19,6 +20,11 @@ def prog(env):
     chemin = env["tmp"] / "programme" / "events.json"
     env["app"].state.events_file = str(chemin)
     return chemin
+
+
+def _stored(env):
+    """Engine view of the mosque's programme in the database."""
+    return [events.parse(r, i) for i, r in enumerate(events_store.read(env["conn"], env["mid"]))]
 
 
 DARS = {
@@ -56,8 +62,8 @@ def test_creation_lue_par_le_moteur(env, prog):
     assert c.ecrire("/events", DARS).status_code == 200
     r = c.ecrire("/events", CONF)
     assert r.status_code == 200, r.text
-    evs, err = events.load(prog)
-    assert err is None and [e.title for e in evs] == ["Tafsir Al-Kahf", "Les droits des voisins"]
+    evs = _stored(env)
+    assert [e.title for e in evs] == ["Tafsir Al-Kahf", "Les droits des voisins"]
     assert evs[0].recurrence.after == "isha" and evs[0].recurrence.offset_min == 15 and evs[0].session == 7
     assert evs[1].publish is False and str(evs[1].time) == "18:30:00"
     items = c.get("/api/v1/events").json()["items"]
@@ -73,14 +79,14 @@ def test_modification_et_suppression(env, prog):
     autre = c.ecrire("/events", CONF).json()["id"]
     r = c.ecrire(f"/events/{uid}", {**DARS, "title": "Tafsir Al-Kahf (suite)", "after": "", "time": "20:00"}, "PUT")
     assert r.status_code == 200, r.text
-    evs, _ = events.load(prog)
+    evs = _stored(env)
     assert (
         evs[0].title == "Tafsir Al-Kahf (suite)"
         and evs[0].recurrence.time == "20:00"
         and evs[0].recurrence.after is None
     )
     assert c.ecrire(f"/events/{uid}", {}, "DELETE").status_code == 200
-    assert [e.uid for e in events.load(prog)[0]] == [autre]
+    assert [e.uid for e in _stored(env)] == [autre]
     assert c.ecrire(f"/events/{uid}", {}, "DELETE").status_code == 404
     assert c.ecrire("/events/inconnu", DARS, "PUT").status_code == 404
 
@@ -99,7 +105,7 @@ def test_modification_et_suppression(env, prog):
 def test_refus_des_valeurs_invalides(env, prog, champ, valeur, mot):
     r = client(env, "admin").ecrire("/events", {**DARS, champ: valeur})
     assert r.status_code == 422 and mot.lower() in r.json()["message"].lower()
-    assert not prog.exists()
+    assert _stored(env) == []
 
 
 def test_date_sans_heure_refusee(env, prog):
@@ -143,5 +149,35 @@ def test_entrees_a_la_main_conservees(env, prog):
     items = c.get("/api/v1/events").json()["items"]
     assert [i["title"] for i in items] == ["Fiqh"]  # the khutba is not in the agenda
     assert c.ecrire(f"/events/{items[0]['id']}", {}, "DELETE").status_code == 200
-    reste = json.loads(prog.read_text(encoding="utf-8"))["events"]
+    reste = events_store.read(env["conn"], env["mid"])
     assert len(reste) == 1 and reste[0]["note"] == "à garder"
+    # the former file was taken over once, then set aside
+    assert not prog.exists() and prog.with_name("events.json.imported").exists()
+
+
+def test_import_skipped_with_several_mosques(env, prog):
+    """A file without a mosque cannot be given to one when there are several."""
+    from sada.backoffice import db
+
+    prog.parent.mkdir(parents=True)
+    prog.write_text(json.dumps({"events": [{"kind": "dars", "title": "Fiqh", "date": "2099-01-01", "time": "19:00"}]}))
+    db.create_mosque(env["conn"], "autre", "Autre")
+    assert client(env, "admin").get("/api/v1/events").json()["items"] == []
+    assert prog.exists()
+
+
+def test_orchestrator_reads_programme_from_backoffice():
+    got = events.from_backoffice(
+        "http://bo",
+        0,
+        fetch=lambda url, tok: {
+            "events": [{"kind": "dars", "title": "Fiqh", "date": "2099-01-01", "time": "19:00"}, {"kind": "??"}]
+        },
+    )
+    assert [e.title for e in got] == ["Fiqh"]
+
+    def down(url, tok):
+        raise OSError("down")
+
+    assert events.from_backoffice("http://bo", 0, fetch=down) is None
+    assert events.from_backoffice("", 0) is None

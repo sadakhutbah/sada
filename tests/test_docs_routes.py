@@ -15,6 +15,7 @@ from sada.backoffice.internal import token
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
     app = create_app(db_path=tmp_path / "bo.db")
+    app.state.events_file = str(tmp_path / "events.json")
     with TestClient(app) as c:
         yield c
 

@@ -242,6 +242,39 @@ def load(path: str | Path) -> tuple[list[Event], str | None]:
         return [], _("programme unreadable ({path}): {error}", path=p, error=e)
 
 
+def from_backoffice(backoffice_url: str, api_port: int, fetch=None, log=None) -> list[Event] | None:
+    """The mosque's programme, kept by the back office; None when it cannot be reached
+    (the caller then falls back on the local file, the live never waits on the back office)."""
+    log = log or (lambda _m: None)
+    if not backoffice_url:
+        return None
+    import urllib.request
+    from urllib.parse import urlencode
+
+    from .backoffice.internal import HEADER, token
+
+    def _get(url: str, tok: str) -> dict:  # pragma: no cover (network)
+        req = urllib.request.Request(url, headers={HEADER: tok})
+        with urllib.request.urlopen(req, timeout=3) as r:  # noqa: S310 — configured back office
+            return json.loads(r.read(1 << 20))
+
+    url = backoffice_url.rstrip("/") + "/api/v1/internal/events?" + urlencode({"port": api_port or 0})
+    try:
+        items = ((fetch or _get)(url, token()) or {}).get("events")
+    except Exception as e:  # noqa: BLE001
+        log(_("Programme: back office unreachable ({error}), local file used", error=e))
+        return None
+    if not isinstance(items, list):
+        return None
+    out = []
+    for i, raw in enumerate(items):
+        try:
+            out.append(_parse(raw, i))
+        except ValueError as e:
+            log(_("Programme: entry skipped ({error})", error=e))
+    return out
+
+
 def parse(raw: dict, idx: int = 0) -> Event:
     """One entry, validated with the same rules as the ones read from the file."""
     return _parse(raw, idx)

@@ -47,9 +47,14 @@ class Orchestrator:
         day = self.clock.now().date()
         jumua = [parse_hhmm(t, day) for t in self.times]
         # today's programme: dars and conferences are added to the khutbas, on the same footing
-        self.program, ev_err = events_mod.load(cfg.events_file)
-        if ev_err:
-            log.warning(ev_err)
+        # programme of the mosque: kept by the back office, the local file only as fallback
+        remote_program = events_mod.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
+        if remote_program is not None:
+            self.program = remote_program
+        else:
+            self.program, ev_err = events_mod.load(cfg.events_file)
+            if ev_err:
+                log.warning(ev_err)
         self.instances = events_mod.instances_on(self.program, day, self.prayer_times)
         sessions = jumua + [i.starts for i in self.instances]
         extras = [{} for _ in jumua] + [i.as_event() for i in self.instances]

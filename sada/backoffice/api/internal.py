@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from ...i18n import _
-from .. import branding, db, destinations, gabarit, internal, live_input, storage
+from .. import branding, db, destinations, events_store, gabarit, internal, live_input, storage
 from .. import screens as screens_mod
 from .. import variables_ecran as variables_mod
 from ..context import ConnDep
@@ -105,6 +105,15 @@ def screen_texts(request: Request, conn: ConnDep, port: int = 0):
         "screens": screens_mod.saved(conn, mid),
         "variables": variables_mod.variables(conn, mosque),
     }
+
+
+@router.get("/internal/events")
+def mosque_events(request: Request, conn: ConnDep, port: int = 0):
+    """Programme of the calling orchestrator's mosque (dars, conferences), as raw entries."""
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
+    return {"mosque_id": mid, "events": events_store.read(conn, mid)}
 
 
 @router.get("/internal/gabarit")

@@ -116,6 +116,7 @@ def env(tmp_path):
     kid = db.one(conn, "SELECT id FROM khutbas")["id"]
     conn.execute("UPDATE khutbas SET imam_id = ? WHERE id = ?", (ids["imam"], kid))
     app = create_app(path, regen_background=False)
+    app.state.events_file = str(tmp_path / "events.json")  # never the real programme file
     yield {"app": app, "conn": conn, "path": path, "mid": mid, "ids": ids, "kid": kid, "tmp": tmp_path}
     conn.close()
 

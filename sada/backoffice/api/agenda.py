@@ -1,4 +1,4 @@
-"""Schedule of dars and conferences (`events.json`), through `sada.events`."""
+"""Schedule of dars and conferences, stored per mosque (`events_store`), validated by `sada.events`."""
 
 from __future__ import annotations
 
@@ -6,14 +6,13 @@ import datetime as dt
 import re
 import secrets
 import threading
-from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from ... import events as events_mod
 from ...i18n import _
 from ...text import JOURS
-from .. import db
+from .. import db, events_store
 from ..context import Ctx, CtxDep, Invalid, NotFound
 from .common import _ok
 
@@ -26,17 +25,13 @@ AGENDA_KINDS = ("dars", "conference")  # the Friday khutba is not an event to en
 _agenda_lock = threading.Lock()
 
 
-def _agenda_path(request: Request) -> Path:
-    """Programme file, handed to the application by `create_app` (`events_file`)."""
-    return Path(request.app.state.events_file)
-
-
-def _agenda_read(path: Path) -> list[dict]:
-    """Raw events of the file. An unreadable file is refused: we never overwrite it."""
+def _agenda_read(ctx: Ctx) -> list[dict]:
+    """The mosque's events. The former programme file, if any, is taken over first."""
     try:
-        return events_mod.read_raw(path)
+        events_store.adopt(ctx.conn, ctx.mosque["id"], ctx.request.app.state.events_file)
     except ValueError as e:
         raise Invalid(_("The schedule file cannot be read, fix it first: {error}", error=e)) from e
+    return events_store.read(ctx.conn, ctx.mosque["id"])
 
 
 def _agenda_clean(f: dict, uid: str) -> dict:
@@ -129,7 +124,7 @@ def _agenda_today(ctx: Ctx) -> dt.date:
 
 
 def _agenda_list(ctx: Ctx) -> dict:
-    items = _agenda_read(_agenda_path(ctx.request))
+    items = _agenda_read(ctx)
     today = _agenda_today(ctx)
     rows = [
         _agenda_item(r, i, today) for i, r in enumerate(items) if str(r.get("kind", "dars")).lower() in AGENDA_KINDS
@@ -155,11 +150,10 @@ def events_list(ctx: CtxDep):
 async def event_create(ctx: CtxDep):
     f = await ctx.body()
     ctx.require("assign")
-    path = _agenda_path(ctx.request)
     with _agenda_lock:
-        items = _agenda_read(path)
+        items = _agenda_read(ctx)
         raw = _agenda_clean(f, secrets.token_hex(4))
-        events_mod.write_raw(path, [*items, raw])
+        events_store.write(ctx.conn, ctx.mosque["id"], [*items, raw])
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
@@ -179,15 +173,14 @@ async def event_create(ctx: CtxDep):
 async def event_update(uid: str, ctx: CtxDep):
     f = await ctx.body()
     ctx.require("assign")
-    path = _agenda_path(ctx.request)
     with _agenda_lock:
-        items = _agenda_read(path)
+        items = _agenda_read(ctx)
         pos = next((i for i, r in enumerate(items) if events_mod.uid_of(r, i) == uid), None)
         if pos is None:
             raise NotFound()
         raw = _agenda_clean(f, uid)
         items[pos] = raw  # the identifier (uid) is written: it no longer depends on the position
-        events_mod.write_raw(path, items)
+        events_store.write(ctx.conn, ctx.mosque["id"], items)
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
@@ -207,14 +200,13 @@ async def event_update(uid: str, ctx: CtxDep):
 async def event_delete(uid: str, ctx: CtxDep):
     await ctx.body()  # checks the anti-replay token
     ctx.require("assign")
-    path = _agenda_path(ctx.request)
     with _agenda_lock:
-        items = _agenda_read(path)
+        items = _agenda_read(ctx)
         pos = next((i for i, r in enumerate(items) if events_mod.uid_of(r, i) == uid), None)
         if pos is None:
             raise NotFound()
         gone = items.pop(pos)
-        events_mod.write_raw(path, items)
+        events_store.write(ctx.conn, ctx.mosque["id"], items)
     db.audit(
         ctx.conn,
         ctx.mosque["id"],

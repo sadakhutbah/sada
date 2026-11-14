@@ -164,6 +164,7 @@ INTERNAL = [
     "/api/v1/internal/screens",
     "/api/v1/internal/gabarit",
     "/api/v1/internal/live-input",
+    "/api/v1/internal/events",
 ]
 
 
@@ -216,3 +217,21 @@ def test_orchestrator_presents_the_agent_token(monkeypatch, tmp_path):
     assert internal.token() == "sada_abc"
     assert internal.local_token() == local
     assert not internal.check("sada_abc")
+
+
+def test_programme_is_per_mosque(env, intruder):
+    dars = {"kind": "dars", "title": "Fiqh", "mode": "once", "date": "2099-01-01", "time": "19:00", "publish": "1"}
+    owner = client(env, "admin")
+    uid = owner.ecrire("/events", dars).json()["id"]
+    assert intruder.get("/api/v1/events").json()["items"] == []
+    assert intruder.ecrire(f"/events/{uid}", {**dars, "title": "Hijacked"}, methode="PUT").status_code == 404
+    assert intruder.ecrire(f"/events/{uid}", {}, methode="DELETE").status_code == 404
+    assert [i["title"] for i in owner.get("/api/v1/events").json()["items"]] == ["Fiqh"]
+    # the orchestrator of each mosque only receives its own programme
+    from sada.backoffice import internal
+
+    conn = env["conn"]
+    other = db.one(conn, "SELECT id FROM mosques WHERE id != ?", env["mid"])["id"]
+    t_own, t_other = internal.new_agent_token(conn, env["mid"]), internal.new_agent_token(conn, other)
+    assert [e["title"] for e in _agent(env, "/api/v1/internal/events", t_own).json()["events"]] == ["Fiqh"]
+    assert _agent(env, "/api/v1/internal/events", t_other).json()["events"] == []

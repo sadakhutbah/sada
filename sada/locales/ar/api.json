@@ -145,5 +145,7 @@
   "issue a new orchestrator token (replaces the previous one)": "إصدار رمز جديد للمنسّق (يحلّ محلّ السابق)",
   "revoke the orchestrator token": "إلغاء رمز المنسّق",
   "Orchestrator token revoked.": "أُلغي رمز المنسّق.",
-  "Orchestrator token (shown once, set it as SADA_AGENT_TOKEN on the mosque's machine):": "رمز المنسّق (يُعرض مرة واحدة، ضعه في SADA_AGENT_TOKEN على جهاز المسجد):"
+  "Orchestrator token (shown once, set it as SADA_AGENT_TOKEN on the mosque's machine):": "رمز المنسّق (يُعرض مرة واحدة، ضعه في SADA_AGENT_TOKEN على جهاز المسجد):",
+  "Programme: back office unreachable ({error}), local file used": "البرنامج: تعذّر الوصول إلى لوحة الإدارة ({error})، استُخدم الملف المحلي",
+  "Programme: entry skipped ({error})": "البرنامج: أُهمل إدخال ({error})"
 }

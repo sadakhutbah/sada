@@ -165,6 +165,18 @@ def _mosques_jeton_agent(conn: sqlite3.Connection) -> None:
     _add_columns(conn, "mosques", (("agent_token_hash", "TEXT NOT NULL DEFAULT ''"),))
 
 
+def _events_en_base(conn: sqlite3.Connection) -> None:
+    """Migration 13 : programme des cours en base, par mosquée (remplace `events.json`).
+
+    Le fichier existant est repris par le back-office au premier accès (`events_store.adopt`).
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, mosque_id INTEGER NOT NULL "
+        "REFERENCES mosques(id), uid TEXT NOT NULL, data TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, "
+        "UNIQUE (mosque_id, uid))"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -178,6 +190,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(10, "users : mot de passe à changer", _users_mdp_impose),
     Migration(11, "users : administrateur de la plateforme", _users_plateforme),
     Migration(12, "mosques : jeton de l'orchestrateur", _mosques_jeton_agent),
+    Migration(13, "events : programme des cours en base", _events_en_base),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.
