@@ -11,6 +11,7 @@ A stored address is not a secret: it comes back in clear whenever the user is al
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -26,6 +27,9 @@ DEFAULT_URL = "rtsp://127.0.0.1:8554/cam"
 RELAY_RTMP_PORT = 1935
 RELAY_RTSP_PORT = 8554
 PROBE_TIMEOUT_S = 6
+# Where the encoder reaches the relay: the same machine by default, the receiver service once
+# hosted (`SADA_RELAY_HOST=receiver` in a container).
+RELAY_HOST_ENV = "SADA_RELAY_HOST"
 
 
 class InvalidInput(ValueError):
@@ -45,7 +49,8 @@ def push_rtmp(host: str, mosque) -> str:
 
 def push_rtsp(mosque) -> str:
     """What the encoder reads once the push is up: the relay's RTSP copy."""
-    return f"rtsp://127.0.0.1:{RELAY_RTSP_PORT}/live/{slug(mosque)}"
+    host = os.environ.get(RELAY_HOST_ENV, "").strip() or "127.0.0.1"
+    return f"rtsp://{host}:{RELAY_RTSP_PORT}/live/{slug(mosque)}"
 
 
 def check(mode: str, url: str | None, mosque) -> tuple[str, str, str]:

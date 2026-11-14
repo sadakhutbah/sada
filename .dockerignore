@@ -1,0 +1,16 @@
+.git
+.venv
+data
+vendor
+web/node_modules
+web/src
+promo*
+pitch
+minbar
+docs
+examples
+tests
+**/__pycache__
+*.pptx
+*.key
+*.crt

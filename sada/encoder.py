@@ -33,11 +33,20 @@ def _zmq_esc(port: int) -> str:
     return "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + f":{port}"  # ":" escaped twice (graph then filter options)
 
 
-ZMQ_APORT = 5556  # audio (azmq)
+ZMQ_APORT = 5556  # default base port: audio (azmq); the four next ones drive the video
+# video: one zmq filter (hence one port) per animated parameter of a transition, see Encoder._animate
+ZMQ_VIDEO = 4
+
+
+def zmq_ports(base: int = ZMQ_APORT) -> tuple[int, tuple[int, ...]]:
+    """Audio port and video ports from one base (`zmq_port`): two orchestrators on one machine
+    get distinct bases, in a container the default is fine."""
+    return base, tuple(range(base + 1, base + 1 + ZMQ_VIDEO))
+
+
 ZMQ_ADDR = f"tcp://127.0.0.1:{ZMQ_APORT}"
 ZMQ_ESC = _zmq_esc(ZMQ_APORT)
-# video: one zmq filter (hence one port) per animated parameter of a transition, see Encoder._animate
-ZMQ_VPORTS = tuple(range(ZMQ_APORT + 1, ZMQ_APORT + 5))
+ZMQ_VPORTS = zmq_ports()[1]
 ZMQ_VADDRS = [f"tcp://127.0.0.1:{p}" for p in ZMQ_VPORTS]
 
 
@@ -73,6 +82,7 @@ class Encoder:
         self._ev = threading.Event()
         self._worker: threading.Thread | None = None
         self.proc: subprocess.Popen | None = None
+        self.zmq_aport, self.zmq_vports = zmq_ports(int(getattr(cfg, "zmq_port", ZMQ_APORT) or ZMQ_APORT))
         self.out_time = 0.0  # position (s) in the current recording, from -progress
         self.restarts = 0
         self._lock = threading.Lock()
@@ -99,7 +109,7 @@ class Encoder:
             f"pad={c.width}:{c.height}:(ow-iw)/2:(oh-ih)/2,fps={c.fps},setsar=1,format=yuv420p"
             + ("[cam];" if not clean or copy else ",split=2[cam][camclean];")
             + "[cam]"
-            + ",".join(f"zmq@z{i}=bind_address={_zmq_esc(p)}" for i, p in enumerate(ZMQ_VPORTS))
+            + ",".join(f"zmq@z{i}=bind_address={_zmq_esc(p)}" for i, p in enumerate(self.zmq_vports))
             + "[camz];"
             # background: a single image, repeated in memory (no re-read)
             f"[1:v]format=rgba,loop=loop=-1:size=1,colorchannelmixer@fond=aa={L['fond']}[fond];"
@@ -109,7 +119,7 @@ class Encoder:
             f"[v0][ca]overlay@ca=x={L['x_a']}:y={L['y_a']}:format=auto:shortest=0:repeatlast=1[v1];"
             f"[v1][cb]overlay@cb=x={L['x_b']}:y={L['y_b']}:format=auto:shortest=0:repeatlast=1,format=yuv420p[v];"
             f"[0:a]aresample=48000,aformat=channel_layouts=stereo,"
-            f"volume@mic=volume={self.vol:g}:eval=frame,azmq=bind_address={ZMQ_ESC}"
+            f"volume@mic=volume={self.vol:g}:eval=frame,azmq=bind_address={_zmq_esc(self.zmq_aport)}"
             + ("[a]" if not clean else ",asplit=2[a][aclean]")
         )
         # content layers re-read at {fps} fps: ffmpeg's queue (~15 frames) bounds the delay
@@ -415,7 +425,7 @@ class Encoder:
             for ch, k in enumerate(keys):
                 s = ctx.socket(zmq.REQ)
                 s.setsockopt(zmq.LINGER, 0)
-                s.connect(ZMQ_VADDRS[ch])
+                s.connect(f"tcp://127.0.0.1:{self.zmq_vports[ch]}")
                 socks[s], idx[s] = k, 0
                 poller.register(s, zmq.POLLIN)
                 send(s, k, 0)
@@ -463,7 +473,7 @@ class Encoder:
             s.setsockopt(zmq.LINGER, 0)
             s.setsockopt(zmq.RCVTIMEO, 3000)
             s.setsockopt(zmq.SNDTIMEO, 3000)
-            s.connect(ZMQ_ADDR)
+            s.connect(f"tcp://127.0.0.1:{self.zmq_aport}")
             try:
                 s.send_string(msg)
                 rep = s.recv_string()

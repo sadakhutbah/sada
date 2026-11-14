@@ -1,0 +1,17 @@
+# Stream receiver. One path per mosque: its slug is the stream key.
+# Publishing needs the mosque's key (publishUser/publishPass), reading stays inside the network.
+logLevel: info
+rtsp: yes
+rtspAddress: :8554
+rtmp: yes
+rtmpAddress: :1935
+srt: yes
+srtAddress: :8890
+hls: no
+webrtc: no
+
+# OBS pushes rtmp://<host>:1935/live/<slug> (or SRT, streamid=publish:live/<slug>);
+# the mosque's orchestrator reads rtsp://receiver:8554/live/<slug> inside the network.
+# TODO before going public: a publishing key per mosque (authInternalUsers / authHTTPAddress).
+paths:
+  "~^live/[a-z0-9-]+$": {}

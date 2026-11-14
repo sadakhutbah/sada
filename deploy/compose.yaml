@@ -1,0 +1,60 @@
+# Hosted Sada, first step before Kubernetes: one back office, one stream receiver,
+# one orchestrator per mosque. Mosques send their OBS stream to the receiver (SRT or RTMP).
+#
+#   docker compose -f deploy/compose.yaml up -d backoffice receiver
+#   docker compose -f deploy/compose.yaml run --rm backoffice python -m sada.backoffice mosque --slug <slug> --agent-token
+#   echo "SADA_AGENT_TOKEN_A=..." >> deploy/.env    # then the same for B
+#   docker compose -f deploy/compose.yaml up -d
+#
+# Each orchestrator presents its mosque's token: it reads only that mosque's settings.
+
+x-orchestrator: &orchestrator
+  image: sada:local
+  command: ["python", "-m", "sada.orchestrator"]
+  restart: unless-stopped
+  depends_on: [backoffice, receiver]
+  environment: &orch-env
+    SADA_BACKOFFICE_URL: http://backoffice:8090
+    SADA_API_HOST: 0.0.0.0
+    SADA_API_PORT: "8088"
+
+services:
+  backoffice:
+    build: { context: .., dockerfile: Dockerfile }
+    image: sada:local
+    restart: unless-stopped
+    ports: ["${SADA_BO_PUBLIC_PORT:-8090}:8090"]
+    environment:
+      SADA_RELAY_HOST: receiver
+    volumes: [data:/app/data]
+
+  # Reception of the mosques' streams: one path (= stream key) per mosque.
+  receiver:
+    image: bluenviron/mediamtx:1
+    restart: unless-stopped
+    ports:
+      - "${SADA_SRT_PORT:-8890}:8890/udp"  # SRT  : srt://<host>:8890?streamid=publish:live/<slug>
+      - "${SADA_RTMP_PORT:-1935}:1935"  # RTMP : rtmp://<host>:1935/live/<slug>
+    volumes: [./mediamtx.yml:/mediamtx.yml:ro]
+
+  orchestrator-a:
+    <<: *orchestrator
+    environment:
+      <<: *orch-env
+      SADA_AGENT_TOKEN: ${SADA_AGENT_TOKEN_A:?token of mosque A}
+      # own folders: two lives starting the same second must not write the same file
+      SADA_RECORD_DIR: /app/data/recordings/orchestrator-a
+      SADA_STATE_DIR: /app/data/state/orchestrator-a
+    volumes: [data:/app/data]
+
+  orchestrator-b:
+    <<: *orchestrator
+    environment:
+      <<: *orch-env
+      SADA_AGENT_TOKEN: ${SADA_AGENT_TOKEN_B:?token of mosque B}
+      SADA_RECORD_DIR: /app/data/recordings/orchestrator-b
+      SADA_STATE_DIR: /app/data/state/orchestrator-b
+    volumes: [data:/app/data]
+
+volumes:
+  data:

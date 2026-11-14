@@ -109,6 +109,9 @@ class Config(MachineParams):
     api_host: str = "127.0.0.1"
     api_port: int = 8088
     api_token: str = ""  # if set: X-Token header required
+    # Base of the 5 local ports that drive the encoder (audio, then video): distinct per
+    # orchestrator when several share one machine without containers.
+    zmq_port: int = 5556
     # --- Back-office (same machine) ------------------------------------------
     # Where to ask for the settings an administrator saved in the interface (notifications).
     backoffice_url: str = "http://127.0.0.1:8090"
