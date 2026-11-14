@@ -10,9 +10,18 @@ import time
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from sqlalchemy import delete, func, or_, select, update
 
 from ..i18n import _
 from . import db
+from .models import AuthSession, User
+from .orm import as_dict
+
+
+def _same_name(username: str):
+    """Usernames compare without case (SQLite NOCASE column, same rule on PostgreSQL)."""
+    return func.lower(User.username) == username.lower()
+
 
 ROLES = ("admin", "responsable", "imam")
 # Source labels: the request's language is applied by `role_label` / `role_labels`.
@@ -140,11 +149,12 @@ def _dummy_hash() -> str:
 
 def imams(conn, mosque_id: int) -> list[dict]:
     """Active imams of the mosque (choice of the imam of a khutba, default imam)."""
-    return db.all_(
-        conn,
-        "SELECT id, display_name FROM users WHERE mosque_id = ? AND role = 'imam' AND active = 1 ORDER BY display_name",
-        mosque_id,
+    q = (
+        select(User.id, User.display_name)
+        .where(User.mosque_id == mosque_id, User.role == "imam", User.active == 1)
+        .order_by(User.display_name)
     )
+    return [dict(r._mapping) for r in conn.execute(q)]
 
 
 def imam_id(conn, mosque_id: int, value) -> int | None:
@@ -161,39 +171,41 @@ def create_user(
         raise ValueError(_("unknown role: {role}", role=role))
     if not username or len(username) > 64 or any(c.isspace() for c in username):
         raise ValueError(_("invalid username (no space, 64 characters max)"))
-    if db.one(conn, "SELECT id FROM users WHERE username = ?", username):
+    if conn.scalar(select(User.id).where(_same_name(username))) is not None:
         raise ValueError(_("the username “{username}” already exists", username=username))
-    cur = conn.execute(
-        "INSERT INTO users (mosque_id, username, display_name, password_hash, role, permissions, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
-        (
-            mosque_id,
-            username,
-            display_name.strip() or username,
-            hash_password(password),
-            role,
-            normalize_permissions(perms),
-            db.now_iso(),
-        ),
+    u = User(
+        mosque_id=mosque_id,
+        username=username,
+        display_name=display_name.strip() or username,
+        password_hash=hash_password(password),
+        role=role,
+        permissions=normalize_permissions(perms),
+        created_at=db.now_iso(),
     )
-    return cur.lastrowid
+    conn.add(u)
+    conn.commit()
+    return u.id
 
 
 def set_password(conn, user_id: int, password: str, keep_session: int | None = None) -> None:
     """Signs the account out everywhere, except `keep_session` (the person changing their own password)."""
-    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(password), user_id))
-    conn.execute("DELETE FROM auth_sessions WHERE user_id = ? AND id IS NOT ?", (user_id, keep_session))
+    conn.execute(update(User).where(User.id == user_id).values(password_hash=hash_password(password)))
+    conn.execute(
+        delete(AuthSession).where(AuthSession.user_id == user_id, AuthSession.id.is_distinct_from(keep_session))
+    )
+    conn.commit()
 
 
 def authenticate(conn, username: str, password: str) -> dict | None:
-    u = db.one(conn, "SELECT * FROM users WHERE username = ?", username.strip())
+    u = as_dict(conn.scalar(select(User).where(_same_name(username.strip()))))
     if not u:
         verify_password(_dummy_hash(), password)  # constant time: does not reveal whether the account exists
         return None
     if not verify_password(u["password_hash"], password) or not u["active"]:
         return None
     if _ph.check_needs_rehash(u["password_hash"]):
-        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (_ph.hash(password), u["id"]))
+        conn.execute(update(User).where(User.id == u["id"]).values(password_hash=_ph.hash(password)))
+        conn.commit()
     return u
 
 
@@ -220,13 +232,21 @@ def open_session(conn, user_id: int, ip: str | None, ua: str | None) -> str:
     """Creates a session; returns the token (only its SHA-256 digest is stored)."""
     token = secrets.token_urlsafe(32)
     t = time.time()
-    conn.execute(
-        "INSERT INTO auth_sessions (token_hash, user_id, csrf, created_at, expires_at, last_seen_at, ip, user_agent) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (_h(token), user_id, secrets.token_urlsafe(24), t, t + SESSION_TTL, t, ip, ua_tag(ua)),
+    conn.add(
+        AuthSession(
+            token_hash=_h(token),
+            user_id=user_id,
+            csrf=secrets.token_urlsafe(24),
+            created_at=t,
+            expires_at=t + SESSION_TTL,
+            last_seen_at=t,
+            ip=ip,
+            user_agent=ua_tag(ua),
+        )
     )
-    conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (db.now_iso(), user_id))
-    conn.execute("DELETE FROM auth_sessions WHERE expires_at < ? OR last_seen_at < ?", (t, t - IDLE_TTL))
+    conn.execute(update(User).where(User.id == user_id).values(last_login_at=db.now_iso()))
+    conn.execute(delete(AuthSession).where(or_(AuthSession.expires_at < t, AuthSession.last_seen_at < t - IDLE_TTL)))
+    conn.commit()
     return token
 
 
@@ -238,7 +258,7 @@ def load_session(conn, token: str | None, ua: str | None = None, ip: str | None 
     """
     if not token:
         return None
-    s = db.one(conn, "SELECT * FROM auth_sessions WHERE token_hash = ?", _h(token))
+    s = as_dict(conn.scalar(select(AuthSession).where(AuthSession.token_hash == _h(token))))
     t = time.time()
     if not s:
         return None
@@ -248,19 +268,22 @@ def load_session(conn, token: str | None, ua: str | None = None, ip: str | None 
         db.audit(conn, None, s["user_id"], "session.navigateur_inattendu", "session", s["id"], ip=ip)
         return None
     if s["expires_at"] < t or s["last_seen_at"] < t - IDLE_TTL:
-        conn.execute("DELETE FROM auth_sessions WHERE id = ?", (s["id"],))
+        conn.execute(delete(AuthSession).where(AuthSession.id == s["id"]))
+        conn.commit()
         return None
-    u = db.one(conn, "SELECT * FROM users WHERE id = ? AND active = 1", s["user_id"])
+    u = as_dict(conn.scalar(select(User).where(User.id == s["user_id"], User.active == 1)))
     if not u:
         return None
     if t - s["last_seen_at"] > 60:
-        conn.execute("UPDATE auth_sessions SET last_seen_at = ? WHERE id = ?", (t, s["id"]))
+        conn.execute(update(AuthSession).where(AuthSession.id == s["id"]).values(last_seen_at=t))
+        conn.commit()
     return s, u
 
 
 def close_session(conn, token: str | None) -> None:
     if token:
-        conn.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (_h(token),))
+        conn.execute(delete(AuthSession).where(AuthSession.token_hash == _h(token)))
+        conn.commit()
 
 
 def check_csrf(session: dict, value: str | None) -> bool:

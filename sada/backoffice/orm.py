@@ -57,7 +57,7 @@ def _make(key, path) -> sa.Engine:
     url, schema = key
     eng = sa.create_engine(
         url.replace("postgres://", "postgresql+psycopg://", 1).replace("postgresql://", "postgresql+psycopg://", 1),
-        pool_pre_ping=True,
+        poolclass=NullPool,
     )
 
     @event.listens_for(eng, "connect")
@@ -151,3 +151,10 @@ class Db(Session):
                 self.commit()
         finally:
             super().close()
+
+
+def as_dict(obj) -> dict | None:
+    """Mapped object -> plain dict of its columns (what the API layer hands around)."""
+    if obj is None:
+        return None
+    return {c.key: getattr(obj, c.key) for c in sa.inspect(obj).mapper.column_attrs}
