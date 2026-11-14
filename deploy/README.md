@@ -106,7 +106,7 @@ docker push ghcr.io/<owner>/sada:<tag>
 
 One image, two roles: `python -m sada.backoffice serve` (port 8090) and
 `python -m sada.orchestrator` (port 8088, one container per mosque). `image.repository` and
-`image.tag` are chart values; the default repository is `ghcr.io/sada-khutbah/sada`, so change
+`image.tag` are chart values; the default repository is `ghcr.io/sadakhutbah/sada`, so change
 it unless that is your registry.
 
 ## 5. Sadā
