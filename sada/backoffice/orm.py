@@ -12,26 +12,40 @@ end of each request and by `close()`.
 from __future__ import annotations
 
 import threading
+from collections import OrderedDict
 from pathlib import Path
 
 import sqlalchemy as sa
 from sqlalchemy import event
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import NullPool
 
 from . import pg
 
-_ENGINES: dict[tuple, sa.Engine] = {}
+# One engine per database (URL + schema), kept for the life of the process: every request checks a
+# connection out of its pool instead of opening one. A request that opened a fresh connection paid
+# for the handshake, and on PostgreSQL for `CREATE SCHEMA` + `SET search_path` as well.
+POOL_SIZE = 5
+MAX_OVERFLOW = 10
+POOL_TIMEOUT = 10  # seconds to wait for a free connection before failing (default is 30)
+ENGINES_KEPT = 16  # LRU: the tests open a throwaway database per test, production has one or two
+
+_ENGINES: OrderedDict[tuple, sa.Engine] = OrderedDict()
 _LOCK = threading.Lock()
 
 
 def engine(path: str | Path, default_path) -> sa.Engine:
+    """Shared engine of the database `path` (its own schema when PostgreSQL is configured)."""
     url = pg.url()
     key = (url, pg.schema_for(path, default_path)) if url else ("sqlite", str(Path(path)))
     with _LOCK:
         eng = _ENGINES.get(key)
-        if eng is None:
-            eng = _ENGINES[key] = _make(key, path)
+        if eng is not None:
+            _ENGINES.move_to_end(key)
+            return eng
+        while len(_ENGINES) >= ENGINES_KEPT:
+            _, old = _ENGINES.popitem(last=False)
+            old.dispose()  # idle connections closed; a checked-out one is dropped when returned
+        eng = _ENGINES[key] = _make(key, path)
     return eng
 
 
@@ -40,7 +54,9 @@ def _make(key, path) -> sa.Engine:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         eng = sa.create_engine(
             f"sqlite:///{Path(path)}",
-            poolclass=NullPool,
+            pool_size=POOL_SIZE,
+            max_overflow=MAX_OVERFLOW,
+            pool_timeout=POOL_TIMEOUT,
             connect_args={"timeout": 10, "check_same_thread": False, "isolation_level": None},
         )
 
@@ -57,7 +73,10 @@ def _make(key, path) -> sa.Engine:
     url, schema = key
     eng = sa.create_engine(
         url.replace("postgres://", "postgresql+psycopg://", 1).replace("postgresql://", "postgresql+psycopg://", 1),
-        poolclass=NullPool,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_OVERFLOW,
+        pool_timeout=POOL_TIMEOUT,
+        pool_pre_ping=True,  # a connection dropped by the server (restart, idle timeout) is replaced
     )
 
     @event.listens_for(eng, "connect")
