@@ -1,0 +1,11 @@
+# Terraform local state and provider cache: never committed.
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+terraform.tfvars
+*.auto.tfvars
+
+*.retry

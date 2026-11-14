@@ -1,0 +1,221 @@
+---
+# One Hetzner server, one k3s node: data volume mounted, cluster installed, kubeconfig fetched.
+#
+#   ansible-playbook playbook.yml            # uses inventory.ini written by terraform apply
+#   ansible-playbook -i inventory.example.ini --syntax-check playbook.yml
+#
+# Idempotent: running it again only restarts k3s when its configuration changed.
+- name: Sadā on Hetzner (k3s single node + data volume)
+  hosts: server
+  gather_facts: true
+  vars:
+    k3s_channel: stable
+    k3s_config_dir: /etc/rancher/k3s
+
+  tasks:
+    - name: Wait for cloud-init to finish
+      ansible.builtin.command: cloud-init status --wait
+      register: cloud_init
+      changed_when: false
+      failed_when: cloud_init.rc not in [0, 2]
+      when: ansible_facts.get('service_mgr', '') == 'systemd'
+
+    - name: Install the few tools the playbook needs
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+          - e2fsprogs
+          - util-linux
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # --- Data volume ------------------------------------------------------
+    - name: Check the data volume is attached
+      ansible.builtin.stat:
+        path: "{{ sada_data_device }}"
+        follow: true
+      register: volume_device
+
+    - name: Fail early when the volume is missing
+      ansible.builtin.assert:
+        that:
+          - volume_device.stat.exists
+          - volume_device.stat.isblk
+        fail_msg: "{{ sada_data_device }} is not a block device: was the Hetzner volume attached?"
+        quiet: true
+
+    - name: Look for a filesystem already on the volume
+      ansible.builtin.command: blkid -o value -s TYPE {{ sada_data_device }}
+      register: volume_fs
+      changed_when: false
+      failed_when: false
+
+    - name: Format the volume as ext4 (only when it carries no filesystem)
+      ansible.builtin.command: mkfs.ext4 -q -m 0 -L sada-data {{ sada_data_device }}
+      when: volume_fs.stdout | default('') | trim == ''
+
+    - name: Read the UUID of the volume
+      ansible.builtin.command: blkid -o value -s UUID {{ sada_data_device }}
+      register: volume_uuid
+      changed_when: false
+
+    - name: Create the mount point
+      ansible.builtin.file:
+        path: "{{ sada_data_mount }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount the volume at boot
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^{{ sada_data_device }}|^UUID={{ volume_uuid.stdout }}\s'
+        line: "UUID={{ volume_uuid.stdout }} {{ sada_data_mount }} ext4 defaults,nofail,noatime 0 2"
+        state: present
+
+    - name: Is the volume mounted already?
+      ansible.builtin.command: findmnt -n -o TARGET {{ sada_data_mount }}
+      register: volume_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Mount the data volume
+      ansible.builtin.command: mount -a
+      when: volume_mount.rc != 0
+
+    # --- k3s --------------------------------------------------------------
+    - name: Create the k3s storage directory on the volume
+      ansible.builtin.file:
+        path: "{{ sada_k3s_storage_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Create the k3s configuration directory
+      ansible.builtin.file:
+        path: "{{ k3s_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    # tls-san: the kubeconfig speaks to the public IPv4, the server certificate has to know it.
+    - name: Check whether k3s is installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    - name: Write the k3s configuration
+      ansible.builtin.copy:
+        dest: "{{ k3s_config_dir }}/config.yaml"
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          write-kubeconfig-mode: "0600"
+          node-name: {{ inventory_hostname }}
+          tls-san:
+            - {{ sada_public_ip }}
+      register: k3s_config
+
+    - name: Restart k3s when its configuration changed
+      ansible.builtin.systemd:
+        name: k3s
+        state: restarted
+      when:
+        - k3s_config.changed
+        - k3s_binary.stat.exists
+
+    # Traefik (Ingress) and ServiceLB (LoadBalancer) are part of the standard k3s install.
+    - name: Install k3s
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL={{ k3s_channel }} sh -
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/k3s
+      when: not k3s_binary.stat.exists
+
+    - name: Wait for the k3s kubeconfig
+      ansible.builtin.wait_for:
+        path: "{{ k3s_config_dir }}/k3s.yaml"
+        search_regex: server
+        timeout: 300
+
+    - name: Let the local-path provisioner write on the data volume
+      ansible.builtin.copy:
+        dest: /var/lib/rancher/k3s/server/manifests/local-path-storage.yaml
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          apiVersion: helm.cattle.io/v1
+          kind: HelmChartConfig
+          metadata:
+            name: local-path-provisioner
+            namespace: kube-system
+          spec:
+            valuesContent: |-
+              nodePathMap:
+                - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+                  paths:
+                    - {{ sada_k3s_storage_path }}
+
+    - name: Wait for the node to be Ready
+      ansible.builtin.command: k3s kubectl wait --for=condition=Ready nodes --all --timeout=300s
+      register: node_ready
+      changed_when: false
+      retries: 6
+      delay: 10
+      until: node_ready.rc == 0
+
+    - name: Wait for the default StorageClass
+      ansible.builtin.command: k3s kubectl get storageclass local-path
+      register: storage_class
+      changed_when: false
+      retries: 12
+      delay: 10
+      until: storage_class.rc == 0
+
+    # --- Kubeconfig, locally ---------------------------------------------
+    - name: Create the local kubeconfig directory
+      ansible.builtin.file:
+        path: "{{ (sada_kubeconfig_path | expanduser) | dirname }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: Read the kubeconfig on the server
+      ansible.builtin.slurp:
+        src: "{{ k3s_config_dir }}/k3s.yaml"
+      register: kubeconfig
+
+    # The server writes 127.0.0.1:6443; from the laptop the API is the public IPv4 (open to
+    # admin_cidrs only, see the Hetzner firewall).
+    - name: Write the kubeconfig locally
+      ansible.builtin.copy:
+        dest: "{{ sada_kubeconfig_path | expanduser }}"
+        mode: "0600"
+        content: >-
+          {{ kubeconfig.content | b64decode
+             | replace('https://127.0.0.1:6443', 'https://' ~ sada_public_ip ~ ':6443') }}
+      delegate_to: localhost
+      become: false
+
+    - name: Check the cluster answers with the new kubeconfig
+      ansible.builtin.command: kubectl --kubeconfig {{ sada_kubeconfig_path | expanduser }} get nodes
+      register: cluster_check
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: Cluster status
+      ansible.builtin.debug:
+        msg: >-
+          {{ cluster_check.stdout_lines if cluster_check.rc == 0
+             else ['kubectl could not reach the cluster from here: ' ~ (cluster_check.stderr | default('unknown error')),
+                   'kubeconfig written to ' ~ (sada_kubeconfig_path | expanduser)] }}
