@@ -9,6 +9,8 @@ srt: yes
 srtAddress: :8890
 hls: yes
 hlsAddress: :8888
+hlsVariant: mpegts
+hlsSegmentDuration: 2s
 hlsAlwaysRemux: no
 hlsAllowOrigins: ['*']
 webrtc: no
