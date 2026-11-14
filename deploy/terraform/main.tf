@@ -129,7 +129,6 @@ resource "hcloud_server" "sada" {
 resource "hcloud_volume" "data" {
   name              = "${var.name_prefix}-data"
   size              = var.data_volume_size
-  location          = var.location
   server_id         = hcloud_server.sada.id
   labels            = var.labels
   delete_protection = var.data_volume_delete_protection
@@ -145,7 +144,7 @@ resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/inventory.ini.tftpl", {
     server_name     = "${var.name_prefix}-app"
     server_ipv4     = hcloud_server.sada.ipv4_address
-    ssh_key_path    = pathexpand(var.ssh_public_key_path)
+    ssh_key_path    = trimsuffix(pathexpand(var.ssh_public_key_path), ".pub")
     volume_device   = local.volume_device
     data_mount_path = "/mnt/sada-data"
     k3s_mount_path  = "/mnt/sada-data/k3s"

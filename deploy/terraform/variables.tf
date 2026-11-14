@@ -36,7 +36,7 @@ variable "image" {
 variable "ssh_public_key_path" {
   description = "Public key injected into the server (root login)."
   type        = string
-  default     = "~/.ssh/id_ed25519.pub"
+  default     = "~/.config/sada-deploy/id_ed25519.pub"
 }
 
 variable "ssh_key_name" {
