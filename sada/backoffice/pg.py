@@ -59,6 +59,17 @@ def translate(sql: str) -> tuple[str, bool]:
     return s, returning
 
 
+def rewrite_catalog(sql: str) -> str:
+    if "SQLITE_MASTER" not in sql.upper():
+        return sql
+    return re.sub(
+        r"SELECT\s+1\s+FROM\s+sqlite_master\s+WHERE\s+type\s*=\s*'table'\s+AND\s+name\s*=\s*\?",
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?",
+        sql,
+        flags=re.I,
+    )
+
+
 class Row(dict):
     """sqlite3.Row lookalike: by name, by position, `keys()`, `dict(row)`."""
 
@@ -136,13 +147,7 @@ class Connection:
         head = sql.lstrip()[:16].upper()
         if head.startswith("PRAGMA"):
             return _Empty()
-        if "SQLITE_MASTER" in sql.upper():
-            sql = re.sub(
-                r"SELECT\s+1\s+FROM\s+sqlite_master\s+WHERE\s+type\s*=\s*'table'\s+AND\s+name\s*=\s*\?",
-                "SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?",
-                sql,
-                flags=re.I,
-            )
+        sql = rewrite_catalog(sql)
         s, returning = translate(sql)
         with self._lock:
             cur = self._c.cursor()

@@ -264,7 +264,8 @@ def _init_pg(conn, now_iso) -> None:
 
 def init(path: str | Path) -> None:
     """Crée / met à jour la base `path` vers la dernière version connue du code."""
-    from .db import connect, now_iso  # import tardif : évite le cycle db <-> migrations
+    from .db import connect_raw as connect  # import tardif : évite le cycle db <-> migrations
+    from .db import now_iso
 
     conn = connect(path)
     from . import pg

@@ -49,8 +49,16 @@ def now_iso() -> str:
     return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
 
-def connect(path: str | Path) -> sqlite3.Connection:
-    """SQLite file `path`, or PostgreSQL when `SADA_DATABASE_URL` is set (one schema per path)."""
+def connect(path: str | Path):
+    """ORM session (`orm.Db`) on the SQLite file `path`, or on PostgreSQL when `SADA_DATABASE_URL`
+    is set (one schema per path)."""
+    from . import orm
+
+    return orm.Db(orm.engine(path, DEFAULT_DB))
+
+
+def connect_raw(path: str | Path) -> sqlite3.Connection:
+    """Driver-level connection, for the migrations only."""
     from . import pg
 
     if pg.url():

@@ -133,7 +133,9 @@ def test_migration_keeps_a_single_mosque_admin_in_charge(tmp_path):
     mid = db.create_mosque(conn, "seule", "Seule")
     uid = auth.create_user(conn, mid, "chef", PW, "admin")
     conn.execute("DELETE FROM schema_migrations WHERE version = 11")
-    migrations._users_plateforme(conn)
+    raw = db.connect_raw(path)
+    migrations._users_plateforme(raw)
+    raw.close()
     assert db.one(conn, "SELECT platform_admin FROM users WHERE id = ?", uid)["platform_admin"] == 1
 
 

@@ -360,3 +360,80 @@ TABLES = (
     publications,
     audit,
 )
+
+
+# ---------------------------------------------------------------- ORM classes
+# Mapped on the tables above (single schema source); queries go through them.
+from sqlalchemy.orm import DeclarativeBase  # noqa: E402
+
+
+class Base(DeclarativeBase):
+    metadata = metadata
+
+
+class Mosque(Base):
+    __table__ = mosques
+
+
+class User(Base):
+    __table__ = users
+
+
+class AuthSession(Base):
+    __table__ = auth_sessions
+
+
+class Khutba(Base):
+    __table__ = khutbas
+
+
+class Clip(Base):
+    __table__ = clips
+
+
+class Correction(Base):
+    __table__ = corrections
+
+
+class AddedSubtitle(Base):
+    __table__ = added_subtitles
+
+
+class Habillage(Base):
+    __table__ = habillages
+
+
+class Connector(Base):
+    __table__ = connectors
+
+
+class Notification(Base):
+    __table__ = notifications
+
+
+class LiveTarget(Base):
+    __table__ = live_targets
+
+
+class Event(Base):
+    __table__ = events
+
+
+class LiveInput(Base):
+    __table__ = live_input
+
+
+class Storage(Base):
+    __table__ = storage
+
+
+class ScreenText(Base):
+    __table__ = screen_texts
+
+
+class Publication(Base):
+    __table__ = publications
+
+
+class Audit(Base):
+    __table__ = audit
