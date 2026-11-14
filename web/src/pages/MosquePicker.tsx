@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type MosqueChoice, type Session } from "../api";
 import { Btn } from "../ui";
@@ -27,6 +27,15 @@ export default function MosquePicker({
       setEnvoi(null);
     }
   };
+
+  // A non-operator with a single mosque has nothing to choose: open it straight away (once).
+  const auto = useRef(false);
+  useEffect(() => {
+    if (!operateur && toutes.length === 1 && !auto.current) {
+      auto.current = true;
+      void choisir(toutes[0]);
+    }
+  }, []); // eslint-disable-line
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
