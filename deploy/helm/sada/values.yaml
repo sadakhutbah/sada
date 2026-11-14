@@ -128,3 +128,6 @@ certManager:
   createIssuer: false
   email: ""
   server: https://acme-v02.api.letsencrypt.org/directory
+
+# Clock of the containers (sessions, dars, logs)
+timezone: Europe/Paris

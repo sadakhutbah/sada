@@ -53,6 +53,8 @@ spec:
             - name: api
               containerPort: {{ $.Values.orchestrator.apiPort }}
           env:
+            - name: TZ
+              value: {{ $.Values.timezone | quote }}
             - name: SADA_BACKOFFICE_URL
               value: {{ $.Values.orchestrator.backofficeUrl | default "http://backoffice:8090" | quote }}
             - name: SADA_API_HOST

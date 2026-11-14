@@ -46,6 +46,8 @@ spec:
               else:
                   raise SystemExit("postgres did not come up")
           env:
+            - name: TZ
+              value: {{ $.Values.timezone | quote }}
             - name: SADA_DB_HOST
               value: {{ printf "%s-rw" (include "sada.postgresName" .) | quote }}
             - name: SADA_DB_PORT
@@ -72,6 +74,8 @@ spec:
             - name: http
               containerPort: {{ .Values.backoffice.port }}
           env:
+            - name: TZ
+              value: {{ $.Values.timezone | quote }}
             - name: SADA_BO_HOST
               value: 0.0.0.0
             - name: SADA_BO_PORT
