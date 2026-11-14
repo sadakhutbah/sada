@@ -8,8 +8,19 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import rawsql
+from conftest import (  # noqa: E402
+    applied_versions,
+    audit_rows,
+    columns,
+    delete,
+    insert,
+    legacy_metadata,
+    one,
+    set_khutba,
+    table_names,
+)
 
+from sada.backoffice import models  # noqa: E402
 from sada.pipeline import habillage as h
 
 FFMPEG = shutil.which("ffmpeg") and shutil.which("ffprobe")
@@ -285,17 +296,18 @@ def test_vrai_apercu(video, logo, tmp_path):
 # ------------------------------------------------------------------ API
 
 fastapi = pytest.importorskip("fastapi")
-from test_backoffice import client  # noqa: E402
+from conftest import client  # noqa: E402
 
 
 def test_api_prerempli_sans_chemin(env):
 
-    rawsql.one(env["conn"], "SELECT 1")
-    rawsql.run(
+    set_khutba(
         env["conn"],
-        "UPDATE khutbas SET title = 'Patience et gratitude', series = 'Les vertus', session_no = 2, "
-        "date = '2026-11-06' WHERE id = ?",
         env["kid"],
+        title="Patience et gratitude",
+        series="Les vertus",
+        session_no=2,
+        date="2026-11-06",
     )
     c = client(env, "admin")
     r = c.get(f"/api/v1/sermons/{env['kid']}/habillage")
@@ -333,7 +345,7 @@ def test_api_sans_source_refuse_proprement(env):
 def test_api_apercu_puis_rendu(env, video):
 
     conn, kid = env["conn"], env["kid"]
-    rawsql.run(conn, "UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
+    set_khutba(conn, kid, video_path=str(video))
     c = client(env, "admin")
     options = {
         "title": "Patience",
@@ -364,10 +376,9 @@ def test_api_apercu_puis_rendu(env, video):
     )
     assert video.exists()  # la source n'est pas touchée
     # la mosquée retient son identité (pas le titre de ce dars)
-    m = rawsql.one(conn, "SELECT habillage_defaults FROM mosques WHERE id = ?", env["mid"])
-    retenu = json.loads(m["habillage_defaults"])
+    retenu = json.loads(one(conn, models.Mosque, id=env["mid"])["habillage_defaults"])
     assert retenu["outro_link"] == "mosquee-exemple.fr" and retenu["logo_pos"] == "bl" and "title" not in retenu
-    actions = [a["action"] for a in rawsql.all_(conn, "SELECT action FROM audit")]
+    actions = [a["action"] for a in audit_rows(conn)]
     assert "habillage.lance" in actions and "habillage.pret" in actions
 
 
@@ -376,7 +387,7 @@ def test_nouveau_rendu_garde_l_ancienne_video_jusqu_au_remplacement(env, video, 
     from sada.pipeline import habillage as rendu
 
     conn, kid = env["conn"], env["kid"]
-    rawsql.run(conn, "UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
+    set_khutba(conn, kid, video_path=str(video))
     c = client(env, "admin")
     assert (
         c.ecrire(
@@ -394,7 +405,7 @@ def test_nouveau_rendu_garde_l_ancienne_video_jusqu_au_remplacement(env, video, 
         ).status_code
         == 200
     )
-    k = rawsql.one(conn, "SELECT * FROM khutbas WHERE id = ?", (kid,))
+    k = one(conn, models.Khutba, id=kid)
     ancienne = bo.fichier_video(k).read_bytes()
 
     # Pendant le rendu, l'ancienne vidéo reste servie ; un échec ne la touche pas.
@@ -449,13 +460,9 @@ def test_rendu_interrompu_marque_en_echec(env):
     from sada.backoffice import habillage as bo
 
     conn = env["conn"]
-    rawsql.run(
-        conn,
-        "INSERT INTO habillages (mosque_id, khutba_id, status, updated_at) VALUES (?, ?, 'en_cours', 'x')",
-        (env["mid"], env["kid"]),
-    )
+    insert(conn, models.Habillage, mosque_id=env["mid"], khutba_id=env["kid"], status="en_cours", updated_at="x")
     bo.recover_interrupted(conn)
-    assert rawsql.one(conn, "SELECT status FROM habillages")["status"] == "echec"
+    assert one(conn, models.Habillage)["status"] == "echec"
 
 
 def test_erreur_sans_chemin():
@@ -470,16 +477,21 @@ def test_migration_8_sur_une_base_en_version_6(tmp_path):
 
     path = tmp_path / "bo.db"
     db.init(path)
+    # Base rembobinée en version 7 : table `habillages` absente, mosquée sans ses réglages.
+    old = legacy_metadata(without={"mosques": {"habillage_defaults"}}, skip=("habillages",))
     conn = db.connect(path)
-    rawsql.run(conn, "DROP TABLE habillages")
-    rawsql.run(conn, "ALTER TABLE mosques DROP COLUMN habillage_defaults")
-    rawsql.run(conn, "DELETE FROM schema_migrations WHERE version = 8")
-    conn.close()
+    try:
+        models.habillages.drop(conn.connection())
+        models.mosques.drop(conn.connection())
+        old.create_all(conn.connection())
+        delete(conn, migrations.schema_migrations, version=8)
+    finally:
+        conn.close()
     db.init(path)
     conn = db.connect(path)
     try:
-        assert rawsql.one(conn, "SELECT name FROM sqlite_master WHERE name = 'habillages'")
-        assert "habillage_defaults" in {r[1] for r in rawsql.run(conn, "PRAGMA table_info(mosques)")}
-        assert max(r[0] for r in rawsql.run(conn, "SELECT version FROM schema_migrations")) == migrations.LATEST
+        assert "habillages" in table_names(conn)
+        assert "habillage_defaults" in columns(conn, "mosques")
+        assert applied_versions(conn)[-1] == migrations.LATEST
     finally:
         conn.close()

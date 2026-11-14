@@ -8,8 +8,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-import rawsql
-from test_backoffice import client  # noqa: E402,F401
+from conftest import audit_rows, client  # noqa: E402,F401
 
 from sada import events  # noqa: E402
 from sada.backoffice import events_store  # noqa: E402
@@ -70,7 +69,7 @@ def test_creation_lue_par_le_moteur(env, prog):
     items = c.get("/api/v1/events").json()["items"]
     assert {i["title"]: i["mode"] for i in items} == {"Tafsir Al-Kahf": "weekly", "Les droits des voisins": "once"}
     assert all(i["id"] for i in items)
-    actions = [a["action"] for a in rawsql.all_(env["conn"], "SELECT action FROM audit")]
+    actions = [a["action"] for a in audit_rows(env["conn"])]
     assert actions.count("programme.cree") == 2
 
 

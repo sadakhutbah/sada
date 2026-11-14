@@ -5,11 +5,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import rawsql
-from test_backoffice import client
+from conftest import client, one
 
 from sada import runs
-from sada.backoffice import importer, traitement
+from sada.backoffice import importer, models, traitement
 
 URL = "/api/v1/imports/video"
 
@@ -39,18 +38,14 @@ def test_import_cree_un_run_en_file(env, tmp_path):
     assert r.status_code == 200, r.text
     rid = r.json()["run"]
     assert rid.startswith("20261103_")
-    rd = (
-        env["root"] / "state" / rid
-        if "root" in env
-        else Path(rawsql.run(env["conn"], "SELECT state_dir FROM mosques")[0][0]) / rid
-    )
+    rd = env["root"] / "state" / rid
     data = runs.load(rd / runs.SESSIONS)
     s = data["sessions"][0]
     assert s["status"] == "done" and s["kind"] == "dars" and s["title"] == "Tafsir Al-Kahf" and s["session_no"] == 3
     assert 1.5 < s["end_pos"] < 2.5
     assert Path(data["recordings"][0]).exists()
     assert traitement.lire(rd)["0"]["etat"] == "attente"
-    mo = rawsql.one(env["conn"], "SELECT * FROM mosques")
+    mo = one(env["conn"], models.Mosque)
     assert (rd, 0) in traitement.a_traiter(mo)  # pris malgré une date ancienne
     assert importer.khutba_label(dict(s, index=0)).endswith("Tafsir Al-Kahf · séance 3")
 
@@ -76,7 +71,7 @@ def test_import_refuse(env, tmp_path, q, data_kind, msg):
         data = b"x"
     r = _post(c, data, **q)
     assert r.status_code == 422 and msg in r.text, r.text
-    sortie = Path(rawsql.run(env["conn"], "SELECT output_dir FROM mosques")[0][0])
+    sortie = Path(one(env["conn"], models.Mosque)["output_dir"])
     assert not any((d / "source").exists() for d in sortie.iterdir())  # rien ne reste d'un refus
 
 
@@ -91,6 +86,6 @@ def test_import_droits_et_csrf(env, tmp_path):
 def test_audit(env, tmp_path):
     c = client(env, "admin")
     assert _post(c, _video(tmp_path), title="Cours").status_code == 200
-    a = rawsql.run(env["conn"], "SELECT details FROM audit WHERE action = 'import.video'").fetchone()
-    assert a and "Cours" in a[0]
-    json.loads(a[0])
+    a = one(env["conn"], models.Audit, action="import.video")
+    assert a and "Cours" in a["details"]
+    json.loads(a["details"])

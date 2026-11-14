@@ -6,8 +6,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-import rawsql
-from test_backoffice import client  # noqa: E402,F401  (conftest fournit le chemin)
+from conftest import audit_rows, client  # noqa: E402,F401  (conftest fournit le chemin)
 
 BON = {
     "endpoint": "https://compte.r2.cloudflarestorage.com",
@@ -108,9 +107,7 @@ def test_reserve_a_l_admin(env):
 def test_audit_sans_cle(env):
     c = client(env, "admin")
     c.ecrire("/settings/storage", BON, methode="PUT")
-    lignes = [
-        r for r in rawsql.all_(env["conn"], "SELECT action, details FROM audit WHERE action = 'rediffusion.configure'")
-    ]
+    lignes = audit_rows(env["conn"], action="rediffusion.configure")
     assert lignes and "secret-tres-secret" not in lignes[-1]["details"]
 
 

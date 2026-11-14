@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
+from conftest import client  # noqa: E402,F401  (conftest provides the path)
 
 
 def _png(w=64, h=64, color=(15, 42, 25)) -> bytes:

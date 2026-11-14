@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from test_backoffice import client, csrf, login  # noqa: F401
+from conftest import client, csrf, login  # noqa: F401
 
 from sada.backoffice import instance
 
