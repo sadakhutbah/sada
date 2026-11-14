@@ -81,7 +81,7 @@ cmd_infra() {
   confirm "This creates billable Hetzner resources (server, volume, IPv4) and a firewall."
   cd "$TF_DIR"
   terraform init -input=false -upgrade=false >/dev/null
-  terraform apply -input=false "${vars[@]}"
+  terraform apply -input=false ${SADA_YES:+-auto-approve} "${vars[@]}"
   log "server ready; DNS: terraform output dns_a_record"
 }
 

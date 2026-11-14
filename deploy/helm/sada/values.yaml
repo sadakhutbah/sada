@@ -72,6 +72,8 @@ orchestrator:
   apiPort: 8088
   # "" = http://backoffice:8090
   backofficeUrl: ""
+  # Output frame rate of the programme (lower it on a small node)
+  fps: 25
   resources:
     requests:
       cpu: 500m
@@ -132,7 +134,7 @@ certManager:
 # Clock of the containers (sessions, dars, logs)
 timezone: Europe/Paris
 
-# Live viewer in the browser: https://<host>/live/<slug>/ (basic auth)
+# Live viewer in the browser: https://<host>/live/<slug>-prog/ (open; set authSecret for basic auth)
 liveViewer:
+  authSecret: ""
   enabled: true
-  authSecret: live-viewer-auth

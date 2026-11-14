@@ -24,7 +24,7 @@ variable "location" {
 variable "server_type" {
   description = "Server type. cx33 = 4 vCPU (shared), 8 GB RAM, 80 GB disk, ~10 EUR/month."
   type        = string
-  default     = "cx33"
+  default     = "cx43"
 }
 
 variable "image" {

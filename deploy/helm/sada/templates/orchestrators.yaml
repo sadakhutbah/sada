@@ -59,6 +59,8 @@ spec:
               value: {{ $.Values.orchestrator.backofficeUrl | default "http://backoffice:8090" | quote }}
             - name: SADA_PREVIEW_URL
               value: "rtmp://receiver:{{ $.Values.receiver.rtmpPort }}/live/{{ .slug }}-prog"
+            - name: SADA_FPS
+              value: {{ $.Values.orchestrator.fps | quote }}
             - name: SADA_API_HOST
               value: 0.0.0.0
             - name: SADA_API_PORT
