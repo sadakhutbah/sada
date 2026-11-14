@@ -214,7 +214,8 @@ class Encoder:
 
     def _tee_targets(self) -> str:
         """One tee output per destination: a platform that drops must not interrupt the others."""
-        return "|".join(f"[f=flv:onfail=ignore]{url}" for url in self.cfg.rtmp_urls)
+        urls = [*self.cfg.rtmp_urls, *([self.cfg.preview_url] if self.cfg.preview_url else [])]
+        return "|".join(f"[f=flv:onfail=ignore]{url}" for url in urls)
 
     # ------------------------------------------------------------------ life cycle
     def start(self):

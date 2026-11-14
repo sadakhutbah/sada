@@ -54,6 +54,9 @@ class Config(MachineParams):
     # rtmps://a.rtmp.youtube.com/live2/<key>; the keys come from SADA_RTMP_URLS (comma-separated).
     # In demo mode: a single local server playing Facebook's role.
     rtmp_urls: list[str] = field(default_factory=lambda: ["rtmp://127.0.0.1:1935/live/facebook"])
+    # Monitoring copy of the programme, always sent (whatever the destinations) so the back office
+    # can show the live without any platform credentials. SADA_PREVIEW_URL, empty = none.
+    preview_url: str = field(default_factory=lambda: os.environ.get("SADA_PREVIEW_URL", ""))
     record_dir: str = str(paths.RECORDINGS)
     state_dir: str = str(paths.STATE)
     width: int = 1280

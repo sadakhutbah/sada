@@ -146,7 +146,13 @@ async def publish_auth(request: Request, conn: ConnDep):
         return JSONResponse({}, status_code=400)
     action, path = q.get("action"), str(q.get("path") or "")
     slug = path.removeprefix("live/") if path.startswith("live/") else ""
-    if action == "publish":
+    if action == "publish" and slug.endswith("-prog"):
+        # programme copy sent by an orchestrator (monitoring), private network only
+        try:
+            ok = ipaddress.ip_address(str(q.get("ip") or "")).is_private
+        except ValueError:
+            ok = False
+    elif action == "publish":
         ok = internal.publish_allowed(conn, slug, q.get("password"))
     elif action in ("read", "playback"):
         try:
