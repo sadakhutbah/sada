@@ -14,6 +14,8 @@ there.
 
 from __future__ import annotations
 
+import re
+
 
 class Rows:
     """Rows of one probe, already read: its transaction is closed before the caller uses them."""
@@ -46,7 +48,10 @@ def _params(args) -> tuple | None:
 def run(conn, sql: str, *args) -> Rows:
     """Driver-level rows: read by name (`r._mapping["id"]`) or by position (`r[0]`)."""
     if conn.get_bind().dialect.name == "postgresql":
-        sql = sql.replace("?", "%s")
+        # psycopg placeholders; a literal `%` (LIKE 'x%') is doubled, and the `end` column is a
+        # reserved word there (SQLite accepts it bare).
+        sql = sql.replace("%", "%%").replace("?", "%s")
+        sql = re.sub(r"(?<![\w\"])end(?![\w\"])", '"end"', sql)
     conn.commit()  # pending work of the test reaches the database
     conn.rollback()  # and the probe reads the database as it is now, not a snapshot of it
     res = conn.connection().exec_driver_sql(sql, _params(args))
