@@ -126,7 +126,7 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
         if value:
             cmd += [option, value]
     try:
-        p = subprocess.run(cmd, cwd=paths.ROOT, capture_output=True, text=True, env=_env())
+        p = subprocess.run(cmd, cwd=paths.ROOT, capture_output=True, text=True, env=_env(mosque))
         ok = p.returncode == 0 and SessionOutput(out / run_dir.name / runs.session_dir(idx)).is_transcribed()
         if not ok:
             raise RuntimeError(_resume_erreur(p.stderr or p.stdout, p.returncode))
@@ -140,9 +140,16 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
     return True
 
 
-def _env() -> dict:
-    """Le pipeline appelle ffmpeg par son nom : son dossier rejoint le PATH du service."""
+def _env(mosque: dict | None = None) -> dict:
+    """Le pipeline appelle ffmpeg par son nom : son dossier rejoint le PATH du service.
+
+    Les réglages lus par le pipeline (extraits, modèle) sont ceux de la mosquée traitée.
+    """
     env = dict(os.environ)
+    if mosque:
+        from . import tenant_config
+
+        env.update(tenant_config.pipeline_env(mosque))
     exe = importer._ffmpeg()
     if exe:
         env["PATH"] = str(Path(exe).parent) + os.pathsep + env.get("PATH", "")

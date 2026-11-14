@@ -23,10 +23,13 @@ def config_path() -> Path:
     return Path(os.environ.get("SADA_PIPELINE_CONFIG") or paths.DATA / "pipeline.json")
 
 
-def config() -> dict:
-    """Réglages enregistrés depuis le back-office. Fichier absent ou illisible : {}."""
+def config(path: Path | None = None) -> dict:
+    """Réglages enregistrés depuis le back-office. Fichier absent ou illisible : {}.
+
+    `path` : fichier d'une mosquée (back-office multi-mosquée) ; sinon le fichier du processus.
+    """
     try:
-        d = json.loads(config_path().read_text(encoding="utf-8"))
+        d = json.loads((path or config_path()).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return d if isinstance(d, dict) else {}
@@ -37,9 +40,9 @@ def borne(valeur) -> int:
     return max(MIN_CLIPS, min(MAX_CLIPS, int(valeur)))
 
 
-def clips_enabled() -> bool:
+def clips_enabled(path: Path | None = None) -> bool:
     """Interrupteur enregistré : la production d'extraits, active par défaut."""
-    return bool(config().get("clips_enabled", True))
+    return bool(config(path).get("clips_enabled", True))
 
 
 def _flag(raw, default: bool = True) -> bool:
@@ -62,7 +65,7 @@ def arabic_retry_enabled(cli: bool | None = None) -> bool:
     return _flag(config().get("arabic_retry"), True)
 
 
-def clip_count(cli: int | None = None) -> int:
+def clip_count(cli: int | None = None, path: Path | None = None) -> int:
     """Extraits par khutba, 0 signifiant « aucun ».
 
     Priorité : option de commande, puis SADA_CLIPS (0 désactive), puis le fichier (interrupteur
@@ -75,24 +78,24 @@ def clip_count(cli: int | None = None) -> int:
         except (TypeError, ValueError):
             return DEFAULT_CLIPS
         return 0 if n <= 0 else borne(n)
-    if not clips_enabled():
+    if not clips_enabled(path):
         return 0
     try:
-        return borne(config().get("clips", DEFAULT_CLIPS))
+        return borne(config(path).get("clips", DEFAULT_CLIPS))
     except (TypeError, ValueError):
         return DEFAULT_CLIPS
 
 
-def save_config(clips, enabled=True) -> dict:
+def save_config(clips, enabled=True, path: Path | None = None) -> dict:
     """Écrit les réglages et rend ce qui a été retenu. Les autres clés du fichier sont conservées.
 
     Le nombre est gardé même quand on désactive : réactiver retrouve le compte précédent.
     """
     n = borne(clips)
     garde = bool(enabled)
-    p = config_path()
+    p = path or config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    data = {**config(), "clips": n, "clips_enabled": garde}
+    data = {**config(p), "clips": n, "clips_enabled": garde}
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
     os.replace(tmp, p)

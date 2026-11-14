@@ -12,7 +12,7 @@ from ...i18n import _
 from ...pipeline import llm
 from ...pipeline import remote as remote_transcription
 from ...pipeline import settings as pipeline_settings
-from .. import auth, branding, db, destinations, instance, live_input, publish, storage, variables_ecran
+from .. import auth, branding, db, destinations, instance, live_input, publish, storage, tenant_config, variables_ecran
 from .. import dirs as dirs_mod
 from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
@@ -41,12 +41,24 @@ def _host(ctx) -> str:
     return ctx.request.url.hostname or "127.0.0.1"
 
 
-def _model_view() -> dict:
+def _seed(mosque: dict, name: str) -> None:
+    """First save of a mosque: start from the shared file, so the keys the form does not show
+    (API key, arabic_retry) are kept rather than dropped."""
+    own = tenant_config.write_path(mosque, name)
+    src = tenant_config.read_path(mosque, name)
+    if own != src and src.exists():
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_bytes(src.read_bytes())
+        own.chmod(src.stat().st_mode & 0o777)
+
+
+def _model_view(mosque: dict) -> dict:
     """Model setting for the screen: never the API key, only its presence."""
-    cfg = llm.config()
-    eff = llm.settings()
+    path = tenant_config.read_path(mosque, "llm")
+    cfg = llm.config(path)
+    eff = llm.settings(path=path)
     return {
-        "enabled": llm.enabled(),
+        "enabled": llm.enabled(path),
         "url": cfg.get("url", ""),
         "model": cfg.get("model", ""),
         "protocol": cfg.get("protocol", ""),
@@ -56,13 +68,14 @@ def _model_view() -> dict:
     }
 
 
-def _processing_view() -> dict:
+def _processing_view(mosque: dict) -> dict:
     """Traitement d'après-direct: what is saved, the bounds, and what the pipeline would use."""
-    saved = pipeline_settings.config().get("clips")
+    path = tenant_config.read_path(mosque, "pipeline")
+    saved = pipeline_settings.config(path).get("clips")
     return {
         "clips": pipeline_settings.borne(saved if saved not in (None, "") else pipeline_settings.DEFAULT_CLIPS),
-        "enabled": pipeline_settings.clips_enabled(),
-        "effective": pipeline_settings.clip_count(),
+        "enabled": pipeline_settings.clips_enabled(path),
+        "effective": pipeline_settings.clip_count(path=path),
         "default": pipeline_settings.DEFAULT_CLIPS,
         "min": pipeline_settings.MIN_CLIPS,
         "max": pipeline_settings.MAX_CLIPS,
@@ -105,9 +118,9 @@ def settings(ctx: CtxDep):
         # Lignes arabes du gabarit : saisies par la mosquée, jamais fournies par le code.
         "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
         "gabarit": gabarit_mod.view(ctx.mosque),
-        "model": _model_view(),
+        "model": _model_view(ctx.mosque),
         "transcription": remote_transcription.view(),
-        "processing": _processing_view(),
+        "processing": _processing_view(ctx.mosque),
     }
 
 
@@ -182,7 +195,10 @@ async def model_save(ctx: CtxDep):
     if proto not in ("", "openai", "anthropic"):
         raise Invalid(_("Unknown API format."))
     enabled = str(f.get("enabled", "0")) in ("1", "true", "on", "oui")
-    llm.save_config(enabled=enabled, url=url, model=model, protocol=proto)
+    _seed(ctx.mosque, "llm")
+    llm.save_config(
+        enabled=enabled, url=url, model=model, protocol=proto, path=tenant_config.write_path(ctx.mosque, "llm")
+    )
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
@@ -201,7 +217,7 @@ async def model_save(ctx: CtxDep):
             "Language model saved. The pipeline applies it at the next run (environment variables "
             "still take precedence)."
         ),
-        label=llm.settings().label(),
+        label=llm.settings(path=tenant_config.read_path(ctx.mosque, "llm")).label(),
     )
 
 
@@ -212,7 +228,10 @@ async def processing_save(ctx: CtxDep):
     ctx.require("admin")
     actif = str(f.get("enabled", "1")).strip().lower() not in ("0", "off", "false", "non", "")
     try:
-        garde = pipeline_settings.save_config(f.get("clips"), enabled=actif)
+        _seed(ctx.mosque, "pipeline")
+        garde = pipeline_settings.save_config(
+            f.get("clips"), enabled=actif, path=tenant_config.write_path(ctx.mosque, "pipeline")
+        )
     except (TypeError, ValueError) as e:
         raise Invalid(
             _(
@@ -459,7 +478,7 @@ def transcription_test(ctx: CtxDep):
 @router.post("/settings/model/test")
 def model_test(ctx: CtxDep):
     ctx.require("admin")
-    ok, msg = llm.probe()
+    ok, msg = llm.probe(path=tenant_config.read_path(ctx.mosque, "llm"))
     return JSONResponse({"ok": ok, "message": msg}, status_code=200 if ok else 422)
 
 

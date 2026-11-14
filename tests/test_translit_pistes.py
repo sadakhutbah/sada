@@ -24,12 +24,20 @@ def test_a_traduire():
 
 
 def test_piste_fr():
-    segs = [_seg("dhahabu 'l-ladda, wa baqawu 'l-ithmi,"), _seg("al-kufri, al-kufri, al-kufri, al-kufri, al-kufri", 3), _seg("donc on continue", 6)]
+    segs = [
+        _seg("dhahabu 'l-ladda, wa baqawu 'l-ithmi,"),
+        _seg("al-kufri, al-kufri, al-kufri, al-kufri, al-kufri", 3),
+        _seg("donc on continue", 6),
+    ]
     p = subtitles.plan(segs, [], {"seg": {}, "verse_fr": {}})
     assert [x["text"] for x in p["passages"]["fr"]] == ["donc on continue"]
     assert not p["languages"]["fr"]["complete"]
     from sada.pipeline.translate import _seg_key
-    tr = {"seg": {_seg_key(segs[0]["text"]): {"fr": "Le plaisir s'en va, le péché demeure.", "coran": False}}, "verse_fr": {}}
+
+    tr = {
+        "seg": {_seg_key(segs[0]["text"]): {"fr": "Le plaisir s'en va, le péché demeure.", "coran": False}},
+        "verse_fr": {},
+    }
     p = subtitles.plan(segs, [], tr)
     assert [x["text"] for x in p["passages"]["fr"]] == ["Le plaisir s'en va, le péché demeure.", "donc on continue"]
     assert p["languages"]["fr"]["complete"]

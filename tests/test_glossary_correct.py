@@ -8,6 +8,10 @@ def test_correct():
 
 
 def test_srt_corrige():
-    p = subtitles.plan([{"start": 0.0, "end": 3.0, "text": "sur sa faitana, l 'explication de al -lamia"}], [], {"seg": {}, "verse_fr": {}})
+    p = subtitles.plan(
+        [{"start": 0.0, "end": 3.0, "text": "sur sa faitana, l 'explication de al -lamia"}],
+        [],
+        {"seg": {}, "verse_fr": {}},
+    )
     out = subtitles.srt(subtitles.cues(p["passages"]["fr"]))
     assert "fitra" in out and "l'explication" in out and "al-lamia" in out, out
