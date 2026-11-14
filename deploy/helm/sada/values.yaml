@@ -73,7 +73,7 @@ orchestrator:
   # "" = http://backoffice:8090
   backofficeUrl: ""
   # Output frame rate of the programme (lower it on a small node)
-  fps: 25
+  fps: 30
   resources:
     requests:
       cpu: 500m
