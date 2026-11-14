@@ -11,7 +11,10 @@ export default function MosquePicker({
   const [erreur, setErreur] = useState("");
   const [envoi, setEnvoi] = useState<number | null>(null);
   const operateur = !!session.user.operator;
-  const liste = session.mosques ?? [];
+  const toutes = session.mosques ?? [];
+  const [filtre, setFiltre] = useState("");
+  const q = filtre.trim().toLowerCase();
+  const liste = q ? toutes.filter((m) => `${m.name} ${m.slug}`.toLowerCase().includes(q)) : toutes;
 
   const choisir = async (m: MosqueChoice) => {
     setErreur("");
@@ -39,19 +42,30 @@ export default function MosquePicker({
           <p className="mb-4 text-[0.9rem] text-muted">
             {operateur ? t("picker.operatorHint", { name: session.user.name }) : t("picker.hint", { name: session.user.name })}
           </p>
-          {liste.length === 0 && <p className="text-muted">{t("picker.none")}</p>}
-          <ul className="grid gap-2.5">
+          {toutes.length >= 5 && (
+            <input
+              type="search"
+              value={filtre}
+              onChange={(e) => setFiltre(e.target.value)}
+              aria-label={t("picker.search")}
+              placeholder={t("picker.search")}
+              className="mb-3 w-full rounded-lg border border-line bg-white px-3 py-2 text-[0.9rem] text-deeper outline-none focus:border-leaf"
+            />
+          )}
+          {toutes.length === 0 && <p className="text-muted">{t("picker.none")}</p>}
+          {toutes.length > 0 && liste.length === 0 && <p className="text-muted">{t("picker.noMatch")}</p>}
+          <ul className="grid max-h-[320px] gap-1.5 overflow-y-auto pr-1">
             {liste.map((m) => (
               <li key={m.id}>
                 <button
                   type="button"
                   disabled={envoi !== null}
                   onClick={() => choisir(m)}
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-white px-4 py-3 text-left transition-colors hover:border-leaf hover:bg-leaf/10 disabled:opacity-60"
+                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-white px-3 py-2 text-left transition-colors hover:border-leaf hover:bg-leaf/10 disabled:opacity-60"
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold text-deeper">{m.name}</span>
-                    <span className="block text-[0.8rem] text-muted">{m.slug}</span>
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate font-semibold text-deeper">{m.name}</span>
+                    <span className="shrink-0 text-[0.8rem] text-muted">{m.slug}</span>
                   </span>
                   {m.access === "support" && (
                     <span className="shrink-0 rounded-full bg-gold/20 px-2.5 py-0.5 text-[0.75rem] font-bold text-deeper">

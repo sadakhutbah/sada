@@ -19,7 +19,7 @@ const fr = {
   picker: {
     title: "Choisir une mosquée", hint: "Bonjour {{name}}. Aucune mosquée n'est ouverte d'office : choisissez celle sur laquelle travailler.",
     operatorTitle: "Console opérateur", operatorHint: "Bonjour {{name}}. Vous administrez la plateforme, pas une mosquée.",
-    none: "Aucune mosquée n'est rattachée à ce compte.", support: "Accès support",
+    none: "Aucune mosquée n'est rattachée à ce compte.", search: "Rechercher une mosquée", noMatch: "Aucune mosquée ne correspond.", support: "Accès support",
     supportNote: "Entrer dans une mosquée se fait en accès support : chaque modification est inscrite au journal de la mosquée.",
     banner: "Accès support à {{name}} : vos actions sont journalisées.", switch: "Changer de mosquée", leave: "Quitter",
   },
@@ -496,7 +496,7 @@ const en: typeof fr = {
   picker: {
     title: "Choose a mosque", hint: "Hello {{name}}. No mosque opens by itself: pick the one to work on.",
     operatorTitle: "Operator console", operatorHint: "Hello {{name}}. You run the platform, not a mosque.",
-    none: "No mosque is attached to this account.", support: "Support access",
+    none: "No mosque is attached to this account.", search: "Search for a mosque", noMatch: "No mosque matches.", support: "Support access",
     supportNote: "Entering a mosque is done as support access: every change is written to that mosque's log.",
     banner: "Support access to {{name}}: your actions are logged.", switch: "Switch mosque", leave: "Leave",
   },
