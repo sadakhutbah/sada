@@ -22,6 +22,10 @@ spec:
       port: {{ .Values.receiver.srtPort }}
       targetPort: srt
       protocol: UDP
+    - name: hls
+      port: 8888
+      targetPort: hls
+      protocol: TCP
   selector:
     {{- include "sada.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: receiver

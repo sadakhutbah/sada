@@ -131,3 +131,8 @@ certManager:
 
 # Clock of the containers (sessions, dars, logs)
 timezone: Europe/Paris
+
+# Live viewer in the browser: https://<host>/live/<slug>/ (basic auth)
+liveViewer:
+  enabled: true
+  authSecret: live-viewer-auth
