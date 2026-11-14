@@ -47,6 +47,8 @@ def run(conn, sql: str, *args) -> Rows:
     """Driver-level rows: read by name (`r._mapping["id"]`) or by position (`r[0]`)."""
     if conn.get_bind().dialect.name == "postgresql":
         sql = sql.replace("?", "%s")
+    conn.commit()  # pending work of the test reaches the database
+    conn.rollback()  # and the probe reads the database as it is now, not a snapshot of it
     res = conn.connection().exec_driver_sql(sql, _params(args))
     rows = res.fetchall() if res.returns_rows else []
     conn.commit()

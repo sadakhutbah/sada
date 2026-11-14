@@ -177,3 +177,12 @@ def as_dict(obj) -> dict | None:
     if obj is None:
         return None
     return {c.key: getattr(obj, c.key) for c in sa.inspect(obj).mapper.column_attrs}
+
+
+def row(conn, model, ident: int) -> dict | None:
+    """One row read from the database, not from the identity map.
+
+    A session keeps the objects it loaded; after an `UPDATE` they still hold the former values, so a
+    module that needs the row back reads it again with `populate_existing`."""
+    stmt = sa.select(model).where(model.id == ident).execution_options(populate_existing=True)
+    return as_dict(conn.scalar(stmt))
