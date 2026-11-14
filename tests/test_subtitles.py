@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
+import rawsql
 
 from sada.pipeline import subtitles as s
 
@@ -134,10 +135,9 @@ from test_backoffice import client  # noqa: E402
 
 def habille(env, intro_s: float = 5.0) -> None:
     """Vidéo habillée en place : le fichier et les options du rendu, sans passer par ffmpeg."""
-    from sada.backoffice import db
     from sada.backoffice import habillage as bo
 
-    k = db.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
+    k = rawsql.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
     bo.dossier(k).mkdir(parents=True, exist_ok=True)
     bo.fichier_video(k).write_bytes(b"\x00\x00\x00\x18ftypmp42" + bytes(64))
     bo.fichier_options_rendues(k).write_text(
@@ -190,13 +190,12 @@ def test_api_srt_lecture_seule_autorisee(env):
 
 def test_decoupage_et_carton_dans_une_vraie_session(env):
     """Le carton se lit dans les options du rendu, la coupe dans la position de la session."""
-    from sada.backoffice import db
     from sada.backoffice import habillage as bo
 
     habille(env, intro_s=5)
     rec = env["tmp"] / "enregistrement.mkv"
     rec.write_bytes(b"x")
-    k = dict(db.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"]))
+    k = dict(rawsql.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"]))
     k.update(video_path=None, recording=str(rec), start_pos=100.0, end_pos=120.0)
     assert bo.alignements(env["conn"], k) == {"habille": -95.0, "brut": -100.0}
 
@@ -255,10 +254,9 @@ def test_api_vtt_suit_la_video_choisie(env):
 
 
 def test_api_vtt_sans_transcription_est_introuvable(env):
-    from sada.backoffice import db
     from sada.pipeline.output import SessionOutput
 
-    k = db.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
+    k = rawsql.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
     assert k
     SessionOutput(k["output_dir"]).transcript.unlink()
     c = client(env, "admin")

@@ -3,6 +3,7 @@
 import sqlite3
 
 import pytest
+import rawsql
 
 from sada.backoffice import db, publish
 from sada.backoffice.importer import khutba_label
@@ -54,12 +55,12 @@ def test_migration_ajoute_les_colonnes(tmp_path):
     db.init(path)
     conn = db.connect(path)
     try:
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")}
+        cols = {r[1] for r in rawsql.run(conn, "PRAGMA table_info(khutbas)")}
         assert {"kind", "title", "series", "session_no"} <= cols
-        row = db.one(conn, "SELECT * FROM khutbas")
+        row = rawsql.one(conn, "SELECT * FROM khutbas")
         assert row["kind"] == "khutba" and row["title"] == ""
-        assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"  # données conservées
-        migrated = {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")}
+        assert rawsql.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"  # données conservées
+        migrated = {r[1] for r in rawsql.run(conn, "PRAGMA table_info(khutbas)")}
     finally:
         conn.close()
 
@@ -67,9 +68,9 @@ def test_migration_ajoute_les_colonnes(tmp_path):
     db.init(fresh)
     conn = db.connect(fresh)
     try:
-        assert {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")} == migrated
+        assert {r[1] for r in rawsql.run(conn, "PRAGMA table_info(khutbas)")} == migrated
         assert {"kind", "title", "series", "session_no"} <= migrated
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(mosques)")}
+        cols = {r[1] for r in rawsql.run(conn, "PRAGMA table_info(mosques)")}
         assert "logo_path" in cols
         db.create_mosque(conn, "exemple", "Mosquée Exemple")
     finally:

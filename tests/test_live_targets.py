@@ -4,6 +4,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+import rawsql
 from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
 
 FB = "rtmps://live-api-s.facebook.com:443/rtmp/CLE-FB"
@@ -55,14 +56,13 @@ def test_destination_enregistree_puis_affichee_masquee(env):
     assert "CLE-FB" not in r.text and "CLE-YT" not in r.text
     assert rows[0]["url"].endswith(db.MASK)
     # the key is stored in the database, never in the answer
-    assert db.one(env["conn"], "SELECT url FROM live_targets WHERE label = 'Facebook'")["url"] == FB
+    assert rawsql.one(env["conn"], "SELECT url FROM live_targets WHERE label = 'Facebook'")["url"] == FB
     # the screen reads them back through /settings
     d = c.get("/api/v1/settings").json()
     assert [x["label"] for x in d["targets"]] == ["Facebook", "YouTube"]
 
 
 def test_masque_renvoye_conserve_la_cle(env):
-    from sada.backoffice import db
 
     c = client(env, "admin")
     c.ecrire("/settings/live", {"targets": [{"label": "Facebook", "url": FB, "enabled": True}]}, methode="PUT")
@@ -70,7 +70,7 @@ def test_masque_renvoye_conserve_la_cle(env):
     # the screen sends the masked value back, with a new name: the key must survive
     r = c.ecrire("/settings/live", {"targets": [{**row, "label": "Page de la mosquée"}]}, methode="PUT")
     assert r.status_code == 200, r.text
-    m = db.one(env["conn"], "SELECT label, url FROM live_targets WHERE id = ?", row["id"])
+    m = rawsql.one(env["conn"], "SELECT label, url FROM live_targets WHERE id = ?", row["id"])
     assert m["label"] == "Page de la mosquée" and m["url"] == FB
 
 
@@ -80,9 +80,8 @@ def test_nouvelle_cle_est_acceptee(env):
     row = c.get("/api/v1/settings").json()["targets"][0]
     again = FB.replace("CLE-FB", "CLE-NEUVE")
     c.ecrire("/settings/live", {"targets": [{**row, "url": again}]}, methode="PUT")
-    from sada.backoffice import db
 
-    assert db.one(env["conn"], "SELECT url FROM live_targets WHERE id = ?", row["id"])["url"] == again
+    assert rawsql.one(env["conn"], "SELECT url FROM live_targets WHERE id = ?", row["id"])["url"] == again
 
 
 def test_refus_expliques(env):

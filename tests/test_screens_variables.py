@@ -8,6 +8,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+import rawsql
 from test_backoffice import client  # noqa: E402,F401
 
 ARABE = "خطبة الجمعة"
@@ -23,14 +24,14 @@ def test_aucun_texte_arabe_par_defaut(env):
 
 
 def test_enregistrement_et_relecture(env):
-    from sada.backoffice import db, variables_ecran
+    from sada.backoffice import variables_ecran
 
     c = client(env, "admin")
     r = c.ecrire("/settings/screens/variables", {"variables": {"arabe_khutba": f"  {ARABE}  "}}, methode="PUT")
     assert r.status_code == 200, r.text
     assert r.json()["screens_variables"]["arabe_khutba"] == ARABE
     assert variables_ecran.lire(env["conn"], env["mid"])["arabe_khutba"] == ARABE
-    row = db.one(env["conn"], "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ?", env["mid"])
+    row = rawsql.one(env["conn"], "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ?", env["mid"])
     assert row == {"screen": "_commun", "slot": "arabe_khutba", "text": ARABE}
     assert c.get("/api/v1/settings").json()["screens_variables"]["arabe_khutba"] == ARABE
 
@@ -38,7 +39,7 @@ def test_enregistrement_et_relecture(env):
     r = c.ecrire("/settings/screens/variables", {"variables": {"arabe_khutba": ""}}, methode="PUT")
     assert r.status_code == 200, r.text
     assert r.json()["screens_variables"]["arabe_khutba"] == ""
-    assert db.one(env["conn"], "SELECT count(*) n FROM screen_texts")["n"] == 0
+    assert rawsql.one(env["conn"], "SELECT count(*) n FROM screen_texts")["n"] == 0
 
 
 def test_borne_de_longueur(env):

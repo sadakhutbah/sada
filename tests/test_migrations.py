@@ -4,6 +4,7 @@ existantes, refus d'une base plus récente que le code."""
 import sqlite3
 
 import pytest
+import rawsql
 
 from sada.backoffice import db, migrations, models
 
@@ -18,11 +19,11 @@ pytestmark = pytest.mark.skipif(bool(__import__("os").environ.get("SADA_DATABASE
 
 
 def table_columns(conn, table: str) -> set[str]:
-    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    return {r[1] for r in rawsql.run(conn, f"PRAGMA table_info({table})")}
 
 
 def table_names(conn) -> set[str]:
-    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    return {r[0] for r in rawsql.run(conn, "SELECT name FROM sqlite_master WHERE type = 'table'")}
 
 
 #: versions attendues dans schema_migrations après mise à jour complète
@@ -30,7 +31,7 @@ VERSIONS = [m.version for m in migrations.MIGRATIONS]
 
 
 def applied_versions(conn) -> list[int]:
-    return [r["version"] for r in db.all_(conn, "SELECT version FROM schema_migrations ORDER BY version")]
+    return [r["version"] for r in rawsql.all_(conn, "SELECT version FROM schema_migrations ORDER BY version")]
 
 
 def test_migrations_sont_ordonnees_et_sans_trou():
@@ -54,7 +55,7 @@ def test_base_neuve_cree_le_schema_complet(tmp_path):
         for table, cols in ADDED.items():
             assert cols <= table_columns(conn, table)
         # les index de requête sont créés
-        indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+        indexes = {r[0] for r in rawsql.run(conn, "SELECT name FROM sqlite_master WHERE type = 'index'")}
         assert {"audit_mosque", "clips_mosque", "khutbas_mosque", "live_targets_mosque"} <= indexes
         # toutes les versions sont enregistrées
         assert applied_versions(conn) == VERSIONS
@@ -95,10 +96,10 @@ def test_adoption_d_une_base_existante(tmp_path):
         # colonnes ajoutées, valeurs par défaut
         assert ADDED["khutbas"] <= table_columns(conn, "khutbas")
         assert ADDED["mosques"] <= table_columns(conn, "mosques")
-        row = db.one(conn, "SELECT * FROM khutbas")
+        row = rawsql.one(conn, "SELECT * FROM khutbas")
         assert row["kind"] == "khutba" and row["title"] == "" and row["session_no"] is None
         # données conservées
-        assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"
+        assert rawsql.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"
         # version de départ (1) enregistrée, puis 2 et 3 appliquées
         assert applied_versions(conn) == VERSIONS
     finally:
@@ -138,8 +139,8 @@ def test_table_ajoutee_apres_coup_est_creee_sur_une_base_ancienne(tmp_path):
     conn = db.connect(path)
     try:
         for t in ("live_targets", "live_input", "storage", "screen_texts"):
-            conn.execute(f"DROP TABLE IF EXISTS {t}")
-        conn.execute("DELETE FROM schema_migrations WHERE version >= 4")
+            rawsql.run(conn, f"DROP TABLE IF EXISTS {t}")
+        rawsql.run(conn, "DELETE FROM schema_migrations WHERE version >= 4")
         conn.commit()
     finally:
         conn.close()
@@ -150,7 +151,7 @@ def test_table_ajoutee_apres_coup_est_creee_sur_une_base_ancienne(tmp_path):
         assert {"live_targets", "live_input", "storage", "screen_texts"} <= table_names(conn)
         assert applied_versions(conn)[-1] == migrations.LATEST
         assert "live_targets_mosque" in {
-            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+            r[0] for r in rawsql.run(conn, "SELECT name FROM sqlite_master WHERE type = 'index'")
         }
     finally:
         conn.close()

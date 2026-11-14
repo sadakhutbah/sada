@@ -4,6 +4,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+import rawsql
 from test_backoffice import PW, client, login  # noqa: E402,F401  (conftest provides the path)
 
 FF = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
@@ -33,9 +34,8 @@ def test_jeton_recopie_dans_un_autre_navigateur_ne_sert_a_rien(env):
 
     # the real session is not destroyed by the attempt (no denial of service offered to the thief)
     assert c.get("/api/v1/session").status_code == 200
-    from sada.backoffice import db
 
-    traces = db.all_(env["conn"], "SELECT * FROM audit WHERE action = 'session.navigateur_inattendu'")
+    traces = rawsql.all_(env["conn"], "SELECT * FROM audit WHERE action = 'session.navigateur_inattendu'")
     assert len(traces) == 1
 
 

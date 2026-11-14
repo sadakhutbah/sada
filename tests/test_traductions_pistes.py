@@ -11,6 +11,7 @@ import json
 import os
 
 import pytest
+import rawsql
 
 from sada.pipeline import subtitles as s
 from sada.pipeline import translate
@@ -189,9 +190,8 @@ def _ecrire_etat(env, **champs) -> None:
 
 
 def _khutba(env) -> dict:
-    from sada.backoffice import db
 
-    return db.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
+    return rawsql.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
 
 
 def test_api_etat_des_pistes(env):

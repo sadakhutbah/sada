@@ -6,6 +6,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+import rawsql
 from test_backoffice import PW, client  # noqa: E402,F401  (conftest provides the path)
 
 
@@ -68,7 +69,8 @@ def test_les_clips_arrivent_par_pages(env):
     """Three hundred clips must not be rendered at once: the page asks for twenty, then follows."""
     conn, kid, mid = env["conn"], env["kid"], env["mid"]
     for i in range(3, 28):
-        conn.execute(
+        rawsql.run(
+            conn,
             """INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, end, file_path,
                         status, version, created_at, updated_at)
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -119,11 +121,12 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
     """A mosque accumulates years of khutbas: search, filtering and paging are done by the server."""
     c = client(env, "admin")
     conn = env["conn"]
-    base = conn.execute("SELECT mosque_id, output_dir FROM khutbas LIMIT 1").fetchone()
+    base = rawsql.one(conn, "SELECT mosque_id, output_dir FROM khutbas LIMIT 1")
     for i in range(5):
-        conn.execute(
+        rawsql.run(
+            conn,
             "INSERT INTO khutbas (mosque_id, run_id, session_index, label, theme, date, output_dir, "
-            "imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            "imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 base["mosque_id"],
                 f"essai{i}",
@@ -132,6 +135,7 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
                 "la patience" if i % 2 else "la misericorde",
                 f"2024-0{i + 1}-12",
                 base["output_dir"],
+                f"2024-0{i + 1}-12T10:00:00+00:00",
             ),
         )
     conn.commit()

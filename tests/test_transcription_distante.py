@@ -9,6 +9,7 @@ import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+import rawsql
 
 from sada.pipeline import remote as R
 from sada.pipeline import repair
@@ -588,7 +589,7 @@ def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
     assert ecran["providers"] and {p["key"] for p in ecran["providers"]} == {"groq", "openai"}
     assert ecran["url"] == ""  # aucune adresse propre : c'est celle du fournisseur qui sert
     assert ecran["price_per_hour"] == pytest.approx(0.111)
-    assert db.one(env["conn"], "SELECT COUNT(*) n FROM audit WHERE action = 'transcription.configure'")["n"] == 1
+    assert rawsql.one(env["conn"], "SELECT COUNT(*) n FROM audit WHERE action = 'transcription.configure'")["n"] == 1
     # le masque renvoyé tel quel garde la clé enregistrée
     r = c.ecrire(
         "/settings/transcription",

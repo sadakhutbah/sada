@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import rawsql
 
 from sada.pipeline import habillage as h
 
@@ -288,9 +289,8 @@ from test_backoffice import client  # noqa: E402
 
 
 def test_api_prerempli_sans_chemin(env):
-    from sada.backoffice import db
 
-    db.one(env["conn"], "SELECT 1")
+    rawsql.one(env["conn"], "SELECT 1")
     env["conn"].execute(
         "UPDATE khutbas SET title = 'Patience et gratitude', series = 'Les vertus', session_no = 2, "
         "date = '2026-11-06' WHERE id = ?",
@@ -330,10 +330,9 @@ def test_api_sans_source_refuse_proprement(env):
 
 
 def test_api_apercu_puis_rendu(env, video):
-    from sada.backoffice import db
 
     conn, kid = env["conn"], env["kid"]
-    conn.execute("UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
+    rawsql.run(conn, "UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
     c = client(env, "admin")
     options = {
         "title": "Patience",
@@ -364,10 +363,10 @@ def test_api_apercu_puis_rendu(env, video):
     )
     assert video.exists()  # la source n'est pas touchée
     # la mosquée retient son identité (pas le titre de ce dars)
-    m = db.one(conn, "SELECT habillage_defaults FROM mosques WHERE id = ?", env["mid"])
+    m = rawsql.one(conn, "SELECT habillage_defaults FROM mosques WHERE id = ?", env["mid"])
     retenu = json.loads(m["habillage_defaults"])
     assert retenu["outro_link"] == "mosquee-exemple.fr" and retenu["logo_pos"] == "bl" and "title" not in retenu
-    actions = [a["action"] for a in db.all_(conn, "SELECT action FROM audit")]
+    actions = [a["action"] for a in rawsql.all_(conn, "SELECT action FROM audit")]
     assert "habillage.lance" in actions and "habillage.pret" in actions
 
 
@@ -376,7 +375,7 @@ def test_nouveau_rendu_garde_l_ancienne_video_jusqu_au_remplacement(env, video, 
     from sada.pipeline import habillage as rendu
 
     conn, kid = env["conn"], env["kid"]
-    conn.execute("UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
+    rawsql.run(conn, "UPDATE khutbas SET video_path = ? WHERE id = ?", (str(video), kid))
     c = client(env, "admin")
     assert (
         c.ecrire(
@@ -394,8 +393,7 @@ def test_nouveau_rendu_garde_l_ancienne_video_jusqu_au_remplacement(env, video, 
         ).status_code
         == 200
     )
-    k = conn.execute("SELECT * FROM khutbas WHERE id = ?", (kid,)).fetchone()
-    k = dict(k)
+    k = rawsql.one(conn, "SELECT * FROM khutbas WHERE id = ?", (kid,))
     ancienne = bo.fichier_video(k).read_bytes()
 
     # Pendant le rendu, l'ancienne vidéo reste servie ; un échec ne la touche pas.
@@ -447,16 +445,16 @@ def test_nouveau_rendu_garde_l_ancienne_video_jusqu_au_remplacement(env, video, 
 
 
 def test_rendu_interrompu_marque_en_echec(env):
-    from sada.backoffice import db
     from sada.backoffice import habillage as bo
 
     conn = env["conn"]
-    conn.execute(
+    rawsql.run(
+        conn,
         "INSERT INTO habillages (mosque_id, khutba_id, status, updated_at) VALUES (?, ?, 'en_cours', 'x')",
         (env["mid"], env["kid"]),
     )
     bo.recover_interrupted(conn)
-    assert db.one(conn, "SELECT status FROM habillages")["status"] == "echec"
+    assert rawsql.one(conn, "SELECT status FROM habillages")["status"] == "echec"
 
 
 def test_erreur_sans_chemin():
@@ -472,15 +470,15 @@ def test_migration_8_sur_une_base_en_version_6(tmp_path):
     path = tmp_path / "bo.db"
     db.init(path)
     conn = db.connect(path)
-    conn.execute("DROP TABLE habillages")
-    conn.execute("ALTER TABLE mosques DROP COLUMN habillage_defaults")
-    conn.execute("DELETE FROM schema_migrations WHERE version = 8")
+    rawsql.run(conn, "DROP TABLE habillages")
+    rawsql.run(conn, "ALTER TABLE mosques DROP COLUMN habillage_defaults")
+    rawsql.run(conn, "DELETE FROM schema_migrations WHERE version = 8")
     conn.close()
     db.init(path)
     conn = db.connect(path)
     try:
-        assert db.one(conn, "SELECT name FROM sqlite_master WHERE name = 'habillages'")
-        assert "habillage_defaults" in {r[1] for r in conn.execute("PRAGMA table_info(mosques)")}
-        assert max(r[0] for r in conn.execute("SELECT version FROM schema_migrations")) == migrations.LATEST
+        assert rawsql.one(conn, "SELECT name FROM sqlite_master WHERE name = 'habillages'")
+        assert "habillage_defaults" in {r[1] for r in rawsql.run(conn, "PRAGMA table_info(mosques)")}
+        assert max(r[0] for r in rawsql.run(conn, "SELECT version FROM schema_migrations")) == migrations.LATEST
     finally:
         conn.close()

@@ -7,9 +7,10 @@ mechanism), "to validate", audit, then publication once validated.
 from pathlib import Path
 
 import pytest
+import rawsql
 from test_backoffice import client, clip_ids  # noqa: F401
 
-from sada.backoffice import content, db
+from sada.backoffice import content
 from sada.pipeline import clips as clipmod
 
 
@@ -28,7 +29,7 @@ def rendu(monkeypatch):
 
 
 def _clip(conn, cid):
-    return db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
+    return rawsql.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
 
 
 def test_creation_manuelle_du_clip_jusqu_a_la_publication(env, rendu):
@@ -63,7 +64,9 @@ def test_creation_manuelle_du_clip_jusqu_a_la_publication(env, rendu):
 
     acts = [
         a["action"]
-        for a in db.all_(conn, "SELECT action FROM audit WHERE object_type = 'clip' AND object_id = ? ORDER BY id", cid)
+        for a in rawsql.all_(
+            conn, "SELECT action FROM audit WHERE object_type = 'clip' AND object_id = ? ORDER BY id", cid
+        )
     ]
     assert acts[:4] == ["clip.cree", "clip.regeneration", "clip.regenere", "clip.valide"]
     hist = [h["action"] for h in c.get(f"/api/v1/clips/{cid}").json()["history"]]
@@ -84,7 +87,7 @@ def test_ajustement_des_bornes_d_un_clip_propose(env, rendu):
     assert clip["version"] == 2 and clip["needs_regen"] == 0 and clip["status"] == "a_valider"
     assert clip["bounds_by"] == env["ids"]["imam"] and clip["origin"] == "ia"
     assert rendu[-1]["w"]["start"] == 1.0 and rendu[-1]["w"]["end"] == 12.5
-    a = db.one(conn, "SELECT * FROM audit WHERE action = 'clip.bornes'")
+    a = rawsql.one(conn, "SELECT * FROM audit WHERE action = 'clip.bornes'")
     assert a["user_id"] == env["ids"]["imam"] and "12.5" in a["details"]
 
     # a rejected clip can be saved by better bounds: back in the queue
@@ -97,7 +100,7 @@ def test_ajustement_des_bornes_d_un_clip_propose(env, rendu):
     assert c.ecrire(f"/clips/{cid}/bounds", {"start": "1", "end": "13"}).status_code == 422
 
     # published: frozen
-    conn.execute("UPDATE clips SET status = 'publie' WHERE id = ?", (cid,))
+    rawsql.run(conn, "UPDATE clips SET status = 'publie' WHERE id = ?", (cid,))
     r = c.ecrire(f"/clips/{cid}/bounds", {"start": "2", "end": "13"})
     assert r.status_code == 422 and "published" in r.json()["message"]
     assert _clip(conn, cid)["start"] == 1.0
@@ -119,10 +122,10 @@ def test_ajustement_des_bornes_d_un_clip_propose(env, rendu):
 def test_bornes_invalides_refusees(env, rendu, corps, motif):
     conn, kid = env["conn"], env["kid"]
     c = client(env, "responsable")
-    avant = db.one(conn, "SELECT COUNT(*) n FROM clips")["n"]
+    avant = rawsql.one(conn, "SELECT COUNT(*) n FROM clips")["n"]
     r = c.ecrire(f"/sermons/{kid}/clips", corps)
     assert r.status_code == 422 and motif in r.json()["message"]
-    assert db.one(conn, "SELECT COUNT(*) n FROM clips")["n"] == avant
+    assert rawsql.one(conn, "SELECT COUNT(*) n FROM clips")["n"] == avant
     if "kind" not in corps:
         cid = clip_ids(env)[1]
         r = c.ecrire(f"/clips/{cid}/bounds", corps)
@@ -144,7 +147,7 @@ def test_permissions_et_source_absente(env, monkeypatch):
     assert not d["allowed"] and d["reason"] and "/" not in d["reason"]
     r = c.ecrire(f"/sermons/{kid}/clips", {"start": "0", "end": "8"})
     assert r.status_code == 422 and "cannot be produced" in r.json()["message"]
-    assert db.one(conn, "SELECT COUNT(*) n FROM clips")["n"] == 2
+    assert rawsql.one(conn, "SELECT COUNT(*) n FROM clips")["n"] == 2
 
 
 def test_echec_du_rendu_laisse_le_clip_a_relancer(env, monkeypatch):
@@ -173,9 +176,9 @@ def test_echec_du_rendu_laisse_le_clip_a_relancer(env, monkeypatch):
 def test_source_du_clip_manuel(env, tmp_path):
     """Same recording as the model's clips; otherwise the live recording; otherwise the khutba video."""
     conn = env["conn"]
-    k = db.one(conn, "SELECT * FROM khutbas")
+    k = rawsql.one(conn, "SELECT * FROM khutbas")
     assert content.clip_source(conn, k)["source_offset"] == 100.0
-    conn.execute("UPDATE clips SET video_source = NULL")
+    rawsql.run(conn, "UPDATE clips SET video_source = NULL")
     video = tmp_path / "khutba.mp4"
     video.write_bytes(b"v")
     k = dict(k, recording=None, video_path=str(video))

@@ -4,6 +4,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+import rawsql
 from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
 
 
@@ -33,14 +34,13 @@ def test_reglages_reserves_a_l_admin(env):
 
 
 def test_registre_partiel_ne_vide_pas_les_autres_reglages(env):
-    from sada.backoffice import db
 
     c = client(env, "admin")
     r = c.ecrire(
         "/settings/mosque", {"orchestrator_url": "http://127.0.0.1:8089", "orchestrator_token": ""}, methode="PATCH"
     )
     assert r.status_code == 200, r.text
-    m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    m = rawsql.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     assert m["orchestrator_url"] == "http://127.0.0.1:8089"
     assert m["name"] == "Mosquée Exemple" and m["output_dir"] == str(env["tmp"] / "output")
 
@@ -83,7 +83,7 @@ def test_dossier_choisi_enregistre_et_valide(env):
     c = client(env, "admin")
     target = env["tmp"] / "nouveau" / "output"
     c.ecrire("/settings/mosque", {"output_dir": str(target)}, methode="PATCH")
-    m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    m = rawsql.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     assert m["output_dir"] == str(target)
     assert db.mosque_dirs(m)["output"] == target
     # a file cannot serve as a folder
@@ -149,12 +149,11 @@ def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
     assert d["model"]["has_key"] is True and d["mosque"]["has_logo"] is False and "logo_path" not in d["mosque"]
     # the mask returned as-is leaves the token unchanged
     c.ecrire("/settings/mosque", {"orchestrator_token": db.MASK, "name": "Autre nom"}, methode="PATCH")
-    m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    m = rawsql.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     assert m["orchestrator_token"] == "tres-secret" and m["name"] == "Autre nom"
 
 
 def test_mawaqit_et_fuseau_enregistres_et_valides(env):
-    from sada.backoffice import db
 
     c = client(env, "admin")
     assert (
@@ -170,7 +169,8 @@ def test_mawaqit_et_fuseau_enregistres_et_valides(env):
     r = c.ecrire("/settings/mosque", {"timezone": "Mars/Olympus"}, methode="PATCH")
     assert r.status_code == 422 and "time zone" in r.json()["message"]
     assert (
-        db.one(env["conn"], "SELECT timezone FROM mosques WHERE id = ?", env["mid"])["timezone"] == "Africa/Casablanca"
+        rawsql.one(env["conn"], "SELECT timezone FROM mosques WHERE id = ?", env["mid"])["timezone"]
+        == "Africa/Casablanca"
     )
 
 
