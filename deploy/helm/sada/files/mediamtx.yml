@@ -7,6 +7,7 @@ rtmp: yes
 rtmpAddress: :1935
 srt: yes
 srtAddress: :8890
+writeQueueSize: 8192
 hls: yes
 hlsAddress: :8888
 hlsVariant: mpegts
