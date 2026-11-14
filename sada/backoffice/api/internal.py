@@ -129,6 +129,33 @@ def mosque_times(request: Request, conn: ConnDep, port: int = 0):
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
+@router.post("/internal/publish-auth")
+async def publish_auth(request: Request, conn: ConnDep):
+    """Asked by the stream receiver (MediaMTX `authHTTPAddress`) for every publish or read.
+
+    Publishing `live/<slug>` needs the mosque's stream key as password. Reading is only for the
+    orchestrators, inside the private network (the receiver's read ports are never published).
+    """
+    import ipaddress
+
+    try:
+        q = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({}, status_code=400)
+    action, path = q.get("action"), str(q.get("path") or "")
+    slug = path.removeprefix("live/") if path.startswith("live/") else ""
+    if action == "publish":
+        ok = internal.publish_allowed(conn, slug, q.get("password"))
+    elif action in ("read", "playback"):
+        try:
+            ok = bool(slug) and ipaddress.ip_address(str(q.get("ip") or "")).is_private
+        except ValueError:
+            ok = False
+    else:
+        ok = False
+    return JSONResponse({}, status_code=200 if ok else 401)
+
+
 @router.get("/internal/gabarit")
 def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
     """Le fichier d'écrans importé par la mosquée, tel qu'il doit s'afficher à l'antenne.

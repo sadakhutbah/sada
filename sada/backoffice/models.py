@@ -33,6 +33,8 @@ mosques = sa.Table(
     # Empreinte (sha256) du jeton que l'orchestrateur de la mosquée présente au back-office.
     sa.Column("agent_token_hash", sa.Text, nullable=False, server_default=_d("''")),
     # Last Mawaqit times (JSON) and when they were fetched: fallback if the site is down.
+    # Empreinte de la clé de diffusion (OBS -> serveur de réception).
+    sa.Column("publish_key_hash", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("mawaqit_cache", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("mawaqit_cached_at", sa.Float, nullable=False, server_default=_d("0")),
     sa.Column("state_dir", sa.Text, nullable=False, server_default=_d("''")),

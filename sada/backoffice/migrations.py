@@ -186,6 +186,11 @@ def _mosques_cache_mawaqit(conn: sqlite3.Connection) -> None:
     )
 
 
+def _mosques_cle_diffusion(conn: sqlite3.Connection) -> None:
+    """Migration 15 : clé de diffusion de chaque mosquée (empreinte seulement)."""
+    _add_columns(conn, "mosques", (("publish_key_hash", "TEXT NOT NULL DEFAULT ''"),))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -201,6 +206,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(12, "mosques : jeton de l'orchestrateur", _mosques_jeton_agent),
     Migration(13, "events : programme des cours en base", _events_en_base),
     Migration(14, "mosques : cache des horaires Mawaqit", _mosques_cache_mawaqit),
+    Migration(15, "mosques : clé de diffusion", _mosques_cle_diffusion),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

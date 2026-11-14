@@ -12,6 +12,9 @@ webrtc: no
 
 # OBS pushes rtmp://<host>:1935/live/<slug> (or SRT, streamid=publish:live/<slug>);
 # the mosque's orchestrator reads rtsp://receiver:8554/live/<slug> inside the network.
-# TODO before going public: a publishing key per mosque (authInternalUsers / authHTTPAddress).
+# Every publish/read is asked to the back office: publishing needs the mosque's stream key
+# (`mosque --slug <slug> --publish-key`), reading is allowed from the private network only.
+authMethod: http
+authHTTPAddress: http://backoffice:8090/api/v1/internal/publish-auth
 paths:
   "~^live/[a-z0-9-]+$": {}

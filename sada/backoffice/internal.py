@@ -78,3 +78,18 @@ def agent_mosque(conn, given: str | None) -> int | None:
         return None
     row = conn.execute("SELECT id FROM mosques WHERE agent_token_hash = ?", (_digest(str(given)),)).fetchone()
     return row[0] if row else None
+
+
+def new_publish_key(conn, mosque_id: int) -> str:
+    """New stream key for the mosque's OBS (replaces the previous one); only its hash is kept."""
+    k = secrets.token_urlsafe(24)
+    conn.execute("UPDATE mosques SET publish_key_hash = ? WHERE id = ?", (_digest(k), mosque_id))
+    return k
+
+
+def publish_allowed(conn, slug: str, key: str | None) -> bool:
+    """Whether `key` is the stream key of the mosque `slug` (no key set = nobody may publish)."""
+    if not slug or not key:
+        return False
+    row = conn.execute("SELECT publish_key_hash FROM mosques WHERE slug = ?", (slug,)).fetchone()
+    return bool(row and row[0]) and hmac.compare_digest(row[0], _digest(str(key)))

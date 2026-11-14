@@ -89,6 +89,9 @@ def main(argv=None) -> int:
         "--agent-token", action="store_true", help=_("issue a new orchestrator token (replaces the previous one)")
     )
     m.add_argument("--revoke-agent-token", action="store_true", help=_("revoke the orchestrator token"))
+    m.add_argument(
+        "--publish-key", action="store_true", help=_("issue a new stream key for OBS (replaces the previous one)")
+    )
 
     i = sub.add_parser("import", help=_("import the pipeline runs"))
     i.add_argument("--mosque")
@@ -165,6 +168,12 @@ def main(argv=None) -> int:
                 internal.revoke_agent_token(conn, mo["id"])
                 db.audit(conn, mo["id"], None, "jeton_agent.revoque", "mosquee", mo["id"], via="ligne de commande")
                 print(_("Orchestrator token revoked."))
+            if args.publish_key:
+                k = internal.new_publish_key(conn, mo["id"])
+                db.audit(conn, mo["id"], None, "cle_diffusion.emise", "mosquee", mo["id"], via="ligne de commande")
+                print(_("Stream key (shown once). In OBS, server and key:"))
+                print(f"  rtmp://<host>:1935/live/{mo['slug']}?user={mo['slug']}&pass={k}")
+                print(f"  srt://<host>:8890?streamid=publish:live/{mo['slug']}:{mo['slug']}:{k}")
             if args.agent_token:
                 t = internal.new_agent_token(conn, mo["id"])
                 db.audit(conn, mo["id"], None, "jeton_agent.emis", "mosquee", mo["id"], via="ligne de commande")

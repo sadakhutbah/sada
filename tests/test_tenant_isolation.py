@@ -274,3 +274,26 @@ def test_orchestrator_reads_times_from_backoffice():
         raise OSError("down")
 
     assert mawaqit.from_backoffice("http://bo", 0, fetch=down) is None
+
+
+def test_stream_key_per_mosque(env, intruder):
+    from sada.backoffice import internal
+
+    conn = env["conn"]
+    slugs = [r["slug"] for r in db.all_(conn, "SELECT slug FROM mosques ORDER BY id")]
+    mids = [r["id"] for r in db.all_(conn, "SELECT id FROM mosques ORDER BY id")]
+    ka = internal.new_publish_key(conn, mids[0])
+    c = client(env)
+
+    def ask(**q):
+        return c.post("/api/v1/internal/publish-auth", json=q).status_code
+
+    assert ask(action="publish", path=f"live/{slugs[0]}", password=ka) == 200
+    assert ask(action="publish", path=f"live/{slugs[1]}", password=ka) == 401  # not its mosque
+    assert ask(action="publish", path=f"live/{slugs[1]}", password="") == 401  # no key set = closed
+    assert ask(action="publish", path=f"live/{slugs[0]}", password="wrong") == 401
+    assert ask(action="read", path=f"live/{slugs[0]}", ip="172.18.0.5") == 200
+    assert ask(action="read", path=f"live/{slugs[0]}", ip="8.8.8.8") == 401
+    assert ask(action="api", path="", ip="172.18.0.5") == 401
+    internal.new_publish_key(conn, mids[0])
+    assert ask(action="publish", path=f"live/{slugs[0]}", password=ka) == 401  # replaced

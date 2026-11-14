@@ -148,5 +148,7 @@
   "Orchestrator token (shown once, set it as SADA_AGENT_TOKEN on the mosque's machine):": "Jeton d'orchestrateur (affiché une seule fois, à poser dans SADA_AGENT_TOKEN sur la machine de la mosquée) :",
   "Programme: back office unreachable ({error}), local file used": "Programme : back-office injoignable ({error}), fichier local utilisé",
   "Programme: entry skipped ({error})": "Programme : entrée ignorée ({error})",
-  "Times: back office unreachable ({error}), local cache used": "Horaires : back-office injoignable ({error}), cache local utilisé"
+  "Times: back office unreachable ({error}), local cache used": "Horaires : back-office injoignable ({error}), cache local utilisé",
+  "issue a new stream key for OBS (replaces the previous one)": "émettre une nouvelle clé de diffusion pour OBS (remplace la précédente)",
+  "Stream key (shown once). In OBS, server and key:": "Clé de diffusion (affichée une seule fois). Dans OBS, serveur et clé :"
 }
