@@ -1,4 +1,7 @@
-"""Per-mosque processing files: clip count (`pipeline.json`) and language model (`llm.json`).
+"""Per-mosque processing file: clip count (`pipeline.json`).
+
+Only mosque preferences live here. The infrastructure (language model, transcription provider)
+is the platform's and stays shared: one hosting serves every mosque.
 
 Each mosque gets `data/mosques/<slug>/<name>.json`. While that file does not exist yet, the
 process-wide file is read (an instance created before multi-mosque keeps its settings); the first
@@ -12,12 +15,10 @@ import os
 from pathlib import Path
 
 from .. import paths
-from ..pipeline import llm
 from ..pipeline import settings as pipeline_settings
 
 FILES = {
     "pipeline": ("SADA_PIPELINE_CONFIG", pipeline_settings.config_path),
-    "llm": ("SADA_LLM_CONFIG", llm.config_path),
 }
 
 
@@ -37,5 +38,5 @@ def read_path(mosque: dict, name: str) -> Path:
 
 
 def pipeline_env(mosque: dict) -> dict:
-    """Environment for a pipeline run of this mosque: both files point at the mosque's own."""
+    """Environment for a pipeline run of this mosque: its own clip settings."""
     return {var: str(read_path(mosque, name)) for name, (var, _) in FILES.items()}

@@ -52,13 +52,12 @@ def _seed(mosque: dict, name: str) -> None:
         own.chmod(src.stat().st_mode & 0o777)
 
 
-def _model_view(mosque: dict) -> dict:
+def _model_view() -> dict:
     """Model setting for the screen: never the API key, only its presence."""
-    path = tenant_config.read_path(mosque, "llm")
-    cfg = llm.config(path)
-    eff = llm.settings(path=path)
+    cfg = llm.config()
+    eff = llm.settings()
     return {
-        "enabled": llm.enabled(path),
+        "enabled": llm.enabled(),
         "url": cfg.get("url", ""),
         "model": cfg.get("model", ""),
         "protocol": cfg.get("protocol", ""),
@@ -118,7 +117,7 @@ def settings(ctx: CtxDep):
         # Lignes arabes du gabarit : saisies par la mosquée, jamais fournies par le code.
         "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
         "gabarit": gabarit_mod.view(ctx.mosque),
-        "model": _model_view(ctx.mosque),
+        "model": _model_view(),
         "transcription": remote_transcription.view(),
         "processing": _processing_view(ctx.mosque),
     }
@@ -195,10 +194,7 @@ async def model_save(ctx: CtxDep):
     if proto not in ("", "openai", "anthropic"):
         raise Invalid(_("Unknown API format."))
     enabled = str(f.get("enabled", "0")) in ("1", "true", "on", "oui")
-    _seed(ctx.mosque, "llm")
-    llm.save_config(
-        enabled=enabled, url=url, model=model, protocol=proto, path=tenant_config.write_path(ctx.mosque, "llm")
-    )
+    llm.save_config(enabled=enabled, url=url, model=model, protocol=proto)
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
@@ -217,7 +213,7 @@ async def model_save(ctx: CtxDep):
             "Language model saved. The pipeline applies it at the next run (environment variables "
             "still take precedence)."
         ),
-        label=llm.settings(path=tenant_config.read_path(ctx.mosque, "llm")).label(),
+        label=llm.settings().label(),
     )
 
 
@@ -478,7 +474,7 @@ def transcription_test(ctx: CtxDep):
 @router.post("/settings/model/test")
 def model_test(ctx: CtxDep):
     ctx.require("admin")
-    ok, msg = llm.probe(path=tenant_config.read_path(ctx.mosque, "llm"))
+    ok, msg = llm.probe()
     return JSONResponse({"ok": ok, "message": msg}, status_code=200 if ok else 422)
 
 

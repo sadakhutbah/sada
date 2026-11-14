@@ -78,7 +78,7 @@ def test_lists_are_empty_for_another_mosque(intruder):
             assert body["count"] == 0, url
 
 
-def test_processing_and_model_settings_are_per_mosque(env, intruder, monkeypatch, tmp_path):
+def test_clip_settings_are_per_mosque(env, intruder, monkeypatch, tmp_path):
     from sada import paths
     from sada.backoffice import tenant_config, traitement
 
@@ -88,37 +88,15 @@ def test_processing_and_model_settings_are_per_mosque(env, intruder, monkeypatch
     shared = tmp_path / "data" / "pipeline.json"
     monkeypatch.setattr(tenant_config.pipeline_settings, "config_path", lambda: shared)
     monkeypatch.setitem(tenant_config.FILES, "pipeline", ("SADA_PIPELINE_CONFIG", lambda: shared))
-    monkeypatch.setitem(tenant_config.FILES, "llm", ("SADA_LLM_CONFIG", lambda: tmp_path / "data" / "llm.json"))
 
     owner = client(env, "admin")
     assert owner.ecrire("/settings/processing", {"clips": "7", "enabled": "1"}, methode="PUT").status_code == 200
-    assert owner.ecrire("/settings/model", {"enabled": "1", "model": "m-a"}, methode="PUT").status_code == 200
     assert intruder.ecrire("/settings/processing", {"clips": "2", "enabled": "1"}, methode="PUT").status_code == 200
 
     assert owner.get("/api/v1/settings").json()["processing"]["clips"] == 7
     assert intruder.get("/api/v1/settings").json()["processing"]["clips"] == 2
-    assert intruder.get("/api/v1/settings").json()["model"]["model"] == ""
     assert not shared.exists()  # nothing written to the shared file
 
     m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     run_env = traitement._env(m)
     assert run_env["SADA_PIPELINE_CONFIG"] == str(tmp_path / "data" / "mosques" / "ma-mosquee" / "pipeline.json")
-
-
-def test_first_save_inherits_the_shared_file(env, monkeypatch, tmp_path):
-    import json
-
-    from sada.backoffice import tenant_config
-
-    monkeypatch.delenv("SADA_LLM_CONFIG", raising=False)
-    shared = tmp_path / "llm.json"
-    shared.write_text(json.dumps({"enabled": True, "model": "old", "key": "secret"}))
-    monkeypatch.setattr(tenant_config.paths, "DATA", tmp_path / "data")
-    monkeypatch.setitem(tenant_config.FILES, "llm", ("SADA_LLM_CONFIG", lambda: shared))
-
-    owner = client(env, "admin")
-    assert owner.get("/api/v1/settings").json()["model"]["model"] == "old"
-    assert owner.ecrire("/settings/model", {"enabled": "1", "model": "new"}, methode="PUT").status_code == 200
-    own = json.loads((tmp_path / "data" / "mosques" / "ma-mosquee" / "llm.json").read_text())
-    assert own["model"] == "new" and own["key"] == "secret"
-    assert json.loads(shared.read_text())["model"] == "old"

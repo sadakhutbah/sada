@@ -42,28 +42,25 @@ def config_path() -> Path:
     return Path(os.environ.get("SADA_LLM_CONFIG") or paths.DATA / "llm.json")
 
 
-def config(path: Path | None = None) -> dict:
-    """Settings saved from the back-office (Settings → Mosque). File missing or unreadable: {}.
-
-    `path`: one mosque's file (multi-mosque back office); otherwise the process file.
-    """
+def config() -> dict:
+    """Settings saved from the back-office (Settings → Mosque). File missing or unreadable: {}."""
     try:
-        d = json.loads((path or config_path()).read_text(encoding="utf-8"))
+        d = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return {k: d[k] for k in CONFIG_KEYS if k in d} if isinstance(d, dict) else {}
 
 
-def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "", path: Path | None = None) -> None:
+def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "") -> None:
     """Write the model setting (local file, readable by the pipeline started alongside).
 
     The API key is never written here: absent from the web form, it is only kept if it was
     set by hand in the file (permissions 600).
     """
-    p = path or config_path()
+    p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     data = {"enabled": bool(enabled), "url": url.strip(), "model": model.strip(), "protocol": protocol.strip()}
-    if old_key := config(p).get("key"):
+    if old_key := config().get("key"):
         data["key"] = old_key
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
@@ -77,14 +74,14 @@ def use(**kw) -> None:
     _OVERRIDE.update({k: v for k, v in kw.items() if k in CONFIG_KEYS and v is not None})
 
 
-def enabled(path: Path | None = None) -> bool:
+def enabled() -> bool:
     """Switch: process setting, then SADA_LLM_ENABLED, then the file, otherwise enabled."""
     if "enabled" in _OVERRIDE:
         return bool(_OVERRIDE["enabled"])
     env = os.environ.get("SADA_LLM_ENABLED", "").strip().lower()
     if env:
         return env not in ("0", "off", "false", "no", "non")
-    return bool(config(path).get("enabled", True))
+    return bool(config().get("enabled", True))
 
 
 def label() -> str:
@@ -107,15 +104,10 @@ class Settings:
 
 
 def settings(
-    url: str | None = None,
-    model: str | None = None,
-    key: str | None = None,
-    protocol: str | None = None,
-    *,
-    path: Path | None = None,
+    url: str | None = None, model: str | None = None, key: str | None = None, protocol: str | None = None
 ) -> Settings:
     """Effective settings: argument, process setting, environment, back-office file, default."""
-    cfg = config(path)
+    cfg = config()
     # same precedence as the orchestrator configuration (config.pick): argument > process > env > file > default
     url = pick(url, _OVERRIDE.get("url"), os.environ.get("SADA_LLM_URL"), cfg.get("url"), DEFAULT_URL).rstrip("/")
     model = pick(model, _OVERRIDE.get("model"), os.environ.get("SADA_LLM_MODEL"), cfg.get("model"), DEFAULT_MODEL)
@@ -205,9 +197,9 @@ def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
     return (choices[0].get("message") or {}).get("content") or ""
 
 
-def probe(timeout: int = 8, path: Path | None = None) -> tuple[bool, str]:
+def probe(timeout: int = 8) -> tuple[bool, str]:
     """Does the model answer? Independent of the switch: this is the « Test » button of the back-office."""
-    s = settings(path=path)
+    s = settings()
     try:
         _ask_http(s, 'Réponds uniquement {"ok": true}.', timeout, lambda m: None)
     except Exception as e:  # noqa: BLE001 — the message is shown as is to the administrator
