@@ -177,6 +177,15 @@ def _events_en_base(conn: sqlite3.Connection) -> None:
     )
 
 
+def _mosques_cache_mawaqit(conn: sqlite3.Connection) -> None:
+    """Migration 14 : cache des horaires Mawaqit par mosquée (remplace `cache/mawaqit.json`)."""
+    _add_columns(
+        conn,
+        "mosques",
+        (("mawaqit_cache", "TEXT NOT NULL DEFAULT ''"), ("mawaqit_cached_at", "REAL NOT NULL DEFAULT 0")),
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -191,6 +200,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(11, "users : administrateur de la plateforme", _users_plateforme),
     Migration(12, "mosques : jeton de l'orchestrateur", _mosques_jeton_agent),
     Migration(13, "events : programme des cours en base", _events_en_base),
+    Migration(14, "mosques : cache des horaires Mawaqit", _mosques_cache_mawaqit),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

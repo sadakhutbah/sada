@@ -166,6 +166,7 @@ INTERNAL = [
     "/api/v1/internal/live-input",
     "/api/v1/internal/events",
 ]
+# /internal/times is covered by test_times_cached_per_mosque (it needs a fake Mawaqit)
 
 
 @pytest.mark.parametrize("url", INTERNAL)
@@ -235,3 +236,41 @@ def test_programme_is_per_mosque(env, intruder):
     t_own, t_other = internal.new_agent_token(conn, env["mid"]), internal.new_agent_token(conn, other)
     assert [e["title"] for e in _agent(env, "/api/v1/internal/events", t_own).json()["events"]] == ["Fiqh"]
     assert _agent(env, "/api/v1/internal/events", t_other).json()["events"] == []
+
+
+def test_times_cached_per_mosque(env, intruder):
+    from sada.backoffice import mawaqit_store
+
+    conn = env["conn"]
+    calls = []
+
+    def fetch(url, timeout):
+        calls.append(url)
+        return {"name": url, "jumua": "13:00", "times": ["06:00", "12:30"]}
+
+    a = db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    b = db.one(conn, "SELECT * FROM mosques WHERE id != ?", env["mid"])
+    a["mawaqit_url"], b["mawaqit_url"] = "https://m/a", "https://m/b"
+    assert mawaqit_store.times(conn, a, fetch=fetch, now=1000)["name"] == "https://m/a"
+    assert mawaqit_store.times(conn, b, fetch=fetch, now=1000)["name"] == "https://m/b"
+    # fresh: no new fetch; each mosque keeps its own cache
+    assert mawaqit_store.times(conn, a, fetch=fetch, now=2000)["origin"] == "cache (fresh)"
+    assert calls == ["https://m/a", "https://m/b"]
+
+    def down(url, timeout):
+        raise OSError("down")
+
+    stale = mawaqit_store.times(conn, b, fetch=down, now=1000 + 30 * 3600)
+    assert stale["name"] == "https://m/b" and stale["jumua_list"] == ["13:00"]
+
+
+def test_orchestrator_reads_times_from_backoffice():
+    from sada import mawaqit
+
+    d = mawaqit.from_backoffice("http://bo", 0, fetch=lambda u, t: {"times": {"jumua": "13:15", "origin": "live"}})
+    assert d["jumua_list"] == ["13:15"]
+
+    def down(u, t):
+        raise OSError("down")
+
+    assert mawaqit.from_backoffice("http://bo", 0, fetch=down) is None

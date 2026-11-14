@@ -163,7 +163,10 @@ class Orchestrator:
             log.info(_("Times forced by the config: {times}", times=self.cfg.jumua_times_override))
             return list(self.cfg.jumua_times_override)
         try:
-            d = mawaqit.get_jumua(self.cfg.mawaqit_url, self.cfg.mawaqit_cache)
+            # the back office keeps each mosque's cache; the local file only if it is unreachable
+            d = mawaqit.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
+            if d is None:
+                d = mawaqit.get_jumua(self.cfg.mawaqit_url, self.cfg.mawaqit_cache)
             self.mawaqit_data = d
             log.info(
                 _(

@@ -37,22 +37,19 @@ def fetch_live(url: str, timeout: float = 15.0) -> dict:
     }
 
 
-def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float = 15.0) -> dict:
-    """Mawaqit data + jumua_list (jumua times) and origin (live / cache). Refreshed if the cache is older than max_age_h."""
-    cp = Path(cache_path)
-    cache = None
-    if cp.exists():
-        try:
-            cache = json.loads(cp.read_text())
-        except Exception:
-            cache = None
-    if cache and time.time() - cp.stat().st_mtime < max_age_h * 3600:
+def resolve(url: str, cache: dict | None, age_s: float, max_age_h: float = 20.0, timeout: float = 15.0, fetch=None):
+    """(times, data to store or None) from a cache of any kind (file, database row).
+
+    Fresh cache: used as is. Otherwise Mawaqit is fetched; on failure the stale cache is used.
+    """
+    fetch = fetch or fetch_live
+    if cache and age_s < max_age_h * 3600:
         cache["origin"] = _("cache (fresh)")
-        return _finish(cache)
+        return _finish(cache), None
     if not url:
         if cache:
             cache["origin"] = _("cache (no Mawaqit URL configured)")
-            return _finish(cache)
+            return _finish(cache), None
         raise ValueError(
             _(
                 "no time source: empty Mawaqit URL (--mawaqit-url or Settings → Mosque) "
@@ -60,16 +57,57 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
             )
         )
     try:
-        data = fetch_live(url, timeout)
-        cp.parent.mkdir(parents=True, exist_ok=True)
-        cp.write_text(json.dumps(data, ensure_ascii=False, indent=1))
-        data["origin"] = "live"
-        return _finish(data)
+        data = fetch(url, timeout)
     except Exception as e:  # network failure / changed format: fall back on the cache
         if cache:
             cache["origin"] = _("cache (stale, live fetch failed: {error})", error=e)
-            return _finish(cache)
+            return _finish(cache), None
         raise
+    stored = dict(data)
+    data["origin"] = "live"
+    return _finish(data), stored
+
+
+def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float = 15.0) -> dict:
+    """Mawaqit data + jumua_list (jumua times) and origin (live / cache), local file cache."""
+    cp = Path(cache_path)
+    cache = None
+    if cp.exists():
+        try:
+            cache = json.loads(cp.read_text())
+        except Exception:
+            cache = None
+    age = time.time() - cp.stat().st_mtime if cache else 0.0
+    data, stored = resolve(url, cache, age, max_age_h, timeout)
+    if stored is not None:
+        cp.parent.mkdir(parents=True, exist_ok=True)
+        cp.write_text(json.dumps(stored, ensure_ascii=False, indent=1))
+    return data
+
+
+def from_backoffice(backoffice_url: str, api_port: int, fetch=None, log=None) -> dict | None:
+    """Times of the calling orchestrator's mosque, cached by the back office; None if unreachable."""
+    log = log or (lambda _m: None)
+    if not backoffice_url:
+        return None
+    import urllib.request
+    from urllib.parse import urlencode
+
+    from .backoffice.internal import HEADER, token
+
+    def _get(u: str, tok: str) -> dict:  # pragma: no cover (network)
+        req = urllib.request.Request(u, headers={HEADER: tok})
+        with urllib.request.urlopen(req, timeout=20) as r:  # noqa: S310 — configured back office
+            return json.loads(r.read(1 << 20))
+
+    u = backoffice_url.rstrip("/") + "/api/v1/internal/times?" + urlencode({"port": api_port or 0})
+    try:
+        d = (fetch or _get)(u, token()) or {}
+    except Exception as e:  # noqa: BLE001
+        log(_("Times: back office unreachable ({error}), local cache used", error=e))
+        return None
+    t = d.get("times")
+    return _finish(t) if isinstance(t, dict) else None
 
 
 def prayer_times(d: dict) -> dict:
