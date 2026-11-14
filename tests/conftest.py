@@ -359,12 +359,6 @@ def env(tmp_path, env_base):
     conn.close()
 
 
-@pytest.fixture
-def admin(env):
-    """Client connecté comme administrateur : le cas courant des tests d'API."""
-    return client(env, "admin")
-
-
 @pytest.fixture(autouse=True)
 def transcription_locale(monkeypatch, tmp_path):
     """Les tests tournent sur le moteur local, quel que soit le réglage de la machine.
