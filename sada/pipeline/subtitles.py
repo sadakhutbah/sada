@@ -33,6 +33,7 @@ import re
 
 from ..text import has_translit, is_arabic
 from . import clips as clipmod
+from . import glossary
 from .repair import is_loop
 from .translate import segment_ar, segment_fr, verse_fr
 from .verses import recited_arabic
@@ -83,6 +84,10 @@ def _clean(text: str) -> str:
     """One line of text: no control character, no subtitle markup (`<i>` is read by the players)."""
     text = re.sub(r"[\x00-\x08\x0b-\x1f]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
+    # Artefacts de Whisper : « l 'explication », « al -lamia », « peut -être ».
+    text = re.sub(r"(\w) '(?=\w)", r"\1'", text)
+    text = re.sub(r"(\w) -(?=\w)", r"\1-", text)
+    text = glossary.correct(text)
     return text.replace("<", "").replace(">", "")
 
 

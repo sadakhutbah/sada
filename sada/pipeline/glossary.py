@@ -101,7 +101,18 @@ DEFAULT_TERMS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("tayammum", ("tayammum", "tayamoum"), "les ablutions sèches"),
     ("nifaq", ("nifaq", "nifak"), "l'hypocrisie"),
     ("mumin", ("mumin", "moumin", "mu'min"), "le croyant"),
+    ("fitra", ("fitra", "fitrah", "fitrat", "faitana", "fitrana"), "la nature originelle"),
+    ("hikma", ("hikma", "hikmah", "hikman"), "la sagesse"),
+    ("taklif", ("taklif", "takalif", "taqalif"), "les obligations religieuses"),
+    ("mu'tazila", ("mu'tazila", "mutazila", "mouatazila", "mouazazia", "ma'atazila"), "les mu'tazilites"),
+    ("tabi'i", ("tabi'i", "tabii"), "le successeur des compagnons"),
+    ("waswas", ("waswas", "waswassa"), "l'insinuation du diable"),
+    ("shaytan", ("shaytan", "shaitan", "chaytane"), "le diable"),
 )
+
+# Graphies fautives que Whisper produit pour un terme (« faitana » pour « fitra ») : remplacées par
+# le terme dans le texte affiché. Seules les variantes d'un seul mot comptent, pour ne jamais
+# décaler les mots horodatés.
 
 _PUNCT = ' \t\n\r.,;:!?…«»"()[]{}—–-'
 
@@ -154,6 +165,27 @@ def load(path: Path | None = None) -> list[dict]:
     for e in _extra_terms(path):
         terms[e["term"]] = e
     return list(terms.values())
+
+
+def correct(text: str, terms: list[dict] | None = None) -> str:
+    """Remplace les graphies fautives connues d'un terme par le terme (« sa faitana » → « sa fitra »).
+
+    Mot à mot, casse initiale conservée ; un mot inconnu ou déjà correct ne change pas.
+    """
+    idx = {}
+    for e in terms if terms is not None else load():
+        for v in e.get("variants") or ():
+            if " " not in v and normalize(v) != normalize(e["term"]):
+                idx.setdefault(normalize(v), e["term"])
+
+    def fix(m: re.Match) -> str:
+        w = m.group(0)
+        t = idx.get(normalize(w))
+        if not t or " " in t:
+            return w
+        return t[0].upper() + t[1:] if w[0].isupper() else t
+
+    return re.sub(r"[A-Za-zÀ-ÖØ-öø-ÿ']+", fix, text or "")
 
 
 def hotwords(terms: list[dict] | None = None) -> str:
