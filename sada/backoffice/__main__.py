@@ -70,6 +70,7 @@ def main(argv=None) -> int:
     a.add_argument("--mosque", help=_("slug of the mosque"))
     a.add_argument("--mosque-name", help=_("name of the mosque if it is created"))
     a.add_argument("--password-stdin", action="store_true")
+    a.add_argument("--platform", action="store_true", help=_("also platform administrator (model, transcription)"))
 
     u = sub.add_parser("create-user", help=_("create an account (admin, manager, imam)"))
     u.add_argument("--username", required=True)
@@ -110,6 +111,11 @@ def main(argv=None) -> int:
         if args.cmd == "create-admin":
             mo = _mosque(conn, args.mosque, args.mosque_name, create=True)
             uid = auth.create_user(conn, mo["id"], args.username, _password(args), "admin", args.name)
+            # the first administrator of an install is also the platform's: a self-hosted
+            # mosque keeps its model and transcription settings
+            first = not db.one(conn, "SELECT id FROM users WHERE platform_admin = 1 AND id != ?", uid)
+            if args.platform or first:
+                conn.execute("UPDATE users SET platform_admin = 1 WHERE id = ?", (uid,))
             db.audit(
                 conn,
                 mo["id"],
@@ -119,6 +125,7 @@ def main(argv=None) -> int:
                 uid,
                 identifiant=args.username,
                 role="admin",
+                plateforme=bool(args.platform or first),
                 via="ligne de commande",
             )
             print(_("Administrator “{username}” created for {mosque}.", username=args.username, mosque=mo["name"]))

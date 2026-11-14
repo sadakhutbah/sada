@@ -110,6 +110,7 @@ def env(tmp_path):
     )
     ids = {r: auth.create_user(conn, mid, r, PW, r, r.capitalize()) for r in auth.ROLES}
     ids["imam2"] = auth.create_user(conn, mid, "imam2", PW, "imam", "Autre imam")
+    conn.execute("UPDATE users SET platform_admin = 1 WHERE id = ?", (ids["admin"],))
     m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
     importer.import_run(conn, m, RUN, extract_video=False, log=lambda *a: None)
     kid = db.one(conn, "SELECT id FROM khutbas")["id"]

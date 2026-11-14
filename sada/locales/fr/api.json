@@ -139,5 +139,6 @@
   "translation incomplete: the language model is not available": "traduction incomplète : le modèle de langue n'est pas disponible",
   "translation incomplete: the model did not answer for every passage": "traduction incomplète : le modèle n'a pas répondu pour tous les passages",
   "translation: {count} French segment(s) without Arabic translation": "traduction : {count} segment(s) français sans traduction arabe",
-  "translation: {segments} French segment(s) into Arabic via {model}": "traduction : {segments} segment(s) français vers l'arabe via {model}"
+  "translation: {segments} French segment(s) into Arabic via {model}": "traduction : {segments} segment(s) français vers l'arabe via {model}",
+  "also platform administrator (model, transcription)": "administrateur de la plateforme aussi (modèle, transcription)"
 }

@@ -150,6 +150,16 @@ def _users_mdp_impose(conn: sqlite3.Connection) -> None:
     _add_columns(conn, "users", (("must_change_password", "INTEGER NOT NULL DEFAULT 0"),))
 
 
+def _users_plateforme(conn: sqlite3.Connection) -> None:
+    """Migration 11 : administrateur de la plateforme (réglages communs à toutes les mosquées).
+
+    Une instance à une seule mosquée garde son fonctionnement : ses administrateurs le deviennent.
+    """
+    _add_columns(conn, "users", (("platform_admin", "INTEGER NOT NULL DEFAULT 0"),))
+    if conn.execute("SELECT COUNT(*) FROM mosques").fetchone()[0] == 1:
+        conn.execute("UPDATE users SET platform_admin = 1 WHERE role = 'admin'")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -161,6 +171,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(8, "habillage des vidéos (habillages, mosques.habillage_defaults)", _habillage),
     Migration(9, "users : permissions par compte", _users_permissions),
     Migration(10, "users : mot de passe à changer", _users_mdp_impose),
+    Migration(11, "users : administrateur de la plateforme", _users_plateforme),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

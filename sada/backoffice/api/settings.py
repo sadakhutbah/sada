@@ -36,6 +36,10 @@ SECTIONS = (
 )
 
 
+#: Shared by every mosque of the hosting: only the platform administrator sees and sets them.
+PLATFORM_SECTIONS = frozenset({"model", "transcription"})
+
+
 def _host(ctx) -> str:
     """Host the browser reached us on: the address to give OBS, so it works over the network too."""
     return ctx.request.url.hostname or "127.0.0.1"
@@ -85,6 +89,7 @@ def _processing_view(mosque: dict) -> dict:
 def settings(ctx: CtxDep):
     """Everything the Settings screen shows: the interface splits it into tabs itself."""
     ctx.require("admin")
+    platform = ctx.can(auth.PLATFORM)
     m = _mosque(ctx)
     m.update({k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"})
     # a stored secret never comes back in clear: the mask returned as is means "unchanged"
@@ -98,7 +103,7 @@ def settings(ctx: CtxDep):
     return {
         "mosque": m,
         "defaults": defauts,
-        "sections": SECTIONS,
+        "sections": [s for s in SECTIONS if s not in PLATFORM_SECTIONS or platform],
         "guide": {
             "url": base + "/docs/agent-gabarit-ecrans.md",
             "human": base + "/docs/ecrans-mode-emploi",
@@ -117,8 +122,7 @@ def settings(ctx: CtxDep):
         # Lignes arabes du gabarit : saisies par la mosquée, jamais fournies par le code.
         "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
         "gabarit": gabarit_mod.view(ctx.mosque),
-        "model": _model_view(),
-        "transcription": remote_transcription.view(),
+        **({"model": _model_view(), "transcription": remote_transcription.view()} if platform else {}),
         "processing": _processing_view(ctx.mosque),
     }
 
@@ -185,7 +189,7 @@ async def mosque_save(ctx: CtxDep):
 @router.put("/settings/model")
 async def model_save(ctx: CtxDep):
     f = await ctx.body()
-    ctx.require("admin")
+    ctx.require(auth.PLATFORM)
     url = (f.get("url") or "").strip()
     model = (f.get("model") or "").strip()
     proto = (f.get("protocol") or "").strip()
@@ -426,7 +430,7 @@ async def input_test(ctx: CtxDep):
 async def transcription_save(ctx: CtxDep):
     """Local ou distant : écrit le réglage que `sada.pipeline.remote` lit à chaque transcription."""
     f = await ctx.body()
-    ctx.require("admin")
+    ctx.require(auth.PLATFORM)
     mode = (f.get("mode") or "").strip().lower()
     if mode not in remote_transcription.MODES:
         raise Invalid(_("Unknown transcription mode."))
@@ -466,14 +470,14 @@ async def transcription_save(ctx: CtxDep):
 @router.post("/settings/transcription/test")
 def transcription_test(ctx: CtxDep):
     """Le fournisseur répond-il vraiment ? Envoie un court extrait généré (jamais la clé en retour)."""
-    ctx.require("admin")
+    ctx.require(auth.PLATFORM)
     ok, msg = remote_transcription.probe()
     return JSONResponse({"ok": ok, "message": msg}, status_code=200 if ok else 422)
 
 
 @router.post("/settings/model/test")
 def model_test(ctx: CtxDep):
-    ctx.require("admin")
+    ctx.require(auth.PLATFORM)
     ok, msg = llm.probe()
     return JSONResponse({"ok": ok, "message": msg}, status_code=200 if ok else 422)
 

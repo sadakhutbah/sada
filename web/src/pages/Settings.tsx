@@ -50,8 +50,9 @@ const CHAMPS_TRANSCRIPTION = [
 function depuisServeur(d: any): Record<string, string> {
   const f: Record<string, string> = {};
   for (const k of CHAMPS_MOSQUEE) f[k] = d.mosque[k] ?? "";
-  f.enabled = d.model.enabled ? "1" : "0";
-  for (const k of ["url", "model", "protocol"]) f[k] = d.model[k] ?? "";
+  // Modèle et transcription : absents pour qui n'administre pas la plateforme.
+  f.enabled = d.model?.enabled ? "1" : "0";
+  for (const k of ["url", "model", "protocol"]) f[k] = d.model?.[k] ?? "";
   f.clips = String(d.processing?.clips ?? 3);
   f.clips_enabled = d.processing?.enabled === false ? "0" : "1";
   // La clé ne revient jamais de l'API : le champ repart vide, et vide veut dire « garder l'ancienne ».
@@ -554,7 +555,7 @@ export default function Settings() {
         </div>
       </div>
     ),
-    model: (
+    model: d.model && (
       <div className="grid gap-3">
         <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.modelHint")}</p>
         <label className="flex items-center gap-2 text-[0.95rem] font-semibold">
@@ -591,7 +592,7 @@ export default function Settings() {
         </div>
       </div>
     ),
-    transcription: (
+    transcription: d.transcription && (
       <div className="grid max-w-[560px] gap-3.5">
         <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.transcriptionHint")}</p>
         {/* Deux modes dans un seul contrôle : le formulaire s'allonge, la page ne bouge pas. */}

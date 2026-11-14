@@ -63,6 +63,9 @@ users = sa.Table(
     sa.Column("permissions", sa.Text, nullable=False, server_default=_d("''")),
     # Compte créé ou mot de passe fixé par un admin : la personne doit choisir le sien avant tout.
     sa.Column("must_change_password", sa.Integer, nullable=False, server_default=_d("0")),
+    # Administrateur de la plateforme : règle ce qui est commun à toutes les mosquées (modèle,
+    # transcription). Jamais attribué par un formulaire, seulement en ligne de commande.
+    sa.Column("platform_admin", sa.Integer, nullable=False, server_default=_d("0")),
 )
 
 auth_sessions = sa.Table(

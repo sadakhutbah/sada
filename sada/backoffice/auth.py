@@ -86,9 +86,14 @@ def custom_permissions(user: dict) -> list[str] | None:
         return None
 
 
+#: Permission of the platform administrator, outside PERMS: no form can grant it.
+PLATFORM = "platform"
+
+
 def permissions(user: dict) -> list[str]:
     custom = custom_permissions(user)
-    return role_permissions(user["role"]) if custom is None else custom
+    perms = role_permissions(user["role"]) if custom is None else custom
+    return [*perms, PLATFORM] if user.get("platform_admin") else perms
 
 
 def normalize_permissions(value) -> str:

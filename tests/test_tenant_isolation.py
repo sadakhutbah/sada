@@ -100,3 +100,51 @@ def test_clip_settings_are_per_mosque(env, intruder, monkeypatch, tmp_path):
     m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
     run_env = traitement._env(m)
     assert run_env["SADA_PIPELINE_CONFIG"] == str(tmp_path / "data" / "mosques" / "ma-mosquee" / "pipeline.json")
+
+
+def test_platform_settings_are_hidden_from_a_mosque_admin(env, intruder):
+    d = intruder.get("/api/v1/settings").json()
+    assert "model" not in d and "transcription" not in d
+    assert "model" not in d["sections"] and "transcription" not in d["sections"]
+    for method, url in (
+        ("PUT", "/settings/model"),
+        ("PUT", "/settings/transcription"),
+        ("POST", "/settings/model/test"),
+        ("POST", "/settings/transcription/test"),
+    ):
+        assert intruder.ecrire(url, {"mode": "local"}, methode=method).status_code == 403, url
+    owner = client(env, "admin")
+    assert "model" in owner.get("/api/v1/settings").json()["sections"]
+
+
+def test_platform_permission_cannot_be_granted_by_a_form(env):
+    owner = client(env, "admin")
+    uid = env["ids"]["responsable"]
+    r = owner.ecrire(f"/users/{uid}", {"permissions": '["admin", "platform"]'}, methode="PATCH")
+    assert r.status_code in (400, 422)
+
+
+def test_migration_keeps_a_single_mosque_admin_in_charge(tmp_path):
+    from sada.backoffice import migrations
+
+    path = tmp_path / "old.db"
+    db.init(path)
+    conn = db.connect(path)
+    mid = db.create_mosque(conn, "seule", "Seule")
+    uid = auth.create_user(conn, mid, "chef", PW, "admin")
+    conn.execute("DELETE FROM schema_migrations WHERE version = 11")
+    migrations._users_plateforme(conn)
+    assert db.one(conn, "SELECT platform_admin FROM users WHERE id = ?", uid)["platform_admin"] == 1
+
+
+def test_first_cli_admin_is_platform_admin(tmp_path, monkeypatch):
+    from sada.backoffice import __main__ as cli
+
+    path = tmp_path / "cli.db"
+    monkeypatch.setattr("sys.stdin", __import__("io").StringIO(PW + "\n"))
+    cli.main(["--db", str(path), "create-admin", "--username", "boss", "--password-stdin"])
+    monkeypatch.setattr("sys.stdin", __import__("io").StringIO(PW + "\n"))
+    cli.main(["--db", str(path), "create-admin", "--username", "other", "--password-stdin"])
+    conn = db.connect(path)
+    flags = {r["username"]: r["platform_admin"] for r in db.all_(conn, "SELECT username, platform_admin FROM users")}
+    assert flags == {"boss": 1, "other": 0}

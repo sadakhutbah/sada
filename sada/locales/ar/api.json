@@ -139,5 +139,6 @@
   "translation incomplete: the language model is not available": "الترجمة غير مكتملة: نموذج اللغة غير متاح",
   "translation incomplete: the model did not answer for every passage": "الترجمة غير مكتملة: لم يجب النموذج عن كل المقطع",
   "translation: {count} French segment(s) without Arabic translation": "الترجمة: {count} مقطعًا فرنسيًا بلا ترجمة عربية",
-  "translation: {segments} French segment(s) into Arabic via {model}": "الترجمة: {segments} مقطعًا فرنسيًا إلى العربية عبر {model}"
+  "translation: {segments} French segment(s) into Arabic via {model}": "الترجمة: {segments} مقطعًا فرنسيًا إلى العربية عبر {model}",
+  "also platform administrator (model, transcription)": "مسؤول المنصّة أيضًا (النموذج، النسخ)"
 }
