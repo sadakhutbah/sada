@@ -1,6 +1,7 @@
-"""Machine-to-machine endpoints: no session, one local token (`X-Internal-Token`).
+"""Machine-to-machine endpoints: no session, a token in `X-Internal-Token`.
 
-Only the orchestrator calls them, from the same machine. They never go through the browser: the
+Only orchestrators call them: each with its mosque's agent token, or with the shared local token
+while the instance has a single mosque. They never go through the browser: the
 CSP, the CSRF and the permissions of the JSON API do not apply here.
 """
 
@@ -33,14 +34,35 @@ def _mosque_id(conn, port: int) -> int | None:
     return ids[0] if len(ids) == 1 else None
 
 
-@router.get("/internal/notification-settings")
-def notification_settings(request: Request, conn: ConnDep, port: int = 0):
-    """Notification settings of the mosque whose orchestrator listens on `port` (or of the only mosque)."""
-    if not internal.check(request.headers.get(internal.HEADER)):
+def _caller(request: Request, conn, port: int) -> int | JSONResponse:
+    """Mosque of the calling orchestrator.
+
+    A mosque's own agent token names it: the port is then ignored, and that token opens nothing
+    of another mosque. The shared local token (one machine, both processes) only holds while the
+    instance has a single mosque: with several, it would let any orchestrator read every mosque.
+    """
+    given = request.headers.get(internal.HEADER)
+    if not given:
         return _refuse()
+    mid = internal.agent_mosque(conn, given)
+    if mid is not None:
+        return mid
+    if not internal.check(given):
+        return _refuse()
+    if db.one(conn, "SELECT COUNT(*) AS n FROM mosques")["n"] > 1:
+        return JSONResponse({"error": _("several mosques: a per-mosque agent token is required")}, status_code=403)
     mid = _mosque_id(conn, port)
     if mid is None:
         return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
+    return mid
+
+
+@router.get("/internal/notification-settings")
+def notification_settings(request: Request, conn: ConnDep, port: int = 0):
+    """Notification settings of the mosque whose orchestrator listens on `port` (or of the only mosque)."""
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
     r = db.one(conn, "SELECT * FROM notifications WHERE mosque_id = ?", mid) or {}
     return {
         "mosque_id": mid,
@@ -54,33 +76,27 @@ def notification_settings(request: Request, conn: ConnDep, port: int = 0):
 @router.get("/internal/live-targets")
 def live_targets(request: Request, conn: ConnDep, port: int = 0):
     """Enabled live destinations, keys in clear: the encoder needs the whole address."""
-    if not internal.check(request.headers.get(internal.HEADER)):
-        return _refuse()
-    mid = _mosque_id(conn, port)
-    if mid is None:
-        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
     return {"mosque_id": mid, "urls": destinations.effective(conn, mid)}
 
 
 @router.get("/internal/storage")
 def storage_target(request: Request, conn: ConnDep, port: int = 0):
     """Bucket, keys and folder the engine needs to send the replays; null when nothing is configured."""
-    if not internal.check(request.headers.get(internal.HEADER)):
-        return _refuse()
-    mid = _mosque_id(conn, port)
-    if mid is None:
-        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
     return {"mosque_id": mid, "target": storage.effective(conn, mid)}
 
 
 @router.get("/internal/screens")
 def screen_texts(request: Request, conn: ConnDep, port: int = 0):
     """Texts the mosque changed on the live screens: {écran: {champ: texte}}; empty = defaults."""
-    if not internal.check(request.headers.get(internal.HEADER)):
-        return _refuse()
-    mid = _mosque_id(conn, port)
-    if mid is None:
-        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
     mosque = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
     if not mosque:
         return JSONResponse({"error": _("mosque not found")}, status_code=404)
@@ -99,11 +115,9 @@ def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
     posés, exactement comme pour l'aperçu : c'est le même document, donc la même image.
     ``variables`` porte ce que le moteur seul connaît (logo, nom, textes arabes saisis).
     """
-    if not internal.check(request.headers.get(internal.HEADER)):
-        return _refuse()
-    mid = _mosque_id(conn, port)
-    if mid is None:
-        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
     mosquee = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid) or {}
     fichier = gabarit.lire(mosquee)
     if not fichier:
@@ -122,9 +136,7 @@ def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
 @router.get("/internal/live-input")
 def live_input_url(request: Request, conn: ConnDep, port: int = 0):
     """Address the encoder must read; empty when nothing was configured in the interface."""
-    if not internal.check(request.headers.get(internal.HEADER)):
-        return _refuse()
-    mid = _mosque_id(conn, port)
-    if mid is None:
-        return JSONResponse({"error": _("cannot determine the mosque")}, status_code=404)
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
     return {"mosque_id": mid, "url": live_input.effective(conn, mid)}

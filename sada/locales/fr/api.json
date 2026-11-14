@@ -140,5 +140,10 @@
   "translation incomplete: the model did not answer for every passage": "traduction incomplète : le modèle n'a pas répondu pour tous les passages",
   "translation: {count} French segment(s) without Arabic translation": "traduction : {count} segment(s) français sans traduction arabe",
   "translation: {segments} French segment(s) into Arabic via {model}": "traduction : {segments} segment(s) français vers l'arabe via {model}",
-  "also platform administrator (model, transcription)": "administrateur de la plateforme aussi (modèle, transcription)"
+  "also platform administrator (model, transcription)": "administrateur de la plateforme aussi (modèle, transcription)",
+  "several mosques: a per-mosque agent token is required": "plusieurs mosquées : un jeton d'orchestrateur propre à la mosquée est requis",
+  "issue a new orchestrator token (replaces the previous one)": "émettre un nouveau jeton d'orchestrateur (remplace le précédent)",
+  "revoke the orchestrator token": "révoquer le jeton d'orchestrateur",
+  "Orchestrator token revoked.": "Jeton d'orchestrateur révoqué.",
+  "Orchestrator token (shown once, set it as SADA_AGENT_TOKEN on the mosque's machine):": "Jeton d'orchestrateur (affiché une seule fois, à poser dans SADA_AGENT_TOKEN sur la machine de la mosquée) :"
 }

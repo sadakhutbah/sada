@@ -140,5 +140,10 @@
   "translation incomplete: the model did not answer for every passage": "الترجمة غير مكتملة: لم يجب النموذج عن كل المقطع",
   "translation: {count} French segment(s) without Arabic translation": "الترجمة: {count} مقطعًا فرنسيًا بلا ترجمة عربية",
   "translation: {segments} French segment(s) into Arabic via {model}": "الترجمة: {segments} مقطعًا فرنسيًا إلى العربية عبر {model}",
-  "also platform administrator (model, transcription)": "مسؤول المنصّة أيضًا (النموذج، النسخ)"
+  "also platform administrator (model, transcription)": "مسؤول المنصّة أيضًا (النموذج، النسخ)",
+  "several mosques: a per-mosque agent token is required": "عدّة مساجد: يلزم رمز خاص بمنسّق كل مسجد",
+  "issue a new orchestrator token (replaces the previous one)": "إصدار رمز جديد للمنسّق (يحلّ محلّ السابق)",
+  "revoke the orchestrator token": "إلغاء رمز المنسّق",
+  "Orchestrator token revoked.": "أُلغي رمز المنسّق.",
+  "Orchestrator token (shown once, set it as SADA_AGENT_TOKEN on the mosque's machine):": "رمز المنسّق (يُعرض مرة واحدة، ضعه في SADA_AGENT_TOKEN على جهاز المسجد):"
 }

@@ -17,7 +17,7 @@ import os
 import sys
 
 from ..i18n import _
-from . import auth, db, importer
+from . import auth, db, importer, internal
 
 
 def _password(args) -> str:
@@ -85,6 +85,10 @@ def main(argv=None) -> int:
     for f in db.MOSQUE_SETTINGS:
         if f != "name":
             m.add_argument("--" + f.replace("_", "-"))
+    m.add_argument(
+        "--agent-token", action="store_true", help=_("issue a new orchestrator token (replaces the previous one)")
+    )
+    m.add_argument("--revoke-agent-token", action="store_true", help=_("revoke the orchestrator token"))
 
     i = sub.add_parser("import", help=_("import the pipeline runs"))
     i.add_argument("--mosque")
@@ -157,6 +161,15 @@ def main(argv=None) -> int:
             if vals:
                 db.update_mosque(conn, mo["id"], **vals)
                 print(_("Configuration updated: {fields}", fields=", ".join(vals)))
+            if args.revoke_agent_token:
+                internal.revoke_agent_token(conn, mo["id"])
+                db.audit(conn, mo["id"], None, "jeton_agent.revoque", "mosquee", mo["id"], via="ligne de commande")
+                print(_("Orchestrator token revoked."))
+            if args.agent_token:
+                t = internal.new_agent_token(conn, mo["id"])
+                db.audit(conn, mo["id"], None, "jeton_agent.emis", "mosquee", mo["id"], via="ligne de commande")
+                print(_("Orchestrator token (shown once, set it as SADA_AGENT_TOKEN on the mosque's machine):"))
+                print(t)
         elif args.cmd == "import":
             mo = _mosque(conn, args.mosque)
             res = (

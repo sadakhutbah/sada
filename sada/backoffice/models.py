@@ -30,6 +30,8 @@ mosques = sa.Table(
     sa.Column("mawaqit_url", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("orchestrator_url", sa.Text, nullable=False, server_default=_d("'http://127.0.0.1:8088'")),
     sa.Column("orchestrator_token", sa.Text, nullable=False, server_default=_d("''")),
+    # Empreinte (sha256) du jeton que l'orchestrateur de la mosquée présente au back-office.
+    sa.Column("agent_token_hash", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("state_dir", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("output_dir", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("publish_dir", sa.Text, nullable=False, server_default=_d("''")),

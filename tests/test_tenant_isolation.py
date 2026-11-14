@@ -148,3 +148,71 @@ def test_first_cli_admin_is_platform_admin(tmp_path, monkeypatch):
     conn = db.connect(path)
     flags = {r["username"]: r["platform_admin"] for r in db.all_(conn, "SELECT username, platform_admin FROM users")}
     assert flags == {"boss": 1, "other": 0}
+
+
+def _agent(env, url, token):
+    from sada.backoffice import internal
+
+    c = client(env)
+    return c.get(url, headers={internal.HEADER: token} if token else {})
+
+
+INTERNAL = [
+    "/api/v1/internal/notification-settings",
+    "/api/v1/internal/live-targets",
+    "/api/v1/internal/storage",
+    "/api/v1/internal/screens",
+    "/api/v1/internal/gabarit",
+    "/api/v1/internal/live-input",
+]
+
+
+@pytest.mark.parametrize("url", INTERNAL)
+def test_agent_token_names_its_mosque(env, url):
+    from sada.backoffice import internal
+
+    conn = env["conn"]
+    mid2 = db.create_mosque(conn, "other", "Other mosque", orchestrator_url="http://127.0.0.1:9")
+    t1 = internal.new_agent_token(conn, env["mid"])
+    t2 = internal.new_agent_token(conn, mid2)
+    assert _agent(env, url, t1).json()["mosque_id"] == env["mid"]
+    # same port as the first mosque: the token decides, not the port
+    assert _agent(env, url + "?port=9", t2).json()["mosque_id"] == mid2
+    assert _agent(env, url, "sada_wrong").status_code == 403
+    assert _agent(env, url, None).status_code == 403
+
+
+@pytest.mark.parametrize("url", INTERNAL)
+def test_shared_token_refused_once_there_are_several_mosques(env, url):
+    from sada.backoffice import internal
+
+    shared = internal.local_token()
+    assert _agent(env, url, shared).status_code == 200
+    db.create_mosque(env["conn"], "other", "Other mosque")
+    assert _agent(env, url, shared).status_code == 403
+
+
+def test_agent_token_rotation_and_revocation(env):
+    from sada.backoffice import internal
+
+    conn = env["conn"]
+    old = internal.new_agent_token(conn, env["mid"])
+    new = internal.new_agent_token(conn, env["mid"])
+    assert internal.agent_mosque(conn, old) is None
+    assert internal.agent_mosque(conn, new) == env["mid"]
+    internal.revoke_agent_token(conn, env["mid"])
+    assert internal.agent_mosque(conn, new) is None
+    assert internal.agent_mosque(conn, "") is None
+    stored = db.one(conn, "SELECT agent_token_hash FROM mosques WHERE id = ?", env["mid"])["agent_token_hash"]
+    assert new not in stored
+
+
+def test_orchestrator_presents_the_agent_token(monkeypatch, tmp_path):
+    from sada.backoffice import internal
+
+    monkeypatch.setenv("SADA_INTERNAL_TOKEN_FILE", str(tmp_path / "internal.token"))
+    local = internal.token()
+    monkeypatch.setenv(internal.AGENT_ENV, "sada_abc")
+    assert internal.token() == "sada_abc"
+    assert internal.local_token() == local
+    assert not internal.check("sada_abc")

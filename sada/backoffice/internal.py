@@ -10,6 +10,7 @@ The token file is created (mode 0600) by whichever process needs it first.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
 import secrets
@@ -20,8 +21,19 @@ from .. import paths
 HEADER = "X-Internal-Token"
 
 
+AGENT_ENV = "SADA_AGENT_TOKEN"
+
+
 def token(path: str | Path | None = None) -> str:
-    """Internal token, created on first use: a local secret, never shown in an interface."""
+    """Token the orchestrator presents: its mosque's agent token when one is set (hosted
+    back-office, `SADA_AGENT_TOKEN`), otherwise the local one, created on first use."""
+    if not path and (agent := os.environ.get(AGENT_ENV, "").strip()):
+        return agent
+    return local_token(path)
+
+
+def local_token(path: str | Path | None = None) -> str:
+    """Local token shared by the two processes of one machine, never shown in an interface."""
     p = Path(path or os.environ.get("SADA_INTERNAL_TOKEN_FILE") or paths.INTERNAL_TOKEN)
     try:
         t = p.read_text().strip()
@@ -41,4 +53,28 @@ def token(path: str | Path | None = None) -> str:
 
 def check(given: str | None, path: str | Path | None = None) -> bool:
     """Is the token presented by the caller the local one? (constant-time comparison)"""
-    return bool(given) and hmac.compare_digest(str(given), token(path))
+    return bool(given) and hmac.compare_digest(str(given), local_token(path))
+
+
+def _digest(t: str) -> str:
+    return hashlib.sha256(t.encode()).hexdigest()
+
+
+def new_agent_token(conn, mosque_id: int) -> str:
+    """New agent token for a mosque, replacing the previous one. Only its hash is kept:
+    the value is shown once, to be given to the mosque's orchestrator."""
+    t = "sada_" + secrets.token_urlsafe(32)
+    conn.execute("UPDATE mosques SET agent_token_hash = ? WHERE id = ?", (_digest(t), mosque_id))
+    return t
+
+
+def revoke_agent_token(conn, mosque_id: int) -> None:
+    conn.execute("UPDATE mosques SET agent_token_hash = '' WHERE id = ?", (mosque_id,))
+
+
+def agent_mosque(conn, given: str | None) -> int | None:
+    """Mosque whose agent token is `given`, or None (lookup by hash: nothing to compare in clear)."""
+    if not given:
+        return None
+    row = conn.execute("SELECT id FROM mosques WHERE agent_token_hash = ?", (_digest(str(given)),)).fetchone()
+    return row[0] if row else None

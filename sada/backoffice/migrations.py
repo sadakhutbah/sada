@@ -160,6 +160,11 @@ def _users_plateforme(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE users SET platform_admin = 1 WHERE role = 'admin'")
 
 
+def _mosques_jeton_agent(conn: sqlite3.Connection) -> None:
+    """Migration 12 : jeton propre à l'orchestrateur de chaque mosquée (empreinte seulement)."""
+    _add_columns(conn, "mosques", (("agent_token_hash", "TEXT NOT NULL DEFAULT ''"),))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -172,6 +177,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(9, "users : permissions par compte", _users_permissions),
     Migration(10, "users : mot de passe à changer", _users_mdp_impose),
     Migration(11, "users : administrateur de la plateforme", _users_plateforme),
+    Migration(12, "mosques : jeton de l'orchestrateur", _mosques_jeton_agent),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.
