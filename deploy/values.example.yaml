@@ -1,0 +1,20 @@
+# Copy to deploy/values.local.yaml (git-ignored) and adapt: this is what `helm install` reads.
+image:
+  repository: ghcr.io/your-org/sada
+  tag: "0123abc"
+
+ingress:
+  host: console.sadakhutbah.org
+
+# The Let's Encrypt ClusterIssuer is created once per cluster (set createIssuer=false after).
+certManager:
+  createIssuer: true
+  email: you@example.org
+
+# One orchestrator per mosque. Each tokenSecret is a Secret of the `sada` namespace holding
+# the token printed by `python -m sada.backoffice mosque --slug <slug> --agent-token`.
+mosques:
+  - slug: masjid-al-nour
+    tokenSecret: sada-masjid-al-nour
+  - slug: mosquee-assalam
+    tokenSecret: sada-mosquee-assalam
