@@ -370,3 +370,29 @@ def transcription_locale(monkeypatch, tmp_path):
     for name in [k for k in os.environ if k.startswith("SADA_TRANSCRIPTION_")]:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("SADA_TRANSCRIPTION_CONFIG", str(tmp_path / "transcription-absent.json"))
+
+
+def _drop_test_schemas() -> None:
+    """Drop the per-test PostgreSQL schemas (`t_*`) so the test database does not grow."""
+    url = orm.database_url()
+    if not url:
+        return
+    with orm._LOCK:
+        for e in list(orm._ENGINES.values()):
+            e.dispose()
+        orm._ENGINES.clear()
+    eng = sa.create_engine(sa.make_url(url).set(drivername="postgresql+psycopg"))
+    try:
+        names = [n for n in sa.inspect(eng).get_schema_names() if n.startswith("t_")]
+        for name in names:  # one transaction per schema: a single one runs out of locks
+            with eng.begin() as c:
+                c.execute(sa.schema.DropSchema(name, cascade=True, if_exists=True))
+    finally:
+        eng.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _clean_test_schemas():
+    _drop_test_schemas()  # leftovers of an interrupted run
+    yield
+    _drop_test_schemas()

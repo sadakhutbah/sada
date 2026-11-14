@@ -28,7 +28,7 @@ ENV = "SADA_DATABASE_URL"
 def database_url() -> str:
     """PostgreSQL URL from `SADA_DATABASE_URL`; empty = SQLite files."""
     u = os.environ.get(ENV, "").strip()
-    return u if u.startswith(("postgres://", "postgresql://")) else ""
+    return u if u.startswith(("postgres://", "postgresql://", "postgresql+psycopg://")) else ""
 
 
 def schema_for(path, default) -> str:
@@ -90,7 +90,7 @@ def _make(key, path) -> sa.Engine:
         return eng
     url, schema = key
     eng = sa.create_engine(
-        url.replace("postgres://", "postgresql+psycopg://", 1).replace("postgresql://", "postgresql+psycopg://", 1),
+        sa.make_url(url).set(drivername="postgresql+psycopg"),
         pool_size=POOL_SIZE,
         max_overflow=MAX_OVERFLOW,
         pool_timeout=POOL_TIMEOUT,
