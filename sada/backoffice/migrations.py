@@ -63,6 +63,14 @@ def _baseline(conn: sqlite3.Connection) -> None:
 
 
 def _has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
+    if not isinstance(conn, sqlite3.Connection):  # PostgreSQL
+        return bool(
+            conn.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+                "AND table_name = ? AND column_name = ?",
+                (table, col),
+            ).fetchone()
+        )
     return any(r[1] == col for r in conn.execute(f'PRAGMA table_info("{table}")'))
 
 
@@ -224,11 +232,49 @@ def _applied_versions(conn: sqlite3.Connection) -> set[int]:
     return {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
 
 
+def _init_pg(conn, now_iso) -> None:
+    """PostgreSQL: a fresh schema gets the models' current shape at once (every migration counts as
+    applied); later migrations run as usual."""
+    from sqlalchemy.dialects import postgresql
+
+    conn.execute(SCHEMA_MIGRATIONS_DDL)
+    applied = _applied_versions(conn)
+    if not applied:
+        for table in models.metadata.sorted_tables:
+            conn.execute(str(CreateTable(table, if_not_exists=True).compile(dialect=postgresql.dialect())))
+            for index in table.indexes:
+                conn.execute(str(CreateIndex(index, if_not_exists=True).compile(dialect=postgresql.dialect())))
+        for m in MIGRATIONS:
+            conn.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (m.version, now_iso()))
+        return
+    if max(applied) > LATEST:
+        raise RuntimeError(
+            _(
+                "database {path} is at version {version}, newer than the code ({latest}): update the back-office",
+                path=conn.schema,
+                version=max(applied),
+                latest=LATEST,
+            )
+        )
+    for m in MIGRATIONS:
+        if m.version not in applied:
+            m.up(conn)
+            conn.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (m.version, now_iso()))
+
+
 def init(path: str | Path) -> None:
     """Crée / met à jour la base `path` vers la dernière version connue du code."""
     from .db import connect, now_iso  # import tardif : évite le cycle db <-> migrations
 
     conn = connect(path)
+    from . import pg
+
+    if pg.url():
+        try:
+            _init_pg(conn, now_iso)
+        finally:
+            conn.close()
+        return
     try:
         conn.execute(SCHEMA_MIGRATIONS_DDL)
         applied = _applied_versions(conn)

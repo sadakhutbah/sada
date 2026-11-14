@@ -465,6 +465,7 @@ def test_erreur_sans_chemin():
     assert sans_chemin("/home/x/data/output/run/source/dars.mp4: Invalid data") == "dars.mp4: Invalid data"
 
 
+@pytest.mark.skipif(bool(__import__("os").environ.get("SADA_DATABASE_URL")), reason="SQLite file format")
 def test_migration_8_sur_une_base_en_version_6(tmp_path):
     from sada.backoffice import db, migrations
 

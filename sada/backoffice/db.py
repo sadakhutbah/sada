@@ -50,6 +50,11 @@ def now_iso() -> str:
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
+    """SQLite file `path`, or PostgreSQL when `SADA_DATABASE_URL` is set (one schema per path)."""
+    from . import pg
+
+    if pg.url():
+        return pg.Connection(pg.url(), pg.schema_for(path, DEFAULT_DB))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=10, check_same_thread=False, isolation_level=None)

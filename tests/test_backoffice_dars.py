@@ -2,6 +2,8 @@
 
 import sqlite3
 
+import pytest
+
 from sada.backoffice import db, publish
 from sada.backoffice.importer import khutba_label
 
@@ -21,6 +23,7 @@ def test_libelle_dars_et_khutba():
     assert khutba_label({"index": 1, "kind": "dars"}) == "Session 2"
 
 
+@pytest.mark.skipif(bool(__import__("os").environ.get("SADA_DATABASE_URL")), reason="SQLite file format")
 def test_migration_ajoute_les_colonnes(tmp_path):
     """Une base créée par l'ancien code (tables présentes, sans `schema_migrations`) est adoptée
     sans perte de données : les colonnes ajoutées depuis apparaissent avec leurs valeurs par défaut."""

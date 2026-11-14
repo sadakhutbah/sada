@@ -14,6 +14,9 @@ ADDED = {
 }
 
 
+pytestmark = pytest.mark.skipif(bool(__import__("os").environ.get("SADA_DATABASE_URL")), reason="SQLite file format")
+
+
 def table_columns(conn, table: str) -> set[str]:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
 

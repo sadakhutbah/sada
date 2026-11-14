@@ -59,7 +59,9 @@ users = sa.Table(
     metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
-    sa.Column("username", sa.Text(collation="NOCASE"), nullable=False, unique=True),
+    sa.Column(
+        "username", sa.Text(collation="NOCASE").with_variant(sa.Text(), "postgresql"), nullable=False, unique=True
+    ),
     sa.Column("display_name", sa.Text, nullable=False),
     sa.Column("password_hash", sa.Text, nullable=False),
     sa.Column("role", sa.Text, sa.CheckConstraint("role IN ('admin', 'responsable', 'imam')"), nullable=False),
