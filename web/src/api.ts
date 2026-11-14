@@ -2,12 +2,18 @@
 import i18n from "./i18n";
 export type Session = {
   user: { id: number; name: string; role: string; role_label: string; permissions: string[];
-          must_change_password?: boolean };
+          must_change_password?: boolean; operator?: boolean };
+  /** null until a mosque is chosen (hosted mode never opens one by itself). */
   mosque: { id: number; slug: string; name: string; timezone: string; logo: string; clip_title: string;
-            needs_onboarding?: boolean };
+            needs_onboarding?: boolean } | null;
+  mosques?: MosqueChoice[];
+  /** The operator is inside a mosque as support: every action is audited. */
+  support?: boolean;
   csrf: string;
-  counts: { pending: number };
+  counts?: { pending: number };
 };
+
+export type MosqueChoice = { id: number; slug: string; name: string; access: "member" | "support" };
 
 /** Error carrying the HTTP status and the server message, to display it as-is. */
 export class ApiError extends Error {
@@ -121,6 +127,8 @@ export type Habillage = {
 export const api = {
   session: () => demande<Session>("/session"),
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
+  selectMosque: (mosque_id: number) => ecrire<Session>("POST", "/mosques/select", { mosque_id }),
+  leaveMosque: () => ecrire<Session>("POST", "/mosques/leave"),
   dashboard: () => demande<any>("/dashboard"),
   /** Runs after the live, newest first (ten at most). Absent backend: the call answers 404 and the
    *  panel stays hidden. */

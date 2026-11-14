@@ -17,6 +17,7 @@ import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Onboarding from "./pages/Onboarding";
 import FirstPassword from "./pages/FirstPassword";
+import MosquePicker from "./pages/MosquePicker";
 import { setCurrentSession } from "./session";
 import { Bulle } from "./ui";
 
@@ -61,6 +62,20 @@ export default function App() {
       />
     );
 
+  // Signed in, but no mosque open yet (hosted mode, operator console): choose one first.
+  const mosque = session.mosque;
+  const adopter = (s: Session) => { setCurrentSession(s); setCsrf(s.csrf); setSession(s); };
+  if (!mosque)
+    return (
+      <MosquePicker
+        session={session}
+        onPick={(s) => { demarragePropose.current = false; adopter(s); navigate("/", { replace: true }); }}
+        onLogout={() => api.logout().catch(() => {}).finally(() => { setCurrentSession(null); setCsrf(""); setSession(null); })}
+      />
+    );
+  const peutChanger = (session.mosques?.length ?? 0) > 1 || !!session.user.operator;
+  const changerDeMosquee = () => api.leaveMosque().then(adopter);
+
   const lien = (to: string, cle: string, perm?: string, compte?: number) =>
     perm && !session.user.permissions.includes(perm) ? null : (
       <NavLink
@@ -97,6 +112,12 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      {session.support && (
+        <div role="status" className="flex flex-wrap items-center justify-center gap-3 bg-gold px-4 py-1.5 text-[0.85rem] font-semibold text-night">
+          <span>{t("picker.banner", { name: mosque.name })}</span>
+          <button type="button" onClick={changerDeMosquee} className="cursor-pointer rounded border border-night/40 bg-transparent px-2 py-0.5 font-semibold text-night">{t("picker.leave")}</button>
+        </div>
+      )}
       <header className="bg-night text-night-ink shadow-[0_1px_0_rgba(0,0,0,0.2)]">
         {/* Large écran : une ligne. Tablette : la navigation passe sur une seconde ligne qui défile
             dans son propre conteneur. Téléphone : bouton « Menu » qui déplie la liste. La page ne
@@ -108,7 +129,7 @@ export default function App() {
             <img src="/sada-mark-or.svg" alt="" className="h-[26px] w-auto shrink-0" />
             <span className="flex min-w-0 flex-col">
               <span className="font-serif text-[1.3rem] leading-none text-white">{t("app.name")}</span>
-              <span className="truncate text-[0.75rem] leading-tight text-night-muted">{session.mosque.name}</span>
+              <span className="truncate text-[0.75rem] leading-tight text-night-muted">{mosque.name}</span>
             </span>
           </div>
           <button
@@ -167,6 +188,15 @@ export default function App() {
             {roleLabel !== session.user.name && (
               <span className="text-[0.78rem] whitespace-nowrap text-night-muted min-[1120px]:hidden">{roleLabel}</span>
             )}
+            {peutChanger && !session.support && (
+              <button
+                type="button"
+                onClick={changerDeMosquee}
+                className="inline-flex cursor-pointer items-center border-0 bg-transparent p-0 text-[0.85rem] whitespace-nowrap text-night-link hover:text-white max-md:min-h-11 pointer-coarse:min-h-11"
+              >
+                {t("picker.switch")}
+              </button>
+            )}
             <a
               href="/"
               onClick={deconnexion}
@@ -198,7 +228,7 @@ export default function App() {
         </Routes>
       </main>
       <footer className="p-6 text-center text-[0.8rem] text-muted">
-        {t("app.name")} · {session.mosque.name}
+        {t("app.name")} · {mosque.name}
       </footer>
     </div>
   );
