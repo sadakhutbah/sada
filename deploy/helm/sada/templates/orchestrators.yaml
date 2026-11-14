@@ -1,0 +1,109 @@
+{{- /*
+One orchestrator per mosque: it presents the mosque's agent token to the back office and keeps
+its recordings/state in its own folders, so two lives starting the same second never collide.
+*/ -}}
+{{- range .Values.mosques }}
+{{- if not .slug }}
+{{- fail "every entry of `mosques` needs a slug" }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" .slug) }}
+{{- fail (printf "mosque slug %q must be lowercase letters, digits and dashes (it is the stream key)" .slug) }}
+{{- end }}
+{{- if not .tokenSecret }}
+{{- fail (printf "mosque %s needs a tokenSecret (Secret holding its orchestrator token)" .slug) }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "orchestrator-%s" .slug }}
+  labels:
+    {{- include "sada.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+    sada.mosque: {{ .slug }}
+spec:
+  replicas: {{ $.Values.orchestrator.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sada.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: orchestrator
+      sada.mosque: {{ .slug }}
+  template:
+    metadata:
+      labels:
+        {{- include "sada.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: orchestrator
+        sada.mosque: {{ .slug }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: orchestrator
+          image: {{ include "sada.image" $ | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - sada.orchestrator
+          ports:
+            - name: api
+              containerPort: {{ $.Values.orchestrator.apiPort }}
+          env:
+            - name: SADA_BACKOFFICE_URL
+              value: {{ $.Values.orchestrator.backofficeUrl | default "http://backoffice:8090" | quote }}
+            - name: SADA_API_HOST
+              value: 0.0.0.0
+            - name: SADA_API_PORT
+              value: {{ $.Values.orchestrator.apiPort | quote }}
+            - name: SADA_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .tokenSecret }}
+                  key: {{ .secretKey | default "token" }}
+            # Own folders under the shared volume: one folder per mosque.
+            - name: SADA_RECORD_DIR
+              value: {{ printf "%s/recordings/%s" $.Values.persistence.mountPath .slug | quote }}
+            - name: SADA_STATE_DIR
+              value: {{ printf "%s/state/%s" $.Values.persistence.mountPath .slug | quote }}
+            {{- with $.Values.orchestrator.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ $.Values.persistence.mountPath }}
+          readinessProbe:
+            tcpSocket:
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            {{- toYaml ($.Values.orchestrator.resources) | nindent 12 }}
+      volumes:
+        {{- include "sada.dataVolume" $ | nindent 8 }}
+---
+# Reached by the back office: set it on the mosque with
+#   python -m sada.backoffice mosque --slug <slug> --orchestrator-url http://orchestrator-<slug>:{{ $.Values.orchestrator.apiPort }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "orchestrator-%s" .slug }}
+  labels:
+    {{- include "sada.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+    sada.mosque: {{ .slug }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: {{ $.Values.orchestrator.apiPort }}
+      targetPort: api
+  selector:
+    {{- include "sada.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+    sada.mosque: {{ .slug }}
+{{- end }}

@@ -1,0 +1,24 @@
+Sadā is installed in namespace {{ .Release.Namespace }}.
+
+Back office
+{{- if .Values.ingress.enabled }}
+  https://{{ .Values.ingress.host }}
+  {{- if .Values.ingress.tls.enabled }} (certificate by cert-manager, issuer {{ .Values.ingress.tls.issuer }}){{ end }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/backoffice 8090:8090  →  http://localhost:8090
+{{- end }}
+
+First run (password asked on the terminal):
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/backoffice -- \
+    python -m sada.backoffice create-admin --username admin --mosque <slug> --mosque-name "<name>"
+
+Then, for each mosque:
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/backoffice -- \
+    python -m sada.backoffice mosque --slug <slug> --agent-token
+  # -> put the printed token in the Secret named by the `mosques[].tokenSecret` value
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/backoffice -- \
+    python -m sada.backoffice mosque --slug <slug> --publish-key --orchestrator-url http://orchestrator-<slug>:{{ .Values.orchestrator.apiPort }}
+
+Streams (OBS), on the server's public IPv4:
+  RTMP  rtmp://<server-ip>:1935/live/<slug>?user=<slug>&pass=<stream key>
+  SRT   srt://<server-ip>:8890?streamid=publish:live/<slug>:<slug>:<stream key>

@@ -1,0 +1,130 @@
+# Sadā on one k3s node (Hetzner cx33): back office, stream receiver, one orchestrator per mosque.
+#
+#   helm upgrade --install sada ./deploy/helm/sada -n sada --create-namespace \
+#     --set image.tag=<git sha> \
+#     --set mosques[0].slug=masjid-al-nour --set mosques[0].tokenSecret=sada-masjid-al-nour
+#
+# Services are named `backoffice` and `receiver` on purpose: the back office tells the
+# orchestrators to read the stream on rtsp://receiver:8554, and MediaMTX asks its publish
+# authorisation to http://backoffice:8090. Install the chart in its own namespace.
+
+# Image of the Python application (back office and orchestrators share it). Build it with
+# `make front` then `docker build .`, push it to your registry, and set the tag.
+image:
+  repository: ghcr.io/sada-khutbah/sada
+  tag: "" # "" = appVersion of the chart; use the git sha in production
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# /app/data: recordings, orchestrator state, uploads. One ReadWriteOnce volume is enough
+# because every pod lands on the same node (local-path provisioner on top of the Hetzner
+# volume mounted by Ansible).
+persistence:
+  enabled: true
+  existingClaim: ""
+  accessMode: ReadWriteOnce
+  size: 20Gi
+  storageClass: "" # "" = cluster default StorageClass (local-path on k3s)
+  mountPath: /app/data
+
+backoffice:
+  replicas: 1
+  port: 8090
+  # "" = automatic: Secure cookies when the Ingress serves HTTPS.
+  secureCookies: ""
+  # Automatic import of finished runs, in seconds (0 = disabled).
+  importEvery: 60
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  extraEnv: []
+
+# Stream reception (MediaMTX): mosques push RTMP or SRT, orchestrators read RTSP inside
+# the cluster. Published on the node through k3s ServiceLB (1935/tcp, 8890/udp).
+receiver:
+  image: bluenviron/mediamtx:1
+  imagePullPolicy: IfNotPresent
+  # "" = the mediamtx.yml shipped in the chart (files/mediamtx.yml).
+  config: ""
+  existingConfigMap: ""
+  rtmpPort: 1935
+  srtPort: 8890
+  rtspPort: 8554
+  service:
+    type: LoadBalancer
+    annotations: {}
+    loadBalancerIP: ""
+    externalTrafficPolicy: Local
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 1Gi
+
+# One orchestrator Deployment + Service per entry of `mosques`.
+orchestrator:
+  replicas: 1
+  apiPort: 8088
+  # "" = http://backoffice:8090
+  backofficeUrl: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 3Gi
+  extraEnv: []
+
+# Each mosque gets an orchestrator and an API service `orchestrator-<slug>:8088`.
+# The token is the one printed by `python -m sada.backoffice mosque --slug <slug> --agent-token`,
+# stored in a Secret of this namespace (key `token` unless secretKey says otherwise).
+mosques: []
+#  - slug: masjid-al-nour
+#    tokenSecret: sada-masjid-al-nour
+#    secretKey: token
+
+database:
+  # cnpg     = PostgreSQL managed by CloudNativePG (in-cluster, single instance)
+  # external = PostgreSQL elsewhere (`url`, or `existingSecret` + key)
+  # sqlite   = no PostgreSQL: SQLite file under /app/data (single back office, no HA)
+  mode: cnpg
+  url: ""
+  existingSecret: ""
+  existingSecretKey: uri
+  cnpg:
+    name: "" # "" = <fullname>-postgres
+    instances: 1
+    # "" = the image the installed operator defaults to (recommended).
+    imageName: ""
+    storage:
+      size: 10Gi
+      storageClass: "" # "" = cluster default (local-path, on the Hetzner volume)
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 2Gi
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+  host: console.sadakhutbah.org
+  path: /
+  tls:
+    enabled: true
+    secretName: "" # "" = <fullname>-tls, filled by cert-manager
+    issuer: letsencrypt-prod
+
+# ClusterIssuer (HTTP-01 through Traefik). Cluster-scoped: create it once per cluster.
+#   --set certManager.createIssuer=true --set certManager.email=you@example.org
+certManager:
+  createIssuer: false
+  email: ""
+  server: https://acme-v02.api.letsencrypt.org/directory
