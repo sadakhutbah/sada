@@ -130,7 +130,7 @@ cmd_app() {
   if [ -n "${SADA_ACME_EMAIL:-}" ]; then
     args+=(--set certManager.createIssuer=true --set "certManager.email=$SADA_ACME_EMAIL")
   fi
-  helm upgrade --install "$SADA_RELEASE" "$CHART" "${args[@]}" --wait --timeout 15m
+  helm upgrade --install --force-conflicts "$SADA_RELEASE" "$CHART" "${args[@]}" --wait --timeout 15m
   log "back office: https://$SADA_HOST"
 }
 
