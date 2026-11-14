@@ -32,6 +32,11 @@ from .vad import VadMonitor
 
 log = logging.getLogger("sada")
 
+# Back office unreachable at start (default times, no programme): the times and the programme are
+# fetched again, with a bounded backoff, so the day does not stay on the fallback until tomorrow.
+RETRY_DELAY_S = 30.0
+RETRY_MAX_S = 300.0
+
 
 class Orchestrator:
     def __init__(self, cfg: Config):
@@ -45,10 +50,10 @@ class Orchestrator:
         self._setup_logging()
         self.times = self._load_times()
         day = self.clock.now().date()
-        jumua = [parse_hhmm(t, day) for t in self.times]
         # today's programme: dars and conferences are added to the khutbas, on the same footing
         # programme of the mosque: kept by the back office, the local file only as fallback
         remote_program = events_mod.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
+        self._program_remote = remote_program is not None
         if remote_program is not None:
             self.program = remote_program
         else:
@@ -56,8 +61,7 @@ class Orchestrator:
             if ev_err:
                 log.warning(ev_err)
         self.instances = events_mod.instances_on(self.program, day, self.prayer_times)
-        sessions = jumua + [i.starts for i in self.instances]
-        extras = [{} for _ in jumua] + [i.as_event() for i in self.instances]
+        sessions, extras = self.day_plan(day)
         log.info(_("Sessions of the day (mosque clock): {times}", times=[s.strftime("%H:%M") for s in sessions]))
         for i in self.instances:
             log.info(
@@ -139,6 +143,21 @@ class Orchestrator:
         self._saved = None
         self._stop = threading.Event()
         self.api = None
+        # a day opened on the fallback (back office down) is retried in the background: the live
+        # must not wait on the network, but the plan must not stay wrong until tomorrow either.
+        self._plan_day = day
+        self._stale = bool(cfg.backoffice_url) and (self._times_fallback or not self._program_remote)
+        self._retry_delay = RETRY_DELAY_S
+        self._retry_at = 0.0
+        self._retry_thread: threading.Thread | None = None
+        self._fetched: tuple[dict | None, list | None] | None = None
+        if self._stale:
+            log.warning(
+                _(
+                    "Back office unreachable at start: the times and the programme are fetched again every {delay:g} s",
+                    delay=RETRY_DELAY_S,
+                )
+            )
 
     # -------------------------------------------------------------- initialisation
     def _setup_logging(self):
@@ -159,6 +178,7 @@ class Orchestrator:
 
     def _load_times(self) -> list[str]:
         self.mawaqit_data = None
+        self._times_fallback = False
         if self.cfg.jumua_times_override:
             log.info(_("Times forced by the config: {times}", times=self.cfg.jumua_times_override))
             return list(self.cfg.jumua_times_override)
@@ -180,8 +200,75 @@ class Orchestrator:
                 return d["jumua_list"]
         except Exception as e:
             log.error(_("Mawaqit unavailable and no cache: {error}", error=e))
+        self._times_fallback = True
         log.warning(_("Fallback: default times 12:30 / 13:30"))
         return ["12:30", "13:30"]
+
+    def day_plan(self, day: dt.date) -> tuple[list[dt.datetime], list[dict]]:
+        """(sessions, events) of a day: the jumua times, then the programme, on the same footing."""
+        jumua = [parse_hhmm(t, day) for t in self.times]
+        instances = events_mod.instances_on(self.program, day, self.prayer_times)
+        return jumua + [i.starts for i in instances], [{} for _ in jumua] + [i.as_event() for i in instances]
+
+    # --- late back office -----------------------------------------------------
+    def _retry_plan(self, sig: Signals):
+        """Back office down at start: get the times and the programme again, then replan today.
+
+        The fetch runs in a background thread — the live never waits on the network — and its
+        result is applied here, under the loop lock. Backoff is bounded (30 s, then 5 min), and
+        only the day that was opened on the fallback is retried.
+        """
+        if not self._stale or sig.now.date() != self._plan_day:
+            return
+        if self._fetched is not None:
+            times, program = self._fetched
+            self._fetched = None
+            self._apply_plan(times, program, sig)
+            return
+        if (self._retry_thread and self._retry_thread.is_alive()) or time.monotonic() < self._retry_at:
+            return
+        self._retry_at = time.monotonic() + self._retry_delay
+        self._retry_delay = min(self._retry_delay * 2, RETRY_MAX_S)
+        self._retry_thread = threading.Thread(target=self._fetch_plan, name="sada-backoffice", daemon=True)
+        self._retry_thread.start()
+
+    def _fetch_plan(self):
+        """(times, programme) from the back office, None where it is still unreachable."""
+        times = mawaqit.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
+        program = events_mod.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
+        if times is None and program is None:
+            delay = max(0.0, self._retry_at - time.monotonic())
+            log.info(_("Back office still unreachable: next try in {delay:.0f} s", delay=delay))
+            return
+        self._fetched = (times, program)
+
+    def _apply_plan(self, times: dict | None, program: list | None, sig: Signals):
+        """Times / programme received late: today's sessions are replanned where they stand."""
+        if times is not None and times.get("jumua_list"):
+            self.mawaqit_data, self.times = times, list(times["jumua_list"])
+            self._times_fallback = False
+            log.info(
+                _(
+                    "Mawaqit ({name}): jumua={jumua} — origin: {origin}",
+                    name=times.get("name"),
+                    jumua=times["jumua_list"],
+                    origin=times.get("origin"),
+                )
+            )
+        if program is not None:
+            self.program, self._program_remote = program, True
+        self._stale = self._times_fallback or not self._program_remote
+        day = sig.now.date()
+        self.instances = events_mod.instances_on(self.program, day, self.prayer_times)
+        sessions, extras = self.day_plan(day)
+        added = self.machine.replan(sessions, extras, sig)
+        log.info(
+            _(
+                "Back office reached again: {count} session(s) added to today's plan ({times})",
+                count=added,
+                times=[s.strftime("%H:%M") for s in self.machine.sessions],
+            )
+        )
 
     # --- events ---------------------------------------------------------------
     def _next_event(self, now: dt.datetime):
@@ -360,7 +447,9 @@ class Orchestrator:
                 if want != self.clock.speed:
                     self.clock.set_speed(want)
                     log.info(_("Simulated clock: speed x{speed:g}", speed=want))
-                self.machine.tick(self.signals())
+                sig = self.signals()
+                self.machine.tick(sig)
+                self._retry_plan(sig)
                 self._sync()
             if time.monotonic() - last_status > 30:
                 last_status = time.monotonic()
