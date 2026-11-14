@@ -296,6 +296,7 @@ export const api = {
   },
   /** The wizard is offered once: completing or skipping it records the choice. */
   onboardingDone: (done = true) => ecrire<any>("PUT", "/settings/onboarding", { done }),
+  newStreamKey: () => ecrire<{ key: string; obs_server: string; obs_key: string }>("POST", "/settings/input/key"),
   testInput: (mode: string, url: string) =>
     ecrire<{ ok: boolean; detail: string; url: string }>("POST", "/settings/input/test", { mode, url }),
   testNotifications: () => ecrire<any>("POST", "/settings/notifications/test"),

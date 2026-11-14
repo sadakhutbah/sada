@@ -297,3 +297,22 @@ def test_stream_key_per_mosque(env, intruder):
     assert ask(action="api", path="", ip="172.18.0.5") == 401
     internal.new_publish_key(conn, mids[0])
     assert ask(action="publish", path=f"live/{slugs[0]}", password=ka) == 401  # replaced
+
+
+def test_stream_key_from_backoffice_shown_once(env, intruder):
+    from sada.backoffice import internal
+
+    owner = client(env, "admin")
+    r1 = owner.ecrire("/settings/input/key", {}, methode="POST").json()
+    slug = db.one(env["conn"], "SELECT slug FROM mosques WHERE id = ?", env["mid"])["slug"]
+    assert internal.publish_allowed(env["conn"], slug, r1["key"])
+    view = owner.get("/api/v1/settings").json()["input"]
+    assert view["has_key"] and r1["key"] not in str(view)  # never readable again
+    r2 = owner.ecrire("/settings/input/key", {}, methode="POST").json()
+    assert not internal.publish_allowed(env["conn"], slug, r1["key"])  # re-showing = new key
+    assert internal.publish_allowed(env["conn"], slug, r2["key"])
+    # another mosque's admin only ever gets a key for its own mosque
+    r3 = intruder.ecrire("/settings/input/key", {}, methode="POST").json()
+    assert not internal.publish_allowed(env["conn"], slug, r3["key"])
+    assert internal.publish_allowed(env["conn"], slug, r2["key"])
+    assert client(env, "imam").ecrire("/settings/input/key", {}, methode="POST").status_code == 403

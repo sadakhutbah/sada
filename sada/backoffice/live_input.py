@@ -94,6 +94,10 @@ def view(conn, mosque, host: str) -> dict:
         "configured": bool(db.one(conn, "SELECT 1 AS x FROM live_input WHERE mosque_id = ?", mosque["id"])),
         "push_rtmp": push_rtmp(host, mosque),
         "push_rtsp": push_rtsp(mosque),
+        # whether a stream key exists; the key itself is never readable again
+        "has_key": bool(
+            db.one(conn, "SELECT 1 AS x FROM mosques WHERE id = ? AND publish_key_hash != ''", mosque["id"])
+        ),
     }
 
 

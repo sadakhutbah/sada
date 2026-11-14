@@ -414,6 +414,25 @@ async def screens_preview(ctx: CtxDep):
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
+@router.post("/settings/input/key")
+async def input_key(ctx: CtxDep):
+    """New stream key for OBS, shown this once (like Twitch): asking again issues another one
+    and the previous key stops working."""
+    await ctx.body()
+    ctx.require("admin")
+    from .. import internal
+
+    key = internal.new_publish_key(ctx.conn, ctx.mosque["id"])
+    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "cle_diffusion.emise", "mosquee", ctx.mosque["id"])
+    s = live_input.slug(ctx.mosque)
+    return {
+        "key": key,
+        # OBS "Custom": server + stream key fields (MediaMTX reads user/pass from the query)
+        "obs_server": live_input.push_rtmp(_host(ctx), ctx.mosque).rsplit("/", 1)[0],
+        "obs_key": f"{s}?user={s}&pass={key}",
+    }
+
+
 @router.post("/settings/input/test")
 async def input_test(ctx: CtxDep):
     """Checks the input right now: what the picture looks like, or why nothing arrives."""

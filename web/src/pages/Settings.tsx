@@ -9,7 +9,7 @@ import { idOnglet, idPanneau } from "../onglets";
 type Message = { ok: boolean; texte: string } | null;
 
 /** A live destination as the screen edits it: the key comes back masked, and stays masked. */
-type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string };
+type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string; has_key?: boolean };
 type Stockage = { endpoint: string; region: string; bucket: string; access_key: string;
                   secret_key: string; prefix: string; enabled: boolean };
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
@@ -186,7 +186,7 @@ export default function Settings() {
     api.settings().then((r) => {
       const v = depuisServeur(r);
       const c: Cible[] = liste<any>(r.targets).map((t: any) => ({ id: t.id, label: t.label, url: t.url, enabled: !!t.enabled }));
-      const e: Entree = { mode: r.input?.mode === "push" ? "push" : "camera", url: r.input?.url ?? "",
+      const e: Entree = { has_key: !!r.input?.has_key, mode: r.input?.mode === "push" ? "push" : "camera", url: r.input?.url ?? "",
                           push_rtmp: r.input?.push_rtmp ?? "" };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
       setGuide({ agent: typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`,
@@ -305,6 +305,17 @@ export default function Settings() {
     }
   };
 
+  const [cle, setCle] = useState<{ obs_server: string; obs_key: string } | null>(null);
+  const nouvelleCle = async () => {
+    if (entree.has_key && !window.confirm(t("settings.keyConfirm"))) return;
+    try {
+      const r = await api.newStreamKey();
+      setCle({ obs_server: r.obs_server, obs_key: r.obs_key });
+      setEntree((e) => ({ ...e, has_key: true }));
+    } catch (err: any) {
+      setEssai({ ok: false, detail: err.message });
+    }
+  };
   const testerEntree = async () => {
     setEssai(null);
     try {
@@ -487,6 +498,19 @@ export default function Settings() {
                   <input className={`${inputClass} font-mono text-[0.85rem]`} value={entree.push_rtmp} readOnly />
                   <Btn variante="ghost" onClick={testerEntree}>{t("onboarding.test")}</Btn>
                 </div>
+              </Field>
+            )}
+            {entree.mode === "push" && (
+              <Field label={t("settings.keyLabel")} aide={cle ? t("settings.keyOnce") : entree.has_key ? t("settings.keyHidden") : t("settings.keyNone")}>
+                {cle ? (
+                  <div className="grid gap-1.5">
+                    <input className={`${inputClass} font-mono text-[0.85rem]`} value={cle.obs_server} readOnly aria-label={t("onboarding.pushServer")} />
+                    <input className={`${inputClass} font-mono text-[0.85rem]`} value={cle.obs_key} readOnly aria-label={t("settings.keyLabel")}
+                      onFocus={(e) => e.target.select()} />
+                  </div>
+                ) : (
+                  <div><Btn variante="ghost" onClick={nouvelleCle}>{entree.has_key ? t("settings.keyReset") : t("settings.keyCreate")}</Btn></div>
+                )}
               </Field>
             )}
             {essai && <span className={`text-[0.86rem] ${essai.ok ? "text-green" : "text-muted"}`}>{essai.detail}</span>}
