@@ -189,7 +189,7 @@ class Encoder:
             "-c:v",
             "libx264",
             "-preset",
-            "veryfast",
+            "superfast",
             "-tune",
             "zerolatency",
             "-b:v",
