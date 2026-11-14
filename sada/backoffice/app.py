@@ -15,11 +15,12 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
 
 from .. import paths
 from ..i18n import LanguageMiddleware, _
 from ..paths import ASSETS
-from . import auth, branding, content, db, docpage, gabarit, habillage, importer, live, traitement
+from . import auth, branding, content, db, docpage, gabarit, habillage, importer, live, orm, traitement
 from . import screens as screens_mod
 from .api import router as api_router
 from .context import (
@@ -34,6 +35,7 @@ from .context import (
     khutba_or_404,
     live_status,
 )
+from .models import Mosque
 
 HERE = Path(__file__).resolve().parent
 FRONT = HERE.parent.parent / "web" / "dist"
@@ -118,7 +120,7 @@ def create_app(
     def import_all():
         conn = db.connect(db_path)
         try:
-            for m in db.all_(conn, "SELECT * FROM mosques WHERE auto_import = 1"):
+            for m in orm.rows(conn, select(Mosque).filter_by(auto_import=1)):
                 m = dict(m)
                 traitement.tour(conn, m, log=lambda msg: print("[traitement]", msg, flush=True))
                 importer.scan(conn, m, log=lambda msg: print("[import]", msg, flush=True))
@@ -138,7 +140,7 @@ def create_app(
         if auto_import_s:
             c = db.connect(db_path)
             try:
-                for m in db.all_(c, "SELECT * FROM mosques WHERE auto_import = 1"):
+                for m in orm.rows(c, select(Mosque).filter_by(auto_import=1)):
                     traitement.reprendre(dict(m))
             finally:
                 c.close()
@@ -148,7 +150,7 @@ def create_app(
             # The first display of the dashboard must not pay for the orchestrator's wait.
             conn = db.connect(db_path)
             try:
-                for m in db.all_(conn, "SELECT * FROM mosques WHERE orchestrator_url != ''"):
+                for m in orm.rows(conn, select(Mosque).where(Mosque.orchestrator_url != "")):
                     live.status_cached(dict(m))
             except Exception:  # noqa: BLE001 — an unavailable status does not prevent serving
                 pass
@@ -248,7 +250,7 @@ def create_app(
     # ---------------------------------------------------------- interface logo
     @app.get("/logo/{slug}")
     def logo_file(slug: str, conn: ConnDep):
-        m = db.one(conn, "SELECT * FROM mosques WHERE slug = ?", slug)
+        m = orm.first(conn, Mosque, slug=slug)
         if not m or not (m.get("logo_path") or "").strip():
             raise NotFound()
         f = branding.path_for(m)

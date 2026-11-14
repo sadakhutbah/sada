@@ -22,7 +22,8 @@ from ..i18n import _
 from ..pipeline import llm, translate, verses
 from ..pipeline import subtitles as tracks
 from ..pipeline.output import SessionOutput
-from . import db
+from . import db, orm
+from .models import Khutba
 
 STATUSES = ("", "en_cours", "pret", "echec")
 
@@ -132,7 +133,7 @@ def _traduire(db_path: str, kid: int, log=print) -> None:
     conn = db.connect(db_path)
     k = None
     try:
-        k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", kid)
+        k = orm.first(conn, Khutba, id=kid)
         assert k is not None
         from . import content
 

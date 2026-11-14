@@ -15,11 +15,14 @@ import threading
 import traceback
 from pathlib import Path
 
+from sqlalchemy import update
+
 from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import habillage as rendu
 from ..pipeline import subtitles as sous_titres
-from . import db, traduction
+from . import db, orm, traduction
+from .models import Habillage, Khutba, Mosque, User
 
 #: réglages qui décrivent la mosquée et pas une vidéo : retenus pour la prochaine fois
 IDENTITE = (
@@ -129,7 +132,7 @@ def _date_fr(iso: str | None) -> str:
 def prerempli(conn, k: dict, m: dict) -> dict:
     """Options d'une première ouverture : réglages retenus par la mosquée + métadonnées de la session."""
     base = _defauts_mosquee(m)
-    imam = db.one(conn, "SELECT display_name FROM users WHERE id = ?", k["imam_id"]) if k.get("imam_id") else None
+    imam = orm.first(conn, User, id=k["imam_id"]) if k.get("imam_id") else None
     speaker = (k.get("speaker") or "").strip() or ((imam or {}).get("display_name") or "").strip()
     titre = (k.get("title") or "").strip() or (k.get("theme") or "").strip() or (k.get("label") or "").strip()
     morceaux = []
@@ -165,17 +168,16 @@ def _defauts_mosquee(m: dict) -> dict:
 
 
 def retenir(conn, m: dict, o: dict) -> None:
-    conn.execute(
-        "UPDATE mosques SET habillage_defaults = ? WHERE id = ?",
-        (json.dumps({k: o[k] for k in IDENTITE}, ensure_ascii=False), m["id"]),
-    )
+    defauts = json.dumps({k: o[k] for k in IDENTITE}, ensure_ascii=False)
+    conn.execute(update(Mosque).where(Mosque.id == m["id"]).values(habillage_defaults=defauts))
+    orm.done(conn)
 
 
 # ------------------------------------------------------------------ état
 
 
 def ligne(conn, kid: int) -> dict | None:
-    return db.one(conn, "SELECT * FROM habillages WHERE khutba_id = ?", kid)
+    return orm.first(conn, Habillage, khutba_id=kid)
 
 
 def decalage_carton(conn, k: dict) -> float:
@@ -244,15 +246,14 @@ def etat(conn, k: dict, m: dict) -> dict:
 def _enregistrer(conn, k: dict, o: dict, **champs) -> None:
     now = db.now_iso()
     if ligne(conn, k["id"]) is None:
-        conn.execute(
-            "INSERT INTO habillages (mosque_id, khutba_id, options, updated_at) VALUES (?, ?, ?, ?)",
-            (k["mosque_id"], k["id"], "{}", now),
-        )
-    sets = ", ".join(f"{c} = ?" for c in ("options", *champs, "updated_at"))
+        conn.add(Habillage(mosque_id=k["mosque_id"], khutba_id=k["id"], options="{}", updated_at=now))
+        conn.flush()
     conn.execute(
-        f"UPDATE habillages SET {sets} WHERE khutba_id = ?",
-        (json.dumps(o, ensure_ascii=False), *champs.values(), now, k["id"]),
+        update(Habillage)
+        .where(Habillage.khutba_id == k["id"])
+        .values(options=json.dumps(o, ensure_ascii=False), **champs, updated_at=now)
     )
+    orm.done(conn)
 
 
 def sans_chemin(message: str) -> str:
@@ -320,9 +321,11 @@ def sous_titres_vtt(conn, k: dict, langue: str, brut: bool = False, passages: di
 def recover_interrupted(conn) -> None:
     """Rendus en cours quand le serveur s'est arrêté : ils ne finiront jamais."""
     conn.execute(
-        "UPDATE habillages SET status = 'echec', error = ?, updated_at = ? WHERE status = 'en_cours'",
-        (_("interrupted (server stopped)"), db.now_iso()),
+        update(Habillage)
+        .where(Habillage.status == "en_cours")
+        .values(status="echec", error=_("interrupted (server stopped)"), updated_at=db.now_iso())
     )
+    orm.done(conn)
 
 
 # ------------------------------------------------------------------ actions
@@ -342,6 +345,7 @@ def apercu(conn, k: dict, m: dict, brut: dict) -> dict:
     src = source(k)
     if not src:
         raise ValueError(_("source video not found: nothing to dress"))
+    orm.done(conn)
     brand, logo = marque(m)
     rendu.apercu(o, src[0], str(fichier_apercu(k)), m.get("name") or "", brand, logo, debut=src[1], fin=src[2])
     _enregistrer(conn, k, o, preview_at=db.now_iso())
@@ -390,9 +394,9 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
     k = None
     try:
         h = ligne(conn, kid)
-        k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", kid)
+        k = orm.first(conn, Khutba, id=kid)
         assert k is not None
-        m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", k["mosque_id"])
+        m = orm.first(conn, Mosque, id=k["mosque_id"])
         o = rendu.normaliser(json.loads(h["options"]))
         src = source(k)
         if not src:
@@ -404,9 +408,11 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
             if f - dernier[0] >= 0.01:
                 dernier[0] = f
                 conn.execute(
-                    "UPDATE habillages SET progress = ?, updated_at = ? WHERE khutba_id = ?",
-                    (round(f, 3), db.now_iso(), kid),
+                    update(Habillage)
+                    .where(Habillage.khutba_id == kid)
+                    .values(progress=round(f, 3), updated_at=db.now_iso())
                 )
+                orm.done(conn)
 
         tmp = fichier_rendu_en_cours(k)
         out = rendu.rendre(
@@ -428,18 +434,29 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
         fichier_options_rendues(k).write_text(json.dumps(o, ensure_ascii=False), encoding="utf-8")
         out = str(final)
         conn.execute(
-            "UPDATE habillages SET status = 'pret', progress = 1, error = '', file_path = ?, duration_s = ?, "
-            "finished_at = ?, updated_at = ? WHERE khutba_id = ?",
-            (out, round(duree, 1), db.now_iso(), db.now_iso(), kid),
+            update(Habillage)
+            .where(Habillage.khutba_id == kid)
+            .values(
+                status="pret",
+                progress=1,
+                error="",
+                file_path=out,
+                duration_s=round(duree, 1),
+                finished_at=db.now_iso(),
+                updated_at=db.now_iso(),
+            )
         )
+        orm.done(conn)
         db.audit(conn, m["id"], None, "habillage.pret", "khutba", kid, duree=round(duree))
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         if k:
             fichier_rendu_en_cours(k).unlink(missing_ok=True)
         conn.execute(
-            "UPDATE habillages SET status = 'echec', error = ?, finished_at = ?, updated_at = ? WHERE khutba_id = ?",
-            (sans_chemin(str(e))[:400], db.now_iso(), db.now_iso(), kid),
+            update(Habillage)
+            .where(Habillage.khutba_id == kid)
+            .values(status="echec", error=sans_chemin(str(e))[:400], finished_at=db.now_iso(), updated_at=db.now_iso())
         )
+        orm.done(conn)
     finally:
         conn.close()

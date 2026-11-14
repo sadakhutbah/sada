@@ -8,8 +8,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import auth, db
-from ..context import PRE_COOKIE, ConnDep, Ctx, CtxDep, _sec, imam_filter
+from .. import auth, db, orm
+from ..context import PRE_COOKIE, ConnDep, Ctx, CtxDep, _sec, count_clips
+from ..models import Mosque, User
 from .common import _mosque, _user
 
 router = APIRouter()
@@ -43,13 +44,13 @@ async def login(request: Request, conn: ConnDep):
     u = await run_in_threadpool(auth.authenticate, conn, username, password)
     if not u:
         lim.fail(ip, username)
-        connu = db.one(conn, "SELECT mosque_id FROM users WHERE username = ?", username)
+        connu = orm.first(conn, User, username=username)
         db.audit(conn, connu["mosque_id"] if connu else None, None, "connexion.echec", ip=ip, identifiant=username[:64])
         return JSONResponse({"error": "identifiants"}, status_code=401)
     lim.success(ip, username)
     token = auth.open_session(conn, u["id"], ip, request.headers.get("user-agent"))
     db.audit(conn, u["mosque_id"], u["id"], "connexion", ip=ip)
-    m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", u["mosque_id"])
+    m = orm.first(conn, Mosque, id=u["mosque_id"])
     sess = auth.load_session(conn, token, request.headers.get("user-agent"), ip)[0]
     ctx = Ctx(request, conn, sess, u, m)
     r = JSONResponse({"user": _user(ctx), "mosque": _mosque(ctx), "csrf": sess["csrf"]})
@@ -78,12 +79,7 @@ def session(ctx: CtxDep):
     """
     # The number of clips to validate comes with the session: the navigation shows it as a badge
     # without a second request at startup.
-    where, args = imam_filter(ctx)
-    a_valider = db.one(
-        ctx.conn,
-        f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = 'a_valider'",
-        *args,
-    )["n"]
+    a_valider = count_clips(ctx, "a_valider")
     return {
         "user": _user(ctx),
         "mosque": _mosque(ctx),

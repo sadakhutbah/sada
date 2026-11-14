@@ -144,9 +144,11 @@ def habille(env, intro_s: float = 5.0) -> None:
         json.dumps({"title": "Patience", "speaker": "Cheikh Test", "intro_s": intro_s, "outro_s": 2}),
         encoding="utf-8",
     )
-    env["conn"].execute(
+    rawsql.run(
+        env["conn"],
         "INSERT INTO habillages (mosque_id, khutba_id, options, status, updated_at) VALUES (?, ?, '{}', 'pret', 'x')",
-        (env["mid"], env["kid"]),
+        env["mid"],
+        env["kid"],
     )
 
 

@@ -1,25 +1,43 @@
 """SQLAlchemy ORM session of the back office (SQLite file or PostgreSQL).
 
-`Db` is a `sqlalchemy.orm.Session`: migrated code uses it as such (`db.scalars(select(User)...)`,
-`db.add(...)`, `db.get(Mosque, id)`). It also still accepts the former raw SQL calls
-(`conn.execute("... ?", args)`) in the same transaction, until every module is migrated.
+`Db` is a `sqlalchemy.orm.Session`; every query goes through SQLAlchemy (`select`, `update`,
+`insert`, mapped classes of `models`), never through SQL strings.
 
-Transactions: a raw write is committed at once unless an explicit `BEGIN` is open (former
-autocommit behaviour); ORM work is committed by `commit()`, done by the request dependency at the
-end of each request and by `close()`.
+Transactions: each write helper commits at once (`done`), unless a `transaction()` is open, which
+commits its statements together; the request dependency and `close()` commit what is left.
 """
 
 from __future__ import annotations
 
+import hashlib
+import os
 import threading
 from collections import OrderedDict
+from contextlib import contextmanager
 from pathlib import Path
 
 import sqlalchemy as sa
 from sqlalchemy import event
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from . import pg
+ENV = "SADA_DATABASE_URL"
+
+
+def database_url() -> str:
+    """PostgreSQL URL from `SADA_DATABASE_URL`; empty = SQLite files."""
+    u = os.environ.get(ENV, "").strip()
+    return u if u.startswith(("postgres://", "postgresql://")) else ""
+
+
+def schema_for(path, default) -> str:
+    """PostgreSQL schema of the logical database `path`: `public` for the default one, an isolated
+    schema per other path (each test gets its own)."""
+    if str(path) == str(default):
+        return "public"
+    return "t_" + hashlib.sha1(str(path).encode()).hexdigest()[:16]
+
 
 # One engine per database (URL + schema), kept for the life of the process: every request checks a
 # connection out of its pool instead of opening one. A request that opened a fresh connection paid
@@ -35,8 +53,8 @@ _LOCK = threading.Lock()
 
 def engine(path: str | Path, default_path) -> sa.Engine:
     """Shared engine of the database `path` (its own schema when PostgreSQL is configured)."""
-    url = pg.url()
-    key = (url, pg.schema_for(path, default_path)) if url else ("sqlite", str(Path(path)))
+    url = database_url()
+    key = (url, schema_for(path, default_path)) if url else ("sqlite", str(Path(path)))
     with _LOCK:
         eng = _ENGINES.get(key)
         if eng is not None:
@@ -89,80 +107,31 @@ def _make(key, path) -> sa.Engine:
     return eng
 
 
-class _Result:
-    """Raw-SQL result with the sqlite3 cursor surface (`fetchone`, `fetchall`, `lastrowid`)."""
-
-    def __init__(self, res, lastrowid=None):
-        self.lastrowid = lastrowid
-        self.rowcount = getattr(res, "rowcount", -1)
-        self._rows = None
-        if res is not None and res.returns_rows and lastrowid is None:
-            names = list(res.keys())
-            self._rows = [pg.Row(names, tuple(r)) for r in res.fetchall()]
-
-    def fetchone(self):
-        return self._rows[0] if self._rows else None
-
-    def fetchall(self):
-        return list(self._rows or [])
-
-    def __iter__(self):
-        return iter(self.fetchall())
-
-
 class Db(Session):
+    """Session of one request or job. `_explicit` marks an open `transaction()`: statements inside
+    it are committed together at its end instead of one by one (`done`)."""
+
     def __init__(self, eng: sa.Engine):
         super().__init__(bind=eng, expire_on_commit=False, autoflush=True)
         self._explicit = False
-        self._pg = eng.dialect.name == "postgresql"
 
-    # ---------------------------------------------------------------- former raw SQL
-    @property
-    def in_transaction(self) -> bool:  # type: ignore[override]
-        return self._explicit
-
+    # Reads outside a `transaction()` see the database as it is now: the rows are buffered and the
+    # read transaction ends at once (with the identity map refreshed), as the former autocommit
+    # connection did. A long-lived session (a background job, a test) would otherwise keep a stale
+    # snapshot, and its next write would hit "database is locked" on SQLite.
     def execute(self, statement, params=None, *args, **kw):  # type: ignore[override]
-        if not isinstance(statement, str):
+        if self._explicit or not isinstance(statement, sa.Select):
             return super().execute(statement, params, *args, **kw)
-        return self._raw(statement, params or ())
+        stmt = statement.execution_options(populate_existing=True)
+        frozen = super().execute(stmt, params, *args, **kw).freeze()
+        self.commit()
+        return frozen()
 
-    def executemany(self, sql: str, seq):
-        for p in seq:
-            self._raw(sql, p)
+    def scalar(self, statement, params=None, *args, **kw):  # type: ignore[override]
+        return self.execute(statement, params, *args, **kw).scalar()
 
-    def _raw(self, sql: str, params):
-        head = sql.lstrip()[:20].upper()
-        if head.startswith("BEGIN"):
-            self._explicit = True
-            return _Result(None)
-        if head.startswith("COMMIT"):
-            self._explicit = False
-            self.commit()
-            return _Result(None)
-        if head.startswith("ROLLBACK"):
-            self._explicit = False
-            self.rollback()
-            return _Result(None)
-        if self._pg:
-            if head.startswith("PRAGMA"):
-                return _Result(None)
-            sql = pg.rewrite_catalog(sql)
-            sql, returning = pg.translate(sql)
-        else:
-            returning = False
-        self.flush()
-        conn = self.connection()
-        res = conn.exec_driver_sql(sql, tuple(pg._value(v) for v in params))
-        lastrowid = None
-        if returning:
-            r = res.fetchone()
-            lastrowid = r[0] if r else None
-        elif not self._pg and head.startswith("INSERT"):
-            lastrowid = res.lastrowid
-        out = _Result(res, lastrowid)
-        if not self._explicit:  # former autocommit: also ends the read snapshot
-            self.commit()
-        return out
+    def scalars(self, statement, params=None, *args, **kw):  # type: ignore[override]
+        return self.execute(statement, params, *args, **kw).scalars()
 
     def close(self):  # type: ignore[override]
         try:
@@ -170,6 +139,56 @@ class Db(Session):
                 self.commit()
         finally:
             super().close()
+
+
+def done(conn) -> None:
+    """Commit the work of one statement, unless an explicit transaction is open (`begin`)."""
+    if not getattr(conn, "_explicit", False):
+        conn.commit()
+
+
+@contextmanager
+def transaction(conn):
+    """One transaction around several statements: committed together, or not at all.
+
+    Nested inside an open one, it joins it (the outer one commits)."""
+    if getattr(conn, "_explicit", False):
+        yield
+        return
+    conn.commit()
+    conn._explicit = True
+    try:
+        yield
+        conn._explicit = False
+        conn.commit()
+    except BaseException:
+        conn._explicit = False
+        conn.rollback()
+        raise
+
+
+def upsert(conn, model, keys: tuple[str, ...], **vals) -> None:
+    """Insert a row of `model`, or update the one with the same `keys` columns."""
+    ins = (pg_insert if conn.get_bind().dialect.name == "postgresql" else sqlite_insert)(model).values(**vals)
+    rest = {c: ins.excluded[c] for c in vals if c not in keys}
+    conn.execute(
+        ins.on_conflict_do_update(index_elements=list(keys), set_=rest) if rest else ins.on_conflict_do_nothing()
+    )
+    done(conn)
+
+
+def first(conn, model, *where, **by) -> dict | None:
+    """First row of `model` matching `where` / `by` (column = value), as a dict; None if absent."""
+    stmt = sa.select(model).where(*where).filter_by(**by).limit(1)
+    return as_dict(conn.scalar(stmt.execution_options(populate_existing=True)))
+
+
+def rows(conn, stmt) -> list[dict]:
+    """Rows of a select as dicts: mapped objects (`select(Model)`) or plain columns."""
+    d = stmt.column_descriptions
+    if len(d) == 1 and d[0].get("entity") is not None and d[0].get("type") is d[0]["entity"]:
+        return [as_dict(o) for o in conn.scalars(stmt.execution_options(populate_existing=True))]
+    return [dict(r._mapping) for r in conn.execute(stmt)]
 
 
 def as_dict(obj) -> dict | None:

@@ -14,12 +14,14 @@ from types import SimpleNamespace
 from typing import Any
 
 from PIL import Image
+from sqlalchemy import delete, select
 
 from .. import scenes
 from .. import screens as base
 from ..config import Config
 from ..i18n import _
-from . import branding, db, variables_ecran
+from . import branding, db, orm, variables_ecran
+from .models import ScreenText
 
 
 class InvalidScreens(ValueError):
@@ -33,11 +35,11 @@ def saved(conn, mosque_id: int) -> dict[str, dict[str, str]]:
     six screens and stays out of this view.
     """
     out: dict[str, dict[str, str]] = {}
-    for r in db.all_(
+    for r in orm.rows(
         conn,
-        "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ? AND screen <> ?",
-        mosque_id,
-        variables_ecran.SCREEN,
+        select(ScreenText.screen, ScreenText.slot, ScreenText.text).where(
+            ScreenText.mosque_id == mosque_id, ScreenText.screen != variables_ecran.SCREEN
+        ),
     ):
         out.setdefault(r["screen"], {})[r["slot"]] = r["text"]
     return out
@@ -63,14 +65,17 @@ def save(conn, mosque: dict, payload, user_id=None, ip: str | None = None) -> di
     except ValueError as e:
         raise InvalidScreens(str(e)) from e
     # Only the six engine screens: the common texts (`_commun`) have their own save route.
-    conn.execute("DELETE FROM screen_texts WHERE mosque_id = ? AND screen <> ?", (mosque["id"], variables_ecran.SCREEN))
+    conn.execute(
+        delete(ScreenText).where(ScreenText.mosque_id == mosque["id"], ScreenText.screen != variables_ecran.SCREEN)
+    )
+    orm.done(conn)
     for screen, slots in clean.items():
         for slot, text in slots.items():
             if text:  # empty = default, nothing stored
-                conn.execute(
-                    "INSERT INTO screen_texts (mosque_id, screen, slot, text, updated_at) VALUES (?,?,?,?,?)",
-                    (mosque["id"], screen, slot, text, db.now_iso()),
+                conn.add(
+                    ScreenText(mosque_id=mosque["id"], screen=screen, slot=slot, text=text, updated_at=db.now_iso())
                 )
+                conn.flush()
     db.audit(
         conn,
         mosque["id"],

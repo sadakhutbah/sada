@@ -238,9 +238,11 @@ def _habille(env) -> None:
     bo.fichier_options_rendues(k).write_text(
         json.dumps({"title": "Patience", "speaker": "Cheikh Test", "intro_s": 5.0, "outro_s": 2}), encoding="utf-8"
     )
-    env["conn"].execute(
+    rawsql.run(
+        env["conn"],
         "INSERT INTO habillages (mosque_id, khutba_id, options, status, updated_at) VALUES (?, ?, '{}', 'pret', 'x')",
-        (env["mid"], k["id"]),
+        env["mid"],
+        k["id"],
     )
 
 

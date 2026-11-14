@@ -6,11 +6,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import and_, func, join, or_, select
 from starlette.concurrency import run_in_threadpool
 
 from ...i18n import _
-from .. import content, db, publish
+from .. import content, orm, publish
 from ..context import Ctx, CtxDep, clip_or_404, imam_filter, khutba_or_404
+from ..models import Audit, Clip, Khutba, Publication, User
 from .common import _a_table, _ok
 
 router = APIRouter()
@@ -21,22 +23,27 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
     data = content.load(ctx.conn, k)
     rows = content.transcript_rows(data, c["start"], c["end"])
     regen_ok, regen_why = content.can_regenerate(c)
-    hist = db.all_(
+    hist = orm.rows(
         ctx.conn,
-        "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
-        "WHERE a.mosque_id = ? AND ((a.object_type = 'clip' AND a.object_id = ?) OR "
-        "(a.object_type = 'khutba' AND a.object_id = ? AND a.action LIKE 'correction.%')) "
-        "ORDER BY a.id DESC LIMIT 50",
-        ctx.mosque["id"],
-        c["id"],
-        k["id"],
+        select(Audit.__table__, User.display_name.label("who"))
+        .outerjoin(User, User.id == Audit.user_id)
+        .where(
+            Audit.mosque_id == ctx.mosque["id"],
+            or_(
+                and_(Audit.object_type == "clip", Audit.object_id == c["id"]),
+                and_(Audit.object_type == "khutba", Audit.object_id == k["id"], Audit.action.like("correction.%")),
+            ),
+        )
+        .order_by(Audit.id.desc())
+        .limit(50),
     )
     pubs = (
-        db.all_(
+        orm.rows(
             ctx.conn,
-            "SELECT p.*, u.display_name who FROM publications p LEFT JOIN users u ON u.id = p.user_id "
-            "WHERE p.clip_id = ? ORDER BY p.id DESC",
-            c["id"],
+            select(Publication.__table__, User.display_name.label("who"))
+            .outerjoin(User, User.id == Publication.user_id)
+            .where(Publication.clip_id == c["id"])
+            .order_by(Publication.id.desc()),
         )
         if _a_table(ctx.conn, "publications")
         else []
@@ -83,39 +90,34 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
 
 @router.get("/clips")
 def clips(ctx: CtxDep, status: str = "", limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)):
-    where, args = imam_filter(ctx)
-    extra, extra_args = ("AND c.status = ?", (status,)) if status else ("", ())
-    rows = db.all_(
+    where = imam_filter(ctx)
+    extra = [Clip.status == status] if status else []
+    jointure = join(Clip, Khutba, Khutba.id == Clip.khutba_id)
+    rows = orm.rows(
         ctx.conn,
-        f"SELECT c.*, c.title clip_title, k.label sermon, k.date, k.title, k.session_no "
-        f"FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
-        f"WHERE {where} {extra} ORDER BY c.id DESC LIMIT ? OFFSET ?",
-        *args,
-        *extra_args,
-        limit,
-        offset,
+        select(
+            *(col for col in Clip.__table__.c if col.name != "title"),  # `title` is the khutba's
+            Clip.title.label("clip_title"),
+            Khutba.label.label("sermon"),
+            Khutba.date,
+            Khutba.title,
+            Khutba.session_no,
+        )
+        .select_from(jointure)
+        .where(*where, *extra)
+        .order_by(Clip.id.desc())
+        .limit(limit)
+        .offset(offset),
     )
     # Counts per status for the filters ("To validate (8)"): counted on the whole mosque,
     # otherwise the first filter chosen would erase the other figures.
-    par_statut = {
-        r["status"]: r["n"]
-        for r in db.all_(
-            ctx.conn,
-            f"SELECT c.status, COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
-            f"WHERE {where} GROUP BY c.status",
-            *args,
-        )
-    }
+    par_statut = dict(
+        ctx.conn.execute(
+            select(Clip.status, func.count()).select_from(jointure).where(*where).group_by(Clip.status)
+        ).all()
+    )
     # The filtered total lets the front know how many rows remain, instead of guessing from the page size.
-    total = (
-        db.one(
-            ctx.conn,
-            f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} {extra}",
-            *args,
-            *extra_args,
-        )
-        or {}
-    ).get("n", 0)
+    total = ctx.conn.scalar(select(func.count()).select_from(jointure).where(*where, *extra)) or 0
     return {
         "items": rows,
         "count": len(rows),

@@ -126,7 +126,7 @@ def test_platform_permission_cannot_be_granted_by_a_form(env):
 
 
 def test_migration_keeps_a_single_mosque_admin_in_charge(tmp_path):
-    from sada.backoffice import migrations
+    from sada.backoffice import migrations, orm
 
     path = tmp_path / "old.db"
     db.init(path)
@@ -134,9 +134,8 @@ def test_migration_keeps_a_single_mosque_admin_in_charge(tmp_path):
     mid = db.create_mosque(conn, "seule", "Seule")
     uid = auth.create_user(conn, mid, "chef", PW, "admin")
     rawsql.run(conn, "DELETE FROM schema_migrations WHERE version = 11")
-    raw = db.connect_raw(path)
-    migrations._users_plateforme(raw)
-    raw.close()
+    with orm.engine(path, db.DEFAULT_DB).begin() as raw:
+        migrations._users_plateforme(raw)
     assert rawsql.one(conn, "SELECT platform_admin FROM users WHERE id = ?", uid)["platform_admin"] == 1
 
 

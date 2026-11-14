@@ -8,6 +8,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+import rawsql
 from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
 
 
@@ -69,7 +70,7 @@ def test_les_anciennes_adresses_redirigent(env):
 def test_anciennes_adresses_a_parametre(env):
     c = client(env, "admin")
     kid = env["kid"]
-    cid = env["conn"].execute("SELECT id FROM clips ORDER BY id LIMIT 1").fetchone()["id"]
+    cid = rawsql.one(env["conn"], "SELECT id FROM clips ORDER BY id LIMIT 1")["id"]
     assert c.get(f"/sermons/{kid}", follow_redirects=False).headers["location"] == f"/khutbas/{kid}"
     assert c.post(f"/clips/{cid}/publier", follow_redirects=False).headers["location"] == f"/api/v1/clips/{cid}/publish"
     assert c.post("/admin/connecteurs/local", follow_redirects=False).headers["location"] == "/settings"

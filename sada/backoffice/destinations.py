@@ -11,8 +11,11 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
+from sqlalchemy import delete, select, update
+
 from ..i18n import _
-from . import db
+from . import db, orm
+from .models import LiveTarget
 
 SCHEMES = ("rtmp://", "rtmps://")
 MAX_TARGETS = 6
@@ -57,7 +60,7 @@ def check(url: str | None) -> tuple[str, str]:
 
 def rows(conn, mosque) -> list[dict]:
     """Destinations as the screen shows them: key masked, never in clear."""
-    out = db.all_(conn, "SELECT * FROM live_targets WHERE mosque_id = ? ORDER BY id", mosque["id"])
+    out = orm.rows(conn, select(LiveTarget).filter_by(mosque_id=mosque["id"]).order_by(LiveTarget.id))
     return [
         {
             "id": r["id"],
@@ -73,14 +76,17 @@ def effective(conn, mosque_id: int) -> list[str]:
     """Addresses in clear, for the encoder: the enabled destinations, in order."""
     return [
         r["url"]
-        for r in db.all_(
-            conn, "SELECT url FROM live_targets WHERE mosque_id = ? AND enabled = 1 ORDER BY id", mosque_id
+        for r in orm.rows(
+            conn,
+            select(LiveTarget.url)
+            .where(LiveTarget.mosque_id == mosque_id, LiveTarget.enabled == 1)
+            .order_by(LiveTarget.id),
         )
     ]
 
 
 def _stored(conn, mosque_id: int, target_id) -> str:
-    row = db.one(conn, "SELECT url FROM live_targets WHERE id = ? AND mosque_id = ?", target_id, mosque_id)
+    row = orm.first(conn, LiveTarget, id=target_id, mosque_id=mosque_id)
     return row["url"] if row else ""
 
 
@@ -110,24 +116,28 @@ def save(conn, mosque, targets, user) -> list[dict]:
         clean.append({"id": t.get("id") or 0, "label": label, "url": url, "enabled": 1 if enabled else 0})
 
     keep = []
-    for c in clean:
-        if c["id"] and _stored(conn, mosque["id"], c["id"]):
-            conn.execute(
-                "UPDATE live_targets SET label = ?, url = ?, enabled = ?, updated_at = ? "
-                "WHERE id = ? AND mosque_id = ?",
-                (c["label"], c["url"], c["enabled"], db.now_iso(), c["id"], mosque["id"]),
-            )
-            keep.append(c["id"])
-        else:
-            keep.append(
+    with orm.transaction(conn):
+        for c in clean:
+            if c["id"] and _stored(conn, mosque["id"], c["id"]):
                 conn.execute(
-                    "INSERT INTO live_targets (mosque_id, label, url, enabled, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (mosque["id"], c["label"], c["url"], c["enabled"], db.now_iso(), db.now_iso()),
-                ).lastrowid
-            )
-    marks = ",".join("?" * len(keep)) if keep else "NULL"
-    conn.execute(f"DELETE FROM live_targets WHERE mosque_id = ? AND id NOT IN ({marks})", (mosque["id"], *keep))
+                    update(LiveTarget)
+                    .where(LiveTarget.id == c["id"], LiveTarget.mosque_id == mosque["id"])
+                    .values(label=c["label"], url=c["url"], enabled=c["enabled"], updated_at=db.now_iso())
+                )
+                keep.append(c["id"])
+            else:
+                t = LiveTarget(
+                    mosque_id=mosque["id"],
+                    label=c["label"],
+                    url=c["url"],
+                    enabled=c["enabled"],
+                    created_at=db.now_iso(),
+                    updated_at=db.now_iso(),
+                )
+                conn.add(t)
+                conn.flush()
+                keep.append(t.id)
+        conn.execute(delete(LiveTarget).where(LiveTarget.mosque_id == mosque["id"], LiveTarget.id.not_in(keep)))
     db.audit(
         conn,
         mosque["id"],

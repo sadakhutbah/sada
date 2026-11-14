@@ -206,7 +206,7 @@ def test_connexion_cookie_et_deconnexion(env):
 
 
 def test_compte_desactive_refuse(env):
-    env["conn"].execute("UPDATE users SET active = 0 WHERE username = 'imam2'")
+    rawsql.run(env["conn"], "UPDATE users SET active = 0 WHERE username = 'imam2'")
     assert login(client(env), "imam2", expect_ok=False).status_code == 401
 
 
@@ -452,9 +452,11 @@ def orch(env):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     srv = make_server(fake, "127.0.0.1", port, "jeton")
-    env["conn"].execute(
+    rawsql.run(
+        env["conn"],
         "UPDATE mosques SET orchestrator_url = ?, orchestrator_token = 'jeton' WHERE id = ?",
-        (f"http://127.0.0.1:{port}", env["mid"]),
+        f"http://127.0.0.1:{port}",
+        env["mid"],
     )
     yield fake
     srv.shutdown()
@@ -971,7 +973,7 @@ def test_listes_khutbas_et_dars_separees(env):
     assert c.get("/api/v1/sermons?kind=n_importe_quoi").status_code == 422
 
     # Une séance d'avant la colonne `kind` (vide) reste une khutba.
-    env["conn"].execute("UPDATE khutbas SET kind = '' WHERE id = ?", (env["kid"],))
+    rawsql.run(env["conn"], "UPDATE khutbas SET kind = '' WHERE id = ?", env["kid"])
     assert c.get("/api/v1/sermons?kind=khutba").json()["total"] == 1
 
     d = c.get("/api/v1/dashboard").json()["counts"]
@@ -992,7 +994,7 @@ def test_import_corrige_la_nature_d_une_seance_deja_importee(env):
     assert rawsql.all_(env["conn"], "SELECT id, status FROM clips WHERE khutba_id = ?", avant["id"]) == clips
 
     # Un libellé retouché par un humain est conservé.
-    env["conn"].execute("UPDATE khutbas SET kind = 'khutba', label = 'Mon libellé' WHERE id = ?", (avant["id"],))
+    rawsql.run(env["conn"], "UPDATE khutbas SET kind = 'khutba', label = 'Mon libellé' WHERE id = ?", avant["id"])
     assert _ajoute_dars(env)["label"] == "Mon libellé"
 
 

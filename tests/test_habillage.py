@@ -291,10 +291,11 @@ from test_backoffice import client  # noqa: E402
 def test_api_prerempli_sans_chemin(env):
 
     rawsql.one(env["conn"], "SELECT 1")
-    env["conn"].execute(
+    rawsql.run(
+        env["conn"],
         "UPDATE khutbas SET title = 'Patience et gratitude', series = 'Les vertus', session_no = 2, "
         "date = '2026-11-06' WHERE id = ?",
-        (env["kid"],),
+        env["kid"],
     )
     c = client(env, "admin")
     r = c.get(f"/api/v1/sermons/{env['kid']}/habillage")

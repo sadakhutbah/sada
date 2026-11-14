@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import rawsql
 from test_backoffice import client
 
 from sada import runs
@@ -41,7 +42,7 @@ def test_import_cree_un_run_en_file(env, tmp_path):
     rd = (
         env["root"] / "state" / rid
         if "root" in env
-        else Path(env["conn"].execute("SELECT state_dir FROM mosques").fetchone()[0]) / rid
+        else Path(rawsql.run(env["conn"], "SELECT state_dir FROM mosques")[0][0]) / rid
     )
     data = runs.load(rd / runs.SESSIONS)
     s = data["sessions"][0]
@@ -49,7 +50,7 @@ def test_import_cree_un_run_en_file(env, tmp_path):
     assert 1.5 < s["end_pos"] < 2.5
     assert Path(data["recordings"][0]).exists()
     assert traitement.lire(rd)["0"]["etat"] == "attente"
-    mo = dict(env["conn"].execute("SELECT * FROM mosques").fetchone())
+    mo = rawsql.one(env["conn"], "SELECT * FROM mosques")
     assert (rd, 0) in traitement.a_traiter(mo)  # pris malgré une date ancienne
     assert importer.khutba_label(dict(s, index=0)).endswith("Tafsir Al-Kahf · séance 3")
 
@@ -75,7 +76,7 @@ def test_import_refuse(env, tmp_path, q, data_kind, msg):
         data = b"x"
     r = _post(c, data, **q)
     assert r.status_code == 422 and msg in r.text, r.text
-    sortie = Path(env["conn"].execute("SELECT output_dir FROM mosques").fetchone()[0])
+    sortie = Path(rawsql.run(env["conn"], "SELECT output_dir FROM mosques")[0][0])
     assert not any((d / "source").exists() for d in sortie.iterdir())  # rien ne reste d'un refus
 
 
@@ -90,6 +91,6 @@ def test_import_droits_et_csrf(env, tmp_path):
 def test_audit(env, tmp_path):
     c = client(env, "admin")
     assert _post(c, _video(tmp_path), title="Cours").status_code == 200
-    a = env["conn"].execute("SELECT details FROM audit WHERE action = 'import.video'").fetchone()
+    a = rawsql.run(env["conn"], "SELECT details FROM audit WHERE action = 'import.video'").fetchone()
     assert a and "Cours" in a[0]
     json.loads(a[0])

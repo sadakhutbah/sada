@@ -11,12 +11,14 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 
 from ...i18n import _
-from .. import branding, db, destinations, events_store, gabarit, internal, live_input, mawaqit_store, storage
+from .. import branding, destinations, events_store, gabarit, internal, live_input, mawaqit_store, orm, storage
 from .. import screens as screens_mod
 from .. import variables_ecran as variables_mod
 from ..context import ConnDep
+from ..models import Mosque, Notification
 
 router = APIRouter()
 
@@ -27,7 +29,7 @@ def _refuse() -> JSONResponse:
 
 def _mosque_id(conn, port: int) -> int | None:
     """The mosque whose orchestrator listens on `port`, or the only mosque."""
-    mosques = db.all_(conn, "SELECT id, orchestrator_url FROM mosques")
+    mosques = orm.rows(conn, select(Mosque.id, Mosque.orchestrator_url))
     ids = [m["id"] for m in mosques if port and urlparse(m["orchestrator_url"] or "").port == port]
     if not ids and len(mosques) == 1:
         ids = [mosques[0]["id"]]
@@ -49,7 +51,7 @@ def _caller(request: Request, conn, port: int) -> int | JSONResponse:
         return mid
     if not internal.check(given):
         return _refuse()
-    if db.one(conn, "SELECT COUNT(*) AS n FROM mosques")["n"] > 1:
+    if conn.scalar(select(func.count()).select_from(Mosque)) > 1:
         return JSONResponse({"error": _("several mosques: a per-mosque agent token is required")}, status_code=403)
     mid = _mosque_id(conn, port)
     if mid is None:
@@ -63,7 +65,7 @@ def notification_settings(request: Request, conn: ConnDep, port: int = 0):
     mid = _caller(request, conn, port)
     if isinstance(mid, JSONResponse):
         return mid
-    r = db.one(conn, "SELECT * FROM notifications WHERE mosque_id = ?", mid) or {}
+    r = orm.first(conn, Notification, mosque_id=mid) or {}
     return {
         "mosque_id": mid,
         "mode": r.get("mode", ""),
@@ -97,7 +99,7 @@ def screen_texts(request: Request, conn: ConnDep, port: int = 0):
     mid = _caller(request, conn, port)
     if isinstance(mid, JSONResponse):
         return mid
-    mosque = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
+    mosque = orm.first(conn, Mosque, id=mid)
     if not mosque:
         return JSONResponse({"error": _("mosque not found")}, status_code=404)
     return {
@@ -122,7 +124,7 @@ def mosque_times(request: Request, conn: ConnDep, port: int = 0):
     mid = _caller(request, conn, port)
     if isinstance(mid, JSONResponse):
         return mid
-    mosque = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
+    mosque = orm.first(conn, Mosque, id=mid)
     try:
         return {"mosque_id": mid, "times": mawaqit_store.times(conn, mosque)}
     except Exception as e:  # noqa: BLE001 — no source at all: the orchestrator falls back locally
@@ -167,7 +169,7 @@ def gabarit_page(request: Request, conn: ConnDep, port: int = 0):
     mid = _caller(request, conn, port)
     if isinstance(mid, JSONResponse):
         return mid
-    mosquee = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid) or {}
+    mosquee = orm.first(conn, Mosque, id=mid) or {}
     fichier = gabarit.lire(mosquee)
     if not fichier:
         return {"mosque_id": mid, "nom": "", "present": False, "pages": {}, "variables": {}}
