@@ -41,7 +41,9 @@ STEP_STUCK_AFTER = {
 OK, RUNNING, ATTENTION, FAILED = "ok", "running", "attention", "failed"
 
 
-def _state(level: str, code: str, *, since=None, stuck=False, detail="", actions=None, children=None, params=None) -> dict:
+def _state(
+    level: str, code: str, *, since=None, stuck=False, detail="", actions=None, children=None, params=None
+) -> dict:
     out = {
         "level": level,
         "code": code,
@@ -78,20 +80,26 @@ def clip_state(
     publication of the current version surface on the clip itself.
     """
     regen = clip.get("regen_state") or ""
-    action = (
-        [{"key": "regenerate", "url": f"/api/v1/clips/{clip['id']}/regenerate"}] if can_regenerate else []
-    )
+    action = [{"key": "regenerate", "url": f"/api/v1/clips/{clip['id']}/regenerate"}] if can_regenerate else []
     if regen == "en_cours":
         since = clip.get("updated_at")
         return _state(RUNNING, "clip.regenerating", since=since, stuck=_older_than(since, REGEN_STUCK_AFTER, now))
     if regen == "erreur":
-        return _state(FAILED, "clip.regen_failed", since=clip.get("updated_at"), detail=clip.get("regen_error") or "", actions=action)
+        return _state(
+            FAILED,
+            "clip.regen_failed",
+            since=clip.get("updated_at"),
+            detail=clip.get("regen_error") or "",
+            actions=action,
+        )
     if clip.get("needs_regen"):
         code = "clip.published_outdated" if clip.get("status") == "publie" else "clip.outdated"
         return _state(ATTENTION, code, since=clip.get("updated_at"), actions=action)
     pub = last_publication or {}
     if pub.get("status") == "erreur" and pub.get("clip_version") == clip.get("version"):
-        return _state(ATTENTION, "clip.publication_failed", since=pub.get("created_at"), detail=pub.get("message") or "")
+        return _state(
+            ATTENTION, "clip.publication_failed", since=pub.get("created_at"), detail=pub.get("message") or ""
+        )
     return _state(OK, "clip.ready", since=clip.get("updated_at"), params={"version": clip.get("version") or 1})
 
 
@@ -140,17 +148,31 @@ def sermon_state(
             children=children,
         )
     if phase == "echec":
-        return _state(FAILED, "sermon.processing_failed", since=since, detail=processing.get("erreur") or "", children=children)
+        return _state(
+            FAILED, "sermon.processing_failed", since=since, detail=processing.get("erreur") or "", children=children
+        )
     worst = children["clips"]
     branded = branded or {}
     if branded.get("level") == FAILED:
-        return _state(FAILED, "sermon.habillage_failed", since=branded.get("since"), detail=branded.get("detail", ""), children=children)
+        return _state(
+            FAILED,
+            "sermon.habillage_failed",
+            since=branded.get("since"),
+            detail=branded.get("detail", ""),
+            children=children,
+        )
     if worst[FAILED]:
         return _state(FAILED, "sermon.clips_failed", children=children)
     if worst[ATTENTION]:
         return _state(ATTENTION, "sermon.clips_outdated", children=children)
     if branded.get("level") == RUNNING:
-        return _state(RUNNING, "sermon.habillage_rendering", since=branded.get("since"), params=branded.get("params"), children=children)
+        return _state(
+            RUNNING,
+            "sermon.habillage_rendering",
+            since=branded.get("since"),
+            params=branded.get("params"),
+            children=children,
+        )
     if worst[RUNNING]:
         return _state(RUNNING, "sermon.clips_rendering", children=children)
     return _state(OK, "sermon.ready", children=children)

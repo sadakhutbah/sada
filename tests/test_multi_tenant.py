@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select as sa_select
 from test_backoffice import PW, client, login  # noqa: F401
 
-from sqlalchemy import select as sa_select
-
-from sada.backoffice import auth, db, orm
+from sada.backoffice import db, orm
 from sada.backoffice.models import Audit
 
 
