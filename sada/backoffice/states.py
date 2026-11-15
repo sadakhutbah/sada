@@ -27,6 +27,17 @@ REGEN_STUCK_AFTER = dt.timedelta(minutes=10)
 # Post-live processing (transcription, verses, clips) takes tens of minutes.
 PROCESSING_STUCK_AFTER = dt.timedelta(hours=3)
 
+# Stages of the post-live pipeline (mirrors sada.pipeline.run.STEPS) and how long one may last.
+PROCESSING_STEPS = ("audio", "transcribe", "verses", "notes", "translate", "clips")
+STEP_STUCK_AFTER = {
+    "audio": dt.timedelta(minutes=30),
+    "transcribe": dt.timedelta(hours=2),
+    "verses": dt.timedelta(minutes=45),
+    "notes": dt.timedelta(minutes=45),
+    "translate": dt.timedelta(hours=1),
+    "clips": dt.timedelta(minutes=45),
+}
+
 OK, RUNNING, ATTENTION, FAILED = "ok", "running", "attention", "failed"
 
 
@@ -114,11 +125,18 @@ def sermon_state(
     if phase == "attente":
         return _state(RUNNING, "sermon.queued", since=since, children=children)
     if phase == "en_cours":
+        # A stage that has not changed for a long time is the real sign of a stuck run, not the total time.
+        stage = processing.get("step")
+        stage_since = processing.get("step_at") or since
+        params = None
+        if stage in PROCESSING_STEPS:
+            params = {"name": stage, "step": PROCESSING_STEPS.index(stage) + 1, "steps": len(PROCESSING_STEPS)}
         return _state(
             RUNNING,
             "sermon.processing",
             since=since,
-            stuck=_older_than(since, PROCESSING_STUCK_AFTER, now),
+            stuck=_older_than(stage_since, STEP_STUCK_AFTER.get(stage or "", PROCESSING_STUCK_AFTER), now),
+            params=params,
             children=children,
         )
     if phase == "echec":

@@ -41,11 +41,16 @@ export function State({ state, busy = false, onAction }: {
     return label ? <p className="m-0 text-[0.85rem] text-muted">{label}</p> : null;
   }
   if (!state) return null;
+  // A running situation can name its current stage (`params.name`): "step 3 of 6 : verses".
+  const stage = state.params?.name as string | undefined;
+  const label = stage
+    ? t(`states.${state.code}_step`, { ...state.params, label: t(`states.steps.${stage}`) })
+    : t(`states.${state.code}`, { ...state.params });
   const time = state.level === "running" ? elapsed(state.since) : "";
   return (
     <div role={state.level === "failed" ? "alert" : "status"} className="grid gap-2">
       <p className={`m-0 rounded-[10px] border px-4 py-3 text-[0.92rem] ${TONE[state.level]}`}>
-        {t(`states.${state.code}`, { ...state.params })}
+        {label}
         {time && <span className="text-muted"> {t("states.since", { d: time })}</span>}
         {state.stuck && <strong> {t("states.stuck")}</strong>}
         {state.detail && !/[\\/]/.test(state.detail) ? ` : ${state.detail}` : ""}

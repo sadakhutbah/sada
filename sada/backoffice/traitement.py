@@ -4,7 +4,8 @@ Le fil du back-office parcourt les runs récents de chaque mosquée en import au
 session terminée qui produit du contenu (tout sauf la Janaza) et n'a pas encore de transcription
 part dans le pipeline, une à la fois (le GPU est partagé). Le résultat est importé aussitôt.
 
-L'état se lit dans data/state/<run>/traitement.json : {"<index>": {etat, debut, fin, erreur}}.
+L'état se lit dans data/state/<run>/traitement.json : {"<index>": {etat, debut, fin, erreur, step, step_at}}
+(`step` : étape courante du pipeline, `step_at` : son heure de début).
 etat : attente | en_cours | termine | echec. Un échec n'est pas relancé seul : le bouton « Relancer »
 du back-office remet la session en attente.
 """
@@ -101,7 +102,7 @@ def a_traiter(mosque: dict, now: dt.datetime | None = None) -> list[tuple[Path, 
 
 def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
     out = db.mosque_dirs(mosque)["output"]
-    _maj(run_dir, idx, etat="en_cours", debut=_now(), fin=None, erreur=None)
+    _maj(run_dir, idx, etat="en_cours", debut=_now(), fin=None, erreur=None, step=None, step_at=None)
     log(_("{run} session {session}: processing started", run=run_dir.name, session=runs.session_number(idx)))
     cmd = [
         sys.executable,
@@ -126,18 +127,36 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
         if value:
             cmd += [option, value]
     try:
-        p = subprocess.run(cmd, cwd=paths.ROOT, capture_output=True, text=True, env=_env(mosque))
-        ok = p.returncode == 0 and SessionOutput(out / run_dir.name / runs.session_dir(idx)).is_transcribed()
+        code, sortie = _lancer(cmd, _env(mosque), run_dir, idx)
+        ok = code == 0 and SessionOutput(out / run_dir.name / runs.session_dir(idx)).is_transcribed()
         if not ok:
-            raise RuntimeError(_resume_erreur(p.stderr or p.stdout, p.returncode))
+            raise RuntimeError(_resume_erreur(sortie, code))
         importer.import_run(conn, mosque, run_dir.name, log=log)
     except Exception as e:  # noqa: BLE001 — l'échec est montré dans le back-office
         _maj(run_dir, idx, etat="echec", fin=_now(), erreur=str(e)[:300])
         log(_("{run} session {session}: failed: {error}", run=run_dir.name, session=runs.session_number(idx), error=e))
         return False
-    _maj(run_dir, idx, etat="termine", fin=_now(), erreur=None)
+    _maj(run_dir, idx, etat="termine", fin=_now(), erreur=None, step=None, step_at=None)
     log(_("{run} session {session}: clips ready", run=run_dir.name, session=runs.session_number(idx)))
     return True
+
+
+def _lancer(cmd: list[str], env: dict, run_dir: Path, idx: int) -> tuple[int, str]:
+    """Run the pipeline; every stage marker it prints is recorded as the session's current step."""
+    from ..pipeline.run import STEP_MARKER
+
+    env = {**env, "SADA_REPORT_STEPS": "1"}
+    tail: list[str] = []
+    with subprocess.Popen(
+        cmd, cwd=paths.ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    ) as p:
+        for line in p.stdout or ():
+            line = line.rstrip("\n")
+            if line.startswith(STEP_MARKER):
+                _maj(run_dir, idx, step=line[len(STEP_MARKER):].strip(), step_at=_now())
+                continue
+            tail = (tail + [line])[-40:]
+    return p.returncode, "\n".join(tail)
 
 
 def _env(mosque: dict | None = None) -> dict:
@@ -215,6 +234,7 @@ def liste(mosque: dict, limite: int = 10) -> list[dict]:
                     "debut": v.get("debut"),
                     "fin": v.get("fin"),
                     "erreur": v.get("erreur"),
+                    "step": v.get("step"),
                 }
             )
             if len(items) >= limite:

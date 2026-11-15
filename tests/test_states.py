@@ -72,3 +72,17 @@ def test_habillage_states_and_sermon_priority():
     assert failed["level"] == "failed"
     assert states.sermon_state({"etat": "termine"}, [], failed)["code"] == "sermon.habillage_failed"
     assert states.sermon_state({"etat": "termine"}, [], running)["code"] == "sermon.habillage_rendering"
+
+
+def test_sermon_processing_names_its_step_and_stalls_per_step():
+    proc = {"etat": "en_cours", "debut": "2026-11-15T12:00:00", "step": "verses", "step_at": "2026-11-15T13:50:00"}
+    s = states.sermon_state(proc, [], now=NOW)
+    assert s["params"] == {"name": "verses", "step": 3, "steps": 6} and s["stuck"] is False
+    old = {**proc, "step_at": "2026-11-15T12:00:00"}
+    assert states.sermon_state(old, [], now=NOW)["stuck"] is True
+
+
+def test_pipeline_and_back_office_agree_on_the_steps():
+    from sada.pipeline import run
+
+    assert tuple(run.STEPS) == states.PROCESSING_STEPS

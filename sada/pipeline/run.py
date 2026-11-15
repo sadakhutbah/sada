@@ -33,6 +33,17 @@ def log(m):
     print(f"[pipeline] {m}", flush=True)
 
 
+# Stages of one session, in order. The back-office (post-live processing) sets SADA_REPORT_STEPS and
+# reads the markers below from the output to tell the user which stage is running.
+STEPS = ("audio", "transcribe", "verses", "notes", "translate", "clips")
+STEP_MARKER = "@@step "
+
+
+def step(name: str) -> None:
+    if os.environ.get("SADA_REPORT_STEPS"):
+        print(f"{STEP_MARKER}{name}", flush=True)
+
+
 def transcript_key(src: str, start: float, end: float | None) -> dict:
     """What a cached transcript was made from: reused only for the same recording and the same range."""
     return {
@@ -84,6 +95,7 @@ def process(
     o = SessionOutput(outdir)
     o.dir.mkdir(parents=True, exist_ok=True)
     wav = str(o.audio)
+    step("audio")
     log(_("[{label}] audio extraction {start:.1f}→{end}", label=label, start=start, end=end))
     tr.extract_audio(src, wav, start, end)
     res = o.read(o.transcript, None) if not retranscribe else None
@@ -92,6 +104,7 @@ def process(
         log(_("[{label}] cached transcript was made on another excerpt: transcribing again", label=label))
         res = None
     if not res:
+        step("transcribe")
         res = tr.transcribe(wav, str(o.transcript), model, log, arabic_retry=arabic_retry, source=key)
         # Le transcripteur note lui-même ce dont il est parti (même clé des deux côtés, local et
         # distant) ; on la réaffirme pour un cache relu écrit par une version qui l'ignorait.
@@ -102,6 +115,7 @@ def process(
         "# Transcription — " + label + "\n\n" + "\n".join(f"- **[{fmt_t(s['start'])}]** {s['text']}" for s in segs),
         encoding="utf-8",
     )
+    step("verses")
     log(_("loading the Quran + index"))
     idx = VerseIndex(load_verses())
     ms = to_dicts(detect(segs, idx))
@@ -115,6 +129,7 @@ def process(
             refs=", ".join(f"{m['ref']}@{fmt_t(m['start'])}({m['score']:.0f})" for m in ms),
         )
     )
+    step("notes")
     md, extra = notemod.build_notes(label, segs, ms, res, use_llm, log)
     o.notes.write_text(md, encoding="utf-8")
     log(_("notes -> {path} (summary: {method})", path=o.notes, method=extra["summary"].get("method")))
@@ -123,6 +138,7 @@ def process(
     # Extraits d'abord, traduction ensuite : la sélection est décidée par sada.pipeline.select :
     # le code génère les candidats (fenêtres 30-75 s propres), un petit modèle les note par lots
     # de 5, le code retient les N meilleurs espacés — repli heuristique sans modèle.
+    step("translate")
     wins = []
     if nclips:
         wins = selmod.select_clips(segs, res["duration"], nclips, use_llm=use_llm, log=log)
@@ -134,6 +150,7 @@ def process(
     tracks_tr = trmod.translate_tracks(segs, ms, o.translations, o.translations_ar, use_llm, log=log)
     trs = tracks_tr[0]
     if nclips:
+        step("clips")
         vsrc, voff = src, start
         if clip_video:
             vsrc = clip_video

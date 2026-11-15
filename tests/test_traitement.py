@@ -2,8 +2,6 @@
 
 import datetime as dt
 import json
-import subprocess
-
 from sada import runs
 from sada.backoffice import traitement
 
@@ -55,10 +53,10 @@ def test_succes_echec_relance(tmp_path, monkeypatch):
     imports = []
     monkeypatch.setattr(traitement.importer, "import_run", lambda c, mo, r, log=print: imports.append(r))
 
-    def echoue(cmd, **kw):
-        return subprocess.CompletedProcess(cmd, 1, "", "boum\nCUDA out of memory\n")
+    def echoue(cmd, env, run_dir, idx):
+        return 1, "boum\nCUDA out of memory"
 
-    monkeypatch.setattr(traitement.subprocess, "run", echoue)
+    monkeypatch.setattr(traitement, "_lancer", echoue)
     assert traitement.tour(None, m, log=lambda *_: None) == 1
     e = traitement.lire(rd)["0"]
     assert e["etat"] == "echec" and e["erreur"] == "CUDA out of memory"
@@ -67,11 +65,11 @@ def test_succes_echec_relance(tmp_path, monkeypatch):
     traitement.relancer(m, rid, 0)
     assert traitement.lire(rd)["0"]["etat"] == "attente"
 
-    def reussit(cmd, **kw):
+    def reussit(cmd, env, run_dir, idx):
         _transcrit(tmp_path, rid, 0)
-        return subprocess.CompletedProcess(cmd, 0, "", "")
+        return 0, ""
 
-    monkeypatch.setattr(traitement.subprocess, "run", reussit)
+    monkeypatch.setattr(traitement, "_lancer", reussit)
     traitement.tour(None, m, log=lambda *_: None)
     assert traitement.lire(rd)["0"]["etat"] == "termine" and imports == [rid]
     items = traitement.liste(m)
@@ -97,12 +95,12 @@ def test_le_pipeline_recoit_le_logo_et_les_couleurs_de_la_mosquee(tmp_path, monk
     monkeypatch.setattr(traitement.importer, "import_run", lambda c, mo, r, log=print: None)
     vus = []
 
-    def reussit(cmd, **kw):
+    def reussit(cmd, env, run_dir, idx):
         vus.append(cmd)
         _transcrit(tmp_path, rid, 0)
-        return subprocess.CompletedProcess(cmd, 0, "", "")
+        return 0, ""
 
-    monkeypatch.setattr(traitement.subprocess, "run", reussit)
+    monkeypatch.setattr(traitement, "_lancer", reussit)
     traitement.tour(None, m, log=lambda *_: None)
     cmd = vus[0]
     assert cmd[cmd.index("--logo") + 1] == str(png)
@@ -118,12 +116,12 @@ def test_sans_logo_ni_couleurs_aucune_option_d_habillage(tmp_path, monkeypatch):
     monkeypatch.setattr(traitement.importer, "import_run", lambda c, mo, r, log=print: None)
     vus = []
 
-    def reussit(cmd, **kw):
+    def reussit(cmd, env, run_dir, idx):
         vus.append(cmd)
         _transcrit(tmp_path, rid, 0)
-        return subprocess.CompletedProcess(cmd, 0, "", "")
+        return 0, ""
 
-    monkeypatch.setattr(traitement.subprocess, "run", reussit)
+    monkeypatch.setattr(traitement, "_lancer", reussit)
     traitement.tour(None, m, log=lambda *_: None)
     assert not {"--logo", "--brand-green", "--brand-gold"} & set(vus[0])
 
