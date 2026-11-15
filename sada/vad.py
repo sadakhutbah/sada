@@ -100,6 +100,8 @@ class VadMonitor(threading.Thread):
             except Exception as e:  # noqa
                 self.log(_("VAD: error {error}", error=e))
             self.connected = False
+            with self._lock:  # stream lost: the voice run stops growing, silence takes over
+                self._dense_since = None
             if self.stop_flag.wait(2.0):
                 break
 
