@@ -11,6 +11,26 @@ const fr = {
     dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", clips: "Clips", publications: "Publication",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu",
   },
+  states: {
+    clip: {
+      regenerating: "Régénération de la vidéo en cours : la fiche se met à jour toute seule.",
+      regen_failed: "La régénération de la vidéo a échoué.",
+      outdated: "Des corrections ne sont pas encore dans la vidéo : régénérez le clip avant de le valider.",
+      published_outdated: "La vidéo publiée ne contient pas les dernières corrections : une nouvelle version est à générer.",
+    },
+    sermon: {
+      queued: "Traitement après direct en attente.",
+      processing: "Traitement après direct en cours (transcription, versets, clips).",
+      processing_failed: "Le traitement après direct a échoué.",
+      clips_failed: "La vidéo d'un ou plusieurs clips est en échec.",
+      clips_outdated: "Des clips ont des corrections qui ne sont pas encore dans leur vidéo.",
+      clips_rendering: "Des clips sont en cours de régénération.",
+    },
+    tag: { running: "Vidéo en cours", failed: "Vidéo en échec", attention: "Vidéo à régénérer" },
+    stuck: "Cela semble bloqué.",
+    since: "depuis {{d}}",
+    actions: { regenerate: "Régénérer" },
+  },
   common: { loading: "Chargement…", empty: "Rien à afficher.", save: "Enregistrer", saving: "Enregistrement…", close: "Fermer", error: "Erreur", browse: "Parcourir…" },
   login: {
     title: "Connexion", user: "Identifiant", password: "Mot de passe", submit: "Entrer",
@@ -487,6 +507,26 @@ const en: typeof fr = {
   nav: {
     dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", clips: "Clips", publications: "Publishing",
     settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu",
+  },
+  states: {
+    clip: {
+      regenerating: "Regenerating the video: this page updates itself.",
+      regen_failed: "Video regeneration failed.",
+      outdated: "Corrections are not in the video yet: regenerate the clip before approving it.",
+      published_outdated: "The published video does not include the latest corrections: a new version has to be generated.",
+    },
+    sermon: {
+      queued: "Post-live processing is queued.",
+      processing: "Post-live processing is running (transcription, verses, clips).",
+      processing_failed: "Post-live processing failed.",
+      clips_failed: "The video of one or more clips failed.",
+      clips_outdated: "Some clips have corrections that are not in their video yet.",
+      clips_rendering: "Some clips are being regenerated.",
+    },
+    tag: { running: "Video rendering", failed: "Video failed", attention: "Video outdated" },
+    stuck: "This looks stuck.",
+    since: "for {{d}}",
+    actions: { regenerate: "Regenerate" },
   },
   common: { loading: "Loading…", empty: "Nothing to show.", save: "Save", saving: "Saving…", close: "Close", error: "Error", browse: "Browse…" },
   login: {
