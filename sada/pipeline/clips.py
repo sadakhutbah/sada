@@ -681,7 +681,7 @@ def render_clip(
         fc = (
             f"[0:v]{crop_filter(crop)},scale={W}:{H}:flags=lanczos,setsar=1,format=yuv420p[cam];"
             f"{pre}fade=t=out:st={max(0, dur - fo_v):.2f}:d={fo_v:.2f}[v];"
-            f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
+            f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,aformat=channel_layouts=stereo,"
             f"afade=t=in:d=0.3,afade=t=out:st={max(0, dur - fo_a):.2f}:d={fo_a:.2f}[a]"
         )
         cmd = [
