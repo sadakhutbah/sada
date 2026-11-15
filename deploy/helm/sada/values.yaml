@@ -44,9 +44,9 @@ backoffice:
     requests:
       cpu: 200m
       memory: 512Mi
+    limits:
       memory: 5Gi
       cpu: 4 # plafond : un habillage ne doit pas affamer les directs (les orchestrateurs réservent 1,5 cœur chacun)
-      memory: 5Gi
   extraEnv: []
 
 # Stream reception (MediaMTX): mosques push RTMP or SRT, orchestrators read RTSP inside
