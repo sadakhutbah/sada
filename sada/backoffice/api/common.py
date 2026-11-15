@@ -21,6 +21,7 @@ def _user(ctx: Ctx) -> dict:
         "role_label": auth.role_label(u["role"]),
         "permissions": [p for p in PERMISSIONS if ctx.can(p)],
         "must_change_password": bool(u.get("must_change_password")),
+        "operator": bool(u.get("platform_admin")),
     }
 
 

@@ -16,6 +16,13 @@ const fr = {
     title: "Connexion", user: "Identifiant", password: "Mot de passe", submit: "Entrer",
     mosque: "Choisir la mosquée", bad: "Identifiant ou mot de passe incorrect.", locked: "Trop de tentatives. Réessayez dans quelques minutes.",
   },
+  picker: {
+    title: "Choisir une mosquée", hint: "Bonjour {{name}}. Aucune mosquée n'est ouverte d'office : choisissez celle sur laquelle travailler.",
+    operatorTitle: "Console opérateur", operatorHint: "Bonjour {{name}}. Vous administrez la plateforme, pas une mosquée.",
+    none: "Aucune mosquée n'est rattachée à ce compte.", search: "Rechercher une mosquée", noMatch: "Aucune mosquée ne correspond.", support: "Accès support",
+    supportNote: "Entrer dans une mosquée se fait en accès support : chaque modification est inscrite au journal de la mosquée.",
+    banner: "Accès support à {{name}} : vos actions sont journalisées.", switch: "Changer de mosquée", leave: "Quitter",
+  },
   dashboard: {
     pending: "Clips à valider", ready: "Prêts à publier", sermons: "Khutbas archivées", dars: "Dars enregistrés",
     live: "Live du jour", recent: "Dernières khutbas", commands: "Dernières commandes du live",
@@ -428,6 +435,8 @@ const fr = {
     action_connexion: "Connexion",
     action_connexion_echec: "Échec de connexion",
     action_deconnexion: "Déconnexion",
+    action_mosque_ouverte: "Mosquée ouverte", action_mosque_fermee: "Mosquée quittée", action_mosque_refusee: "Mosquée refusée",
+    action_support_entree: "Entrée en accès support", action_support_sortie: "Sortie de l'accès support", action_support_action: "Action en accès support",
     action_live_commande: "Commande live",
     action_live_echec: "Commande live en échec",
     action_import_khutba: "Import khutba",
@@ -483,6 +492,13 @@ const en: typeof fr = {
   login: {
     title: "Sign in", user: "Username", password: "Password", submit: "Sign in",
     mosque: "Choose the mosque", bad: "Wrong username or password.", locked: "Too many attempts. Try again in a few minutes.",
+  },
+  picker: {
+    title: "Choose a mosque", hint: "Hello {{name}}. No mosque opens by itself: pick the one to work on.",
+    operatorTitle: "Operator console", operatorHint: "Hello {{name}}. You run the platform, not a mosque.",
+    none: "No mosque is attached to this account.", search: "Search for a mosque", noMatch: "No mosque matches.", support: "Support access",
+    supportNote: "Entering a mosque is done as support access: every change is written to that mosque's log.",
+    banner: "Support access to {{name}}: your actions are logged.", switch: "Switch mosque", leave: "Leave",
   },
   dashboard: {
     pending: "Clips to review", ready: "Ready to publish", sermons: "Archived sermons", dars: "Recorded lessons",
@@ -892,6 +908,8 @@ const en: typeof fr = {
     action_connexion: "Sign in",
     action_connexion_echec: "Failed sign in",
     action_deconnexion: "Sign out",
+    action_mosque_ouverte: "Mosque opened", action_mosque_fermee: "Mosque left", action_mosque_refusee: "Mosque refused",
+    action_support_entree: "Support access entered", action_support_sortie: "Support access left", action_support_action: "Support access action",
     action_live_commande: "Live command",
     action_live_echec: "Live command failed",
     action_import_khutba: "Sermon imported",

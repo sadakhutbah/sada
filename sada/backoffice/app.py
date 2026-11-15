@@ -29,6 +29,7 @@ from .context import (
     Forbidden,
     Invalid,
     LoginRequired,
+    MosqueRequired,
     NotFound,
     _sec,
     clip_or_404,
@@ -206,6 +207,10 @@ def create_app(
     @app.exception_handler(LoginRequired)
     async def _login(request: Request, exc):
         return error(request, 401, _("sign-in required"))
+
+    @app.exception_handler(MosqueRequired)
+    async def _mosque_required(request: Request, exc):
+        return error(request, 409, "mosque_required")
 
     @app.exception_handler(Forbidden)
     async def _forbidden(request: Request, exc):

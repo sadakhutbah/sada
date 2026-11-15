@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import secrets
 import threading
 import time
@@ -14,7 +15,7 @@ from sqlalchemy import delete, func, or_, select, update
 
 from ..i18n import _
 from . import db
-from .models import AuthSession, User
+from .models import AuthSession, Membership, Mosque, User
 from .orm import as_dict
 
 
@@ -145,6 +146,51 @@ def _dummy_hash() -> str:
     if _DUMMY is None:
         _DUMMY = _ph.hash(secrets.token_hex(16))
     return _DUMMY
+
+
+def hosted() -> bool:
+    """Hosted mode (SADA_MODE=hosted): signing in never opens a mosque by itself."""
+    return os.environ.get("SADA_MODE", "").strip().lower() == "hosted"
+
+
+def mosques_of(conn, user: dict) -> list[dict]:
+    """Mosques a person can open: the home one plus the extra memberships."""
+    ids = {user["mosque_id"], *conn.scalars(select(Membership.mosque_id).where(Membership.user_id == user["id"]))}
+    rows = conn.execute(select(Mosque.id, Mosque.slug, Mosque.name).where(Mosque.id.in_(ids)).order_by(Mosque.name))
+    return [dict(r._mapping) for r in rows]
+
+
+def all_mosques(conn) -> list[dict]:
+    """Every mosque of the platform (operator console)."""
+    rows = conn.execute(select(Mosque.id, Mosque.slug, Mosque.name).order_by(Mosque.name))
+    return [dict(r._mapping) for r in rows]
+
+
+def choose_mosque(conn, session: dict, user: dict, mosque_id: int) -> str | None:
+    """Opens `mosque_id` on the session. Returns None if refused, 'member' or 'support'."""
+    if user.get("platform_admin") and hosted():
+        # The operator is not a mosque administrator: on a hosted platform every entry is support.
+        kind = "support" if conn.scalar(select(Mosque.id).where(Mosque.id == mosque_id)) is not None else None
+        if kind is None:
+            return None
+    elif mosque_id in {m["id"] for m in mosques_of(conn, user)}:
+        kind = "member"
+    elif user.get("platform_admin") and conn.scalar(select(Mosque.id).where(Mosque.id == mosque_id)) is not None:
+        kind = "support"
+    else:
+        return None
+    conn.execute(
+        update(AuthSession)
+        .where(AuthSession.id == session["id"])
+        .values(mosque_id=mosque_id, support=1 if kind == "support" else 0)
+    )
+    conn.commit()
+    return kind
+
+
+def leave_mosque(conn, session: dict) -> None:
+    conn.execute(update(AuthSession).where(AuthSession.id == session["id"]).values(mosque_id=None, support=0))
+    conn.commit()
 
 
 def imams(conn, mosque_id: int) -> list[dict]:

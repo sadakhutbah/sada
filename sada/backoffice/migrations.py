@@ -184,6 +184,16 @@ def _mosques_cle_diffusion(conn: sa.Connection) -> None:
     _add_columns(conn, "mosques", (("publish_key_hash", "TEXT NOT NULL DEFAULT ''"),))
 
 
+def _multi_tenant(conn: sa.Connection) -> None:
+    """Migration 16 : rattachements compte-mosquée et mosquée choisie par la session."""
+    _baseline(conn)  # crée `memberships` (modèle) si elle manque
+    _add_columns(
+        conn,
+        "auth_sessions",
+        (("mosque_id", "INTEGER"), ("support", "INTEGER NOT NULL DEFAULT 0")),
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -200,6 +210,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(13, "events : programme des cours en base", _events_en_base),
     Migration(14, "mosques : cache des horaires Mawaqit", _mosques_cache_mawaqit),
     Migration(15, "mosques : clé de diffusion", _mosques_cle_diffusion),
+    Migration(16, "multi-tenant : rattachements et mosquée de la session", _multi_tenant),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

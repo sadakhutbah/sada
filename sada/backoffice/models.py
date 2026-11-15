@@ -90,6 +90,18 @@ auth_sessions = sa.Table(
     sa.Column("ip", sa.Text),
     sa.Column("user_agent", sa.Text),
     sa.Column("flash", sa.Text),
+    # Mosque the session is opened on (NULL until chosen) and whether the operator entered it as
+    # support (every write is then audited).
+    sa.Column("mosque_id", sa.Integer),
+    sa.Column("support", sa.Integer, nullable=False, server_default=_d("0")),
+)
+
+# Extra mosques a person belongs to, besides the home one (users.mosque_id).
+memberships = sa.Table(
+    "memberships",
+    metadata,
+    sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id", ondelete="CASCADE"), primary_key=True),
 )
 
 khutbas = sa.Table(
@@ -346,6 +358,7 @@ TABLES = (
     mosques,
     users,
     auth_sessions,
+    memberships,
     khutbas,
     clips,
     corrections,
@@ -381,6 +394,10 @@ class User(Base):
 
 class AuthSession(Base):
     __table__ = auth_sessions
+
+
+class Membership(Base):
+    __table__ = memberships
 
 
 class Khutba(Base):

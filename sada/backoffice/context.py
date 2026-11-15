@@ -32,6 +32,10 @@ class NotFound(Exception):
     pass
 
 
+class MosqueRequired(Exception):
+    """Signed in, but no mosque chosen yet (hosted mode): pick one first."""
+
+
 class Invalid(Exception):
     """Readable request refused by a business rule (empty field, unknown value...)."""
 
@@ -44,8 +48,9 @@ class Invalid(Exception):
 
 
 class Ctx:
-    def __init__(self, request: Request, conn, session: dict, user: dict, mosque: dict):
+    def __init__(self, request: Request, conn, session: dict, user: dict, mosque: dict | None):
         self.request, self.conn, self.session, self.user, self.mosque = request, conn, session, user, mosque
+        self.support = bool((session or {}).get("support"))
         self.ip = request.client.host if request.client else None
 
     def can(self, perm: str) -> bool:
@@ -119,6 +124,19 @@ def _sec(request) -> bool:
 ConnDep = Annotated[orm.Db, Depends(get_conn)]
 
 
+def open_mosque(conn, s: dict, u: dict) -> dict | None:
+    """The mosque a session is open on, or None while none is chosen.
+
+    Hosted mode never falls back to the account's home mosque: signing in opens nothing.
+    """
+    mid = s.get("mosque_id") or (None if auth.hosted() else u["mosque_id"])
+    if mid is None:
+        return None
+    if not s.get("support") and mid not in {m["id"] for m in auth.mosques_of(conn, u)}:
+        return None
+    return orm.first(conn, Mosque, id=mid)
+
+
 def get_ctx(request: Request, conn: ConnDep) -> Ctx:
     res = auth.load_session(
         conn,
@@ -129,13 +147,31 @@ def get_ctx(request: Request, conn: ConnDep) -> Ctx:
     if not res:
         raise LoginRequired()
     s, u = res
-    m = orm.first(conn, Mosque, id=u["mosque_id"])
-    if not m:
+    m = open_mosque(conn, s, u)
+    if m is None:
+        raise MosqueRequired()
+    ctx = Ctx(request, conn, s, u, m)
+    if ctx.support and request.method not in ("GET", "HEAD", "OPTIONS"):
+        # The operator inside a mosque: nothing happens there without a trace.
+        db.audit(conn, m["id"], u["id"], "support.action", ip=ctx.ip, methode=request.method, chemin=request.url.path)
+    return ctx
+
+
+def get_pre_ctx(request: Request, conn: ConnDep) -> Ctx:
+    """Signed in, mosque or not: for choosing, leaving and signing out."""
+    res = auth.load_session(
+        conn,
+        request.cookies.get(auth.COOKIE),
+        request.headers.get("user-agent"),
+        request.client.host if request.client else None,
+    )
+    if not res:
         raise LoginRequired()
-    return Ctx(request, conn, s, u, m)
+    return Ctx(request, conn, res[0], res[1], None)
 
 
 CtxDep = Annotated[Ctx, Depends(get_ctx)]
+PreCtxDep = Annotated[Ctx, Depends(get_pre_ctx)]
 
 
 # ------------------------------------------------------------------ shared rules
