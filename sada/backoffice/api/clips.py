@@ -63,7 +63,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         if r["verse"] and r["end"] > c["start"] and r["start"] < c["end"]
     ]
     return {
-        "state": states.clip_state(c, can_regenerate=regen_ok),
+        "state": states.clip_state(c, can_regenerate=regen_ok, last_publication=pubs[0] if pubs else None),
         "clip": c,
         "sermon": k,
         "segments": rows,

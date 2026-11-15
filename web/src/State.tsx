@@ -9,6 +9,7 @@ export type EntityState = {
   since: string | null;
   stuck: boolean;
   detail: string;
+  params?: Record<string, string | number>;
   actions: { key: string; url: string }[];
   children?: Record<string, Record<string, number>>;
 };
@@ -34,12 +35,17 @@ export function State({ state, busy = false, onAction }: {
   onAction?: (action: { key: string; url: string }) => void;
 }) {
   const { t } = useTranslation();
-  if (!state || state.level === "ok") return null;
+  // Nothing wrong: one discreet line saying the thing is up to date (only when a label exists).
+  if (state?.level === "ok") {
+    const label = t(`states.${state.code}`, { ...state.params, defaultValue: "" });
+    return label ? <p className="m-0 text-[0.85rem] text-muted">{label}</p> : null;
+  }
+  if (!state) return null;
   const time = state.level === "running" ? elapsed(state.since) : "";
   return (
     <div role={state.level === "failed" ? "alert" : "status"} className="grid gap-2">
       <p className={`m-0 rounded-[10px] border px-4 py-3 text-[0.92rem] ${TONE[state.level]}`}>
-        {t(`states.${state.code}`)}
+        {t(`states.${state.code}`, { ...state.params })}
         {time && <span className="text-muted"> {t("states.since", { d: time })}</span>}
         {state.stuck && <strong> {t("states.stuck")}</strong>}
         {state.detail && !/[\\/]/.test(state.detail) ? ` : ${state.detail}` : ""}

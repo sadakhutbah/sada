@@ -184,6 +184,12 @@ def imam_filter(ctx: Ctx) -> list:
     return [Khutba.mosque_id == ctx.mosque["id"], Khutba.imam_id == ctx.user["id"]]
 
 
+def clip_problems(ctx: Ctx) -> int:
+    """Clips whose video failed to render: shown as a badge in the menu, whatever the page."""
+    stmt = select(func.count()).select_from(Clip).join(Khutba, Khutba.id == Clip.khutba_id)
+    return ctx.conn.scalar(stmt.where(*imam_filter(ctx), Clip.regen_state == "erreur")) or 0
+
+
 def count_clips(ctx: Ctx, status: str) -> int:
     stmt = select(func.count()).select_from(Clip).join(Khutba, Khutba.id == Clip.khutba_id)
     return ctx.conn.scalar(stmt.where(*imam_filter(ctx), Clip.status == status)) or 0

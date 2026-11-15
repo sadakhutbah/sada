@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .. import auth, db, orm
 from ..context import (
-    PRE_COOKIE, ConnDep, Ctx, Forbidden, PreCtxDep, _sec, count_clips, get_pre_ctx, open_mosque,
+    PRE_COOKIE, ConnDep, Ctx, Forbidden, PreCtxDep, _sec, clip_problems, count_clips, get_pre_ctx, open_mosque,
 )
 from ..models import Mosque, User
 from .common import _mosque, _user
@@ -106,7 +106,7 @@ async def select_mosque(ctx: PreCtxDep):
     ctx.session = {**ctx.session, "mosque_id": mid, "support": 1 if kind == "support" else 0}
     ctx.support = kind == "support"
     ctx.mosque = open_mosque(ctx.conn, ctx.session, ctx.user)
-    return {**_state(ctx), "counts": {"pending": count_clips(ctx, "a_valider")}}
+    return {**_state(ctx), "counts": {"pending": count_clips(ctx, "a_valider"), "failed": clip_problems(ctx)}}
 
 
 @router.post("/mosques/leave")
@@ -143,4 +143,4 @@ def session(request: Request, conn: ConnDep):
     # The number of clips to validate comes with the session: the navigation shows it as a badge
     # without a second request at startup.
     pending = count_clips(ctx, "a_valider") if ctx.mosque else 0
-    return {**_state(ctx), "counts": {"pending": pending}}
+    return {**_state(ctx), "counts": {"pending": pending, "failed": clip_problems(ctx) if ctx.mosque else 0}}

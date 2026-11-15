@@ -153,7 +153,8 @@ def _sermon_state(ctx, k: dict, clips: list[dict]) -> dict:
     if k.get("run_id") and k.get("session_index") is not None:
         run_dir = db.mosque_dirs(ctx.mosque)["state"] / k["run_id"]
         processing = traitement.lire(run_dir).get(str(k["session_index"]))
-    return states.sermon_state(processing, [states.clip_state(c) for c in clips])
+    branded = states.habillage_state(habillage.ligne(ctx.conn, k["id"]), habillage.fichier_video(k).exists())
+    return states.sermon_state(processing, [states.clip_state(c) for c in clips], branded)
 
 
 def _manual_clip(ctx, k: dict, data: dict) -> dict:

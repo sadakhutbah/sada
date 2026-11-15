@@ -10,7 +10,7 @@ export type Session = {
   /** The operator is inside a mosque as support: every action is audited. */
   support?: boolean;
   csrf: string;
-  counts?: { pending: number };
+  counts?: { pending: number; failed?: number };
 };
 
 export type MosqueChoice = { id: number; slug: string; name: string; access: "member" | "support" };

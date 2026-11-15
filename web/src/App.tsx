@@ -76,7 +76,7 @@ export default function App() {
   const peutChanger = (session.mosques?.length ?? 0) > 1 || !!session.user.operator;
   const changerDeMosquee = () => api.leaveMosque().then(adopter);
 
-  const lien = (to: string, cle: string, perm?: string, compte?: number) =>
+  const lien = (to: string, cle: string, perm?: string, compte?: number, echecs?: number) =>
     perm && !session.user.permissions.includes(perm) ? null : (
       <NavLink
         key={to}
@@ -92,6 +92,11 @@ export default function App() {
         {compte !== null && compte !== undefined && compte > 0 && (
           <span className="inline-flex min-w-[1.35rem] justify-center rounded-full bg-leaf px-1.5 text-[0.78rem] font-bold text-night">
             {compte}
+          </span>
+        )}
+        {!!echecs && (
+          <span title={t("states.menuFailed")} className="inline-flex min-w-[1.35rem] justify-center rounded-full bg-live px-1.5 text-[0.78rem] font-bold text-white">
+            !
           </span>
         )}
       </NavLink>
@@ -158,7 +163,7 @@ export default function App() {
             {lien("/", "dashboard")}
             {lien("/khutbas", "sermons")}
             {lien("/dars", "dars")}
-            {lien("/clips", "clips", undefined, session.counts?.pending ?? 0)}
+            {lien("/clips", "clips", undefined, session.counts?.pending ?? 0, session.counts?.failed ?? 0)}
             {lien("/publications", "publications", "publish")}
             {lien("/audit", "audit", "journal")}
             {lien("/settings", "settings", "admin")}
