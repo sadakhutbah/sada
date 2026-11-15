@@ -244,6 +244,8 @@ def _candidate(seg: dict, *, arabic_sermon: bool) -> bool:
     text = (seg.get("text") or "").strip()
     if not text or is_loop(text) or arabic_ratio(text) > 0.95:
         return False
+    if seg.get("mixed_ar"):
+        return True
     words = text.split()
     if len(words) >= 3 and arabic_ratio(text) <= 0.9 and translit_ratio(text) >= TRANSLIT_SURE:
         return True
@@ -253,6 +255,100 @@ def _candidate(seg: dict, *, arabic_sermon: bool) -> bool:
     if looks_suspect(seg):
         return True
     return arabic_sermon and _thin(seg)
+
+
+# --------------------------------------------------------------------------- segments mixtes
+
+# Mots français courants : un mot qui n'en fait pas partie, sans accent ni apostrophe française,
+# est « non français » pour `split_mixed`. La liste est volontairement large côté français.
+_FR_COMMON = frozenset(
+    """a à au aux avec ce ces cet cette ceux celui celle ça ca c'est car ce-que comme comment dans de des du
+    donc dont elle elles en et être est sont était sera été eux il ils je j'ai la le les leur leurs lui là
+    ma mais me même mes moi mon ne ni non nos notre nous on ou où par pas pour pourquoi qu que quel quelle quels
+    qui quoi sa se ses si son sur ta te tes toi ton tu un une vos votre vous y oui d'accord alors aussi bien
+    cela celà chaque chez déjà encore enfin entre jamais jusqu'à là parce peu plus puis quand sans sous tout
+    tous toute toutes très trop tant voilà voici fait faire dit dire disent dis vient viennent va vont veut
+    veulent peut peuvent doit doivent faut avoir a ont avons avez avait ai as été fois jour jours homme gens
+    personne personnes chose choses temps monde prière prier prières certains certaines autre autres même
+    ici ainsi après avant pendant depuis contre vers selon malgré donc or ensuite premier première deux trois
+    quatre cinq dieu allah seigneur prophète musulman musulmans croyants parole mot mots sens verset versets
+    rien quelque quelqu'un souvent toujours maintenant aujourd'hui hier demain exemple travail travaille travailler
+    justifie justifier faux vrai juste""".split()
+)
+_FR_STRIP = ".,;:!?«»\"()…"
+MIXED_MIN_RUN = 4  # mots non français d'affilée pour couper un segment mixte
+MIXED_MIN_LOGPROB = -0.6  # une citation isolée n'a pas de référence fiable : seuil absolu
+MIXED_MIN_S = 6.0  # un segment plus court n'est pas coupé : Whisper n'y mélange pas deux langues
+
+
+def _non_french(word: str) -> bool:
+    w = word.strip(_FR_STRIP).lower().replace("’", "'")
+    if not w or w.isdigit():
+        return False
+    if w in _FR_COMMON or re.search(r"[éèêëàâîïôùûüç]", w) or re.match(r"^(?:l|d|j|n|s|m|t|c|qu|jusqu)'", w):
+        return False
+    return True
+
+
+def split_mixed(segs: list[dict]) -> int:
+    """Isole dans un long segment français une citation arabe écrite en lettres latines.
+
+    Une API qui renvoie des fenêtres de 30 s met « fawaylu li musalli, alladina… » et la phrase
+    française qui suit dans le même segment : la part de translittération reste sous le seuil et
+    la citation n'est jamais reprise en arabe. On coupe donc, d'après les mots horodatés, chaque
+    suite de `MIXED_MIN_RUN` mots non français ou plus, et le morceau devient un candidat
+    (`mixed_ar`) que `recover_arabic` retranscrit en arabe forcé. Le résultat n'est gardé que s'il
+    est bien de l'arabe : un faux positif coûte un envoi, rien de plus.
+    """
+    out: list[dict] = []
+    cut = 0
+    for seg in segs:
+        words = seg.get("words") or []
+        text = (seg.get("text") or "").strip()
+        if (
+            len(words) < MIXED_MIN_RUN + 3
+            or float(seg.get("end", 0.0)) - float(seg.get("start", 0.0)) < MIXED_MIN_S
+            or arabic_ratio(text) > 0.3
+            or abs(len(words) - len(text.split())) > 2
+        ):
+            out.append(seg)
+            continue
+        flags = [_non_french(w.get("w") or "") for w in words]
+        runs, i = [], 0
+        while i < len(words):
+            if flags[i]:
+                j = i
+                while j < len(words) and flags[j]:
+                    j += 1
+                if j - i >= MIXED_MIN_RUN:
+                    runs.append((i, j))
+                i = j
+            else:
+                i += 1
+        if not runs or any(b - a >= len(words) for a, b in runs):
+            out.append(seg)
+            continue
+        bounds, last = [], 0
+        for a, b in runs:
+            if a > last:
+                bounds.append((last, a, False))
+            bounds.append((a, b, True))
+            last = b
+        if last < len(words):
+            bounds.append((last, len(words), False))
+        for a, b, mixed in bounds:
+            part = words[a:b]
+            piece = dict(seg)
+            piece["words"] = part
+            piece["text"] = " ".join((w.get("w") or "").strip() for w in part)
+            piece["start"] = round(float(part[0]["s"]), 2)
+            piece["end"] = round(float(part[-1]["e"]), 2)
+            if mixed:
+                piece["mixed_ar"] = True
+            out.append(piece)
+        cut += 1
+    segs[:] = out
+    return cut
 
 
 # --------------------------------------------------------------------------- plages
@@ -339,6 +435,8 @@ def recover_arabic(
     segments examinés et les plages, dans la même unité que les remplacements.
     """
     arabic_sermon = language == "ar"
+    if language != "ar":
+        split_mixed(segs)
     candidates: list[dict] = []
     for seg in segs:
         if invented(seg) or not _candidate(seg, arabic_sermon=arabic_sermon):
@@ -381,7 +479,10 @@ def recover_arabic(
                 continue
             heard = seg.get("avg_logprob")
             heard = -9.0 if heard is None else float(heard)
-            if not _sure(seg) and pieces_logprob(own) <= heard + margin:
+            if seg.get("mixed_ar"):
+                if pieces_logprob(own) <= MIXED_MIN_LOGPROB:
+                    continue
+            elif not _sure(seg) and pieces_logprob(own) <= heard + margin:
                 continue
             seg.update(text=text, avg_logprob=round(pieces_logprob(own), 3), recovered="ar")
             words = pieces_words(own, start)

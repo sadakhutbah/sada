@@ -284,3 +284,24 @@ def test_source_absent_quand_l_appelant_n_en_donne_pas(monkeypatch, serveur, tmp
     assert avec["source"] == {"recording": "x", "start": 0, "end": 4}
     # le cache relu sait encore à quoi il correspond (même clé, même forme de JSON)
     assert json.loads((tmp_path / "avec.json").read_text(encoding="utf-8"))["source"] == avec["source"]
+
+
+def test_split_mixed_isole_la_citation_dans_un_long_segment_francais():
+    texte = (
+        "fawaylu li musalli, alladina um'a salatim shahad, malouh au prier, ceux qui négligent la prière, "
+        "qui la retardent, ils font la prière à l'heure de l'asr, il y a certains qui disent je travaille"
+    )
+    mots = [{"w": m, "s": 10.0 + i * 0.5, "e": 10.4 + i * 0.5} for i, m in enumerate(texte.split())]
+    segs = [{"start": 10.0, "end": 10.4 + 0.5 * len(mots), "text": texte, "words": mots, "avg_logprob": -0.3}]
+    assert repair.split_mixed(segs) == 1
+    assert segs[0].get("mixed_ar") and segs[0]["text"].startswith("fawaylu")
+    assert not segs[-1].get("mixed_ar") and segs[-1]["text"].endswith("travaille")
+    assert repair._candidate(segs[0], arabic_sermon=False)
+    assert not repair._candidate(segs[-1], arabic_sermon=False)
+
+
+def test_split_mixed_laisse_un_segment_francais_intact():
+    texte = "Donc il y a un premier shaitan, il vient, il dit, moi, j'ai fait oublier la prière aujourd'hui"
+    mots = [{"w": m, "s": i * 0.5, "e": i * 0.5 + 0.4} for i, m in enumerate(texte.split())]
+    segs = [{"start": 0.0, "end": 8.0, "text": texte, "words": mots}]
+    assert repair.split_mixed(segs) == 0 and len(segs) == 1
