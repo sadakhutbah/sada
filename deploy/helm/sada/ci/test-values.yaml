@@ -1,0 +1,17 @@
+# Values used to render the chart in CI and in `helm lint` (two mosques, issuer created).
+image:
+  repository: ghcr.io/example/sada
+  tag: "0123abc"
+
+mosques:
+  - slug: masjid-al-nour
+    tokenSecret: sada-masjid-al-nour
+  - slug: mosquee-assalam
+    tokenSecret: sada-mosquee-assalam
+
+certManager:
+  createIssuer: true
+  email: admin@example.org
+
+ingress:
+  host: console.sadakhutbah.org

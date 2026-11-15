@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import sqlalchemy as sa
+
 from ... import notify
-from .. import auth, branding, db
+from .. import auth, branding, db, orm
 from ..context import Ctx
+from ..models import Notification
 
 PERMISSIONS = tuple(auth.PERMS)
 
@@ -42,7 +45,7 @@ def _ok(message: str, **extra) -> dict:
 
 def _notification_settings(ctx: Ctx) -> dict:
     """Notification settings for the imam; the webhook and Telegram token (secrets) are masked."""
-    r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
+    r = orm.first(ctx.conn, Notification, mosque_id=ctx.mosque["id"]) or {}
     n = notify.from_settings(r)
     return {
         "mode": r.get("mode", ""),
@@ -55,4 +58,12 @@ def _notification_settings(ctx: Ctx) -> dict:
 
 
 def _a_table(conn, nom: str) -> bool:
-    return bool(db.one(conn, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", nom))
+    return sa.inspect(conn.connection()).has_table(nom)
+
+
+def _segments(conn, kid: int) -> list[dict]:
+    """Segments of a khutba, from the pipeline's `segments` table (not part of the models) when present."""
+    if not _a_table(conn, "segments"):
+        return []
+    t = sa.Table("segments", sa.MetaData(), autoload_with=conn.connection())
+    return orm.rows(conn, sa.select(t).where(t.c.khutba_id == kid).order_by(t.c.idx))

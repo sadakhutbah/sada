@@ -1,0 +1,63 @@
+# Inside the cluster: the orchestrators read rtsp://receiver:8554/live/<slug>.
+# The name of this Service is part of the contract with the back office (SADA_RELAY_HOST).
+apiVersion: v1
+kind: Service
+metadata:
+  name: receiver
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receiver
+spec:
+  type: ClusterIP
+  ports:
+    - name: rtsp
+      port: {{ .Values.receiver.rtspPort }}
+      targetPort: rtsp
+      protocol: TCP
+    - name: rtmp
+      port: {{ .Values.receiver.rtmpPort }}
+      targetPort: rtmp
+      protocol: TCP
+    - name: srt
+      port: {{ .Values.receiver.srtPort }}
+      targetPort: srt
+      protocol: UDP
+    - name: hls
+      port: 8888
+      targetPort: hls
+      protocol: TCP
+  selector:
+    {{- include "sada.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: receiver
+---
+# Public ingest only (1935/tcp and 8890/udp): k3s ServiceLB binds them on the node, the
+# Hetzner firewall decides who may reach them. RTSP stays inside the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-receiver" (include "sada.fullname" .) }}
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receiver
+  {{- with .Values.receiver.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.receiver.service.type }}
+  externalTrafficPolicy: {{ .Values.receiver.service.externalTrafficPolicy }}
+  {{- with .Values.receiver.service.loadBalancerIP }}
+  loadBalancerIP: {{ . | quote }}
+  {{- end }}
+  ports:
+    - name: rtmp
+      port: {{ .Values.receiver.rtmpPort }}
+      targetPort: rtmp
+      protocol: TCP
+    - name: srt
+      port: {{ .Values.receiver.srtPort }}
+      targetPort: srt
+      protocol: UDP
+  selector:
+    {{- include "sada.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: receiver

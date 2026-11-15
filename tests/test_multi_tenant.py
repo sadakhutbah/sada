@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from test_backoffice import PW, client, env, login  # noqa: F401
+from test_backoffice import PW, client, login  # noqa: F401
 
-from sada.backoffice import auth, db
+from sqlalchemy import select as sa_select
+
+from sada.backoffice import auth, db, orm
+from sada.backoffice.models import Audit
 
 
 @pytest.fixture
@@ -29,7 +32,8 @@ def select(c, mid):
 
 
 def audit_actions(env, mid):
-    return [r["action"] for r in db.all_(env["conn"], "SELECT action FROM audit WHERE mosque_id = ? ORDER BY id", mid)]
+    stmt = sa_select(Audit.action).where(Audit.mosque_id == mid).order_by(Audit.id)
+    return [r["action"] for r in orm.rows(env["conn"], stmt)]
 
 
 def test_self_hosted_login_still_opens_the_mosque(env):

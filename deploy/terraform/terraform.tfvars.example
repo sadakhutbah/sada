@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. The API tokens stay out of this file:
+#   TF_VAR_hcloud_token=...           (or ~/.config/sada-deploy/hcloud_token)
+#   TF_VAR_cloudflare_api_token=...   (or ~/.config/sada-deploy/cloudflare_token)
+
+# Your own addresses only: SSH (22) and the k3s API (6443) are closed to everybody else.
+admin_cidrs = ["203.0.113.10/32"]
+
+location         = "fsn1"
+server_type      = "cx33"
+data_volume_size = 50
+
+# ssh_public_key_path = "~/.ssh/id_ed25519.pub"

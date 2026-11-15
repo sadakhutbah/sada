@@ -8,7 +8,9 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client  # noqa: E402,F401
+from conftest import client, one  # noqa: E402,F401
+
+from sada.backoffice import models
 
 ARABE = "خطبة الجمعة"
 
@@ -23,22 +25,22 @@ def test_aucun_texte_arabe_par_defaut(env):
 
 
 def test_enregistrement_et_relecture(env):
-    from sada.backoffice import db, variables_ecran
+    from sada.backoffice import variables_ecran
 
     c = client(env, "admin")
     r = c.ecrire("/settings/screens/variables", {"variables": {"arabe_khutba": f"  {ARABE}  "}}, methode="PUT")
     assert r.status_code == 200, r.text
     assert r.json()["screens_variables"]["arabe_khutba"] == ARABE
     assert variables_ecran.lire(env["conn"], env["mid"])["arabe_khutba"] == ARABE
-    row = db.one(env["conn"], "SELECT screen, slot, text FROM screen_texts WHERE mosque_id = ?", env["mid"])
-    assert row == {"screen": "_commun", "slot": "arabe_khutba", "text": ARABE}
+    row = one(env["conn"], models.ScreenText, mosque_id=env["mid"])
+    assert (row["screen"], row["slot"], row["text"]) == ("_commun", "arabe_khutba", ARABE)
     assert c.get("/api/v1/settings").json()["screens_variables"]["arabe_khutba"] == ARABE
 
     # Un champ vidé efface la ligne : rien ne revient à la place.
     r = c.ecrire("/settings/screens/variables", {"variables": {"arabe_khutba": ""}}, methode="PUT")
     assert r.status_code == 200, r.text
     assert r.json()["screens_variables"]["arabe_khutba"] == ""
-    assert db.one(env["conn"], "SELECT count(*) n FROM screen_texts")["n"] == 0
+    assert one(env["conn"], models.ScreenText) is None
 
 
 def test_borne_de_longueur(env):

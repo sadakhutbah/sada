@@ -1,0 +1,27 @@
+{{- if eq .Values.database.mode "cnpg" }}
+# PostgreSQL managed by the CloudNativePG operator (install it first, see deploy/README.md).
+# The operator publishes the connection URI in the Secret <cluster>-app, key `uri`.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "sada.postgresName" . }}
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  instances: {{ .Values.database.cnpg.instances }}
+  {{- with .Values.database.cnpg.imageName }}
+  imageName: {{ . | quote }}
+  {{- end }}
+  storage:
+    size: {{ .Values.database.cnpg.storage.size }}
+    {{- with .Values.database.cnpg.storage.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  resources:
+    {{- toYaml .Values.database.cnpg.resources | nindent 4 }}
+  bootstrap:
+    initdb:
+      database: sada
+      owner: sada
+{{- end }}

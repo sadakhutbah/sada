@@ -16,6 +16,10 @@ from sada.pipeline.language import measure as measure_language
 
 pytest.importorskip("fastapi")
 
+from conftest import count  # noqa: E402
+
+from sada.backoffice import models  # noqa: E402
+
 
 class _Handler(BaseHTTPRequestHandler):
     """Réponses servies dans l'ordre de `plan` (la dernière se répète), corps conservé pour contrôle."""
@@ -555,7 +559,7 @@ def test_mode_local_par_defaut_ne_part_pas_sur_le_reseau(monkeypatch, serveur, t
 
 
 def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
-    from test_backoffice import client
+    from conftest import client
 
     from sada.backoffice import db
 
@@ -588,7 +592,7 @@ def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
     assert ecran["providers"] and {p["key"] for p in ecran["providers"]} == {"groq", "openai"}
     assert ecran["url"] == ""  # aucune adresse propre : c'est celle du fournisseur qui sert
     assert ecran["price_per_hour"] == pytest.approx(0.111)
-    assert db.one(env["conn"], "SELECT COUNT(*) n FROM audit WHERE action = 'transcription.configure'")["n"] == 1
+    assert count(env["conn"], models.Audit, action="transcription.configure") == 1
     # le masque renvoyé tel quel garde la clé enregistrée
     r = c.ecrire(
         "/settings/transcription",
@@ -614,7 +618,7 @@ def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
 
 
 def test_endpoint_de_test_envoie_un_extrait_genere(env, monkeypatch, serveur, tmp_path):
-    from test_backoffice import client
+    from conftest import client
 
     monkeypatch.setenv("SADA_TRANSCRIPTION_CONFIG", str(tmp_path / "transcription.json"))
     _reglage(monkeypatch, serveur, key="sk-test")
@@ -631,7 +635,7 @@ def test_endpoint_de_test_envoie_un_extrait_genere(env, monkeypatch, serveur, tm
 
 
 def test_endpoint_de_test_signale_un_refus(env, monkeypatch, serveur, tmp_path):
-    from test_backoffice import client
+    from conftest import client
 
     monkeypatch.setenv("SADA_TRANSCRIPTION_CONFIG", str(tmp_path / "transcription.json"))
     _reglage(monkeypatch, serveur)
@@ -642,7 +646,7 @@ def test_endpoint_de_test_signale_un_refus(env, monkeypatch, serveur, tmp_path):
 
 
 def test_le_reglage_est_reserve_a_l_admin(env, monkeypatch, tmp_path):
-    from test_backoffice import client
+    from conftest import client
 
     monkeypatch.setenv("SADA_TRANSCRIPTION_CONFIG", str(tmp_path / "transcription.json"))
     for role in ("imam", "responsable"):

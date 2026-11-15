@@ -1,11 +1,20 @@
 """Couche de migrations versionnées : schéma des modèles SQLAlchemy, adoption des bases
 existantes, refus d'une base plus récente que le code."""
 
-import sqlite3
-
 import pytest
+from conftest import (  # noqa: E402
+    applied_versions,
+    columns,
+    create_schema,
+    delete,
+    index_names,
+    insert,
+    legacy_metadata,
+    one,
+    table_names,
+)
 
-from sada.backoffice import db, migrations, models
+from sada.backoffice import db, migrations, models  # noqa: E402
 
 # colonnes ajoutées après le schéma initial (migrations 2, 3 et 5)
 ADDED = {
@@ -13,24 +22,11 @@ ADDED = {
     "mosques": {"logo_path", "onboarded_at", "brand_green", "brand_gold"},
 }
 
-
 pytestmark = pytest.mark.skipif(bool(__import__("os").environ.get("SADA_DATABASE_URL")), reason="SQLite file format")
-
-
-def table_columns(conn, table: str) -> set[str]:
-    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
-
-
-def table_names(conn) -> set[str]:
-    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
 
 #: versions attendues dans schema_migrations après mise à jour complète
 VERSIONS = [m.version for m in migrations.MIGRATIONS]
-
-
-def applied_versions(conn) -> list[int]:
-    return [r["version"] for r in db.all_(conn, "SELECT version FROM schema_migrations ORDER BY version")]
 
 
 def test_migrations_sont_ordonnees_et_sans_trou():
@@ -52,10 +48,9 @@ def test_base_neuve_cree_le_schema_complet(tmp_path):
         assert "schema_migrations" in table_names(conn)
         # les colonnes « ajoutées » sont bien là dès la création
         for table, cols in ADDED.items():
-            assert cols <= table_columns(conn, table)
+            assert cols <= columns(conn, table)
         # les index de requête sont créés
-        indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
-        assert {"audit_mosque", "clips_mosque", "khutbas_mosque", "live_targets_mosque"} <= indexes
+        assert {"audit_mosque", "clips_mosque", "khutbas_mosque", "live_targets_mosque"} <= index_names(conn)
         # toutes les versions sont enregistrées
         assert applied_versions(conn) == VERSIONS
     finally:
@@ -66,39 +61,47 @@ def test_adoption_d_une_base_existante(tmp_path):
     """Base créée par l'ancien code : tables présentes, pas de `schema_migrations` -> adoptée,
     version de départ enregistrée, seules les migrations manquantes appliquées, données conservées."""
     path = tmp_path / "ancienne.db"
-    # Base au schéma courant rembobinée à l'état de l'ancien code (colonnes ajoutées retirées).
-    db.init(path)
-    raw = sqlite3.connect(path)
-    raw.executescript(
-        "DROP TABLE schema_migrations;"
-        "ALTER TABLE khutbas DROP COLUMN kind;"
-        "ALTER TABLE khutbas DROP COLUMN title;"
-        "ALTER TABLE khutbas DROP COLUMN series;"
-        "ALTER TABLE khutbas DROP COLUMN session_no;"
-        "ALTER TABLE mosques DROP COLUMN logo_path;"
-        "ALTER TABLE mosques DROP COLUMN onboarded_at;"
+    # Base au schéma d'avant l'ancien code : colonnes ajoutées absentes, pas de schema_migrations.
+    old = legacy_metadata(
+        without={
+            "khutbas": {"kind", "title", "series", "session_no"},
+            "mosques": {"logo_path", "onboarded_at"},
+        }
     )
-    raw.execute(
-        "INSERT INTO mosques (slug, name, clip_title, created_at) "
-        "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')"
-    )
-    raw.execute(
-        "INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
-        " VALUES (1, '20261106_220224', 0, 'Khutba du vendredi', '/tmp/x', 'now')"
-    )
-    raw.commit()
-    raw.close()
+    create_schema(path, old)
+    conn = db.connect(path)
+    try:
+        conn.execute(
+            old.tables["mosques"]
+            .insert()
+            .values(slug="exemple", name="Mosquée Exemple", clip_title="Khutba du vendredi", created_at="now")
+        )
+        conn.execute(
+            old.tables["khutbas"]
+            .insert()
+            .values(
+                mosque_id=1,
+                run_id="20261106_220224",
+                session_index=0,
+                label="Khutba du vendredi",
+                output_dir="/tmp/x",
+                imported_at="now",
+            )
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     db.init(path)
     conn = db.connect(path)
     try:
         # colonnes ajoutées, valeurs par défaut
-        assert ADDED["khutbas"] <= table_columns(conn, "khutbas")
-        assert ADDED["mosques"] <= table_columns(conn, "mosques")
-        row = db.one(conn, "SELECT * FROM khutbas")
+        assert ADDED["khutbas"] <= columns(conn, "khutbas")
+        assert ADDED["mosques"] <= columns(conn, "mosques")
+        row = one(conn, models.Khutba)
         assert row["kind"] == "khutba" and row["title"] == "" and row["session_no"] is None
         # données conservées
-        assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"
+        assert one(conn, models.Mosque)["slug"] == "exemple"
         # version de départ (1) enregistrée, puis 2 et 3 appliquées
         assert applied_versions(conn) == VERSIONS
     finally:
@@ -119,10 +122,11 @@ def test_init_est_idempotent(tmp_path):
 def test_refus_d_une_base_plus_recente_que_le_code(tmp_path):
     path = tmp_path / "future.db"
     db.init(path)
-    raw = sqlite3.connect(path)
-    raw.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (migrations.LATEST + 1, "now"))
-    raw.commit()
-    raw.close()
+    conn = db.connect(path)
+    try:
+        insert(conn, migrations.schema_migrations, version=migrations.LATEST + 1, appliquee_le="now")
+    finally:
+        conn.close()
 
     with pytest.raises(RuntimeError, match="newer than the code"):
         db.init(path)
@@ -137,10 +141,9 @@ def test_table_ajoutee_apres_coup_est_creee_sur_une_base_ancienne(tmp_path):
     db.init(path)
     conn = db.connect(path)
     try:
-        for t in ("live_targets", "live_input", "storage", "screen_texts"):
-            conn.execute(f"DROP TABLE IF EXISTS {t}")
-        conn.execute("DELETE FROM schema_migrations WHERE version >= 4")
-        conn.commit()
+        for table in (models.live_targets, models.live_input, models.storage, models.screen_texts):
+            table.drop(conn.connection())
+        delete(conn, migrations.schema_migrations, migrations.schema_migrations.c.version >= 4)
     finally:
         conn.close()
 
@@ -149,9 +152,7 @@ def test_table_ajoutee_apres_coup_est_creee_sur_une_base_ancienne(tmp_path):
     try:
         assert {"live_targets", "live_input", "storage", "screen_texts"} <= table_names(conn)
         assert applied_versions(conn)[-1] == migrations.LATEST
-        assert "live_targets_mosque" in {
-            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
-        }
+        assert "live_targets_mosque" in index_names(conn)
     finally:
         conn.close()
 
@@ -163,7 +164,6 @@ def test_le_schema_des_modeles_est_applique_via_les_migrations(tmp_path):
     conn = db.connect(path)
     try:
         for table in models.TABLES:
-            model_cols = {c.name for c in table.columns}
-            assert table_columns(conn, table.name) == model_cols, table.name
+            assert columns(conn, table.name) == {c.name for c in table.columns}, table.name
     finally:
         conn.close()

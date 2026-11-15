@@ -16,26 +16,29 @@ import threading
 import traceback
 from pathlib import Path
 
+from sqlalchemy import delete, func, select, update
+
 from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import translate, verses
 from ..pipeline.output import SessionOutput
-from . import db, importer
+from . import db, importer, orm
+from .models import AddedSubtitle, Clip, Correction, Khutba, Mosque
 
 # Clip statuses, in the order of the filter tabs. Protocol keys only: the front end translates them.
 CLIP_STATUSES = ("a_valider", "valide", "publie", "rejete")
-REQUEUE = "status = 'a_valider', decided_by = NULL, decided_at = NULL"
+#: a clip whose content changed goes back to the queue: the decision it had is dropped
+REQUEUE = {"status": "a_valider", "decided_by": None, "decided_at": None}
 
 
 def corrections(conn, khutba_id: int) -> dict[tuple[int, str], dict]:
-    return {
-        (c["seg_index"], c["field"]): c
-        for c in db.all_(conn, "SELECT * FROM corrections WHERE khutba_id = ?", khutba_id)
-    }
+    rows = conn.scalars(select(Correction).where(Correction.khutba_id == khutba_id))
+    return {(c.seg_index, c.field): orm.as_dict(c) for c in rows}
 
 
 def added(conn, khutba_id: int) -> list[dict]:
-    return db.all_(conn, "SELECT * FROM added_subtitles WHERE khutba_id = ? ORDER BY start", khutba_id)
+    rows = conn.scalars(select(AddedSubtitle).where(AddedSubtitle.khutba_id == khutba_id).order_by(AddedSubtitle.start))
+    return [orm.as_dict(a) for a in rows]
 
 
 def load(conn, k: dict) -> dict:
@@ -147,16 +150,29 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
     current = row["fr"] if field == "fr" else row["text"]
     if value == current:
         return 0
-    old = db.one(
-        conn, "SELECT * FROM corrections WHERE khutba_id = ? AND seg_index = ? AND field = ?", k["id"], seg_index, field
+    old = conn.scalar(
+        select(Correction).where(
+            Correction.khutba_id == k["id"],
+            Correction.seg_index == seg_index,
+            Correction.field == field,
+        )
     )
-    original = old["original"] if old else (current or "")
-    conn.execute(
-        "INSERT INTO corrections (mosque_id, khutba_id, seg_index, field, original, value, user_id, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (khutba_id, seg_index, field) DO UPDATE SET "
-        "value = excluded.value, user_id = excluded.user_id, created_at = excluded.created_at",
-        (k["mosque_id"], k["id"], seg_index, field, original, value, user["id"], db.now_iso()),
-    )
+    if old is None:
+        conn.add(
+            Correction(
+                mosque_id=k["mosque_id"],
+                khutba_id=k["id"],
+                seg_index=seg_index,
+                field=field,
+                original=current or "",
+                value=value,
+                user_id=user["id"],
+                created_at=db.now_iso(),
+            )
+        )
+    else:  # the first correction keeps the text it replaced: the audit trail reads it back
+        old.value, old.user_id, old.created_at = value, user["id"], db.now_iso()
+    conn.commit()
     hit = _requeue(conn, k, seg["start"], seg["end"])
     db.audit(
         conn,
@@ -176,22 +192,18 @@ def save_correction(conn, k: dict, seg_index: int, field: str, value: str, user:
 
 def _requeue(conn, k: dict, start: float, end: float) -> list[dict]:
     """Clips covering [start, end] must be regenerated (and validated again)."""
-    hit = db.all_(
-        conn,
-        "SELECT id, status FROM clips WHERE khutba_id = ? AND start < ? AND \"end\" > ? AND status != 'rejete'",
-        k["id"],
-        end,
-        start,
-    )
+    hit = conn.execute(
+        select(Clip.id, Clip.status).where(
+            Clip.khutba_id == k["id"], Clip.start < end, Clip.end > start, Clip.status != "rejete"
+        )
+    ).all()
     for c in hit:
-        if c["status"] == "publie":
-            # already published: we do not rewrite history; the corrected version (v+1) goes through validation again
-            conn.execute("UPDATE clips SET needs_regen = 1, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"]))
-        else:
-            conn.execute(
-                f"UPDATE clips SET needs_regen = 1, {REQUEUE}, updated_at = ? WHERE id = ?", (db.now_iso(), c["id"])
-            )
-    return hit
+        # an already published clip keeps its decision (we do not rewrite history): only its content
+        # is redone, the corrected version goes through validation again
+        values = REQUEUE if c.status != "publie" else {}
+        conn.execute(update(Clip).where(Clip.id == c.id).values(**values, needs_regen=1, updated_at=db.now_iso()))
+    conn.commit()
+    return [{"id": c.id, "status": c.status} for c in hit]
 
 
 MIN_ADDED, MAX_ADDED = 0.3, 30.0
@@ -220,11 +232,17 @@ def add_subtitle(conn, k: dict, start: float, end: float, text: str, user: dict,
                     end=f"{r['end']:.1f}",
                 )
             )
-    cur = conn.execute(
-        'INSERT INTO added_subtitles (mosque_id, khutba_id, start, "end", text, user_id, created_at) '
-        "VALUES (?,?,?,?,?,?,?)",
-        (k["mosque_id"], k["id"], start, end, text, user["id"], db.now_iso()),
+    row = AddedSubtitle(
+        mosque_id=k["mosque_id"],
+        khutba_id=k["id"],
+        start=start,
+        end=end,
+        text=text,
+        user_id=user["id"],
+        created_at=db.now_iso(),
     )
+    conn.add(row)
+    conn.commit()
     hit = _requeue(conn, k, start, end)
     db.audit(
         conn,
@@ -234,7 +252,7 @@ def add_subtitle(conn, k: dict, start: float, end: float, text: str, user: dict,
         "khutba",
         k["id"],
         ip=ip,
-        ajout=cur.lastrowid,
+        ajout=row.id,
         debut=start,
         fin=end,
         apres=text,
@@ -244,11 +262,14 @@ def add_subtitle(conn, k: dict, start: float, end: float, text: str, user: dict,
 
 
 def remove_subtitle(conn, k: dict, sid: int, user: dict, ip=None) -> int:
-    a = db.one(conn, "SELECT * FROM added_subtitles WHERE id = ? AND khutba_id = ?", sid, k["id"])
-    if not a:
+    a = conn.get(AddedSubtitle, sid)
+    if a is None or a.khutba_id != k["id"]:
         raise ValueError(_("unknown added subtitle"))
-    conn.execute("DELETE FROM added_subtitles WHERE id = ?", (sid,))
-    hit = _requeue(conn, k, a["start"], a["end"])
+    before = orm.as_dict(a)
+    conn.execute(delete(AddedSubtitle).where(AddedSubtitle.id == sid))
+    conn.commit()
+    conn.expunge(a)  # the row is gone: the object must not be handed out again by the identity map
+    hit = _requeue(conn, k, before["start"], before["end"])
     db.audit(
         conn,
         k["mosque_id"],
@@ -258,7 +279,7 @@ def remove_subtitle(conn, k: dict, sid: int, user: dict, ip=None) -> int:
         k["id"],
         ip=ip,
         ajout=sid,
-        avant=a["text"],
+        avant=before["text"],
         clips=[c["id"] for c in hit],
     )
     return len(hit)
@@ -284,17 +305,19 @@ def can_regenerate(clip: dict) -> tuple[bool, str]:
 def recover_interrupted(conn) -> None:
     """Regenerations in progress when the server stopped: they will never finish."""
     conn.execute(
-        "UPDATE clips SET regen_state = 'erreur', regen_error = ?, updated_at = ? WHERE regen_state = 'en_cours'",
-        (_("interrupted (server stopped)"), db.now_iso()),
+        update(Clip)
+        .where(Clip.regen_state == "en_cours")
+        .values(regen_state="erreur", regen_error=_("interrupted (server stopped)"), updated_at=db.now_iso())
     )
+    conn.commit()
 
 
 def _render(db_path: str, clip_id: int, log=print) -> None:
     conn = db.connect(db_path)
     try:
-        c = db.one(conn, "SELECT * FROM clips WHERE id = ?", clip_id)
-        k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", c["khutba_id"])
-        m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", c["mosque_id"])
+        c = orm.as_dict(conn.get(Clip, clip_id))
+        k = orm.as_dict(conn.get(Khutba, c["khutba_id"]))
+        m = orm.as_dict(conn.get(Mosque, c["mosque_id"]))
         data = load(conn, k)
         ver = c["version"] + 1
         # Même identité que le clip d'origine : logo et couleurs de la mosquée quand ils existent.
@@ -325,17 +348,28 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
             trim_tail=not (c.get("origin") == "manuel" or c.get("bounds_by")),
         )
         conn.execute(
-            "UPDATE clips SET file_path = ?, version = ?, needs_regen = 0, regen_state = '', regen_error = '', "
-            f"{REQUEUE}, updated_at = ? WHERE id = ?",
-            (str(out), ver, db.now_iso(), clip_id),
+            update(Clip)
+            .where(Clip.id == clip_id)
+            .values(
+                file_path=str(out),
+                version=ver,
+                needs_regen=0,
+                regen_state="",
+                regen_error="",
+                updated_at=db.now_iso(),
+                **REQUEUE,
+            )
         )
+        conn.commit()
         db.audit(conn, c["mosque_id"], None, "clip.regenere", "clip", clip_id, version=ver, fichier=out.name)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         conn.execute(
-            "UPDATE clips SET regen_state = 'erreur', regen_error = ?, updated_at = ? WHERE id = ?",
-            (str(e)[:500], db.now_iso(), clip_id),
+            update(Clip)
+            .where(Clip.id == clip_id)
+            .values(regen_state="erreur", regen_error=str(e)[:500], updated_at=db.now_iso())
         )
+        conn.commit()
     finally:
         conn.close()
 
@@ -349,9 +383,11 @@ def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, back
     if clip["regen_state"] == "en_cours":
         raise ValueError(_("regeneration already in progress"))
     conn.execute(
-        "UPDATE clips SET regen_state = 'en_cours', regen_error = '', updated_at = ? WHERE id = ?",
-        (db.now_iso(), clip["id"]),
+        update(Clip)
+        .where(Clip.id == clip["id"])
+        .values(regen_state="en_cours", regen_error="", updated_at=db.now_iso())
     )
+    conn.commit()
     db.audit(
         conn, clip["mosque_id"], user["id"], "clip.regeneration", "clip", clip["id"], ip=ip, version=clip["version"] + 1
     )
@@ -382,16 +418,17 @@ def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=Non
         if not ok:
             raise ValueError(why)
     conn.execute(
-        "UPDATE clips SET status = ?, decided_by = ?, decided_at = ?, reject_reason = ?, updated_at = ? WHERE id = ?",
-        (
-            decision,
-            user["id"],
-            db.now_iso(),
-            reason.strip()[:500] if decision == "rejete" else "",
-            db.now_iso(),
-            clip["id"],
-        ),
+        update(Clip)
+        .where(Clip.id == clip["id"])
+        .values(
+            status=decision,
+            decided_by=user["id"],
+            decided_at=db.now_iso(),
+            reject_reason=reason.strip()[:500] if decision == "rejete" else "",
+            updated_at=db.now_iso(),
+        )
     )
+    conn.commit()
     db.audit(
         conn,
         clip["mosque_id"],
@@ -408,9 +445,8 @@ def decide(conn, clip: dict, decision: str, user: dict, reason: str = "", ip=Non
 def reopen(conn, clip: dict, user: dict, ip=None) -> None:
     if clip["status"] not in ("valide", "rejete"):
         raise ValueError(_("only an approved or rejected clip can be put back in the queue"))
-    conn.execute(
-        f"UPDATE clips SET {REQUEUE}, reject_reason = '', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"])
-    )
+    conn.execute(update(Clip).where(Clip.id == clip["id"]).values(**REQUEUE, reject_reason="", updated_at=db.now_iso()))
+    conn.commit()
     db.audit(conn, clip["mosque_id"], user["id"], "clip.remis_en_file", "clip", clip["id"], ip=ip)
 
 
@@ -453,14 +489,14 @@ def clip_source(conn, k: dict) -> dict:
     same offset, same crop), otherwise the live recording, otherwise the extracted khutba video."""
     crop = None
     candidates = []
-    for c in db.all_(
-        conn,
-        "SELECT video_source, source_offset, crop FROM clips WHERE khutba_id = ? "
-        "AND video_source IS NOT NULL AND source_offset IS NOT NULL ORDER BY id",
-        k["id"],
-    ):
-        candidates.append((c["video_source"], c["source_offset"]))
-        crop = crop or c["crop"]
+    rows = conn.execute(
+        select(Clip.video_source, Clip.source_offset, Clip.crop)
+        .where(Clip.khutba_id == k["id"], Clip.video_source.is_not(None), Clip.source_offset.is_not(None))
+        .order_by(Clip.id)
+    ).all()
+    for c in rows:
+        candidates.append((c.video_source, c.source_offset))
+        crop = crop or c.crop
     if k.get("recording") and k.get("start_pos") is not None:
         candidates.append((k["recording"], k["start_pos"]))
     if k.get("video_path"):
@@ -490,34 +526,34 @@ def create_clip(
     ok, why = can_regenerate(src)
     if not ok:
         raise ValueError(_("clip cannot be produced: {why}", why=why))
-    idx = (db.one(conn, "SELECT MAX(idx) n FROM clips WHERE khutba_id = ?", k["id"])["n"] or 0) + 1
+    idx = (conn.scalar(select(func.max(Clip.idx)).where(Clip.khutba_id == k["id"])) or 0) + 1
     outdir = SessionOutput(k["output_dir"]).clips
     outdir.mkdir(parents=True, exist_ok=True)
     t = db.now_iso()
-    cur = conn.execute(
-        'INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, "end", file_path, video_source, source_offset, '
-        "crop, version, needs_regen, origin, title, created_by, bounds_by, created_at, updated_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,0,1,'manuel',?,?,?,?,?)",
-        (
-            k["mosque_id"],
-            k["id"],
-            idx,
-            kind,
-            "",
-            start,
-            end,
-            str(outdir / f"clip{idx}_{kind}_A-VALIDER.mp4"),
-            src["video_source"],
-            src["source_offset"],
-            src["crop"],
-            _clean_title(title),
-            user["id"],
-            user["id"],
-            t,
-            t,
-        ),
+    row = Clip(
+        mosque_id=k["mosque_id"],
+        khutba_id=k["id"],
+        idx=idx,
+        kind=kind,
+        why="",
+        start=start,
+        end=end,
+        file_path=str(outdir / f"clip{idx}_{kind}_A-VALIDER.mp4"),
+        video_source=src["video_source"],
+        source_offset=src["source_offset"],
+        crop=src["crop"],
+        version=0,
+        needs_regen=1,
+        origin="manuel",
+        title=_clean_title(title),
+        created_by=user["id"],
+        bounds_by=user["id"],
+        created_at=t,
+        updated_at=t,
     )
-    cid = cur.lastrowid
+    conn.add(row)
+    conn.commit()
+    cid = row.id
     db.audit(
         conn,
         k["mosque_id"],
@@ -532,9 +568,7 @@ def create_clip(
         fin=end,
         titre=_clean_title(title) or None,
     )
-    start_regeneration(
-        conn, db_path, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), user, ip, background=background
-    )
+    start_regeneration(conn, db_path, orm.as_dict(row), user, ip, background=background)
     return cid
 
 
@@ -556,10 +590,20 @@ def adjust_clip(
         raise ValueError(_("regeneration impossible: {why}", why=why))
     moved = (start, end) != (round(clip["start"], 2), round(clip["end"], 2))
     conn.execute(
-        f'UPDATE clips SET start = ?, "end" = ?, title = ?, bounds_by = ?, needs_regen = 1, {REQUEUE}, '
-        "reject_reason = '', updated_at = ? WHERE id = ?",
-        (start, end, title, user["id"] if moved else clip["bounds_by"], db.now_iso(), clip["id"]),
+        update(Clip)
+        .where(Clip.id == clip["id"])
+        .values(
+            start=start,
+            end=end,
+            title=title,
+            bounds_by=user["id"] if moved else clip["bounds_by"],
+            needs_regen=1,
+            reject_reason="",
+            updated_at=db.now_iso(),
+            **REQUEUE,
+        )
     )
+    conn.commit()
     db.audit(
         conn,
         clip["mosque_id"],
@@ -573,5 +617,10 @@ def adjust_clip(
         titre=title if title != clip["title"] else None,
     )
     start_regeneration(
-        conn, db_path, db.one(conn, "SELECT * FROM clips WHERE id = ?", clip["id"]), user, ip, background=background
+        conn,
+        db_path,
+        orm.row(conn, Clip, clip["id"]),
+        user,
+        ip,
+        background=background,
     )

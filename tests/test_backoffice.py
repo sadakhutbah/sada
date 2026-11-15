@@ -11,156 +11,23 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("fastapi")
-from fastapi.testclient import TestClient  # noqa: E402
+from conftest import (  # noqa: E402
+    PW,
+    RUN,
+    audit_rows,
+    client,
+    clip_ids,
+    count,
+    login,
+    make_run,
+    one,
+    rows,
+    set_khutba,
+    set_mosque,
+    set_user,
+)
 
-from sada.backoffice import auth, content, db, importer, publish  # noqa: E402
-from sada.backoffice.app import create_app  # noqa: E402
-
-PW = "motdepasse-solide"
-RUN = "20261106_220224"
-
-
-def make_run(root: Path, run: str = RUN, janaza: bool = False) -> None:
-    """Minimal pipeline run: 1 session (+ 1 optional janaza), 2 clips."""
-    out = root / "output" / run / "session1"
-    (out / "clips").mkdir(parents=True)
-    segs = [
-        {"start": 0.0, "end": 4.0, "text": "Chers frères, aujourd'hui nous parlons de la patience."},
-        {"start": 4.0, "end": 9.0, "text": "La patience est une lumière."},
-        {"start": 9.0, "end": 14.0, "text": "ومن يتوكل على الله فهو حسبه"},
-        {"start": 14.0, "end": 20.0, "text": "Qu'Allah nous accorde la patience."},
-    ]
-    (out / "transcript.json").write_text(json.dumps({"segments": segs, "duration": 20.0, "model": "test"}))
-    (out / "verses.json").write_text(
-        json.dumps(
-            [
-                {
-                    "surah": 65,
-                    "ayah": 3,
-                    "surah_name": "At-Talaaq",
-                    "score": 98,
-                    "start": 9.0,
-                    "end": 14.0,
-                    "heard": "ومن يتوكل على الله فهو حسبه",
-                    "verse_text": "ومن يتوكل على الله فهو حسبه",
-                    "ref": "65:3",
-                    "confidence": "sûr",
-                    "verse_fr": "Et quiconque place sa confiance en Allah, Il lui suffit.",
-                }
-            ]
-        )
-    )
-    (out / "translations.json").write_text(
-        json.dumps({"seg": {}, "verse_fr": {"65:3@9.0": "Et quiconque place sa confiance en Allah, Il lui suffit."}})
-    )
-    (out / "notes.md").write_text("# Notes\n\n## Thème (résumé généré)\n\nLa patience\n")
-    man = []
-    for i, (a, b, kind) in enumerate([(0.0, 10.0, "verset"), (12.0, 20.0, "conclusion")], 1):
-        f = f"clip{i}_{kind}_A-VALIDER.mp4"
-        (out / "clips" / f).write_bytes(b"\x00\x00\x00\x18ftypmp42" + bytes(64))
-        man.append(
-            {
-                "idx": i,
-                "kind": kind,
-                "start": a,
-                "end": b,
-                "why": "test",
-                "file": f,
-                "video_source": str(root / "rec.mkv"),
-                "source_offset": 100.0,
-                "crop": None,
-            }
-        )
-    (out / "clips" / "manifest.json").write_text(json.dumps(man))
-    sessions = [
-        {
-            "index": 0,
-            "planned": "13:30",
-            "status": "done",
-            "start_clock": "13:31",
-            "end_clock": "13:52",
-            "start_pos": 100.0,
-            "end_pos": 120.0,
-        }
-    ]
-    if janaza:
-        j = root / "output" / run / "session2"
-        j.mkdir()
-        (j / "transcript.json").write_text(json.dumps({"segments": [], "duration": 60}))
-        sessions.append({"index": 1, "planned": "janaza", "status": "janaza"})
-    st = root / "state" / run
-    st.mkdir(parents=True)
-    (st / "sessions.json").write_text(json.dumps({"sessions": sessions, "recordings": []}))
-
-
-@pytest.fixture
-def env(tmp_path):
-    make_run(tmp_path, janaza=True)
-    path = tmp_path / "bo.db"
-    db.init(path)
-    conn = db.connect(path)
-    mid = db.create_mosque(
-        conn,
-        "ma-mosquee",
-        "Mosquée Exemple",
-        state_dir=str(tmp_path / "state"),
-        output_dir=str(tmp_path / "output"),
-        publish_dir=str(tmp_path / "pub"),
-        orchestrator_url="http://127.0.0.1:9",
-    )
-    ids = {r: auth.create_user(conn, mid, r, PW, r, r.capitalize()) for r in auth.ROLES}
-    ids["imam2"] = auth.create_user(conn, mid, "imam2", PW, "imam", "Autre imam")
-    conn.execute("UPDATE users SET platform_admin = 1 WHERE id = ?", (ids["admin"],))
-    m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
-    importer.import_run(conn, m, RUN, extract_video=False, log=lambda *a: None)
-    kid = db.one(conn, "SELECT id FROM khutbas")["id"]
-    conn.execute("UPDATE khutbas SET imam_id = ? WHERE id = ?", (ids["imam"], kid))
-    app = create_app(path, regen_background=False)
-    app.state.events_file = str(tmp_path / "events.json")  # never the real programme file
-    yield {"app": app, "conn": conn, "path": path, "mid": mid, "ids": ids, "kid": kid, "tmp": tmp_path}
-    conn.close()
-
-
-class Client(TestClient):
-    """Test client that keeps its session's anti-replay token, as the front end does."""
-
-    def __init__(self, *a, **k):
-        super().__init__(*a, **k)
-        self.csrf = ""
-        self.login_cookie = ""
-        self.last_login = None
-
-    def ecrire(self, chemin: str, corps: dict | None = None, methode: str = "POST"):
-        """JSON write on the API, with the session token in a header."""
-        return self.request(methode, f"/api/v1{chemin}", json=corps or {}, headers={"X-CSRF": self.csrf})
-
-
-def client(env, username=None, headers=None) -> Client:
-    c = Client(env["app"], follow_redirects=False, headers=headers or {})
-    if username:
-        login(c, username)
-    return c
-
-
-def login(c: Client, username: str, password: str = PW, expect_ok: bool | None = None):
-    pre = c.get("/api/v1/login-challenge").json()["pre"]
-    r = c.post("/api/v1/login", data={"username": username, "password": password, "pre": pre})
-    if r.status_code == 200:
-        c.csrf = r.json()["csrf"]
-    c.login_cookie = r.headers.get("set-cookie", "")
-    c.last_login = r
-    if expect_ok if expect_ok is not None else password == PW:
-        assert r.status_code == 200, f"connexion refusée : {r.status_code} {r.text[:300]}"
-    return r
-
-
-def csrf(c: Client, url: str = "/api/v1/session") -> str:
-    return c.csrf
-
-
-def clip_ids(env):
-    return [r["id"] for r in db.all_(env["conn"], "SELECT id FROM clips ORDER BY idx")]
-
+from sada.backoffice import auth, content, db, importer, models, publish  # noqa: E402
 
 # ------------------------------------------------------------------ authentication
 
@@ -180,8 +47,8 @@ def test_rien_sans_connexion(env):
 
 
 def test_mots_de_passe_haches_argon2(env):
-    rows = db.all_(env["conn"], "SELECT password_hash FROM users")
-    assert all(r["password_hash"].startswith("$argon2id$") and PW not in r["password_hash"] for r in rows)
+    hashes = [u["password_hash"] for u in rows(env["conn"], models.User)]
+    assert all(h.startswith("$argon2id$") and PW not in h for h in hashes)
     with pytest.raises(ValueError):
         auth.create_user(env["conn"], env["mid"], "court", "123", "imam")
 
@@ -195,9 +62,7 @@ def test_connexion_cookie_et_deconnexion(env):
     cookie = r.headers["set-cookie"]
     assert "sada_session=" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
     token = c.cookies.get(auth.COOKIE)
-    assert (
-        db.one(env["conn"], "SELECT COUNT(*) n FROM auth_sessions WHERE token_hash = ?", token)["n"] == 0
-    )  # token not stored in clear text
+    assert count(env["conn"], models.AuthSession, token_hash=token) == 0  # token not stored in clear text
     assert c.get("/api/v1/session").status_code == 200
     assert c.ecrire("/logout").status_code == 200
     c.cookies.set(auth.COOKIE, token)  # replaying the old cookie no longer works
@@ -205,7 +70,7 @@ def test_connexion_cookie_et_deconnexion(env):
 
 
 def test_compte_desactive_refuse(env):
-    env["conn"].execute("UPDATE users SET active = 0 WHERE username = 'imam2'")
+    set_user(env["conn"], "imam2", active=0)
     assert login(client(env), "imam2", expect_ok=False).status_code == 401
 
 
@@ -216,7 +81,7 @@ def test_csrf_obligatoire(env):
     assert r.status_code == 403
     r = c.post(f"/api/v1/clips/{cid}/decision", json={"decision": "rejete"}, headers={"X-CSRF": "faux"})
     assert r.status_code == 403
-    assert db.one(env["conn"], "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
+    assert one(env["conn"], models.Clip, id=cid)["status"] == "a_valider"
 
 
 def test_limitation_des_essais(env):
@@ -230,9 +95,7 @@ def test_journal_des_connexions(env):
     c = client(env)
     login(c, "admin", "mauvais-mot-de-passe")
     login(c, "admin")
-    acts = [
-        a["action"] for a in db.all_(env["conn"], "SELECT action FROM audit WHERE action LIKE 'connexion%' ORDER BY id")
-    ]
+    acts = [a["action"] for a in audit_rows(env["conn"], like="connexion%")]
     assert acts == ["connexion.echec", "connexion"]
 
 
@@ -336,21 +199,21 @@ def test_imam_ne_peut_pas_publier(env):
     cid = clip_ids(env)[0]
     content.decide(
         env["conn"],
-        db.one(env["conn"], "SELECT * FROM clips WHERE id = ?", cid),
+        one(env["conn"], models.Clip, id=cid),
         "valide",
-        db.one(env["conn"], "SELECT * FROM users WHERE username = 'responsable'"),
+        one(env["conn"], models.User, username="responsable"),
     )
     c = client(env, "imam")
     r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
     assert r.status_code == 403
-    assert db.one(env["conn"], "SELECT status FROM clips WHERE id = ?", cid)["status"] == "valide"
+    assert one(env["conn"], models.Clip, id=cid)["status"] == "valide"
 
 
 def test_admin_cree_un_imam(env):
     c = client(env, "admin")
     r = c.ecrire("/users", {"username": "nouvel", "display_name": "Imam Nouvel", "role": "imam", "password": PW})
     assert r.status_code == 200, r.text
-    u = db.one(env["conn"], "SELECT * FROM users WHERE username = 'nouvel'")
+    u = one(env["conn"], models.User, username="nouvel")
     assert u and u["role"] == "imam" and u["mosque_id"] == env["mid"]
     assert login(client(env), "nouvel").status_code == 200
 
@@ -364,7 +227,7 @@ def test_permissions_par_compte(env):
     perms = _json.dumps(["live", "validate", "publish"])
     r = c.ecrire(f"/users/{uid}", {"permissions": perms}, methode="PATCH")
     assert r.status_code == 200, r.text
-    u = db.one(env["conn"], "SELECT * FROM users WHERE id = ?", uid)
+    u = one(env["conn"], models.User, id=uid)
     assert auth.can(u, "publish") and not auth.can(u, "history_all")
     d = c.get("/api/v1/users").json()
     row = next(x for x in d["items"] if x["id"] == uid)
@@ -374,7 +237,7 @@ def test_permissions_par_compte(env):
     assert "publish" in imam.get("/api/v1/session").json()["user"]["permissions"]
     # retour aux droits du rôle
     assert c.ecrire(f"/users/{uid}", {"permissions": ""}, methode="PATCH").status_code == 200
-    u = db.one(env["conn"], "SELECT * FROM users WHERE id = ?", uid)
+    u = one(env["conn"], models.User, id=uid)
     assert not auth.can(u, "publish") and auth.custom_permissions(u) is None
     # permission inconnue refusée ; un admin ne peut pas se retirer l'administration
     assert c.ecrire(f"/users/{uid}", {"permissions": '["voler"]'}, methode="PATCH").status_code == 422
@@ -386,7 +249,7 @@ def test_permissions_par_compte(env):
         {"username": "benevole", "role": "imam", "password": PW, "permissions": '["journal"]'},
     )
     assert r.status_code == 200, r.text
-    u = db.one(env["conn"], "SELECT * FROM users WHERE username = 'benevole'")
+    u = one(env["conn"], models.User, username="benevole")
     assert auth.permissions(u) == ["journal"]
 
 
@@ -407,9 +270,9 @@ def test_compte_cree_par_admin_doit_changer_son_mot_de_passe(env):
     assert not s["user"]["must_change_password"] and "journal" in s["user"]["permissions"]
     assert c.get("/api/v1/audit").status_code == 200
     # mot de passe refixé par l'admin : la séquence recommence
-    uid = db.one(env["conn"], "SELECT id FROM users WHERE username = 'nouvel'")["id"]
+    uid = one(env["conn"], models.User, username="nouvel")["id"]
     assert admin.ecrire(f"/users/{uid}/password", {"password": PW}).status_code == 200
-    assert db.one(env["conn"], "SELECT must_change_password FROM users WHERE id = ?", uid)["must_change_password"] == 1
+    assert one(env["conn"], models.User, id=uid)["must_change_password"] == 1
 
 
 # ------------------------------------------------------------------ live (real orchestrator API)
@@ -448,10 +311,7 @@ def orch(env):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     srv = make_server(fake, "127.0.0.1", port, "jeton")
-    env["conn"].execute(
-        "UPDATE mosques SET orchestrator_url = ?, orchestrator_token = 'jeton' WHERE id = ?",
-        (f"http://127.0.0.1:{port}", env["mid"]),
-    )
+    set_mosque(env["conn"], env["mid"], orchestrator_url=f"http://127.0.0.1:{port}", orchestrator_token="jeton")
     yield fake
     srv.shutdown()
 
@@ -477,7 +337,7 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
     for cmd in ("extend", "janaza", "stop", "cancel"):
         assert c.ecrire(f"/live/{cmd}").status_code == 200
     assert orch.calls == [("extend", "5"), ("janaza", None), ("stop", None), ("cancel", None)]
-    log = db.all_(env["conn"], "SELECT * FROM audit WHERE action = 'live.commande' ORDER BY id")
+    log = audit_rows(env["conn"], action="live.commande")
     assert len(log) == 4 and all(a["user_id"] == env["ids"]["imam"] for a in log)
 
 
@@ -618,7 +478,7 @@ def test_commande_live_orchestrateur_absent(env):
     assert c.get("/api/v1/dashboard").json()["live"]["ok"] is False
     r = c.ecrire("/live/stop")
     assert r.status_code == 503
-    assert db.one(env["conn"], "SELECT action FROM audit WHERE action LIKE 'live.%'")["action"] == "live.echec"
+    assert audit_rows(env["conn"], like="live.%")[0]["action"] == "live.echec"
 
 
 def test_commande_live_role_requis(env, orch, monkeypatch):
@@ -633,13 +493,13 @@ def test_commande_live_role_requis(env, orch, monkeypatch):
 
 def test_import_idempotent_et_janaza_ignoree(env):
     conn = env["conn"]
-    m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    m = one(conn, models.Mosque, id=env["mid"])
     res = importer.import_run(conn, m, RUN, extract_video=False, log=lambda *a: None)
     assert res["khutbas_new"] == 0 and res["clips_new"] == 0 and res["skipped"] == ["session2"]
-    k = db.one(conn, "SELECT * FROM khutbas")
-    assert db.one(conn, "SELECT COUNT(*) n FROM khutbas")["n"] == 1
+    k = one(conn, models.Khutba)
+    assert count(conn, models.Khutba) == 1
     assert k["theme"] == "La patience" and k["duration_s"] == 20.0 and k["verses_count"] == 1
-    c = db.one(conn, "SELECT * FROM clips WHERE idx = 1")
+    c = one(conn, models.Clip, idx=1)
     assert c["source_offset"] == 100.0 and c["status"] == "a_valider"
 
 
@@ -666,12 +526,12 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
         f"/sermons/{env['kid']}/revisions",
         {"seg": "1", "field": "text", "value": "La patience est une lumière, dit le Prophète ﷺ."},
     )
-    clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
+    clip = one(conn, models.Clip, id=cid)
     assert clip["needs_regen"] == 1
-    assert db.one(conn, "SELECT needs_regen FROM clips WHERE idx = 2")["needs_regen"] == 0  # segment outside clip 2
+    assert one(conn, models.Clip, idx=2)["needs_regen"] == 0  # segment outside clip 2
     # validating is refused as long as the video has not been regenerated
     c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
-    assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
+    assert one(conn, models.Clip, id=cid)["status"] == "a_valider"
     # regeneration: the pipeline does receive the correction (real build_ass, simulated ffmpeg render)
     from sada.pipeline import clips as clipmod
 
@@ -684,15 +544,13 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
     monkeypatch.setattr(clipmod, "render_clip", fake_render)
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
     c.ecrire(f"/clips/{cid}/regenerate")
-    clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
+    clip = one(conn, models.Clip, id=cid)
     assert clip["version"] == 2 and clip["needs_regen"] == 0 and clip["file_path"].endswith("_v2_A-VALIDER.mp4")
     assert seen["off"] == 100.0 and "Prophète" in seen["ass"]
     c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
-    clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
+    clip = one(conn, models.Clip, id=cid)
     assert clip["status"] == "valide" and clip["decided_by"] == env["ids"]["imam"]
-    acts = [
-        a["action"] for a in db.all_(conn, "SELECT action FROM audit WHERE user_id = ? ORDER BY id", env["ids"]["imam"])
-    ]
+    acts = [a["action"] for a in audit_rows(conn, user_id=env["ids"]["imam"])]
     assert acts[-3:] == ["correction.sous-titre", "clip.regeneration", "clip.valide"]
     # the clip sheet shows who did what
     d = c.get(f"/api/v1/clips/{cid}").json()
@@ -704,8 +562,8 @@ def test_correction_puis_regeneration_puis_validation(env, monkeypatch):
 
 def test_correction_traduction_et_verset_protege(env):
     conn = env["conn"]
-    k = db.one(conn, "SELECT * FROM khutbas")
-    u = db.one(conn, "SELECT * FROM users WHERE username = 'responsable'")
+    k = one(conn, models.Khutba)
+    u = one(conn, models.User, username="responsable")
     with pytest.raises(ValueError):  # segment 2 = verse: the Hamidullah translation cannot be changed
         content.save_correction(conn, k, 2, "fr", "autre traduction", u)
     with pytest.raises(ValueError):  # French segment: no “translation” field
@@ -713,14 +571,14 @@ def test_correction_traduction_et_verset_protege(env):
     content.save_correction(conn, k, 0, "text", "Chers frères et sœurs, parlons de la patience.", u)
     rows = content.transcript_rows(content.load(conn, k))
     assert rows[0]["fr"] == "Chers frères et sœurs, parlons de la patience." and rows[0]["corrected"]
-    corr = db.one(conn, "SELECT * FROM corrections")
+    corr = one(conn, models.Correction)
     assert corr["original"].startswith("Chers frères, aujourd'hui") and corr["user_id"] == u["id"]
 
 
 def test_sous_titre_ajoute_a_un_instant_precis(env, monkeypatch):
     """A passage the transcription skipped gets a subtitle at a chosen instant, then reaches the clip."""
     conn = env["conn"]
-    k = db.one(conn, "SELECT * FROM khutbas")
+    k = one(conn, models.Khutba)
     tr = Path(k["output_dir"]) / "transcript.json"
     data = json.loads(tr.read_text())
     data["segments"] = data["segments"][:2]  # 9–20 s: nothing transcribed (Arabic skipped)
@@ -729,18 +587,18 @@ def test_sous_titre_ajoute_a_un_instant_precis(env, monkeypatch):
     cid1, cid2 = clip_ids(env)[:2]
     # over a passage that already shows something: refused (correct it instead)
     r = c.ecrire(f"/sermons/{env['kid']}/subtitles", {"start": "2", "end": "3", "text": "doublon"})
-    assert r.status_code == 422 and not db.all_(conn, "SELECT * FROM added_subtitles")
+    assert r.status_code == 422 and not rows(conn, models.AddedSubtitle)
     r = c.ecrire(
         f"/sermons/{env['kid']}/subtitles",
         {"start": "15,5", "end": "18", "text": "  Ô Allah,  accorde-nous la patience. "},
     )
     assert r.json()["to_regenerate"] == 1
-    a = db.one(conn, "SELECT * FROM added_subtitles")
+    a = one(conn, models.AddedSubtitle)
     assert (a["start"], a["end"], a["text"]) == (15.5, 18.0, "Ô Allah, accorde-nous la patience.")
-    assert db.one(conn, "SELECT needs_regen FROM clips WHERE id = ?", cid2)["needs_regen"] == 1
-    assert db.one(conn, "SELECT needs_regen FROM clips WHERE id = ?", cid1)["needs_regen"] == 0
-    rows = c.get(f"/api/v1/clips/{cid2}").json()["segments"]
-    ajout = next(x for x in rows if x.get("added"))
+    assert one(conn, models.Clip, id=cid2)["needs_regen"] == 1
+    assert one(conn, models.Clip, id=cid1)["needs_regen"] == 0
+    segs = c.get(f"/api/v1/clips/{cid2}").json()["segments"]
+    ajout = next(x for x in segs if x.get("added"))
     assert ajout["rel"] == pytest.approx(3.5) and ajout["fr"].startswith("Ô Allah")
     # corrections stay keyed on the original segments despite the insertion
     content.save_correction(
@@ -749,7 +607,7 @@ def test_sous_titre_ajoute_a_un_instant_precis(env, monkeypatch):
         0,
         "text",
         "Chers frères, parlons de patience.",
-        db.one(conn, "SELECT * FROM users WHERE username = 'imam'"),
+        one(conn, models.User, username="imam"),
     )
     assert content.transcript_rows(content.load(conn, k))[0]["fr"] == "Chers frères, parlons de patience."
     # the regenerated clip carries the added subtitle
@@ -767,9 +625,9 @@ def test_sous_titre_ajoute_a_un_instant_precis(env, monkeypatch):
     assert "accorde-nous" in seen["ass"]
     # removal
     c.ecrire(f"/sermons/{env['kid']}/subtitles/{a['id']}/delete")
-    assert not db.all_(conn, "SELECT * FROM added_subtitles")
+    assert not rows(conn, models.AddedSubtitle)
     assert not any(x.get("added") for x in c.get(f"/api/v1/clips/{cid2}").json()["segments"])
-    acts = [x["action"] for x in db.all_(conn, "SELECT action FROM audit WHERE action LIKE 'correction.%' ORDER BY id")]
+    acts = [x["action"] for x in audit_rows(conn, like="correction.%")]
     assert "correction.ajout" in acts and "correction.retrait" in acts
 
 
@@ -777,7 +635,7 @@ def test_rejet_avec_motif(env):
     c = client(env, "responsable")
     cid = clip_ids(env)[1]
     c.ecrire(f"/clips/{cid}/decision", {"decision": "rejete", "reason": "coupé en plein milieu"})
-    clip = db.one(env["conn"], "SELECT * FROM clips WHERE id = ?", cid)
+    clip = one(env["conn"], models.Clip, id=cid)
     assert clip["status"] == "rejete" and clip["reject_reason"] == "coupé en plein milieu"
     d = c.get("/api/v1/clips", params={"status": "rejete"}).json()
     assert [i["id"] for i in d["items"]] == [cid]
@@ -793,9 +651,9 @@ def test_rien_ne_se_publie_sans_validation(env):
     r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
     assert r.status_code == 422
     assert not (env["tmp"] / "pub").exists()
-    p = db.one(conn, "SELECT * FROM publications")
+    p = one(conn, models.Publication)
     assert p["status"] == "refuse" and "not approved" in p["message"]
-    assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "a_valider"
+    assert one(conn, models.Clip, id=cid)["status"] == "a_valider"
 
 
 def test_publication_locale_apres_validation(env):
@@ -804,17 +662,13 @@ def test_publication_locale_apres_validation(env):
     c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
     r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "Khutba — extrait"})
     assert r.status_code == 200, r.text
-    p = db.one(conn, "SELECT * FROM publications")
+    p = one(conn, models.Publication)
     assert p["status"] == "publie", p
     out = Path(p["location"])
-    assert (
-        out.exists()
-        and out.read_bytes()
-        == Path(db.one(conn, "SELECT file_path FROM clips WHERE id = ?", cid)["file_path"]).read_bytes()
-    )
+    assert out.exists() and out.read_bytes() == Path(one(conn, models.Clip, id=cid)["file_path"]).read_bytes()
     meta = json.loads(out.with_suffix(".json").read_text())
     assert meta["legende"] == "Khutba — extrait" and meta["valide_par"] == "Responsable" and meta["musique"] is False
-    assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "publie"
+    assert one(conn, models.Clip, id=cid)["status"] == "publie"
     d = c.get("/api/v1/publications").json()
     assert d["publications"] and d["publications"][0]["status"] == "publie"
     assert any(i["id"] == cid for i in d["publications"])
@@ -826,7 +680,7 @@ def test_correction_apres_publication_ne_reecrit_pas_l_historique(env, monkeypat
     c.ecrire(f"/clips/{cid}/decision", {"decision": "valide"})
     c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
     c.ecrire(f"/sermons/{env['kid']}/revisions", {"seg": "1", "field": "text", "value": "Texte corrigé."})
-    clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
+    clip = one(conn, models.Clip, id=cid)
     assert clip["status"] == "publie" and clip["needs_regen"] == 1
     from sada.pipeline import clips as clipmod
 
@@ -837,40 +691,35 @@ def test_correction_apres_publication_ne_reecrit_pas_l_historique(env, monkeypat
     )
     monkeypatch.setattr(content, "can_regenerate", lambda clip: (True, ""))
     c.ecrire(f"/clips/{cid}/regenerate")
-    clip = db.one(conn, "SELECT * FROM clips WHERE id = ?", cid)
+    clip = one(conn, models.Clip, id=cid)
     assert (
         clip["version"] == 2 and clip["status"] == "a_valider" and clip["decided_by"] is None
     )  # v2 goes back to validation
     r = c.ecrire(f"/clips/{cid}/publish", {"connector": "local", "caption": "x"})
     assert r.status_code == 422
-    assert db.one(conn, "SELECT status FROM publications ORDER BY id DESC")["status"] == "refuse"
+    assert rows(conn, models.Publication, order_by=models.publications.c.id.desc())[0]["status"] == "refuse"
 
 
 def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     conn, cid = env["conn"], clip_ids(env)[0]
-    resp = db.one(conn, "SELECT * FROM users WHERE username = 'responsable'")
-    content.decide(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), "valide", resp)
+    resp = one(conn, models.User, username="responsable")
+    content.decide(conn, one(conn, models.Clip, id=cid), "valide", resp)
 
     def no_network(*a, **k):
         raise AssertionError("appel réseau interdit")
 
     monkeypatch.setattr(socket.socket, "connect", no_network)
-    rows = {
-        r["key"]: r
-        for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"]))
-    }
-    assert rows["local"]["available"]
+    connecteurs = {r["key"]: r for r in publish.connector_rows(conn, one(conn, models.Mosque, id=env["mid"]))}
+    assert connecteurs["local"]["available"]
     for key in ("facebook", "youtube", "instagram"):
-        assert not rows[key]["available"] and "missing credentials" in rows[key]["why"]
-        res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), key, resp, "x")
+        assert not connecteurs[key]["available"] and "missing credentials" in connecteurs[key]["why"]
+        res = publish.publish(conn, one(conn, models.Clip, id=cid), key, resp, "x")
         assert not res.ok
     # with credentials the connector is usable; the network is down here, so the attempt is logged as such
-    admin = db.one(conn, "SELECT * FROM users WHERE username = 'admin'")
+    admin = one(conn, models.User, username="admin")
     publish.save_connector(conn, env["mid"], "facebook", True, {"page_id": "123", "page_token": "secret"}, admin)
     row = next(
-        r
-        for r in publish.connector_rows(conn, db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"]))
-        if r["key"] == "facebook"
+        r for r in publish.connector_rows(conn, one(conn, models.Mosque, id=env["mid"])) if r["key"] == "facebook"
     )
     assert row["available"] and {f["name"]: f["value"] for f in row["fields"]}["page_token"] == db.MASK
 
@@ -882,12 +731,12 @@ def test_connecteurs_reseaux_desactives_sans_appel_externe(env, monkeypatch):
     saved = social_mod.SESSION
     social_mod.SESSION = type("S", (), {"post": staticmethod(down)})
     try:
-        res = publish.publish(conn, db.one(conn, "SELECT * FROM clips WHERE id = ?", cid), "facebook", resp, "x")
+        res = publish.publish(conn, one(conn, models.Clip, id=cid), "facebook", resp, "x")
     finally:
         social_mod.SESSION = saved
     assert not res.ok and "réseau injoignable" in res.message
-    assert db.one(conn, "SELECT status FROM clips WHERE id = ?", cid)["status"] == "valide"
-    assert {p["status"] for p in db.all_(conn, "SELECT status FROM publications")} == {"refuse", "erreur"}
+    assert one(conn, models.Clip, id=cid)["status"] == "valide"
+    assert {p["status"] for p in rows(conn, models.Publication)} == {"refuse", "erreur"}
 
 
 def test_cli_cree_admin_et_imam(tmp_path, monkeypatch, capsys):
@@ -915,9 +764,9 @@ def test_cli_cree_admin_et_imam(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(PW + "\n"))
     assert main(["--db", str(path), "create-user", "--username", "imam", "--role", "imam", "--password-stdin"]) == 0
     conn = db.connect(path)
-    us = db.all_(conn, "SELECT username, role, mosque_id FROM users ORDER BY id")
+    us = rows(conn, models.User, order_by=models.users.c.id)
     assert [(u["username"], u["role"]) for u in us] == [("chef", "admin"), ("imam", "imam")]
-    assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "ma-mosquee"
+    assert one(conn, models.Mosque)["slug"] == "ma-mosquee"
     assert auth.authenticate(conn, "chef", PW)
 
 
@@ -937,9 +786,9 @@ def _ajoute_dars(env, kind: str | None = "dars") -> dict:
     if kind:
         d["sessions"][0].update(kind=kind, title="Explication de la Lamiyyah al-Wardi (2)", speaker="Mosquée Avicenne")
     f.write_text(json.dumps(d))
-    m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    m = one(env["conn"], models.Mosque, id=env["mid"])
     importer.import_run(env["conn"], m, DARS_RUN, extract_video=False, log=lambda *a: None)
-    return db.one(env["conn"], "SELECT * FROM khutbas WHERE run_id = ?", DARS_RUN)
+    return one(env["conn"], models.Khutba, run_id=DARS_RUN)
 
 
 def test_listes_khutbas_et_dars_separees(env):
@@ -964,7 +813,7 @@ def test_listes_khutbas_et_dars_separees(env):
     assert c.get("/api/v1/sermons?kind=n_importe_quoi").status_code == 422
 
     # Une séance d'avant la colonne `kind` (vide) reste une khutba.
-    env["conn"].execute("UPDATE khutbas SET kind = '' WHERE id = ?", (env["kid"],))
+    set_khutba(env["conn"], env["kid"], kind="")
     assert c.get("/api/v1/sermons?kind=khutba").json()["total"] == 1
 
     d = c.get("/api/v1/dashboard").json()["counts"]
@@ -976,16 +825,16 @@ def test_import_corrige_la_nature_d_une_seance_deja_importee(env):
     la séance dans les dars et refait le libellé automatique, sans toucher aux clips."""
     avant = _ajoute_dars(env, kind=None)
     assert avant["kind"] == "khutba" and avant["label"].startswith("Session 1")
-    clips = db.all_(env["conn"], "SELECT id, status FROM clips WHERE khutba_id = ?", avant["id"])
+    clips = [(c["id"], c["status"]) for c in rows(env["conn"], models.Clip, khutba_id=avant["id"])]
 
     apres = _ajoute_dars(env)
     assert apres["id"] == avant["id"] and apres["kind"] == "dars"
     assert apres["title"] == "Explication de la Lamiyyah al-Wardi (2)"
     assert apres["label"] == "Dars — Explication de la Lamiyyah al-Wardi (2)"
-    assert db.all_(env["conn"], "SELECT id, status FROM clips WHERE khutba_id = ?", avant["id"]) == clips
+    assert [(c["id"], c["status"]) for c in rows(env["conn"], models.Clip, khutba_id=avant["id"])] == clips
 
     # Un libellé retouché par un humain est conservé.
-    env["conn"].execute("UPDATE khutbas SET kind = 'khutba', label = 'Mon libellé' WHERE id = ?", (avant["id"],))
+    set_khutba(env["conn"], avant["id"], kind="khutba", label="Mon libellé")
     assert _ajoute_dars(env)["label"] == "Mon libellé"
 
 

@@ -1,0 +1,14 @@
+{{- if not .Values.receiver.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-receiver" (include "sada.fullname" .) }}
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receiver
+data:
+  # One path per mosque (its slug is the stream key); every publish/read is authorised by
+  # the back office at http://backoffice:8090/api/v1/internal/publish-auth.
+  mediamtx.yml: |
+{{ .Values.receiver.config | default (.Files.Get "files/mediamtx.yml") | indent 4 }}
+{{- end }}

@@ -1,0 +1,22 @@
+{{- if .Values.certManager.createIssuer }}
+{{- if not .Values.certManager.email }}
+{{- fail "certManager.createIssuer=true requires certManager.email (the Let's Encrypt contact address)" }}
+{{- end }}
+# Cluster-scoped: one per cluster, shared by every Ingress that names it.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ .Values.ingress.tls.issuer }}
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+spec:
+  acme:
+    server: {{ .Values.certManager.server | quote }}
+    email: {{ .Values.certManager.email | quote }}
+    privateKeySecretRef:
+      name: {{ printf "%s-account-key" .Values.ingress.tls.issuer }}
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: {{ .Values.ingress.className }}
+{{- end }}

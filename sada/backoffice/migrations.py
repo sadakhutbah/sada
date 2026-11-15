@@ -19,20 +19,23 @@ bases existantes auxquelles il manque des colonnes.
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy.dialects import sqlite as sqlite_dialect
-from sqlalchemy.schema import CreateIndex, CreateTable
+import sqlalchemy as sa
+from sqlalchemy.schema import CreateColumn
 
 from ..i18n import _
 from . import models
 
 # bookkeeping, hors `metadata` (doit exister avant de décider des migrations)
-SCHEMA_MIGRATIONS_DDL = (
-    "CREATE TABLE IF NOT EXISTS schema_migrations ( version INTEGER PRIMARY KEY, appliquee_le TEXT NOT NULL)"
+_BOOK = sa.MetaData()
+schema_migrations = sa.Table(
+    "schema_migrations",
+    _BOOK,
+    sa.Column("version", sa.Integer, primary_key=True),
+    sa.Column("appliquee_le", sa.Text, nullable=False),
 )
 
 # version d'une base existante créée par l'ancien code : les tables existent déjà.
@@ -43,44 +46,29 @@ LEGACY_BASELINE = 1
 class Migration:
     version: int
     nom: str
-    up: Callable[[sqlite3.Connection], None]
+    up: Callable[[sa.Connection], None]
 
 
-def _create_ddl() -> str:
-    """CREATE TABLE / CREATE INDEX `IF NOT EXISTS` de tout le schéma, depuis les modèles."""
-    parts: list[str] = []
-    for table in models.metadata.sorted_tables:
-        parts.append(str(CreateTable(table, if_not_exists=True).compile(dialect=sqlite_dialect.dialect())))
-    for table in models.metadata.sorted_tables:
-        for index in table.indexes:
-            parts.append(str(CreateIndex(index, if_not_exists=True).compile(dialect=sqlite_dialect.dialect())))
-    return ";\n".join(parts)
-
-
-def _baseline(conn: sqlite3.Connection) -> None:
+def _baseline(conn: sa.Connection) -> None:
     """Migration 1 : crée toutes les tables et index décrits par les modèles (idempotente)."""
-    conn.executescript(_create_ddl())
+    models.metadata.create_all(conn, checkfirst=True)
 
 
-def _has_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
-    if not isinstance(conn, sqlite3.Connection):  # PostgreSQL
-        return bool(
-            conn.execute(
-                "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
-                "AND table_name = ? AND column_name = ?",
-                (table, col),
-            ).fetchone()
-        )
-    return any(r[1] == col for r in conn.execute(f'PRAGMA table_info("{table}")'))
+def _add_columns(conn: sa.Connection, table: str, columns: tuple[tuple[str, str], ...]) -> None:
+    """Ajoute les colonnes manquantes, telles que les décrivent les modèles (seule source de vérité).
+
+    SQLAlchemy sans Alembic n'a pas d'opération « ajouter une colonne » : la déclaration vient du
+    modèle, compilée pour la base courante ; seul l'enrobage `ALTER TABLE ... ADD COLUMN` est écrit ici.
+    """
+    have = {c["name"] for c in sa.inspect(conn).get_columns(table)}
+    t = models.metadata.tables[table]
+    for col, _decl in columns:
+        if col not in have:
+            decl = CreateColumn(t.c[col]).compile(dialect=conn.dialect)
+            conn.exec_driver_sql(f'ALTER TABLE "{table}" ADD COLUMN {decl}')
 
 
-def _add_columns(conn: sqlite3.Connection, table: str, columns: tuple[tuple[str, str], ...]) -> None:
-    for col, decl in columns:
-        if not _has_column(conn, table, col):
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
-
-
-def _khutbas_dars(conn: sqlite3.Connection) -> None:
+def _khutbas_dars(conn: sa.Connection) -> None:
     """Migration 2 : colonnes « dars » des khutbas, ajoutées après coup."""
     _add_columns(
         conn,
@@ -94,7 +82,7 @@ def _khutbas_dars(conn: sqlite3.Connection) -> None:
     )
 
 
-def _mosques_logo(conn: sqlite3.Connection) -> None:
+def _mosques_logo(conn: sa.Connection) -> None:
     """Migration 3 : logo et date d'embarquement des mosquées, ajoutés après coup."""
     _add_columns(
         conn,
@@ -106,17 +94,17 @@ def _mosques_logo(conn: sqlite3.Connection) -> None:
     )
 
 
-def _tables_du_modele(conn: sqlite3.Connection) -> None:
+def _tables_du_modele(conn: sa.Connection) -> None:
     """Migration 4 : rattrape les tables et index ajoutés aux modèles après le schéma initial.
 
     Un `CREATE ... IF NOT EXISTS`, donc sans effet sur une base déjà complète : la migration existe
     pour les bases qui ont enregistré la version 1 avant que ces tables n'apparaissent dans les
     modèles (`live_targets`, `live_input`, `storage`, `screen_texts`), où plus rien ne les créait.
     """
-    conn.executescript(_create_ddl())
+    _baseline(conn)
 
 
-def _mosques_couleurs(conn: sqlite3.Connection) -> None:
+def _mosques_couleurs(conn: sa.Connection) -> None:
     """Migration 5 : couleurs de la mosquée pour l'habillage des clips, ajoutées après coup."""
     _add_columns(
         conn,
@@ -128,7 +116,7 @@ def _mosques_couleurs(conn: sqlite3.Connection) -> None:
     )
 
 
-def _clips_manuels(conn: sqlite3.Connection) -> None:
+def _clips_manuels(conn: sa.Connection) -> None:
     """Migration 7 : clips créés à la main et bornes ajustées par un humain."""
     _add_columns(
         conn,
@@ -142,50 +130,47 @@ def _clips_manuels(conn: sqlite3.Connection) -> None:
     )
 
 
-def _habillage(conn: sqlite3.Connection) -> None:
+def _habillage(conn: sa.Connection) -> None:
     """Migration 8 : habillage des vidéos (table `habillages`, réglages retenus par la mosquée)."""
     _add_columns(conn, "mosques", (("habillage_defaults", "TEXT NOT NULL DEFAULT ''"),))
-    conn.executescript(_create_ddl())
+    _baseline(conn)
 
 
-def _users_permissions(conn: sqlite3.Connection) -> None:
+def _users_permissions(conn: sa.Connection) -> None:
     """Migration 9 : permissions choisies compte par compte (vide : celles du rôle)."""
     _add_columns(conn, "users", (("permissions", "TEXT NOT NULL DEFAULT ''"),))
 
 
-def _users_mdp_impose(conn: sqlite3.Connection) -> None:
+def _users_mdp_impose(conn: sa.Connection) -> None:
     """Migration 10 : mot de passe à changer à la première connexion."""
     _add_columns(conn, "users", (("must_change_password", "INTEGER NOT NULL DEFAULT 0"),))
 
 
-def _users_plateforme(conn: sqlite3.Connection) -> None:
+def _users_plateforme(conn: sa.Connection) -> None:
     """Migration 11 : administrateur de la plateforme (réglages communs à toutes les mosquées).
 
     Une instance à une seule mosquée garde son fonctionnement : ses administrateurs le deviennent.
     """
     _add_columns(conn, "users", (("platform_admin", "INTEGER NOT NULL DEFAULT 0"),))
-    if conn.execute("SELECT COUNT(*) FROM mosques").fetchone()[0] == 1:
-        conn.execute("UPDATE users SET platform_admin = 1 WHERE role = 'admin'")
+    mosques, users = models.metadata.tables["mosques"], models.metadata.tables["users"]
+    if conn.scalar(sa.select(sa.func.count()).select_from(mosques)) == 1:
+        conn.execute(sa.update(users).where(users.c.role == "admin").values(platform_admin=1))
 
 
-def _mosques_jeton_agent(conn: sqlite3.Connection) -> None:
+def _mosques_jeton_agent(conn: sa.Connection) -> None:
     """Migration 12 : jeton propre à l'orchestrateur de chaque mosquée (empreinte seulement)."""
     _add_columns(conn, "mosques", (("agent_token_hash", "TEXT NOT NULL DEFAULT ''"),))
 
 
-def _events_en_base(conn: sqlite3.Connection) -> None:
+def _events_en_base(conn: sa.Connection) -> None:
     """Migration 13 : programme des cours en base, par mosquée (remplace `events.json`).
 
     Le fichier existant est repris par le back-office au premier accès (`events_store.adopt`).
     """
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, mosque_id INTEGER NOT NULL "
-        "REFERENCES mosques(id), uid TEXT NOT NULL, data TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, "
-        "UNIQUE (mosque_id, uid))"
-    )
+    models.metadata.tables["events"].create(conn, checkfirst=True)
 
 
-def _mosques_cache_mawaqit(conn: sqlite3.Connection) -> None:
+def _mosques_cache_mawaqit(conn: sa.Connection) -> None:
     """Migration 14 : cache des horaires Mawaqit par mosquée (remplace `cache/mawaqit.json`)."""
     _add_columns(
         conn,
@@ -194,25 +179,19 @@ def _mosques_cache_mawaqit(conn: sqlite3.Connection) -> None:
     )
 
 
-def _mosques_cle_diffusion(conn: sqlite3.Connection) -> None:
+def _mosques_cle_diffusion(conn: sa.Connection) -> None:
     """Migration 15 : clé de diffusion de chaque mosquée (empreinte seulement)."""
     _add_columns(conn, "mosques", (("publish_key_hash", "TEXT NOT NULL DEFAULT ''"),))
 
 
-def _multi_tenant(conn: sqlite3.Connection) -> None:
+def _multi_tenant(conn: sa.Connection) -> None:
     """Migration 16 : rattachements compte-mosquée et mosquée choisie par la session."""
-    if isinstance(conn, sqlite3.Connection):
-        _tables_du_modele(conn)
+    _baseline(conn)  # crée `memberships` (modèle) si elle manque
     _add_columns(
         conn,
         "auth_sessions",
         (("mosque_id", "INTEGER"), ("support", "INTEGER NOT NULL DEFAULT 0")),
     )
-    if not isinstance(conn, sqlite3.Connection):
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS memberships (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
-            "mosque_id INTEGER NOT NULL REFERENCES mosques(id) ON DELETE CASCADE, PRIMARY KEY (user_id, mosque_id))"
-        )
 
 
 MIGRATIONS: tuple[Migration, ...] = (
@@ -241,72 +220,44 @@ RESERVEES: frozenset[int] = frozenset()
 LATEST = MIGRATIONS[-1].version
 
 
-def _business_tables(conn: sqlite3.Connection) -> set[str]:
-    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")} - {"schema_migrations"}
+def _business_tables(conn: sa.Connection) -> set[str]:
+    return set(sa.inspect(conn).get_table_names()) - {"schema_migrations"}
 
 
-def _applied_versions(conn: sqlite3.Connection) -> set[int]:
-    return {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
+def _applied_versions(conn: sa.Connection) -> set[int]:
+    return set(conn.scalars(sa.select(schema_migrations.c.version)))
 
 
-def _init_pg(conn, now_iso) -> None:
-    """PostgreSQL: a fresh schema gets the models' current shape at once (every migration counts as
-    applied); later migrations run as usual."""
-    from sqlalchemy.dialects import postgresql
-
-    conn.execute(SCHEMA_MIGRATIONS_DDL)
-    applied = _applied_versions(conn)
-    if not applied:
-        for table in models.metadata.sorted_tables:
-            conn.execute(str(CreateTable(table, if_not_exists=True).compile(dialect=postgresql.dialect())))
-            for index in table.indexes:
-                conn.execute(str(CreateIndex(index, if_not_exists=True).compile(dialect=postgresql.dialect())))
-        for m in MIGRATIONS:
-            conn.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (m.version, now_iso()))
-        return
-    if max(applied) > LATEST:
-        raise RuntimeError(
-            _(
-                "database {path} is at version {version}, newer than the code ({latest}): update the back-office",
-                path=conn.schema,
-                version=max(applied),
-                latest=LATEST,
-            )
-        )
-    for m in MIGRATIONS:
-        if m.version not in applied:
-            m.up(conn)
-            conn.execute("INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (m.version, now_iso()))
+def _mark(conn: sa.Connection, version: int, now_iso) -> None:
+    conn.execute(sa.insert(schema_migrations).values(version=version, appliquee_le=now_iso()))
 
 
 def init(path: str | Path) -> None:
-    """Crée / met à jour la base `path` vers la dernière version connue du code."""
-    from .db import connect_raw as connect  # import tardif : évite le cycle db <-> migrations
-    from .db import now_iso
+    """Crée / met à jour la base `path` vers la dernière version connue du code.
 
-    conn = connect(path)
-    from . import pg
+    Une base neuve reçoit d'emblée la forme actuelle des modèles (toutes les migrations comptent
+    comme appliquées) ; une base existante ne reçoit que ce qui lui manque. Chaque migration est
+    appliquée dans sa propre transaction avec son enregistrement.
+    """
+    from .db import DEFAULT_DB, now_iso  # import tardif : évite le cycle db <-> migrations
+    from .orm import engine
 
-    if pg.url():
-        try:
-            _init_pg(conn, now_iso)
-        finally:
-            conn.close()
-        return
-    try:
-        conn.execute(SCHEMA_MIGRATIONS_DDL)
-        applied = _applied_versions(conn)
-
-        if not applied and _business_tables(conn):
-            # base créée par l'ancien code : on l'adopte à sa version de départ (schéma initial),
-            # sans rien toucher aux données.
-            conn.execute(
-                "INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)", (LEGACY_BASELINE, now_iso())
-            )
-            conn.commit()
-            applied = {LEGACY_BASELINE}
-
-        if applied and max(applied) > LATEST:
+    with engine(path, DEFAULT_DB).connect() as conn:
+        with conn.begin():
+            _BOOK.create_all(conn, checkfirst=True)
+            applied = _applied_versions(conn)
+            if not applied:
+                if _business_tables(conn):
+                    # base créée par l'ancien code : on l'adopte à sa version de départ (schéma initial),
+                    # sans rien toucher aux données.
+                    _mark(conn, LEGACY_BASELINE, now_iso)
+                    applied = {LEGACY_BASELINE}
+                else:
+                    _baseline(conn)
+                    for m in MIGRATIONS:
+                        _mark(conn, m.version, now_iso)
+                    return
+        if max(applied) > LATEST:
             raise RuntimeError(
                 _(
                     "database {path} is at version {version}, newer than the code ({latest}): update the back-office",
@@ -315,14 +266,8 @@ def init(path: str | Path) -> None:
                     latest=LATEST,
                 )
             )
-
-        for migration in MIGRATIONS:
-            if migration.version not in applied:
-                migration.up(conn)
-                conn.execute(
-                    "INSERT INTO schema_migrations (version, appliquee_le) VALUES (?, ?)",
-                    (migration.version, now_iso()),
-                )
-                conn.commit()
-    finally:
-        conn.close()
+        for m in MIGRATIONS:
+            if m.version not in applied:
+                with conn.begin():
+                    m.up(conn)
+                    _mark(conn, m.version, now_iso)

@@ -8,7 +8,9 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client  # noqa: E402,F401
+from conftest import client, count  # noqa: E402,F401
+
+from sada.backoffice import models
 
 
 def test_chaque_ecran_annonce_ses_champs_et_son_defaut(env):
@@ -22,7 +24,6 @@ def test_chaque_ecran_annonce_ses_champs_et_son_defaut(env):
 
 
 def test_personnalisation_enregistree_et_relue(env):
-    from sada.backoffice import db
 
     c = client(env, "admin")
     r = c.ecrire(
@@ -33,7 +34,7 @@ def test_personnalisation_enregistree_et_relue(env):
     assert champs["foot"]["value"] == "Nous démarrons dans un instant."
     assert champs["foot"]["text"] == "Nous démarrons dans un instant."
     assert champs["eyebrow"]["value"] == "" and champs["eyebrow"]["text"] == "Début imminent"
-    assert db.one(env["conn"], "SELECT count(*) n FROM screen_texts")["n"] == 1
+    assert count(env["conn"], models.ScreenText) == 1
     assert c.get("/api/v1/settings").json()["screens"]["avant"]["foot"]["value"] == "Nous démarrons dans un instant."
 
 

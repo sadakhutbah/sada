@@ -6,7 +6,9 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import client  # noqa: E402,F401  (conftest provides the path)
+from conftest import client, one  # noqa: E402,F401  (conftest provides the path)
+
+from sada.backoffice import models  # noqa: E402
 
 CAM = "rtsp://192.168.1.20:554/stream1"
 
@@ -31,9 +33,8 @@ def test_mode_poussee_fabrique_l_adresse_de_l_obs(env):
     assert r.status_code == 200, r.text
     d = r.json()["input"]
     assert d["mode"] == "push"
-    from sada.backoffice import db
 
-    mosque = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    mosque = one(env["conn"], models.Mosque, id=env["mid"])
     assert d["push_rtmp"].startswith("rtmp://") and d["push_rtmp"].endswith(":1935/live/" + li.slug(mosque))
     # what the encoder reads is the relay's RTSP copy, never the RTMP address
     assert d["url"].startswith("rtsp://127.0.0.1:8554/live/")

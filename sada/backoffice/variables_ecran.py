@@ -10,8 +10,11 @@ alors aucune ligne : rien n'est inventé à la place de la mosquée.
 
 from __future__ import annotations
 
+from sqlalchemy import delete, select
+
 from ..i18n import _
-from . import branding, db
+from . import branding, db, orm
+from .models import ScreenText
 
 # Écran réservé : il ne fait partie ni de `screens.SCREENS` ni du rendu Pillow.
 SCREEN = "_commun"
@@ -27,7 +30,10 @@ class InvalidVariables(ValueError):
 
 
 def _saved(conn, mosque_id: int) -> dict[str, str]:
-    rows = db.all_(conn, "SELECT slot, text FROM screen_texts WHERE mosque_id = ? AND screen = ?", mosque_id, SCREEN)
+    rows = orm.rows(
+        conn,
+        select(ScreenText.slot, ScreenText.text).where(ScreenText.mosque_id == mosque_id, ScreenText.screen == SCREEN),
+    )
     return {r["slot"]: r["text"] for r in rows if r["slot"] in SLOTS}
 
 
@@ -63,13 +69,14 @@ def enregistrer(conn, mosque_id: int, valeurs, user_id=None, ip: str | None = No
     clean = check(valeurs or {})
     for slot, texte in clean.items():
         conn.execute(
-            "DELETE FROM screen_texts WHERE mosque_id = ? AND screen = ? AND slot = ?", (mosque_id, SCREEN, slot)
-        )
-        if texte:
-            conn.execute(
-                "INSERT INTO screen_texts (mosque_id, screen, slot, text, updated_at) VALUES (?,?,?,?,?)",
-                (mosque_id, SCREEN, slot, texte, db.now_iso()),
+            delete(ScreenText).where(
+                ScreenText.mosque_id == mosque_id, ScreenText.screen == SCREEN, ScreenText.slot == slot
             )
+        )
+        orm.done(conn)
+        if texte:
+            conn.add(ScreenText(mosque_id=mosque_id, screen=SCREEN, slot=slot, text=texte, updated_at=db.now_iso()))
+            conn.flush()
     db.audit(
         conn,
         mosque_id,

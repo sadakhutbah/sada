@@ -8,8 +8,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import auth, db
-from ..context import PRE_COOKIE, ConnDep, Ctx, Forbidden, PreCtxDep, _sec, get_pre_ctx, imam_filter, open_mosque
+from .. import auth, db, orm
+from ..context import (
+    PRE_COOKIE, ConnDep, Ctx, Forbidden, PreCtxDep, _sec, count_clips, get_pre_ctx, open_mosque,
+)
+from ..models import Mosque, User
 from .common import _mosque, _user
 
 router = APIRouter()
@@ -43,7 +46,7 @@ async def login(request: Request, conn: ConnDep):
     u = await run_in_threadpool(auth.authenticate, conn, username, password)
     if not u:
         lim.fail(ip, username)
-        connu = db.one(conn, "SELECT mosque_id FROM users WHERE username = ?", username)
+        connu = orm.first(conn, User, username=username)
         db.audit(conn, connu["mosque_id"] if connu else None, None, "connexion.echec", ip=ip, identifiant=username[:64])
         return JSONResponse({"error": "identifiants"}, status_code=401)
     lim.success(ip, username)
@@ -103,7 +106,7 @@ async def select_mosque(ctx: PreCtxDep):
     ctx.session = {**ctx.session, "mosque_id": mid, "support": 1 if kind == "support" else 0}
     ctx.support = kind == "support"
     ctx.mosque = open_mosque(ctx.conn, ctx.session, ctx.user)
-    return {**_state(ctx), "counts": {"pending": _pending(ctx)}}
+    return {**_state(ctx), "counts": {"pending": count_clips(ctx, "a_valider")}}
 
 
 @router.post("/mosques/leave")
@@ -128,15 +131,6 @@ def logout(ctx: PreCtxDep):
     return r
 
 
-def _pending(ctx: Ctx) -> int:
-    where, args = imam_filter(ctx)
-    return db.one(
-        ctx.conn,
-        f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = 'a_valider'",
-        *args,
-    )["n"]
-
-
 @router.get("/session")
 def session(request: Request, conn: ConnDep):
     """Who is logged in, on which mosque (if any), and what they are allowed to do.
@@ -148,5 +142,5 @@ def session(request: Request, conn: ConnDep):
     ctx.support = bool(ctx.session.get("support")) and ctx.mosque is not None
     # The number of clips to validate comes with the session: the navigation shows it as a badge
     # without a second request at startup.
-    pending = _pending(ctx) if ctx.mosque else 0
+    pending = count_clips(ctx, "a_valider") if ctx.mosque else 0
     return {**_state(ctx), "counts": {"pending": pending}}

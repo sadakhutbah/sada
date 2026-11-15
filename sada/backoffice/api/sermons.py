@@ -6,33 +6,40 @@ import re
 from pathlib import Path
 
 from fastapi import APIRouter, Query
+from sqlalchemy import and_, distinct, func, or_, outerjoin, select, update
 from starlette.concurrency import run_in_threadpool
 
 from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
-from .. import auth, content, db, habillage, import_video, importer, traduction, traitement
+from .. import auth, content, db, habillage, import_video, importer, orm, traduction, traitement
 from ..context import CtxDep, Invalid, NotFound, imam_filter, khutba_or_404
-from .common import _a_table, _ok
+from ..models import Clip, Khutba, User
+from .common import _ok, _segments
 
 router = APIRouter()
 
 #: Natures de séance qu'on peut lister séparément : la page Khutbas demande `khutba`, la page Dars `dars`.
 GENRES = ("khutba", "dars", "conference")
 #: Une séance importée avant la colonne `kind` est une khutba.
-GENRE_SQL = "COALESCE(NULLIF(k.kind, ''), 'khutba')"
+GENRE = func.coalesce(func.nullif(Khutba.kind, ""), "khutba")
 
 
-def _filtre_genre(where: str, args: tuple, kind: str) -> tuple[str, tuple]:
+def _filtre_genre(where: list, kind: str) -> list:
     """Restreint à une ou plusieurs natures de séance (`kind=dars` ou `kind=dars,conference`) ;
     vide = toutes, valeur inconnue refusée."""
     genres = [g for g in (x.strip().lower() for x in (kind or "").split(",")) if g]
     if not genres:
-        return where, args
+        return where
     inconnus = [g for g in genres if g not in GENRES]
     if inconnus:
         raise Invalid(_("unknown kind: {kinds}", kinds=", ".join(inconnus)))
-    return f"{where} AND {GENRE_SQL} IN ({', '.join('?' * len(genres))})", (*args, *genres)
+    return [*where, GENRE.in_(genres)]
+
+
+def _clips_de(*where):
+    """Nombre de clips de la séance courante (sous-requête corrélée)."""
+    return select(func.count()).select_from(Clip).where(Clip.khutba_id == Khutba.id, *where).scalar_subquery()
 
 
 @router.get("/sermons/mois")
@@ -41,16 +48,14 @@ def sermon_months(ctx: CtxDep, kind: str = ""):
 
     The period selector is built on what the mosque actually has: no empty month,
     no calendar to browse, and no date to guess."""
-    where, args = _filtre_genre(*imam_filter(ctx), kind)
-    items = db.all_(
-        ctx.conn,
-        f"SELECT substr(k.date, 1, 7) mois, COUNT(*) n FROM khutbas k "
-        f"LEFT JOIN users u ON u.id = k.imam_id "
-        f"WHERE {where} AND k.date IS NOT NULL AND k.date != '' "
-        f"GROUP BY mois ORDER BY mois DESC",
-        *args,
+    mois = func.substr(Khutba.date, 1, 7).label("mois")
+    stmt = (
+        select(mois, func.count().label("n"))
+        .where(*_filtre_genre(imam_filter(ctx), kind), Khutba.date.is_not(None), Khutba.date != "")
+        .group_by(mois)
+        .order_by(mois.desc())
     )
-    return {"items": items}
+    return {"items": orm.rows(ctx.conn, stmt)}
 
 
 @router.get("/sermons")
@@ -71,43 +76,41 @@ def sermons(
     The filtered total is returned so that the front knows whether pages remain, without guessing.
     `kind` (khutba, dars, conference) sépare les listes : un dars ne doit jamais apparaître parmi
     les khutbas, ni l'inverse ; le compteur « à valider » suit la même nature."""
-    where, args = _filtre_genre(*imam_filter(ctx), kind)
+    perimetre = _filtre_genre(imam_filter(ctx), kind)
+    where = list(perimetre)
     if q.strip():
         motif = f"%{q.strip()}%"
-        where += " AND (k.label LIKE ? OR k.theme LIKE ? OR u.display_name LIKE ?)"
-        args = (*args, motif, motif, motif)
+        where.append(or_(Khutba.label.like(motif), Khutba.theme.like(motif), User.display_name.like(motif)))
     if mois and re.fullmatch(r"\d{4}-\d{2}", mois):
-        where += " AND substr(k.date, 1, 7) = ?"
-        args = (*args, mois)
+        where.append(func.substr(Khutba.date, 1, 7) == mois)
     if pending:
-        where += " AND EXISTS (SELECT 1 FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider')"
-    total = (
-        db.one(ctx.conn, f"SELECT COUNT(*) n FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id WHERE {where}", *args)
-        or {"n": 0}
-    )["n"]
+        where.append(select(Clip.id).where(Clip.khutba_id == Khutba.id, Clip.status == "a_valider").exists())
+    imam = outerjoin(Khutba, User, User.id == Khutba.imam_id)
+    total = ctx.conn.scalar(select(func.count()).select_from(imam).where(*where)) or 0
     # The tabs count on the user's scope, not on the displayed page.
-    perimetre, perimetre_args = _filtre_genre(*imam_filter(ctx), kind)
     en_attente = (
-        db.one(
-            ctx.conn,
-            f"SELECT COUNT(DISTINCT k.id) n FROM khutbas k "
-            f"JOIN clips c ON c.khutba_id = k.id AND c.status = 'a_valider' "
-            f"WHERE {perimetre}",
-            *perimetre_args,
+        ctx.conn.scalar(
+            select(func.count(distinct(Khutba.id)))
+            .select_from(Khutba)
+            .join(Clip, and_(Clip.khutba_id == Khutba.id, Clip.status == "a_valider"))
+            .where(*perimetre)
         )
-        or {"n": 0}
-    )["n"]
-    rows = db.all_(
-        ctx.conn,
-        f"SELECT k.*, u.display_name imam, "
-        f"(SELECT COUNT(*) FROM clips c WHERE c.khutba_id = k.id) clips, "
-        f"(SELECT COUNT(*) FROM clips c WHERE c.khutba_id = k.id AND c.status = 'a_valider') pending "
-        f"FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id WHERE {where} "
-        f"ORDER BY k.date DESC, k.run_id DESC, k.session_index LIMIT ? OFFSET ?",
-        *args,
-        limit,
-        offset,
+        or 0
     )
+    stmt = (
+        select(
+            Khutba.__table__,
+            User.display_name.label("imam"),
+            _clips_de().label("clips"),
+            _clips_de(Clip.status == "a_valider").label("pending"),
+        )
+        .select_from(imam)
+        .where(*where)
+        .order_by(Khutba.date.desc(), Khutba.run_id.desc(), Khutba.session_index)
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = orm.rows(ctx.conn, stmt)
     return {"items": rows, "count": len(rows), "total": total, "offset": offset, "pending": en_attente}
 
 
@@ -115,14 +118,10 @@ def sermons(
 def sermon(ctx: CtxDep, kid: int):
     k = khutba_or_404(ctx, kid)
     data = content.load(ctx.conn, k)
-    segments = (
-        db.all_(ctx.conn, "SELECT * FROM segments WHERE khutba_id = ? ORDER BY idx", kid)
-        if _a_table(ctx.conn, "segments")
-        else []
-    )
-    clips = db.all_(ctx.conn, "SELECT * FROM clips WHERE khutba_id = ? ORDER BY idx", kid)
+    segments = _segments(ctx.conn, kid)
+    clips = orm.rows(ctx.conn, select(Clip).where(Clip.khutba_id == kid).order_by(Clip.idx))
     notes = SessionOutput(k["output_dir"]).notes
-    imam = db.one(ctx.conn, "SELECT display_name FROM users WHERE id = ?", k["imam_id"]) if k["imam_id"] else None
+    imam = orm.first(ctx.conn, User, id=k["imam_id"]) if k["imam_id"] else None
     titres = habillage.langues(ctx.conn, k, data)
     return {
         "sermon": k,
@@ -249,7 +248,7 @@ async def sermon_speaker(kid: int, ctx: CtxDep):
     if f.get("imam_id") and iid is None:
         raise NotFound()
     speaker = (f.get("speaker") or "").strip()[:120]
-    ctx.conn.execute("UPDATE khutbas SET imam_id = ?, speaker = ? WHERE id = ?", (iid, speaker, k["id"]))
+    ctx.conn.execute(update(Khutba).where(Khutba.id == k["id"]).values(imam_id=iid, speaker=speaker))
     db.audit(
         ctx.conn,
         ctx.mosque["id"],

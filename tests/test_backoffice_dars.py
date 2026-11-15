@@ -1,10 +1,9 @@
 """Back-office and dars: labels, column migration, clip caption."""
 
-import sqlite3
-
 import pytest
+from conftest import columns, create_schema, legacy_metadata, one  # noqa: E402
 
-from sada.backoffice import db, publish
+from sada.backoffice import db, models, publish
 from sada.backoffice.importer import khutba_label
 
 MOSQUE = {"name": "Mosquée Exemple", "clip_title": "Khutba du vendredi"}
@@ -28,38 +27,46 @@ def test_migration_ajoute_les_colonnes(tmp_path):
     """Une base créée par l'ancien code (tables présentes, sans `schema_migrations`) est adoptée
     sans perte de données : les colonnes ajoutées depuis apparaissent avec leurs valeurs par défaut."""
     path = tmp_path / "vieux.db"
-    # Base au schéma courant, rembobinée à l'état de l'ancien code (colonnes ajoutées retirées).
-    db.init(path)
-    old = sqlite3.connect(path)
-    old.executescript(
-        "DROP TABLE schema_migrations;"
-        "ALTER TABLE khutbas DROP COLUMN kind;"
-        "ALTER TABLE khutbas DROP COLUMN title;"
-        "ALTER TABLE khutbas DROP COLUMN series;"
-        "ALTER TABLE khutbas DROP COLUMN session_no;"
-        "ALTER TABLE mosques DROP COLUMN logo_path;"
-        "ALTER TABLE mosques DROP COLUMN onboarded_at;"
+    # Base d'avant l'ancien code : colonnes ajoutées absentes, pas de table de migrations.
+    old = legacy_metadata(
+        without={
+            "khutbas": {"kind", "title", "series", "session_no"},
+            "mosques": {"logo_path", "onboarded_at"},
+        }
     )
-    old.execute(
-        "INSERT INTO mosques (slug, name, clip_title, created_at) "
-        "VALUES ('exemple', 'Mosquée Exemple', 'Khutba du vendredi', 'now')"
-    )
-    old.execute(
-        "INSERT INTO khutbas (mosque_id, run_id, session_index, label, output_dir, imported_at)"
-        " VALUES (1, '20261106_220224', 0, 'Khutba du vendredi', '/tmp/x', 'now')"
-    )
-    old.commit()
-    old.close()
+    create_schema(path, old)
+    conn = db.connect(path)
+    try:
+        conn.execute(
+            old.tables["mosques"]
+            .insert()
+            .values(slug="exemple", name="Mosquée Exemple", clip_title="Khutba du vendredi", created_at="now")
+        )
+        conn.execute(
+            old.tables["khutbas"]
+            .insert()
+            .values(
+                mosque_id=1,
+                run_id="20261106_220224",
+                session_index=0,
+                label="Khutba du vendredi",
+                output_dir="/tmp/x",
+                imported_at="now",
+            )
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     db.init(path)
     conn = db.connect(path)
     try:
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")}
+        cols = columns(conn, "khutbas")
         assert {"kind", "title", "series", "session_no"} <= cols
-        row = db.one(conn, "SELECT * FROM khutbas")
+        row = one(conn, models.Khutba)
         assert row["kind"] == "khutba" and row["title"] == ""
-        assert db.one(conn, "SELECT slug FROM mosques")["slug"] == "exemple"  # données conservées
-        migrated = {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")}
+        assert one(conn, models.Mosque)["slug"] == "exemple"  # données conservées
+        migrated = columns(conn, "khutbas")
     finally:
         conn.close()
 
@@ -67,10 +74,9 @@ def test_migration_ajoute_les_colonnes(tmp_path):
     db.init(fresh)
     conn = db.connect(fresh)
     try:
-        assert {r[1] for r in conn.execute("PRAGMA table_info(khutbas)")} == migrated
+        assert columns(conn, "khutbas") == migrated
         assert {"kind", "title", "series", "session_no"} <= migrated
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(mosques)")}
-        assert "logo_path" in cols
+        assert "logo_path" in columns(conn, "mosques")
         db.create_mosque(conn, "exemple", "Mosquée Exemple")
     finally:
         conn.close()

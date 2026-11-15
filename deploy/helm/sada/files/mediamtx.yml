@@ -7,7 +7,13 @@ rtmp: yes
 rtmpAddress: :1935
 srt: yes
 srtAddress: :8890
-hls: no
+writeQueueSize: 8192
+hls: yes
+hlsAddress: :8888
+hlsVariant: mpegts
+hlsSegmentDuration: 2s
+hlsAlwaysRemux: no
+hlsAllowOrigins: ['*']
 webrtc: no
 
 # OBS pushes rtmp://<host>:1935/live/<slug> (or SRT, streamid=publish:live/<slug>);

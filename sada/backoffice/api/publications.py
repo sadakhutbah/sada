@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from sqlalchemy import select
 
-from .. import db, publish
 from .. import dirs as dirs_mod
+from .. import orm, publish
 from ..context import CtxDep
+from ..models import Clip, Khutba, Publication, User
 from .common import _a_table, _notification_settings
 
 router = APIRouter()
@@ -16,19 +18,30 @@ router = APIRouter()
 def publications(ctx: CtxDep):
     """Real connector status (availability and reason), ready clips and history; notification settings for admins only."""
     ctx.require("publish")
-    ready = db.all_(
+    ready = orm.rows(
         ctx.conn,
-        "SELECT c.*, k.label sermon, k.date FROM clips c JOIN khutbas k ON k.id = c.khutba_id "
-        "WHERE c.mosque_id = ? AND c.status = 'valide' ORDER BY c.decided_at DESC",
-        ctx.mosque["id"],
+        select(Clip.__table__, Khutba.label.label("sermon"), Khutba.date)
+        .join(Khutba, Khutba.id == Clip.khutba_id)
+        .where(Clip.mosque_id == ctx.mosque["id"], Clip.status == "valide")
+        .order_by(Clip.decided_at.desc()),
     )
     pubs = (
-        db.all_(
+        orm.rows(
             ctx.conn,
-            "SELECT p.*, u.display_name who, c.idx, c.kind, k.label sermon, k.date FROM publications p "
-            "JOIN clips c ON c.id = p.clip_id JOIN khutbas k ON k.id = c.khutba_id "
-            "LEFT JOIN users u ON u.id = p.user_id WHERE p.mosque_id = ? ORDER BY p.id DESC LIMIT 100",
-            ctx.mosque["id"],
+            select(
+                Publication.__table__,
+                User.display_name.label("who"),
+                Clip.idx,
+                Clip.kind,
+                Khutba.label.label("sermon"),
+                Khutba.date,
+            )
+            .join(Clip, Clip.id == Publication.clip_id)
+            .join(Khutba, Khutba.id == Clip.khutba_id)
+            .outerjoin(User, User.id == Publication.user_id)
+            .where(Publication.mosque_id == ctx.mosque["id"])
+            .order_by(Publication.id.desc())
+            .limit(100),
         )
         if _a_table(ctx.conn, "publications")
         else []

@@ -150,6 +150,19 @@ class SessionRec:
         }
 
 
+def _rows(sessions: list[dt.datetime], extras: list[dict] | None) -> list[tuple[dt.datetime, dict]]:
+    """(start, event) pairs of a day, sorted: `extras` follows `sessions` before sorting."""
+    if extras is not None and len(extras) != len(sessions):
+        raise ValueError(
+            _(
+                "extras ({extras}) and sessions ({sessions}) must have the same length",
+                extras=len(extras),
+                sessions=len(sessions),
+            )
+        )
+    return sorted(zip(sessions, extras or [{} for _ in sessions], strict=True), key=lambda row: row[0])
+
+
 class Machine:
     def __init__(
         self,
@@ -166,36 +179,15 @@ class Machine:
         type is in its event.
         """
         self.p = params or MachineParams()
-        order = sorted(range(len(sessions)), key=lambda i: sessions[i])
-        if extras is not None and len(extras) != len(sessions):
-            raise ValueError(
-                _(
-                    "extras ({extras}) and sessions ({sessions}) must have the same length",
-                    extras=len(extras),
-                    sessions=len(sessions),
-                )
-            )
-        self.sessions = [sessions[i] for i in order]
-        extras = [extras[i] if extras else {} for i in order]
+        rows = _rows(sessions, extras)
+        self.sessions = [s for s, _m in rows]
         self.idx = 0
         self.state = State.IDLE
         self.override = False
         self.log = log or (lambda m: None)
         self.pos_fn = pos_fn or (lambda: (0, 0.0))
-        self.records = []
-        for i, s in enumerate(self.sessions):
-            m = extras[i]
-            self.records.append(
-                SessionRec(
-                    i,
-                    s.strftime("%H:%M"),
-                    kind=m.get("kind") or "khutba",
-                    title=m.get("title", ""),
-                    speaker=m.get("speaker", ""),
-                    series=m.get("series", ""),
-                    session_no=m.get("session_no"),
-                )
-            )
+        # one record per session, same order: records[i] describes sessions[i]
+        self.records = [self._rec_of(s, m, i) for i, (s, m) in enumerate(rows)]
         self.live: SessionRec | None = None  # open session (khutba or janaza)
         self.entered_t = 0.0
         self.entered_now: dt.datetime | None = None
@@ -209,6 +201,18 @@ class Machine:
         self.last_reason = ""
 
     # ------------------------------------------------------------------ helpers
+    def _rec_of(self, start: dt.datetime, meta: dict, index: int) -> SessionRec:
+        """Record of a planned session; `meta` is the event carried ({} for an ordinary khutba)."""
+        return SessionRec(
+            index,
+            start.strftime("%H:%M"),
+            kind=meta.get("kind") or "khutba",
+            title=meta.get("title", ""),
+            speaker=meta.get("speaker", ""),
+            series=meta.get("series", ""),
+            session_no=meta.get("session_no"),
+        )
+
     @property
     def scene(self) -> str | None:
         return SCENE_OF[self.state]
@@ -355,6 +359,53 @@ class Machine:
         if self.state == State.INTERMISSION:
             return now < s - dt.timedelta(minutes=p.arm_before_min)
         return False
+
+    # ------------------------------------------------------------------- replan
+    def replan(self, sessions: list[dt.datetime], extras: list[dict] | None = None, sig: Signals | None = None) -> int:
+        """Replace the sessions still to come (real timetable or programme known only late).
+
+        The day opened on default times because the back office was unreachable: as soon as it
+        answers, the sessions that had not started yet give way to the real ones. Sessions already
+        played (or skipped) and the one in progress are kept as they are. Returns how many
+        sessions were added.
+        """
+        if sig is None:
+            raise ValueError(_("replan needs the current signals"))
+        rows = _rows(sessions, extras)
+        n = len(self.sessions)  # records of the planned sessions come first, off-programme ones after
+        engaged = self.live is not None or self.state in (
+            State.ARMED,
+            State.BEFORE,
+            State.INTERMISSION,
+            State.KHUTBA,
+            State.DARS,
+            State.PRAYER,
+        )
+        keep = min(self.idx + 1 if engaged else self.idx, n)
+        seen = {(s, r.kind) for s, r in zip(self.sessions[:n], self.records[:n], strict=True)}
+        fresh: list[tuple[dt.datetime, dict]] = []
+        for s, meta in rows:
+            kind = meta.get("kind") or "khutba"
+            late = (self.p.khutba if kind == "khutba" else self.p.dars).window_after_min
+            if (s, kind) in seen or s <= sig.now - dt.timedelta(minutes=late):
+                continue  # already planned, or its window is closed: nothing left to play
+            seen.add((s, kind))
+            fresh.append((s, meta))
+        if not fresh:
+            return 0
+        kept = list(zip(self.sessions[:keep], self.records[:keep], strict=True))
+        added = [(s, self._rec_of(s, meta, 0)) for s, meta in fresh]
+        out = sorted(kept + added, key=lambda row: row[0])
+        self.sessions = [s for s, _r in out]
+        self.records = [r for _s, r in out] + self.records[n:]  # off-programme sessions stay last
+        new = {id(r) for _s, r in added}
+        self.idx = next(i for i, (_s, r) in enumerate(out) if id(r) in new)
+        for i, r in enumerate(self.records):
+            r.index = i  # records[i] describes sessions[i]
+        if self.state in (State.ENDED, State.STOPPED) and not self.override:
+            self._go(State.IDLE, sig, "programme reçu : nouvelles sessions")
+        self.log(_("Timetable replaced: {count} session(s) added", count=len(fresh)))
+        return len(fresh)
 
     # ----------------------------------------------------------------- commandes
     def command(self, cmd: str, sig: Signals, arg=None) -> str:

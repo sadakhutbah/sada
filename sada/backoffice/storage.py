@@ -12,7 +12,8 @@ import re
 from urllib.parse import urlsplit
 
 from ..i18n import _
-from . import db
+from . import db, orm
+from .models import Storage
 
 BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 REGION_DEFAULT = "auto"
@@ -68,7 +69,7 @@ def check(endpoint: str, bucket: str, region: str, prefix: str, access_key: str)
 
 def view(conn, mosque_id: int) -> dict:
     """Ce que montre l'écran : la clé secrète est masquée."""
-    r = db.one(conn, "SELECT * FROM storage WHERE mosque_id = ?", mosque_id) or {}
+    r = orm.first(conn, Storage, mosque_id=mosque_id) or {}
     secret = r.get("secret_key") or ""
     return {
         "endpoint": r.get("endpoint") or "",
@@ -84,7 +85,7 @@ def view(conn, mosque_id: int) -> dict:
 
 def save(conn, mosque_id: int, payload: dict) -> dict:
     """Enregistre ; un champ secret renvoyé sous sa forme masquée garde la valeur précédente."""
-    avant = db.one(conn, "SELECT * FROM storage WHERE mosque_id = ?", mosque_id) or {}
+    avant = orm.first(conn, Storage, mosque_id=mosque_id) or {}
     propre = check(
         payload.get("endpoint", ""),
         payload.get("bucket", ""),
@@ -99,23 +100,19 @@ def save(conn, mosque_id: int, payload: dict) -> dict:
         raise InvalidStorage({"secret_key": _("Secret key required.")})
     # Opt-in: without an explicit "on", the replays stay on the machine.
     actif = str(payload.get("enabled", "0")).strip().lower() in ("1", "true", "on", "oui", "yes")
-    conn.execute(
-        """INSERT INTO storage (mosque_id, endpoint, region, bucket, access_key, secret_key, prefix, enabled, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(mosque_id) DO UPDATE SET endpoint=excluded.endpoint, region=excluded.region,
-             bucket=excluded.bucket, access_key=excluded.access_key, secret_key=excluded.secret_key,
-             prefix=excluded.prefix, enabled=excluded.enabled, updated_at=excluded.updated_at""",
-        (
-            mosque_id,
-            propre["endpoint"],
-            propre["region"],
-            propre["bucket"],
-            propre["access_key"],
-            secret,
-            propre["prefix"],
-            1 if actif else 0,
-            db.now_iso(),
-        ),
+    orm.upsert(
+        conn,
+        Storage,
+        ("mosque_id",),
+        mosque_id=mosque_id,
+        endpoint=propre["endpoint"],
+        region=propre["region"],
+        bucket=propre["bucket"],
+        access_key=propre["access_key"],
+        secret_key=secret,
+        prefix=propre["prefix"],
+        enabled=1 if actif else 0,
+        updated_at=db.now_iso(),
     )
     conn.commit()
     return view(conn, mosque_id)
@@ -123,7 +120,7 @@ def save(conn, mosque_id: int, payload: dict) -> dict:
 
 def effective(conn, mosque_id: int) -> dict | None:
     """Réglage complet, clés en clair : réservé au moteur, par l'endpoint interne."""
-    r = db.one(conn, "SELECT * FROM storage WHERE mosque_id = ?", mosque_id) or {}
+    r = orm.first(conn, Storage, mosque_id=mosque_id) or {}
     if not (r.get("enabled") and r.get("bucket") and r.get("access_key") and r.get("secret_key")):
         return None
     return {

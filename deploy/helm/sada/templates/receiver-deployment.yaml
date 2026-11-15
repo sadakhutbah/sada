@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: receiver
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: receiver
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sada.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: receiver
+  template:
+    metadata:
+      labels:
+        {{- include "sada.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: receiver
+      annotations:
+        checksum/mediamtx-config: {{ .Values.receiver.config | default (.Files.Get "files/mediamtx.yml") | sha256sum }}
+    spec:
+      containers:
+        - name: mediamtx
+          image: {{ .Values.receiver.image | quote }}
+          imagePullPolicy: {{ .Values.receiver.imagePullPolicy }}
+          args:
+            - /etc/mediamtx/mediamtx.yml
+          ports:
+            - name: rtmp
+              containerPort: {{ .Values.receiver.rtmpPort }}
+              protocol: TCP
+            - name: srt
+              containerPort: {{ .Values.receiver.srtPort }}
+              protocol: UDP
+            - name: rtsp
+              containerPort: {{ .Values.receiver.rtspPort }}
+              protocol: TCP
+            - name: hls
+              containerPort: 8888
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mediamtx
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: rtsp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: rtsp
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.receiver.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.receiver.existingConfigMap | default (printf "%s-receiver" (include "sada.fullname" .)) }}

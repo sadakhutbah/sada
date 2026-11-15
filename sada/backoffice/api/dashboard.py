@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from starlette.concurrency import run_in_threadpool
 
 from ...i18n import _
-from .. import db, live
+from .. import db, live, orm
 from ..context import CtxDep, NotFound, count_clips, imam_filter, live_status
+from ..models import Audit, Khutba, User
 from .common import _ok
 
 router = APIRouter()
@@ -16,28 +18,26 @@ router = APIRouter()
 
 @router.get("/dashboard")
 def dashboard(ctx: CtxDep):
-    where, args = imam_filter(ctx)
-    recent = db.all_(
+    where = imam_filter(ctx)
+    recent = orm.rows(
         ctx.conn,
-        f"SELECT k.*, u.display_name imam FROM khutbas k LEFT JOIN users u ON u.id = k.imam_id "
-        f"WHERE {where} ORDER BY k.date DESC, k.run_id DESC, k.session_index LIMIT 6",
-        *args,
+        select(Khutba.__table__, User.display_name.label("imam"))
+        .outerjoin(User, User.id == Khutba.imam_id)
+        .where(*where)
+        .order_by(Khutba.date.desc(), Khutba.run_id.desc(), Khutba.session_index)
+        .limit(6),
     )
     # Chaque compteur renvoie vers sa page : les khutbas d'un côté, les dars enregistrés de l'autre.
-    par_genre = {
-        r["g"]: r["n"]
-        for r in db.all_(
-            ctx.conn,
-            f"SELECT COALESCE(NULLIF(k.kind, ''), 'khutba') g, COUNT(*) n FROM khutbas k WHERE {where} GROUP BY g",
-            *args,
-        )
-    }
+    genre = func.coalesce(func.nullif(Khutba.kind, ""), "khutba")
+    par_genre = dict(ctx.conn.execute(select(genre, func.count()).where(*where).group_by(genre)).all())
     total = par_genre.get("khutba", 0)
-    cmds = db.all_(
+    cmds = orm.rows(
         ctx.conn,
-        "SELECT a.*, u.display_name who FROM audit a LEFT JOIN users u ON u.id = a.user_id "
-        "WHERE a.mosque_id = ? AND a.action LIKE 'live.%' ORDER BY a.id DESC LIMIT 5",
-        ctx.mosque["id"],
+        select(Audit.__table__, User.display_name.label("who"))
+        .outerjoin(User, User.id == Audit.user_id)
+        .where(Audit.mosque_id == ctx.mosque["id"], Audit.action.like("live.%"))
+        .order_by(Audit.id.desc())
+        .limit(5),
     )
     return {
         "counts": {

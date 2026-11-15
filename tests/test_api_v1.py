@@ -6,7 +6,9 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from test_backoffice import PW, client  # noqa: E402,F401  (conftest provides the path)
+from conftest import PW, client, insert, one  # noqa: E402,F401  (conftest provides the path)
+
+from sada.backoffice import models  # noqa: E402
 
 
 def test_api_refuse_sans_session_en_json(env):
@@ -68,26 +70,22 @@ def test_les_clips_arrivent_par_pages(env):
     """Three hundred clips must not be rendered at once: the page asks for twenty, then follows."""
     conn, kid, mid = env["conn"], env["kid"], env["mid"]
     for i in range(3, 28):
-        conn.execute(
-            """INSERT INTO clips (mosque_id, khutba_id, idx, kind, why, start, end, file_path,
-                        status, version, created_at, updated_at)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                mid,
-                kid,
-                i,
-                "verset",
-                "test",
-                i * 10.0,
-                i * 10.0 + 40,
-                f"/tmp/c{i}.mp4",
-                "a_valider" if i % 2 else "valide",
-                1,
-                "2026-11-10T10:00:00",
-                "2026-11-10T10:00:00",
-            ),
+        insert(
+            conn,
+            models.Clip,
+            mosque_id=mid,
+            khutba_id=kid,
+            idx=i,
+            kind="verset",
+            why="test",
+            start=i * 10.0,
+            end=i * 10.0 + 40,
+            file_path=f"/tmp/c{i}.mp4",
+            status="a_valider" if i % 2 else "valide",
+            version=1,
+            created_at="2026-11-10T10:00:00",
+            updated_at="2026-11-10T10:00:00",
         )
-    conn.commit()
     c = client(env, "admin")
 
     page = c.get("/api/v1/clips?limit=10").json()
@@ -119,22 +117,20 @@ def test_khutbas_cherchables_filtrees_et_paginees(env):
     """A mosque accumulates years of khutbas: search, filtering and paging are done by the server."""
     c = client(env, "admin")
     conn = env["conn"]
-    base = conn.execute("SELECT mosque_id, output_dir FROM khutbas LIMIT 1").fetchone()
+    base = one(conn, models.Khutba)
     for i in range(5):
-        conn.execute(
-            "INSERT INTO khutbas (mosque_id, run_id, session_index, label, theme, date, output_dir, "
-            "imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-            (
-                base["mosque_id"],
-                f"essai{i}",
-                i,
-                f"Passage {i}",
-                "la patience" if i % 2 else "la misericorde",
-                f"2024-0{i + 1}-12",
-                base["output_dir"],
-            ),
+        insert(
+            conn,
+            models.Khutba,
+            mosque_id=base["mosque_id"],
+            run_id=f"essai{i}",
+            session_index=i,
+            label=f"Passage {i}",
+            theme="la patience" if i % 2 else "la misericorde",
+            date=f"2024-0{i + 1}-12",
+            output_dir=base["output_dir"],
+            imported_at=f"2024-0{i + 1}-12T10:00:00+00:00",
         )
-    conn.commit()
 
     tout = c.get("/api/v1/sermons", params={"limit": 200}).json()
     assert tout["total"] >= 6 and tout["total"] == len(tout["items"])

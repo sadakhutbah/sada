@@ -35,7 +35,7 @@ services:
     ports:
       - "${SADA_SRT_PORT:-8890}:8890/udp"  # SRT  : srt://<host>:8890?streamid=publish:live/<slug>
       - "${SADA_RTMP_PORT:-1935}:1935"  # RTMP : rtmp://<host>:1935/live/<slug>
-    volumes: [./mediamtx.yml:/mediamtx.yml:ro]
+    volumes: [./helm/sada/files/mediamtx.yml:/mediamtx.yml:ro]
 
   orchestrator-a:
     <<: *orchestrator

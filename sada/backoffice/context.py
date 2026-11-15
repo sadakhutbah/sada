@@ -6,12 +6,13 @@ Kept apart from `app.py` so that the API modules depend on this module, never on
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Annotated
 
 from fastapi import Depends, Request
+from sqlalchemy import func, select
 
-from . import auth, db, live
+from . import auth, db, live, orm
+from .models import Clip, Khutba, Mosque
 
 PRE_COOKIE = "sada_pre"
 
@@ -120,7 +121,7 @@ def _sec(request) -> bool:
     return request.url.scheme == "https" or fwd == "https"
 
 
-ConnDep = Annotated[sqlite3.Connection, Depends(get_conn)]
+ConnDep = Annotated[orm.Db, Depends(get_conn)]
 
 
 def open_mosque(conn, s: dict, u: dict) -> dict | None:
@@ -133,7 +134,7 @@ def open_mosque(conn, s: dict, u: dict) -> dict | None:
         return None
     if not s.get("support") and mid not in {m["id"] for m in auth.mosques_of(conn, u)}:
         return None
-    return db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
+    return orm.first(conn, Mosque, id=mid)
 
 
 def get_ctx(request: Request, conn: ConnDep) -> Ctx:
@@ -176,33 +177,27 @@ PreCtxDep = Annotated[Ctx, Depends(get_pre_ctx)]
 # ------------------------------------------------------------------ shared rules
 
 
-def imam_filter(ctx: Ctx) -> tuple[str, tuple]:
-    """Visible khutbas (alias k): those of the mosque; for an imam, only his own."""
+def imam_filter(ctx: Ctx) -> list:
+    """Visible khutbas: those of the mosque; for an imam, only his own (conditions on `Khutba`)."""
     if ctx.can("history_all"):
-        return "k.mosque_id = ?", (ctx.mosque["id"],)
-    return "k.mosque_id = ? AND k.imam_id = ?", (ctx.mosque["id"], ctx.user["id"])
+        return [Khutba.mosque_id == ctx.mosque["id"]]
+    return [Khutba.mosque_id == ctx.mosque["id"], Khutba.imam_id == ctx.user["id"]]
 
 
 def count_clips(ctx: Ctx, status: str) -> int:
-    where, args = imam_filter(ctx)
-    return db.one(
-        ctx.conn,
-        f"SELECT COUNT(*) n FROM clips c JOIN khutbas k ON k.id = c.khutba_id WHERE {where} AND c.status = ?",
-        *args,
-        status,
-    )["n"]
+    stmt = select(func.count()).select_from(Clip).join(Khutba, Khutba.id == Clip.khutba_id)
+    return ctx.conn.scalar(stmt.where(*imam_filter(ctx), Clip.status == status)) or 0
 
 
 def khutba_or_404(ctx: Ctx, kid: int) -> dict:
-    where, args = imam_filter(ctx)
-    k = db.one(ctx.conn, f"SELECT k.* FROM khutbas k WHERE k.id = ? AND {where}", kid, *args)
+    k = orm.first(ctx.conn, Khutba, Khutba.id == kid, *imam_filter(ctx))
     if not k:
         raise NotFound()
     return k
 
 
 def clip_or_404(ctx: Ctx, cid: int) -> tuple[dict, dict]:
-    c = db.one(ctx.conn, "SELECT * FROM clips WHERE id = ? AND mosque_id = ?", cid, ctx.mosque["id"])
+    c = orm.first(ctx.conn, Clip, id=cid, mosque_id=ctx.mosque["id"])
     if not c:
         raise NotFound()
     return c, khutba_or_404(ctx, c["khutba_id"])

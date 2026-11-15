@@ -7,7 +7,6 @@ web/src
 promo*
 pitch
 minbar
-docs
 examples
 tests
 **/__pycache__

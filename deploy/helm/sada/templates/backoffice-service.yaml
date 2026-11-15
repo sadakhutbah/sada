@@ -1,0 +1,18 @@
+# MediaMTX asks its publish authorisation to http://backoffice:8090 (see files/mediamtx.yml):
+# the name of this Service is part of the contract.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backoffice
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backoffice
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.backoffice.port }}
+      targetPort: http
+  selector:
+    {{- include "sada.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backoffice

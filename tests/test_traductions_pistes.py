@@ -178,7 +178,9 @@ def test_traduction_sans_modele_ne_maquille_rien(tmp_path):
 
 
 fastapi = pytest.importorskip("fastapi")
-from test_backoffice import client  # noqa: E402
+from conftest import client, insert, one  # noqa: E402
+
+from sada.backoffice import models  # noqa: E402
 
 
 def _ecrire_etat(env, **champs) -> None:
@@ -189,9 +191,8 @@ def _ecrire_etat(env, **champs) -> None:
 
 
 def _khutba(env) -> dict:
-    from sada.backoffice import db
 
-    return db.one(env["conn"], "SELECT * FROM khutbas WHERE id = ?", env["kid"])
+    return one(env["conn"], models.Khutba, id=env["kid"])
 
 
 def test_api_etat_des_pistes(env):
@@ -238,9 +239,14 @@ def _habille(env) -> None:
     bo.fichier_options_rendues(k).write_text(
         json.dumps({"title": "Patience", "speaker": "Cheikh Test", "intro_s": 5.0, "outro_s": 2}), encoding="utf-8"
     )
-    env["conn"].execute(
-        "INSERT INTO habillages (mosque_id, khutba_id, options, status, updated_at) VALUES (?, ?, '{}', 'pret', 'x')",
-        (env["mid"], k["id"]),
+    insert(
+        env["conn"],
+        models.Habillage,
+        mosque_id=env["mid"],
+        khutba_id=k["id"],
+        options="{}",
+        status="pret",
+        updated_at="x",
     )
 
 

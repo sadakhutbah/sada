@@ -20,9 +20,13 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import insert, select, update
+
 from ..events import kind_label
 from ..i18n import _
-from . import db, social
+from . import db, orm, social
+from .models import Clip, Khutba, Mosque, Publication, User
+from .models import Connector as ConnectorRow
 
 
 @dataclass
@@ -174,7 +178,7 @@ def _short(value):
 
 
 def connector_rows(conn, mosque: dict) -> list[dict]:
-    rows = {r["key"]: r for r in db.all_(conn, "SELECT * FROM connectors WHERE mosque_id = ?", mosque["id"])}
+    rows = {r["key"]: r for r in orm.rows(conn, select(ConnectorRow).filter_by(mosque_id=mosque["id"]))}
     out = []
     for key, c in CONNECTORS.items():
         r = rows.get(key)
@@ -230,21 +234,20 @@ def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=N
 
     def record(status: str, res: Result) -> Result:
         conn.execute(
-            "INSERT INTO publications (mosque_id, clip_id, clip_version, connector, status, location, caption, message, "
-            "user_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (
-                clip["mosque_id"],
-                clip["id"],
-                clip["version"],
-                connector_key,
-                status,
-                res.location,
-                caption,
-                res.message,
-                user["id"],
-                db.now_iso(),
-            ),
+            insert(Publication).values(
+                mosque_id=clip["mosque_id"],
+                clip_id=clip["id"],
+                clip_version=clip["version"],
+                connector=connector_key,
+                status=status,
+                location=res.location,
+                caption=caption,
+                message=res.message,
+                user_id=user["id"],
+                created_at=db.now_iso(),
+            )
         )
+        orm.done(conn)
         db.audit(
             conn,
             clip["mosque_id"],
@@ -265,39 +268,44 @@ def publish(conn, clip: dict, connector_key: str, user: dict, caption: str, ip=N
     ok, why = can_publish(clip)
     if not ok:
         return record("refuse", Result(False, "", why))
-    row = db.one(conn, "SELECT * FROM connectors WHERE mosque_id = ? AND key = ?", clip["mosque_id"], connector_key)
+    row = orm.first(conn, ConnectorRow, mosque_id=clip["mosque_id"], key=connector_key)
     ok, why = c.availability(row)
     if not ok:
         return record("refuse", Result(False, "", why))
     if not Path(clip["file_path"]).exists():
         return record("erreur", Result(False, "", _("clip file not found")))
-    k = db.one(conn, "SELECT * FROM khutbas WHERE id = ?", clip["khutba_id"])
-    m = db.one(conn, "SELECT * FROM mosques WHERE id = ?", clip["mosque_id"])
-    v = db.one(conn, "SELECT display_name FROM users WHERE id = ?", clip["decided_by"])
+    k = orm.first(conn, Khutba, id=clip["khutba_id"])
+    m = orm.first(conn, Mosque, id=clip["mosque_id"])
+    v = orm.first(conn, User, id=clip["decided_by"])
     item = Item(clip, k, m, caption.strip(), v["display_name"] if v else "?", user["display_name"])
     try:
         res = c.publish(item, json.loads(row["settings"]) if row else {})
     except Exception as e:  # noqa: BLE001
         res = Result(False, "", _("error: {error}", error=e))
     if res.ok:
-        conn.execute("UPDATE clips SET status = 'publie', updated_at = ? WHERE id = ?", (db.now_iso(), clip["id"]))
+        conn.execute(update(Clip).where(Clip.id == clip["id"]).values(status="publie", updated_at=db.now_iso()))
+        orm.done(conn)
         return record("publie", res)
     return record("erreur", res)
 
 
 def save_connector(conn, mosque_id: int, key: str, enabled: bool, values: dict, user: dict, ip=None) -> None:
     c = CONNECTORS[key]
-    row = db.one(conn, "SELECT * FROM connectors WHERE mosque_id = ? AND key = ?", mosque_id, key)
+    row = orm.first(conn, ConnectorRow, mosque_id=mosque_id, key=key)
     settings = json.loads(row["settings"]) if row else {}
     for f in c.fields:
         v = (values.get(f) or "").strip()
         if f in c.secret and v in ("", db.MASK):
             continue  # secret field left empty = unchanged
         settings[f] = v
-    conn.execute(
-        "INSERT INTO connectors (mosque_id, key, enabled, settings) VALUES (?,?,?,?) ON CONFLICT (mosque_id, key) "
-        "DO UPDATE SET enabled = excluded.enabled, settings = excluded.settings",
-        (mosque_id, key, int(enabled), json.dumps(settings)),
+    orm.upsert(
+        conn,
+        ConnectorRow,
+        ("mosque_id", "key"),
+        mosque_id=mosque_id,
+        key=key,
+        enabled=int(enabled),
+        settings=json.dumps(settings),
     )
     db.audit(
         conn,

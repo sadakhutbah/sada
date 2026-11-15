@@ -16,8 +16,11 @@ import getpass
 import os
 import sys
 
+from sqlalchemy import select, update
+
 from ..i18n import _
-from . import auth, db, importer, internal
+from . import auth, db, importer, internal, orm
+from .models import Mosque, User
 
 
 def _password(args) -> str:
@@ -32,14 +35,14 @@ def _password(args) -> str:
 def _create_mosque(conn, slug: str, name: str) -> dict:
     mid = db.create_mosque(conn, slug, name)
     print(_("Mosque created: {slug} (#{id})", slug=slug, id=mid))
-    return db.one(conn, "SELECT * FROM mosques WHERE id = ?", mid)
+    return orm.first(conn, Mosque, id=mid)
 
 
 def _mosque(conn, slug: str | None, name: str | None = None, create: bool = False) -> dict:
     if slug:
-        m = db.one(conn, "SELECT * FROM mosques WHERE slug = ?", slug)
+        m = orm.first(conn, Mosque, slug=slug)
     else:
-        ms = db.all_(conn, "SELECT * FROM mosques ORDER BY id")
+        ms = orm.rows(conn, select(Mosque).order_by(Mosque.id))
         if len(ms) > 1:
             sys.exit(_("Several mosques: specify --mosque <slug>."))
         m = ms[0] if ms else None
@@ -120,9 +123,10 @@ def main(argv=None) -> int:
             uid = auth.create_user(conn, mo["id"], args.username, _password(args), "admin", args.name)
             # the first administrator of an install is also the platform's: a self-hosted
             # mosque keeps its model and transcription settings
-            first = not db.one(conn, "SELECT id FROM users WHERE platform_admin = 1 AND id != ?", uid)
+            first = not conn.scalar(select(User.id).where(User.platform_admin == 1, User.id != uid).limit(1))
             if args.platform or first:
-                conn.execute("UPDATE users SET platform_admin = 1 WHERE id = ?", (uid,))
+                conn.execute(update(User).where(User.id == uid).values(platform_admin=1))
+                orm.done(conn)
             db.audit(
                 conn,
                 mo["id"],
@@ -211,7 +215,7 @@ def main(argv=None) -> int:
 
             from .app import create_app
 
-            if not db.one(conn, "SELECT id FROM users WHERE role = 'admin' AND active = 1"):
+            if not conn.scalar(select(User.id).where(User.role == "admin", User.active == 1).limit(1)):
                 print(
                     _("Warning: no administrator. Create one: python -m sada.backoffice create-admin --username admin")
                 )

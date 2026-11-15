@@ -179,6 +179,7 @@ export default function Settings() {
   const [guide, setGuide] = useState({ agent: "", humain: "", docs: "", agentEn: "", humainEn: "", docsEn: "" });
   const [adresse, setAdresse] = useState("");
   const [adresseInitiale, setAdresseInitiale] = useState("");
+  const [cle, setCle] = useState<{ obs_server: string; obs_key: string } | null>(null);
   const fichier = useRef<HTMLInputElement>(null);
   const gabaritFichier = useRef<HTMLInputElement>(null);
 
@@ -305,7 +306,6 @@ export default function Settings() {
     }
   };
 
-  const [cle, setCle] = useState<{ obs_server: string; obs_key: string } | null>(null);
   const nouvelleCle = async () => {
     if (entree.has_key && !window.confirm(t("settings.keyConfirm"))) return;
     try {

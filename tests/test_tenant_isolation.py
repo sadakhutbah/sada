@@ -1,9 +1,9 @@
 """Tenant isolation: an account from another mosque cannot reach any resource by its id."""
 
 import pytest
-from test_backoffice import PW, client
+from conftest import PW, client, delete, one, rows
 
-from sada.backoffice import auth, db
+from sada.backoffice import auth, db, models
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def intruder(env):
 
 def _ids(env):
     conn = env["conn"]
-    cid = db.one(conn, "SELECT id FROM clips ORDER BY idx")["id"]
+    cid = rows(conn, models.Clip, order_by=models.clips.c.idx)[0]["id"]
     return {"kid": env["kid"], "cid": cid, "uid": env["ids"]["imam"]}
 
 
@@ -97,7 +97,7 @@ def test_clip_settings_are_per_mosque(env, intruder, monkeypatch, tmp_path):
     assert intruder.get("/api/v1/settings").json()["processing"]["clips"] == 2
     assert not shared.exists()  # nothing written to the shared file
 
-    m = db.one(env["conn"], "SELECT * FROM mosques WHERE id = ?", env["mid"])
+    m = one(env["conn"], models.Mosque, id=env["mid"])
     run_env = traitement._env(m)
     assert run_env["SADA_PIPELINE_CONFIG"] == str(tmp_path / "data" / "mosques" / "ma-mosquee" / "pipeline.json")
 
@@ -125,18 +125,17 @@ def test_platform_permission_cannot_be_granted_by_a_form(env):
 
 
 def test_migration_keeps_a_single_mosque_admin_in_charge(tmp_path):
-    from sada.backoffice import migrations
+    from sada.backoffice import migrations, orm
 
     path = tmp_path / "old.db"
     db.init(path)
     conn = db.connect(path)
     mid = db.create_mosque(conn, "seule", "Seule")
     uid = auth.create_user(conn, mid, "chef", PW, "admin")
-    conn.execute("DELETE FROM schema_migrations WHERE version = 11")
-    raw = db.connect_raw(path)
-    migrations._users_plateforme(raw)
-    raw.close()
-    assert db.one(conn, "SELECT platform_admin FROM users WHERE id = ?", uid)["platform_admin"] == 1
+    delete(conn, migrations.schema_migrations, version=11)
+    with orm.engine(path, db.DEFAULT_DB).begin() as raw:
+        migrations._users_plateforme(raw)
+    assert one(conn, models.User, id=uid)["platform_admin"] == 1
 
 
 def test_first_cli_admin_is_platform_admin(tmp_path, monkeypatch):
@@ -148,7 +147,7 @@ def test_first_cli_admin_is_platform_admin(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(PW + "\n"))
     cli.main(["--db", str(path), "create-admin", "--username", "other", "--password-stdin"])
     conn = db.connect(path)
-    flags = {r["username"]: r["platform_admin"] for r in db.all_(conn, "SELECT username, platform_admin FROM users")}
+    flags = {u["username"]: u["platform_admin"] for u in rows(conn, models.User)}
     assert flags == {"boss": 1, "other": 0}
 
 
@@ -207,7 +206,7 @@ def test_agent_token_rotation_and_revocation(env):
     internal.revoke_agent_token(conn, env["mid"])
     assert internal.agent_mosque(conn, new) is None
     assert internal.agent_mosque(conn, "") is None
-    stored = db.one(conn, "SELECT agent_token_hash FROM mosques WHERE id = ?", env["mid"])["agent_token_hash"]
+    stored = one(conn, models.Mosque, id=env["mid"])["agent_token_hash"]
     assert new not in stored
 
 
@@ -234,7 +233,7 @@ def test_programme_is_per_mosque(env, intruder):
     from sada.backoffice import internal
 
     conn = env["conn"]
-    other = db.one(conn, "SELECT id FROM mosques WHERE id != ?", env["mid"])["id"]
+    other = next(m["id"] for m in rows(conn, models.Mosque) if m["id"] != env["mid"])
     t_own, t_other = internal.new_agent_token(conn, env["mid"]), internal.new_agent_token(conn, other)
     assert [e["title"] for e in _agent(env, "/api/v1/internal/events", t_own).json()["events"]] == ["Fiqh"]
     assert _agent(env, "/api/v1/internal/events", t_other).json()["events"] == []
@@ -250,8 +249,8 @@ def test_times_cached_per_mosque(env, intruder):
         calls.append(url)
         return {"name": url, "jumua": "13:00", "times": ["06:00", "12:30"]}
 
-    a = db.one(conn, "SELECT * FROM mosques WHERE id = ?", env["mid"])
-    b = db.one(conn, "SELECT * FROM mosques WHERE id != ?", env["mid"])
+    a = one(conn, models.Mosque, id=env["mid"])
+    b = next(m for m in rows(conn, models.Mosque) if m["id"] != env["mid"])
     a["mawaqit_url"], b["mawaqit_url"] = "https://m/a", "https://m/b"
     assert mawaqit_store.times(conn, a, fetch=fetch, now=1000)["name"] == "https://m/a"
     assert mawaqit_store.times(conn, b, fetch=fetch, now=1000)["name"] == "https://m/b"
@@ -282,8 +281,9 @@ def test_stream_key_per_mosque(env, intruder):
     from sada.backoffice import internal
 
     conn = env["conn"]
-    slugs = [r["slug"] for r in db.all_(conn, "SELECT slug FROM mosques ORDER BY id")]
-    mids = [r["id"] for r in db.all_(conn, "SELECT id FROM mosques ORDER BY id")]
+    mosques = rows(conn, models.Mosque, order_by=models.mosques.c.id)
+    slugs = [m["slug"] for m in mosques]
+    mids = [m["id"] for m in mosques]
     ka = internal.new_publish_key(conn, mids[0])
     c = client(env)
 
@@ -306,7 +306,7 @@ def test_stream_key_from_backoffice_shown_once(env, intruder):
 
     owner = client(env, "admin")
     r1 = owner.ecrire("/settings/input/key", {}, methode="POST").json()
-    slug = db.one(env["conn"], "SELECT slug FROM mosques WHERE id = ?", env["mid"])["slug"]
+    slug = one(env["conn"], models.Mosque, id=env["mid"])["slug"]
     assert internal.publish_allowed(env["conn"], slug, r1["key"])
     view = owner.get("/api/v1/settings").json()["input"]
     assert view["has_key"] and r1["key"] not in str(view)  # never readable again

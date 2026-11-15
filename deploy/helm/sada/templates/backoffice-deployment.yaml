@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backoffice
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backoffice
+spec:
+  replicas: {{ .Values.backoffice.replicas }}
+  # ReadWriteOnce volume shared with the orchestrators: never two back offices at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sada.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backoffice
+  template:
+    metadata:
+      labels:
+        {{- include "sada.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backoffice
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if eq .Values.database.mode "cnpg" }}
+      initContainers:
+        # The migrations run at start-up: wait for PostgreSQL instead of crash-looping.
+        - name: wait-for-postgres
+          image: {{ include "sada.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -c
+            - |
+              import os, socket, time
+              host, port = os.environ["SADA_DB_HOST"], int(os.environ["SADA_DB_PORT"])
+              for _ in range(120):
+                  try:
+                      socket.create_connection((host, port), timeout=2).close()
+                      print("postgres is up")
+                      break
+                  except OSError:
+                      time.sleep(2)
+              else:
+                  raise SystemExit("postgres did not come up")
+          env:
+            - name: TZ
+              value: {{ $.Values.timezone | quote }}
+            - name: SADA_DB_HOST
+              value: {{ printf "%s-rw" (include "sada.postgresName" .) | quote }}
+            - name: SADA_DB_PORT
+              value: "5432"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+      {{- end }}
+      containers:
+        - name: backoffice
+          image: {{ include "sada.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - sada.backoffice
+            - serve
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .Values.backoffice.port | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backoffice.port }}
+          env:
+            - name: TZ
+              value: {{ $.Values.timezone | quote }}
+            - name: SADA_BO_HOST
+              value: 0.0.0.0
+            - name: SADA_BO_PORT
+              value: {{ .Values.backoffice.port | quote }}
+            # The encoder reads rtsp://receiver:8554/live/<slug> in push mode.
+            - name: SADA_RELAY_HOST
+              value: receiver
+            - name: SADA_IMPORT_EVERY
+              value: {{ .Values.backoffice.importEvery | quote }}
+            {{- if eq (include "sada.secureCookies" .) "true" }}
+            - name: SADA_SECURE_COOKIES
+              value: "1"
+            {{- end }}
+            {{- include "sada.databaseEnv" . | nindent 12 }}
+            {{- with .Values.backoffice.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.backoffice.resources | nindent 12 }}
+      volumes:
+        {{- include "sada.dataVolume" . | nindent 8 }}

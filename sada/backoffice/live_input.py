@@ -17,8 +17,11 @@ import shutil
 import subprocess
 from urllib.parse import urlsplit
 
+from sqlalchemy import select
+
 from ..i18n import _
-from . import db
+from . import db, orm
+from .models import LiveInput, Mosque
 
 MODES = ("camera", "push")
 CAMERA_SCHEMES = ("rtsp://", "rtsps://")
@@ -72,7 +75,7 @@ def check(mode: str, url: str | None, mosque) -> tuple[str, str, str]:
 
 def current(conn, mosque) -> dict:
     """Stored input, with the mode "camera" as the default before anything is set."""
-    row = db.one(conn, "SELECT mode, url FROM live_input WHERE mosque_id = ?", mosque["id"])
+    row = orm.first(conn, LiveInput, mosque_id=mosque["id"])
     mode = (row or {}).get("mode") or "camera"
     url = (row or {}).get("url") or (push_rtsp(mosque) if mode == "push" else DEFAULT_URL)
     return {"mode": mode, "url": url}
@@ -80,7 +83,7 @@ def current(conn, mosque) -> dict:
 
 def effective(conn, mosque_id: int) -> str:
     """Address in clear for the encoder, or "" when nothing was ever configured."""
-    row = db.one(conn, "SELECT mode, url FROM live_input WHERE mosque_id = ?", mosque_id)
+    row = orm.first(conn, LiveInput, mosque_id=mosque_id)
     if not row:
         return ""
     return row["url"] or ""
@@ -91,13 +94,11 @@ def view(conn, mosque, host: str) -> dict:
     cur = current(conn, mosque)
     return {
         **cur,
-        "configured": bool(db.one(conn, "SELECT 1 AS x FROM live_input WHERE mosque_id = ?", mosque["id"])),
+        "configured": orm.first(conn, LiveInput, mosque_id=mosque["id"]) is not None,
         "push_rtmp": push_rtmp(host, mosque),
         "push_rtsp": push_rtsp(mosque),
         # whether a stream key exists; the key itself is never readable again
-        "has_key": bool(
-            db.one(conn, "SELECT 1 AS x FROM mosques WHERE id = ? AND publish_key_hash != ''", mosque["id"])
-        ),
+        "has_key": bool(conn.scalar(select(Mosque.id).where(Mosque.id == mosque["id"], Mosque.publish_key_hash != ""))),
     }
 
 
@@ -105,12 +106,7 @@ def save(conn, mosque, mode, url, user) -> dict:
     mode, url, err = check(mode, url, mosque)
     if err:
         raise InvalidInput(err)
-    conn.execute(
-        "INSERT INTO live_input (mosque_id, mode, url, updated_at) VALUES (?, ?, ?, ?) "
-        "ON CONFLICT(mosque_id) DO UPDATE SET mode = excluded.mode, url = excluded.url, "
-        "updated_at = excluded.updated_at",
-        (mosque["id"], mode, url, db.now_iso()),
-    )
+    orm.upsert(conn, LiveInput, ("mosque_id",), mosque_id=mosque["id"], mode=mode, url=url, updated_at=db.now_iso())
     db.audit(
         conn,
         mosque["id"],

@@ -6,17 +6,31 @@ import re
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
+from sqlalchemy import update
 
 from ... import notify
 from ...i18n import _
 from ...pipeline import llm
 from ...pipeline import remote as remote_transcription
 from ...pipeline import settings as pipeline_settings
-from .. import auth, branding, db, destinations, instance, live_input, publish, storage, tenant_config, variables_ecran
+from .. import (
+    auth,
+    branding,
+    db,
+    destinations,
+    instance,
+    live_input,
+    orm,
+    publish,
+    storage,
+    tenant_config,
+    variables_ecran,
+)
 from .. import dirs as dirs_mod
 from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
 from ..context import CtxDep, Invalid, NotFound
+from ..models import Mosque, Notification
 from .common import _mosque, _notification_settings, _ok
 
 router = APIRouter()
@@ -288,8 +302,9 @@ async def onboarding_done(ctx: CtxDep):
     ctx.require("admin")
     done = str(f.get("done", "1")).strip().lower() not in ("0", "false", "off", "non")
     ctx.conn.execute(
-        "UPDATE mosques SET onboarded_at = ? WHERE id = ?", (db.now_iso() if done else "", ctx.mosque["id"])
+        update(Mosque).where(Mosque.id == ctx.mosque["id"]).values(onboarded_at=db.now_iso() if done else "")
     )
+    orm.done(ctx.conn)
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
@@ -520,7 +535,7 @@ async def notifications_save(ctx: CtxDep):
     mode = (f.get("mode") or "").strip()
     if mode not in ("", "webhook", "telegram"):
         raise Invalid(_("Unknown notification channel."))
-    old = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"]) or {}
+    old = orm.first(ctx.conn, Notification, mosque_id=ctx.mosque["id"]) or {}
 
     def val(name: str, secret: bool) -> str:
         v = (f.get(name) or "").strip()
@@ -533,12 +548,16 @@ async def notifications_save(ctx: CtxDep):
         raise Invalid(_("Enter the webhook address."))
     if mode == "telegram" and not (token and chat):
         raise Invalid(_("Telegram requires the bot token and the chat identifier."))
-    ctx.conn.execute(
-        "INSERT INTO notifications (mosque_id, mode, webhook, telegram_token, telegram_chat, updated_at) "
-        "VALUES (?,?,?,?,?,?) ON CONFLICT (mosque_id) DO UPDATE SET mode = excluded.mode, "
-        "webhook = excluded.webhook, telegram_token = excluded.telegram_token, "
-        "telegram_chat = excluded.telegram_chat, updated_at = excluded.updated_at",
-        (ctx.mosque["id"], mode, webhook, token, chat, db.now_iso()),
+    orm.upsert(
+        ctx.conn,
+        Notification,
+        ("mosque_id",),
+        mosque_id=ctx.mosque["id"],
+        mode=mode,
+        webhook=webhook,
+        telegram_token=token,
+        telegram_chat=chat,
+        updated_at=db.now_iso(),
     )
     db.audit(
         ctx.conn,
@@ -561,7 +580,7 @@ def notifications_test(ctx: CtxDep):
     """Send a test message to the saved destination (explicit admin action)."""
     ctx.need_csrf()
     ctx.require("admin")
-    r = db.one(ctx.conn, "SELECT * FROM notifications WHERE mosque_id = ?", ctx.mosque["id"])
+    r = orm.first(ctx.conn, Notification, mosque_id=ctx.mosque["id"])
     n = notify.from_settings(r, log=lambda _m: None)
     if not n.enabled:
         return JSONResponse({"ok": False, "message": _("No destination saved: nothing was sent.")}, status_code=422)

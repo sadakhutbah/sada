@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from sqlalchemy import delete, select, update
 from starlette.concurrency import run_in_threadpool
 
 from ...i18n import _
-from .. import auth, db
+from .. import auth, db, orm
 from ..context import CtxDep, Invalid, NotFound
+from ..models import AuthSession, User
 from .common import _ok
 
 router = APIRouter()
@@ -16,11 +18,20 @@ router = APIRouter()
 @router.get("/users")
 def users(ctx: CtxDep):
     ctx.require("admin")
-    rows = db.all_(
+    rows = orm.rows(
         ctx.conn,
-        "SELECT id, username, display_name, role, active, created_at, last_login_at, permissions "
-        "FROM users WHERE mosque_id = ? ORDER BY id",
-        ctx.mosque["id"],
+        select(
+            User.id,
+            User.username,
+            User.display_name,
+            User.role,
+            User.active,
+            User.created_at,
+            User.last_login_at,
+            User.permissions,
+        )
+        .where(User.mosque_id == ctx.mosque["id"])
+        .order_by(User.id),
     )
     for r in rows:
         r["custom"] = auth.custom_permissions(r) is not None
@@ -45,7 +56,8 @@ async def account_password(ctx: CtxDep):
     if f.get("new") == f.get("current"):
         raise Invalid(_("Choose a password different from the current one."))
     await run_in_threadpool(auth.set_password, ctx.conn, ctx.user["id"], f.get("new", ""), ctx.session["id"])
-    ctx.conn.execute("UPDATE users SET must_change_password = 0 WHERE id = ?", (ctx.user["id"],))
+    ctx.conn.execute(update(User).where(User.id == ctx.user["id"]).values(must_change_password=0))
+    orm.done(ctx.conn)
     db.audit(
         ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", ctx.user["id"], ip=ctx.ip
     )
@@ -67,7 +79,8 @@ async def user_create(ctx: CtxDep):
         f.get("permissions"),
     )
     # The administrator chose the password: the person replaces it at first sign-in.
-    ctx.conn.execute("UPDATE users SET must_change_password = 1 WHERE id = ?", (uid,))
+    ctx.conn.execute(update(User).where(User.id == uid).values(must_change_password=1))
+    orm.done(ctx.conn)
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
@@ -87,7 +100,7 @@ async def user_password(uid: int, ctx: CtxDep):
     """An administrator sets a new password for an account; its open sessions are closed."""
     f = await ctx.body()
     ctx.require("admin")
-    u = db.one(ctx.conn, "SELECT * FROM users WHERE id = ? AND mosque_id = ?", uid, ctx.mosque["id"])
+    u = orm.first(ctx.conn, User, id=uid, mosque_id=ctx.mosque["id"])
     if not u:
         raise NotFound(_("Unknown account."))
     if uid == ctx.user["id"]:
@@ -96,7 +109,8 @@ async def user_password(uid: int, ctx: CtxDep):
     if len(pw) < auth.MIN_PASSWORD:
         raise Invalid(_("Password too short (at least {n} characters).", n=auth.MIN_PASSWORD))
     await run_in_threadpool(auth.set_password, ctx.conn, uid, pw)  # also signs the account out everywhere
-    ctx.conn.execute("UPDATE users SET must_change_password = 1 WHERE id = ?", (uid,))
+    ctx.conn.execute(update(User).where(User.id == uid).values(must_change_password=1))
+    orm.done(ctx.conn)
     db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", uid, ip=ctx.ip)
     return _ok(_("Password of “{username}” changed.", username=u["username"]))
 
@@ -105,12 +119,13 @@ async def user_password(uid: int, ctx: CtxDep):
 async def user_update(uid: int, ctx: CtxDep):
     f = await ctx.body()
     ctx.require("admin")
-    u = db.one(ctx.conn, "SELECT * FROM users WHERE id = ? AND mosque_id = ?", uid, ctx.mosque["id"])
+    u = orm.first(ctx.conn, User, id=uid, mosque_id=ctx.mosque["id"])
     if not u:
         raise NotFound()
     if f.get("password"):
         await run_in_threadpool(auth.set_password, ctx.conn, uid, f["password"])
-        ctx.conn.execute("UPDATE users SET must_change_password = ? WHERE id = ?", (int(uid != ctx.user["id"]), uid))
+        ctx.conn.execute(update(User).where(User.id == uid).values(must_change_password=int(uid != ctx.user["id"])))
+        orm.done(ctx.conn)
         db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "utilisateur.mot_de_passe", "utilisateur", uid, ip=ctx.ip)
     role = f.get("role") or u["role"]
     actif = f.get("active")
@@ -125,11 +140,18 @@ async def user_update(uid: int, ctx: CtxDep):
     if uid == ctx.user["id"] and ("admin" not in effectives or not active):
         raise Invalid(_("You cannot remove your own administrator rights."))
     ctx.conn.execute(
-        "UPDATE users SET role = ?, active = ?, display_name = ?, permissions = ? WHERE id = ?",
-        (role, active, (f.get("display_name") or u["display_name"]).strip(), perms, uid),
+        update(User)
+        .where(User.id == uid)
+        .values(
+            role=role,
+            active=active,
+            display_name=(f.get("display_name") or u["display_name"]).strip(),
+            permissions=perms,
+        )
     )
     if not active:
-        ctx.conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (uid,))
+        ctx.conn.execute(delete(AuthSession).where(AuthSession.user_id == uid))
+    orm.done(ctx.conn)
     db.audit(
         ctx.conn,
         ctx.mosque["id"],

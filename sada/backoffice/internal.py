@@ -16,7 +16,11 @@ import os
 import secrets
 from pathlib import Path
 
+from sqlalchemy import select, update
+
 from .. import paths
+from . import orm
+from .models import Mosque
 
 HEADER = "X-Internal-Token"
 
@@ -64,26 +68,28 @@ def new_agent_token(conn, mosque_id: int) -> str:
     """New agent token for a mosque, replacing the previous one. Only its hash is kept:
     the value is shown once, to be given to the mosque's orchestrator."""
     t = "sada_" + secrets.token_urlsafe(32)
-    conn.execute("UPDATE mosques SET agent_token_hash = ? WHERE id = ?", (_digest(t), mosque_id))
+    conn.execute(update(Mosque).where(Mosque.id == mosque_id).values(agent_token_hash=_digest(t)))
+    orm.done(conn)
     return t
 
 
 def revoke_agent_token(conn, mosque_id: int) -> None:
-    conn.execute("UPDATE mosques SET agent_token_hash = '' WHERE id = ?", (mosque_id,))
+    conn.execute(update(Mosque).where(Mosque.id == mosque_id).values(agent_token_hash=""))
+    orm.done(conn)
 
 
 def agent_mosque(conn, given: str | None) -> int | None:
     """Mosque whose agent token is `given`, or None (lookup by hash: nothing to compare in clear)."""
     if not given:
         return None
-    row = conn.execute("SELECT id FROM mosques WHERE agent_token_hash = ?", (_digest(str(given)),)).fetchone()
-    return row[0] if row else None
+    return conn.scalar(select(Mosque.id).where(Mosque.agent_token_hash == _digest(str(given))))
 
 
 def new_publish_key(conn, mosque_id: int) -> str:
     """New stream key for the mosque's OBS (replaces the previous one); only its hash is kept."""
     k = secrets.token_urlsafe(24)
-    conn.execute("UPDATE mosques SET publish_key_hash = ? WHERE id = ?", (_digest(k), mosque_id))
+    conn.execute(update(Mosque).where(Mosque.id == mosque_id).values(publish_key_hash=_digest(k)))
+    orm.done(conn)
     return k
 
 
@@ -91,5 +97,5 @@ def publish_allowed(conn, slug: str, key: str | None) -> bool:
     """Whether `key` is the stream key of the mosque `slug` (no key set = nobody may publish)."""
     if not slug or not key:
         return False
-    row = conn.execute("SELECT publish_key_hash FROM mosques WHERE slug = ?", (slug,)).fetchone()
-    return bool(row and row[0]) and hmac.compare_digest(row[0], _digest(str(key)))
+    h = conn.scalar(select(Mosque.publish_key_hash).where(Mosque.slug == slug))
+    return bool(h) and hmac.compare_digest(h, _digest(str(key)))

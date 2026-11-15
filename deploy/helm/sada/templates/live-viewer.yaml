@@ -1,0 +1,46 @@
+{{- if and .Values.ingress.enabled .Values.liveViewer.enabled }}
+{{- if .Values.liveViewer.authSecret }}
+# Browser viewer of the live (HLS), behind HTTP basic auth. The Secret `liveViewer.authSecret`
+# (key `users`, htpasswd format); an empty `authSecret` leaves the viewer open is created outside the chart so no password lives in git.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: live-auth
+spec:
+  basicAuth:
+    secret: {{ .Values.liveViewer.authSecret }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "sada.fullname" . }}-live
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+  {{- if .Values.liveViewer.authSecret }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-live-auth@kubernetescrd
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # only the programme copy (<slug>-prog) is exposed, never the raw feed of the mosque
+          {{- range .Values.mosques }}
+          - path: /live/{{ .slug }}-prog
+            pathType: Prefix
+            backend:
+              service:
+                name: receiver
+                port:
+                  name: hls
+          {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" (include "sada.fullname" .)) }}
+  {{- end }}
+{{- end }}

@@ -28,6 +28,8 @@ from . import source
 from . import transitions as tr
 from .i18n import _
 
+PREVIEW_UDP = "udp://127.0.0.1:23456"
+
 
 def _zmq_esc(port: int) -> str:
     return "tcp" + "\\" * 2 + "://127.0.0.1" + "\\" * 2 + f":{port}"  # ":" escaped twice (graph then filter options)
@@ -82,6 +84,7 @@ class Encoder:
         self._ev = threading.Event()
         self._worker: threading.Thread | None = None
         self.proc: subprocess.Popen | None = None
+        self.preview: subprocess.Popen | None = None
         self.zmq_aport, self.zmq_vports = zmq_ports(int(getattr(cfg, "zmq_port", ZMQ_APORT) or ZMQ_APORT))
         self.out_time = 0.0  # position (s) in the current recording, from -progress
         self.restarts = 0
@@ -186,7 +189,7 @@ class Encoder:
             "-c:v",
             "libx264",
             "-preset",
-            "veryfast",
+            "superfast",
             "-tune",
             "zerolatency",
             "-b:v",
@@ -214,12 +217,28 @@ class Encoder:
 
     def _tee_targets(self) -> str:
         """One tee output per destination: a platform that drops must not interrupt the others."""
-        return "|".join(f"[f=flv:onfail=ignore]{url}" for url in self.cfg.rtmp_urls)
+        outs = [f"[f=flv:onfail=ignore]{url}" for url in self.cfg.rtmp_urls]
+        if self.cfg.preview_url:
+            # the monitoring copy leaves through local UDP (never blocks) towards a separate ffmpeg
+            outs.append(f"[f=mpegts:onfail=ignore]{PREVIEW_UDP}?pkt_size=1316")
+        return "|".join(outs)
+
+    def _spawn_preview(self):
+        """Separate ffmpeg: UDP -> RTMP of the receiver. If it stalls, the programme is not affected."""
+        if not self.cfg.preview_url or (self.preview and self.preview.poll() is None):
+            return
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "warning", "-nostats", "-fflags", "nobuffer",
+            "-i", f"{PREVIEW_UDP}?fifo_size=2000000&overrun_nonfatal=1",
+            "-c", "copy", "-f", "flv", self.cfg.preview_url,
+        ]  # fmt: skip
+        self.preview = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # ------------------------------------------------------------------ life cycle
     def start(self):
         with self._lock:
             self.wanted = True
+            self._spawn_preview()
             self._spawn()
         threading.Thread(target=self._watch, daemon=True, name="encoder-watch").start()
 
@@ -258,6 +277,9 @@ class Encoder:
             with self._lock:
                 if not self.wanted:
                     return
+                if self.preview and self.preview.poll() is not None:
+                    self.preview = None
+                    self._spawn_preview()
                 if self.proc and self.proc.poll() is not None:
                     self.restarts += 1
                     self.log(
@@ -274,6 +296,9 @@ class Encoder:
         with self._lock:
             self.wanted = False
             p = self.proc
+        if self.preview and self.preview.poll() is None:
+            self.preview.terminate()
+        self.preview = None
         if p and p.poll() is None:
             p.terminate()  # SIGTERM: ffmpeg finalises the MKV cleanly
             try:
