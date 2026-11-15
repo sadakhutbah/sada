@@ -165,7 +165,10 @@ def _json_object(text: str) -> dict | None:
 
 
 def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+    # Sans User-Agent propre, urllib se présente en « Python-urllib » : Cloudflare (Groq, entre autres) répond 403.
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode(), headers={"User-Agent": "sada/1.0", **headers}, method="POST"
+    )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
