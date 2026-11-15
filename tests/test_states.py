@@ -8,8 +8,15 @@ NOW = dt.datetime(2026, 11, 15, 14, 0, 0)
 
 
 def _clip(**kw):
-    return {"id": 10, "status": "a_valider", "regen_state": "", "regen_error": "", "needs_regen": 0,
-            "updated_at": "2026-11-15T13:55:00", **kw}
+    return {
+        "id": 10,
+        "status": "a_valider",
+        "regen_state": "",
+        "regen_error": "",
+        "needs_regen": 0,
+        "updated_at": "2026-11-15T13:55:00",
+        **kw,
+    }
 
 
 def test_clip_ready():

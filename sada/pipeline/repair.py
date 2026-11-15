@@ -275,7 +275,7 @@ _FR_COMMON = frozenset(
     rien quelque quelqu'un souvent toujours maintenant aujourd'hui hier demain exemple travail travaille travailler
     justifie justifier faux vrai juste""".split()
 )
-_FR_STRIP = ".,;:!?«»\"()…"
+_FR_STRIP = '.,;:!?«»"()…'
 MIXED_MIN_RUN = 4  # mots non français d'affilée pour couper un segment mixte
 MIXED_MIN_LOGPROB = -0.6  # une citation isolée n'a pas de référence fiable : seuil absolu
 MIXED_MIN_S = 6.0  # un segment plus court n'est pas coupé : Whisper n'y mélange pas deux langues

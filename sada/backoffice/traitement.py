@@ -153,7 +153,7 @@ def _lancer(cmd: list[str], env: dict, run_dir: Path, idx: int) -> tuple[int, st
         for line in p.stdout or ():
             line = line.rstrip("\n")
             if line.startswith(STEP_MARKER):
-                _maj(run_dir, idx, step=line[len(STEP_MARKER):].strip(), step_at=_now())
+                _maj(run_dir, idx, step=line[len(STEP_MARKER) :].strip(), step_at=_now())
                 continue
             tail = (tail + [line])[-40:]
     return p.returncode, "\n".join(tail)

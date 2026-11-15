@@ -47,7 +47,12 @@ while True:
     now = dt.datetime.now().astimezone()
     try:
         rows = [
-            (now.isoformat(timespec="seconds"), p["metadata"]["name"], round(sum(cpu_m(c["usage"]["cpu"]) for c in p["containers"])), round(sum(mem_mi(c["usage"]["memory"]) for c in p["containers"])))
+            (
+                now.isoformat(timespec="seconds"),
+                p["metadata"]["name"],
+                round(sum(cpu_m(c["usage"]["cpu"]) for c in p["containers"])),
+                round(sum(mem_mi(c["usage"]["memory"]) for c in p["containers"])),
+            )
             for p in pods()
         ]
         path = os.path.join(OUT, now.strftime("%Y-%m-%d") + ".csv")

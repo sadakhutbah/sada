@@ -360,7 +360,11 @@ def review_ai(matches: list[dict], log=print, timeout: int = 120) -> list[dict]:
     """
     from . import llm  # local import: the pipeline works without a model
 
-    todo = [i for i, m in enumerate(matches) if m.get("confidence") not in ("sûr", "court") and not is_formula(m.get("heard", ""))]
+    todo = [
+        i
+        for i, m in enumerate(matches)
+        if m.get("confidence") not in ("sûr", "court") and not is_formula(m.get("heard", ""))
+    ]
     if not todo or not llm.enabled():
         return matches
     out = [dict(m) for m in matches]
