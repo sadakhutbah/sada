@@ -63,7 +63,7 @@ def _extract_video(rec: str | None, start: float | None, end: float | None, out:
         str(out),
     ]
     try:
-        subprocess.run(cmd, check=True, timeout=600, capture_output=True)
+        subprocess.run(cmd, check=True, timeout=max(600, int((dur or 0) * 0.5)), capture_output=True)
         log(_("session video -> {path}", path=out))
         return str(out)
     except Exception as e:  # noqa: BLE001
