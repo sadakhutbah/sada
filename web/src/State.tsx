@@ -56,3 +56,16 @@ export function State({ state, busy = false, onAction }: {
     </div>
   );
 }
+
+/** Compact form for list rows: a tag only when the entity needs attention, nothing otherwise. */
+export function StateTag({ state }: { state?: EntityState | null }) {
+  const { t } = useTranslation();
+  if (!state || state.level === "ok") return null;
+  const label = state.level === "running" ? "running" : state.level === "failed" ? "failed" : "attention";
+  const tone = state.level === "running" ? "bg-warn-bg text-warn" : "bg-err-bg text-[#7a1f20]";
+  return (
+    <span title={t(`states.${state.code}`)} className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-[0.8rem] font-bold ${tone}`}>
+      {t(`states.tag.${label}`)}
+    </span>
+  );
+}

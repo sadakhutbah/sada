@@ -119,6 +119,8 @@ def clips(ctx: CtxDep, status: str = "", limit: int = Query(20, ge=1, le=200), o
     )
     # The filtered total lets the front know how many rows remain, instead of guessing from the page size.
     total = ctx.conn.scalar(select(func.count()).select_from(jointure).where(*where, *extra)) or 0
+    for row in rows:
+        row["state"] = states.clip_state(row)  # list rows carry the same object as the detail page
     return {
         "items": rows,
         "count": len(rows),

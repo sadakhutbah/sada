@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { Btn, Card, Pill, Tabs } from "../ui";
+import { StateTag } from "../State";
 import { idOnglet, idPanneau } from "../onglets";
 import { dateFr, libelles, liste, mmss } from "../format";
 
@@ -105,7 +106,10 @@ export default function Clips() {
                   </p>
                   {c.why && <p className="m-0 text-[0.88rem] text-muted">{c.why}</p>}
                 </div>
-                  <Pill statut={c.status} label={t(`clips.statuses.${c.status}`)} />
+                  <span className="flex flex-col items-end gap-1">
+                    <Pill statut={c.status} label={t(`clips.statuses.${c.status}`)} />
+                    <StateTag state={c.state} />
+                  </span>
                 </Link>
               </li>
             ))}
