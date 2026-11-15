@@ -51,3 +51,24 @@ def test_sermon_without_processing_reflects_clips():
     assert states.sermon_state(None, [])["code"] == "sermon.ready"
     bad = [states.clip_state(_clip(regen_state="erreur"))]
     assert states.sermon_state({"etat": "termine"}, bad)["code"] == "sermon.clips_failed"
+
+
+def test_clip_ready_says_so_with_version():
+    s = states.clip_state(_clip(version=3))
+    assert (s["level"], s["code"], s["params"]) == ("ok", "clip.ready", {"version": 3})
+
+
+def test_clip_failed_publication_of_current_version_needs_attention():
+    pub = {"status": "erreur", "clip_version": 2, "message": "quota", "created_at": "2026-11-15T13:00:00"}
+    assert states.clip_state(_clip(version=2), last_publication=pub)["code"] == "clip.publication_failed"
+    assert states.clip_state(_clip(version=3), last_publication=pub)["code"] == "clip.ready"
+
+
+def test_habillage_states_and_sermon_priority():
+    assert states.habillage_state(None)["code"] == "habillage.none"
+    running = states.habillage_state({"status": "en_cours", "progress": 0.42, "started_at": "2026-11-15T13:00:00"})
+    assert running["params"] == {"percent": 42}
+    failed = states.habillage_state({"status": "echec", "error": "ffmpeg"})
+    assert failed["level"] == "failed"
+    assert states.sermon_state({"etat": "termine"}, [], failed)["code"] == "sermon.habillage_failed"
+    assert states.sermon_state({"etat": "termine"}, [], running)["code"] == "sermon.habillage_rendering"

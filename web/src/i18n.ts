@@ -13,12 +13,22 @@ const fr = {
   },
   states: {
     clip: {
+      ready: "Vidéo à jour (version {{version}}) : elle contient toutes vos corrections.",
+      publication_failed: "La dernière publication de ce clip a échoué.",
       regenerating: "Régénération de la vidéo en cours : la fiche se met à jour toute seule.",
       regen_failed: "La régénération de la vidéo a échoué.",
       outdated: "Des corrections ne sont pas encore dans la vidéo : régénérez le clip avant de le valider.",
       published_outdated: "La vidéo publiée ne contient pas les dernières corrections : une nouvelle version est à générer.",
     },
+    habillage: {
+      rendering: "Rendu de la vidéo habillée en cours : {{percent}} %.",
+      failed: "Le rendu de la vidéo habillée a échoué.",
+      ready: "Vidéo habillée prête.",
+      none: "",
+    },
     sermon: {
+      habillage_failed: "Le rendu de la vidéo habillée a échoué.",
+      habillage_rendering: "Rendu de la vidéo habillée en cours : {{percent}} %.",
       queued: "Traitement après direct en attente.",
       processing: "Traitement après direct en cours (transcription, versets, clips).",
       processing_failed: "Le traitement après direct a échoué.",
@@ -27,6 +37,7 @@ const fr = {
       clips_rendering: "Des clips sont en cours de régénération.",
     },
     tag: { running: "Vidéo en cours", failed: "Vidéo en échec", attention: "Vidéo à régénérer" },
+    menuFailed: "Une vidéo de clip a échoué.",
     stuck: "Cela semble bloqué.",
     since: "depuis {{d}}",
     actions: { regenerate: "Régénérer" },
@@ -510,12 +521,22 @@ const en: typeof fr = {
   },
   states: {
     clip: {
+      ready: "Video up to date (version {{version}}): it includes all your corrections.",
+      publication_failed: "The last publication of this clip failed.",
       regenerating: "Regenerating the video: this page updates itself.",
       regen_failed: "Video regeneration failed.",
       outdated: "Corrections are not in the video yet: regenerate the clip before approving it.",
       published_outdated: "The published video does not include the latest corrections: a new version has to be generated.",
     },
+    habillage: {
+      rendering: "Rendering the branded video: {{percent}}%.",
+      failed: "Rendering the branded video failed.",
+      ready: "Branded video ready.",
+      none: "",
+    },
     sermon: {
+      habillage_failed: "Rendering the branded video failed.",
+      habillage_rendering: "Rendering the branded video: {{percent}}%.",
       queued: "Post-live processing is queued.",
       processing: "Post-live processing is running (transcription, verses, clips).",
       processing_failed: "Post-live processing failed.",
@@ -524,6 +545,7 @@ const en: typeof fr = {
       clips_rendering: "Some clips are being regenerated.",
     },
     tag: { running: "Video rendering", failed: "Video failed", attention: "Video outdated" },
+    menuFailed: "A clip video failed.",
     stuck: "This looks stuck.",
     since: "for {{d}}",
     actions: { regenerate: "Regenerate" },

@@ -21,7 +21,7 @@ from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import habillage as rendu
 from ..pipeline import subtitles as sous_titres
-from . import db, orm, traduction
+from . import db, orm, states, traduction
 from .models import Habillage, Khutba, Mosque, User
 
 #: réglages qui décrivent la mosquée et pas une vidéo : retenus pour la prochaine fois
@@ -216,6 +216,7 @@ def etat(conn, k: dict, m: dict) -> dict:
     brand, logo = marque(m)
     sous_titres_vue = langues(conn, k)
     return {
+        "state": states.habillage_state(h, pret),
         "options": options,
         "status": (h or {}).get("status") or "",
         "progress": round(float((h or {}).get("progress") or 0), 3),
