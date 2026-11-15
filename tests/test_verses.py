@@ -157,3 +157,25 @@ def test_normalisation_francaise():
 
     assert norm_fr("À QUICONQUE place sa confiance… l'Allah !") == "quiconque place confiance allah"
     assert content_words("Allah a assigné à chaque chose sa mesure") == ["assigne", "chaque", "mesure"]
+
+
+def test_review_ai_sans_modele_ne_change_rien(monkeypatch):
+    from sada.pipeline import llm
+    from sada.pipeline.verses import review_ai
+
+    monkeypatch.setattr(llm, "enabled", lambda: False)
+    ms = [{"confidence": "faible", "heard": "كلام", "ref": "1:1", "verse_text": "x", "verse_fr": "y"}]
+    assert review_ai(ms) == ms
+
+
+def test_review_ai_garde_ou_rejette_les_candidats(monkeypatch):
+    from sada.pipeline import llm
+    from sada.pipeline.verses import review_ai, shown
+
+    monkeypatch.setattr(llm, "enabled", lambda: True)
+    monkeypatch.setattr(llm, "ask_json", lambda *a, **k: {"keep": [1]})
+    base = {"heard": "texte entendu assez long pour une citation", "verse_text": "x", "verse_fr": "y"}
+    ms = [{**base, "confidence": "trad", "ref": "2:1"}, {**base, "confidence": "trad", "ref": "3:1"}]
+    out = review_ai(ms)
+    assert [m["confidence"] for m in out] == ["rejete", "ia"]
+    assert [m["ref"] for m in shown(out)] == ["3:1"]

@@ -26,7 +26,7 @@ from . import transcribe as tr
 from . import translate as trmod
 from .output import SessionOutput, clip_entry
 from .quran import load_verses
-from .verses import VerseIndex, detect, to_dicts
+from .verses import VerseIndex, detect, review_ai, to_dicts
 
 
 def log(m):
@@ -105,6 +105,8 @@ def process(
     log(_("loading the Quran + index"))
     idx = VerseIndex(load_verses())
     ms = to_dicts(detect(segs, idx))
+    if use_llm:
+        ms = review_ai(ms, log)
     o.write(o.verses, ms)
     log(
         _(

@@ -28,7 +28,7 @@ MIN_VERSE_WORDS = 3
 THRESH = 86.0
 # French-translation detection: lower threshold than for Arabic (Whisper rephrases), content words only,
 # and confidence capped at « trad » — a verse recognised from French alone is suggested, never taken for granted.
-THRESH_FR = 68.0
+THRESH_FR = 85.0  # 68 suggérait un verset pour presque n'importe quelle phrase : seuil relevé
 MIN_FR_WORDS = 4
 
 
@@ -101,7 +101,12 @@ def detect(
     fr = [
         m for m in _detect_fr(segments, index, thresh_fr, gap_s) if not any(m.start < e and s < m.end for s, e in taken)
     ]
-    matches = sorted(matches + fr, key=lambda m: (m.start, -m.score))
+    # Un même passage ne reçoit qu'un seul verset : le meilleur score l'emporte.
+    kept: list[Match] = []
+    for m in sorted(fr, key=lambda m: -m.score):
+        if not any(m.start < k.end and k.start < m.end for k in kept):
+            kept.append(m)
+    matches = sorted(matches + kept, key=lambda m: (m.start, -m.score))
     return matches
 
 
@@ -254,8 +259,9 @@ FORMULAS = {
     "صلي الله عليه وسلم": "que la paix et les bénédictions d'Allah soient sur lui.",
 }
 FORM_NORM = {normalize(k): v for k, v in FORMULAS.items()}
-# « trad » = recognised from the French translation alone: suggested, never treated as a safe reference.
-FIRM = ("sûr", "court", "trad")
+# « trad » = recognised from the French translation alone: a candidate only, shown once the AI review
+# (« ia ») confirms it. « ia » = candidate confirmed by the model.
+FIRM = ("sûr", "court", "ia")
 FORMULA_MATCH = 85
 
 
@@ -339,3 +345,42 @@ def recited_arabic(m: dict) -> str:
             if sc > best[0]:
                 best = (sc, i, i + n)
     return " ".join(vw[best[1] : best[2]]) if best[0] >= 70 else " ".join(vw)
+
+
+# ------------------------------------------------------------------ AI review (optional)
+
+REVIEW_BATCH = 8
+
+
+def review_ai(matches: list[dict], log=print, timeout: int = 120) -> list[dict]:
+    """Ask the model which uncertain candidates really are Quran quotations.
+
+    The model only keeps or rejects candidates the algorithm proposed: it can neither invent nor change a
+    reference (the verse shown always comes from the Quran index). Without a model, matches are unchanged.
+    """
+    from . import llm  # local import: the pipeline works without a model
+
+    todo = [i for i, m in enumerate(matches) if m.get("confidence") not in ("sûr", "court") and not is_formula(m.get("heard", ""))]
+    if not todo or not llm.enabled():
+        return matches
+    out = [dict(m) for m in matches]
+    for b in range(0, len(todo), REVIEW_BATCH):
+        batch = todo[b : b + REVIEW_BATCH]
+        items = "\n".join(
+            f"{n}. ENTENDU : {matches[i]['heard'][:400]}\n   VERSET PROPOSÉ ({matches[i]['ref']}) : "
+            f"{strip_quran_marks(matches[i]['verse_text'])[:300]} — {matches[i]['verse_fr'][:300]}"
+            for n, i in enumerate(batch)
+        )
+        prompt = (
+            "Tu relis la transcription automatique d'une khutba. Pour chaque numéro, dis si le passage ENTENDU "
+            "cite réellement le VERSET PROPOSÉ (récitation en arabe, ou citation très proche de sa traduction). "
+            "Un simple sujet voisin, un hadith, un commentaire ou une phrase ordinaire ne comptent pas. "
+            'Réponds uniquement en JSON : {"keep": [numéros à garder]}.\n\n' + items
+        )
+        d = llm.ask_json(prompt, timeout, log)
+        if not d or not isinstance(d.get("keep"), list):
+            continue  # modèle indisponible ou réponse inutilisable : ce lot reste tel quel
+        keep = {int(k) for k in d["keep"] if str(k).lstrip("-").isdigit()}
+        for n, i in enumerate(batch):
+            out[i]["confidence"] = "ia" if n in keep else "rejete"
+    return out
