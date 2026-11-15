@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
-from .. import auth, content, db, habillage, import_video, importer, orm, traduction, traitement
+from .. import auth, content, db, habillage, import_video, importer, orm, states, traduction, traitement
 from ..context import CtxDep, Invalid, NotFound, imam_filter, khutba_or_404
 from ..models import Clip, Khutba, User
 from .common import _ok, _segments
@@ -124,6 +124,7 @@ def sermon(ctx: CtxDep, kid: int):
     imam = orm.first(ctx.conn, User, id=k["imam_id"]) if k["imam_id"] else None
     titres = habillage.langues(ctx.conn, k, data)
     return {
+        "state": _sermon_state(ctx, k, clips),
         "sermon": k,
         "segments": segments,
         "clips": clips,
@@ -144,6 +145,15 @@ def sermon(ctx: CtxDep, kid: int):
         # Clip chosen by hand: possible only if a source video can be cut (same circuit as regeneration).
         "manual_clip": _manual_clip(ctx, k, data),
     }
+
+
+def _sermon_state(ctx, k: dict, clips: list[dict]) -> dict:
+    """Post-live processing of this khutba (if it came from a run) plus what its clips need."""
+    processing = None
+    if k.get("run_id") and k.get("session_index") is not None:
+        run_dir = db.mosque_dirs(ctx.mosque)["state"] / k["run_id"]
+        processing = traitement.lire(run_dir).get(str(k["session_index"]))
+    return states.sermon_state(processing, [states.clip_state(c) for c in clips])
 
 
 def _manual_clip(ctx, k: dict, data: dict) -> dict:

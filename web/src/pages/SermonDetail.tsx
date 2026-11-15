@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { currentSession } from "../session";
 import { Btn, Card, Field, Kicker, Pill, Segmented, Title, inputClass } from "../ui";
+import { State } from "../State";
 import { idOnglet, idPanneau } from "../onglets";
 import { dateFr, mmss } from "../format";
 
@@ -47,6 +48,15 @@ export default function SermonDetail() {
     recharger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid]);
+
+  // While something runs (processing, a clip being rendered), the sheet refreshes itself.
+  const running = d?.state?.level === "running";
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setTimeout(recharger, 5000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, d]);
 
   /** A write (correction, assignment): server message, then the sheet is reloaded. */
   const enregistrer = async (action: () => Promise<any>) => {
@@ -156,6 +166,9 @@ export default function SermonDetail() {
           </Link>
         )}
       </header>
+
+      {/* State of the khutba (post-live processing, then what its clips need): built by the server. */}
+      <State state={d.state} />
 
       <div className="grid items-start gap-4 min-[1000px]:grid-cols-[minmax(0,1.2fr)_minmax(380px,1fr)]">
         {/* Left column: the video, then the clips it produced. */}

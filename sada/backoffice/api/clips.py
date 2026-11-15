@@ -10,7 +10,7 @@ from sqlalchemy import and_, func, join, or_, select
 from starlette.concurrency import run_in_threadpool
 
 from ...i18n import _
-from .. import content, orm, publish
+from .. import content, orm, publish, states
 from ..context import Ctx, CtxDep, clip_or_404, imam_filter, khutba_or_404
 from ..models import Audit, Clip, Khutba, Publication, User
 from .common import _a_table, _ok
@@ -63,6 +63,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         if r["verse"] and r["end"] > c["start"] and r["start"] < c["end"]
     ]
     return {
+        "state": states.clip_state(c, can_regenerate=regen_ok),
         "clip": c,
         "sermon": k,
         "segments": rows,

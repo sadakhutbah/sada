@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { auditActionKey } from "../i18n";
 import { Btn, Card, Field, Kicker, Pill, Segmented, inputClass } from "../ui";
+import { State } from "../State";
 import FormulaireClip from "../ClipBounds";
 import { ecrireInstant, lireInstant } from "../instant";
 import { dateFr, mmss } from "../format";
@@ -99,6 +100,13 @@ export default function ClipDetail() {
           <Pill statut={c.status} label={t(`clips.statuses.${c.status}`)} />
         </div>
       </header>
+
+      {/* State of the video, above every tab (built by the server: `d.state`). */}
+      <State
+        state={d.state}
+        busy={occupe}
+        onAction={(a) => a.key === "regenerate" && agir(() => api.regenerer(c.id), t("clips.detail.regenStarted"))}
+      />
 
       <div className="grid items-start gap-4 min-[1000px]:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)]">
         <Lecteur c={c} existe={oui(d.exists)} legende={d.caption ?? ""} info={(ko, texte) => setMessage({ ko, texte })} />
@@ -349,30 +357,6 @@ function Decision({ c, d, occupe, agir, versPublication }: {
             </>
           )}
         </div>
-      )}
-
-      {/* Video states: regeneration expected, running or failed. */}
-      {enCours && <Bandeau ko={false}>{t("clips.detail.regenRunning")}</Bandeau>}
-      {!enCours && c.regen_state === "erreur" && (
-        <Bandeau ko>{t("clips.detail.regenError")}{c.regen_error && !estChemin(c.regen_error) ? ` : ${c.regen_error}` : ""}</Bandeau>
-      )}
-      {!enCours && oui(c.needs_regen) && (
-        <Bandeau ko>{c.status === "publie" ? t("clips.detail.publishedRegen", { n: c.version + 1 }) : t("clips.detail.needsRegen")}</Bandeau>
-      )}
-
-      {/* When the video must be rebuilt, regeneration becomes the main action. */}
-      {aRegenerer && !enCours && (
-        d.can_regenerate ? (
-          <Btn
-            variante="leaf"
-            disabled={occupe}
-            onClick={() => agir(() => api.regenerer(c.id), t("clips.detail.regenStarted"))}
-          >
-            {t("clips.detail.regenerate")}
-          </Btn>
-        ) : (
-          d.regenerate_reason ? <p className="m-0 text-[0.85rem] text-muted">{d.regenerate_reason}</p> : null
-        )
       )}
 
       {aValider && (
