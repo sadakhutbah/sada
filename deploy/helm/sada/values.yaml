@@ -44,7 +44,8 @@ backoffice:
     requests:
       cpu: 200m
       memory: 512Mi
-    limits:
+      memory: 5Gi
+      cpu: 4 # plafond : un habillage ne doit pas affamer les directs (les orchestrateurs réservent 1,5 cœur chacun)
       memory: 5Gi
   extraEnv: []
 
@@ -81,7 +82,7 @@ orchestrator:
   fps: 30
   resources:
     requests:
-      cpu: 500m
+      cpu: 1500m
       memory: 1Gi
     limits:
       memory: 3Gi
