@@ -45,7 +45,7 @@ backoffice:
       cpu: 200m
       memory: 512Mi
     limits:
-      memory: 2Gi
+      memory: 5Gi
   extraEnv: []
 
 # Stream reception (MediaMTX): mosques push RTMP or SRT, orchestrators read RTSP inside
