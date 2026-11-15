@@ -602,7 +602,7 @@ class Machine:
                         )
                     )
             else:
-                face_back = sig.face_run is not None and sig.face_run <= self.p.face_return_s
+                face_back = not dars and sig.face_run is not None and sig.face_run <= self.p.face_return_s
                 if sig.voice_run >= 2.0 or face_back:
                     self.grace_until = None
                     self.log(_("voice or face back during the grace period: carrying on"))
