@@ -1,0 +1,96 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metrics-sampler
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: metrics-sampler
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metrics-sampler
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: metrics-sampler
+subjects:
+  - kind: ServiceAccount
+    name: metrics-sampler
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metrics-sampler
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+data:
+  sampler.py: |
+{{ .Files.Get "files/sampler.py" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-sampler
+  labels:
+    {{- include "sada.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics-sampler
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sada.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: metrics-sampler
+  template:
+    metadata:
+      labels:
+        {{- include "sada.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: metrics-sampler
+      annotations:
+        checksum/sampler: {{ .Files.Get "files/sampler.py" | sha256sum }}
+    spec:
+      serviceAccountName: metrics-sampler
+      containers:
+        - name: sampler
+          image: {{ include "sada.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-u", "/sampler/sampler.py"]
+          env:
+            - name: SAMPLER_EVERY
+              value: {{ .Values.metrics.every | quote }}
+            - name: SAMPLER_DIR
+              value: {{ printf "%s/metrics" .Values.persistence.mountPath | quote }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /sampler
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+      volumes:
+        - name: script
+          configMap:
+            name: metrics-sampler
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "sada.pvcName" . }}
+{{- end }}
