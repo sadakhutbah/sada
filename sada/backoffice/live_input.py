@@ -72,7 +72,11 @@ def check(mode: str, url: str | None, mosque) -> tuple[str, str, str]:
     mode = (mode or "").strip()
     if mode not in modes():
         if mode == "camera":
-            return mode, "", _("This platform cannot reach a camera inside the mosque: push the picture from a computer.")
+            return (
+                mode,
+                "",
+                _("This platform cannot reach a camera inside the mosque: push the picture from a computer."),
+            )
         return mode, "", _("Choose the mosque's camera or the push from a computer.")
     if mode == "push":
         return mode, push_rtsp(mosque), ""
