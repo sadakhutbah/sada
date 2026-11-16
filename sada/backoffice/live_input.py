@@ -6,6 +6,9 @@ Two ways to feed the live:
 * ``push``   — a computer (OBS) *pushes* its picture, which an RTSP/RTMP relay receives and the encoder
   then reads. The screen shows the address to paste in OBS; the encoder keeps reading RTSP.
 
+A hosted platform (``SADA_MODE=hosted``) offers ``push`` only: its server cannot reach a camera
+inside a mosque's network, and a mosque must never open its camera to the internet to make it so.
+
 A stored address is not a secret: it comes back in clear whenever the user is allowed to see the settings.
 """
 
@@ -24,6 +27,7 @@ from . import db, orm
 from .models import LiveInput, Mosque
 
 MODES = ("camera", "push")
+HOSTED_MODES = ("push",)
 CAMERA_SCHEMES = ("rtsp://", "rtsps://")
 DEFAULT_URL = "rtsp://127.0.0.1:8554/cam"
 # The relay listens on 1935 (RTMP, what OBS pushes) and re-serves the same stream on 8554 (RTSP).
@@ -37,6 +41,13 @@ RELAY_HOST_ENV = "SADA_RELAY_HOST"
 
 class InvalidInput(ValueError):
     """The video input the screen sent cannot be used as is."""
+
+
+def modes() -> tuple[str, ...]:
+    """Inputs this install offers: a hosted server only receives, it never reaches into a mosque."""
+    from .auth import hosted
+
+    return HOSTED_MODES if hosted() else MODES
 
 
 def slug(mosque) -> str:
@@ -59,7 +70,9 @@ def push_rtsp(mosque) -> str:
 def check(mode: str, url: str | None, mosque) -> tuple[str, str, str]:
     """(mode, address, error message) — normalised for storage."""
     mode = (mode or "").strip()
-    if mode not in MODES:
+    if mode not in modes():
+        if mode == "camera":
+            return mode, "", _("This platform cannot reach a camera inside the mosque: push the picture from a computer.")
         return mode, "", _("Choose the mosque's camera or the push from a computer.")
     if mode == "push":
         return mode, push_rtsp(mosque), ""
@@ -74,9 +87,13 @@ def check(mode: str, url: str | None, mosque) -> tuple[str, str, str]:
 
 
 def current(conn, mosque) -> dict:
-    """Stored input, with the mode "camera" as the default before anything is set."""
+    """Stored input, defaulting to the first mode this install offers ("camera", or "push" hosted).
+
+    A camera stored before the platform became hosted reads as a push: it can no longer be reached."""
     row = orm.first(conn, LiveInput, mosque_id=mosque["id"])
-    mode = (row or {}).get("mode") or "camera"
+    mode = (row or {}).get("mode") or modes()[0]
+    if mode not in modes():
+        mode, row = "push", None
     url = (row or {}).get("url") or (push_rtsp(mosque) if mode == "push" else DEFAULT_URL)
     return {"mode": mode, "url": url}
 
@@ -86,6 +103,10 @@ def effective(conn, mosque_id: int) -> str:
     row = orm.first(conn, LiveInput, mosque_id=mosque_id)
     if not row:
         return ""
+    if row["mode"] not in modes():
+        # hosted: never let the engine dial into a mosque's network, read the relay instead
+        mosque = orm.first(conn, Mosque, id=mosque_id) or {"id": mosque_id}
+        return push_rtsp(mosque)
     return row["url"] or ""
 
 
@@ -94,6 +115,7 @@ def view(conn, mosque, host: str) -> dict:
     cur = current(conn, mosque)
     return {
         **cur,
+        "modes": list(modes()),
         "configured": orm.first(conn, LiveInput, mosque_id=mosque["id"]) is not None,
         "push_rtmp": push_rtmp(host, mosque),
         "push_rtsp": push_rtsp(mosque),

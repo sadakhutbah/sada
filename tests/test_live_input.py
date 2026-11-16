@@ -180,3 +180,27 @@ def test_bouton_tester(env):
     assert r.json()["ok"] is False and r.json()["detail"]
     r = c.ecrire("/settings/input/test", {"mode": "camera", "url": "https://x.fr"}, methode="POST")
     assert r.status_code == 422
+
+
+# --- hosted platform: push only -------------------------------------------------------------
+
+
+def test_heberge_n_offre_que_la_poussee(env, monkeypatch):
+    c = client(env, "admin")  # signed in with the mosque open, then the platform reads as hosted
+    monkeypatch.setenv("SADA_MODE", "hosted")
+    d = c.get("/api/v1/settings").json()["input"]
+    assert d["modes"] == ["push"] and d["mode"] == "push"
+    r = c.ecrire("/settings/input", {"mode": "camera", "url": CAM}, methode="PUT")
+    assert r.status_code >= 400
+    r = c.ecrire("/settings/input/test", {"mode": "camera", "url": CAM})
+    assert r.status_code >= 400
+
+
+def test_heberge_ne_lit_jamais_une_camera_deja_enregistree(env, monkeypatch):
+    from sada.backoffice import live_input as li
+
+    c = client(env, "admin")
+    assert c.ecrire("/settings/input", {"mode": "camera", "url": CAM}, methode="PUT").status_code == 200
+    monkeypatch.setenv("SADA_MODE", "hosted")
+    assert li.effective(env["conn"], env["mid"]).startswith("rtsp://127.0.0.1:8554/live/")
+    assert c.get("/api/v1/settings").json()["input"]["mode"] == "push"

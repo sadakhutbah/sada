@@ -12,7 +12,8 @@ import { Btn, Card, Field, Kicker, Title, inputClass } from "../ui";
  *  4. récapitulatif. Rien d'autre : les réglages fins restent dans Réglages. */
 
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
-type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string; configured: boolean };
+type Mode = "camera" | "push";
+type Entree = { mode: Mode; url: string; push_rtmp: string; configured: boolean; modes?: Mode[] };
 type Depot = { endpoint: string; region: string; bucket: string; access_key: string;
                secret_key: string; prefix: string; enabled: boolean };
 
@@ -24,7 +25,9 @@ export default function Onboarding() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const [etape, setEtape] = useState(0);
-  const [mode, setMode] = useState<"camera" | "push">("camera");
+  const [mode, setMode] = useState<Mode>("camera");
+  // A hosted platform offers the push only: its server cannot reach a camera inside the mosque.
+  const [modes, setModes] = useState<Mode[]>(["camera", "push"]);
   const [adresse, setAdresse] = useState("");
   const [obs, setObs] = useState("");
   const [cibles, setCibles] = useState<Cible[]>([]);
@@ -41,6 +44,7 @@ export default function Onboarding() {
     api.settings().then((r) => {
       const e: Entree = r.input;
       setMode(e.mode === "push" ? "push" : "camera");
+      if (e.modes?.length) setModes(e.modes);
       setAdresse(e.url);
       setObs(e.push_rtmp);
       setCibles(liste<any>(r.targets));
@@ -113,8 +117,8 @@ export default function Onboarding() {
     <Card>
       <Kicker>{t("onboarding.inputKicker")}</Kicker>
       <Title>{t("onboarding.inputTitle")}</Title>
-      <div className="mb-4 grid gap-2.5 sm:grid-cols-2">
-        {(["camera", "push"] as const).map((m) => (
+      {modes.length > 1 && <div className="mb-4 grid gap-2.5 sm:grid-cols-2">
+        {modes.map((m) => (
           <button
             key={m}
             type="button"
@@ -125,7 +129,7 @@ export default function Onboarding() {
             <span className="mt-0.5 block text-[0.85rem] text-muted">{t(`onboarding.${m}Hint`)}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
       {mode === "camera" ? (
         <div className="grid gap-3">

@@ -9,7 +9,8 @@ import { idOnglet, idPanneau } from "../onglets";
 type Message = { ok: boolean; texte: string } | null;
 
 /** A live destination as the screen edits it: the key comes back masked, and stays masked. */
-type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string; has_key?: boolean };
+type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string; has_key?: boolean;
+                modes?: ("camera" | "push")[] };
 type Stockage = { endpoint: string; region: string; bucket: string; access_key: string;
                   secret_key: string; prefix: string; enabled: boolean };
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
@@ -188,7 +189,7 @@ export default function Settings() {
       const v = depuisServeur(r);
       const c: Cible[] = liste<any>(r.targets).map((t: any) => ({ id: t.id, label: t.label, url: t.url, enabled: !!t.enabled }));
       const e: Entree = { has_key: !!r.input?.has_key, mode: r.input?.mode === "push" ? "push" : "camera", url: r.input?.url ?? "",
-                          push_rtmp: r.input?.push_rtmp ?? "" };
+                          push_rtmp: r.input?.push_rtmp ?? "", modes: r.input?.modes };
       setD(r); setF(v); setInitial(JSON.stringify(v)); setCibles(c); setCiblesInitiales(JSON.stringify(c));
       setGuide({ agent: typeof r.guide?.url === "string" ? r.guide.url : `${window.location.origin}/docs/agent-gabarit-ecrans.md`,
                  humain: typeof r.guide?.human === "string" ? r.guide.human : `${window.location.origin}/docs/ecrans-mode-emploi`,
@@ -477,11 +478,12 @@ export default function Settings() {
         {/* Video input: the same choice as in "Mise en route", editable here afterwards. */}
         <div className="border-t border-line pt-3.5">
           <p className="m-0 mb-2 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-green">{t("settings.inputKicker")}</p>
-          <Tabs items={[{ cle: "camera", label: t("onboarding.cameraTitle") },
+          {/* A hosted platform offers the push only: no tabs when there is nothing to choose. */}
+          {(entree.modes ?? ["camera", "push"]).length > 1 && <Tabs items={[{ cle: "camera", label: t("onboarding.cameraTitle") },
                         { cle: "push", label: t("onboarding.pushTitle") }]}
             base="reglages-entree" label={t("settings.inputKicker")}
             valeur={entree.mode}
-            onChange={(m) => { setEntree((e) => ({ ...e, mode: m === "push" ? "push" : "camera" })); setEssai(null); setMsg(null); }} />
+            onChange={(m) => { setEntree((e) => ({ ...e, mode: m === "push" ? "push" : "camera" })); setEssai(null); setMsg(null); }} />}
           <div className="mt-3 grid gap-1.5"
             role="tabpanel" id={idPanneau("reglages-entree", entree.mode)} aria-labelledby={idOnglet("reglages-entree", entree.mode)}>
             {entree.mode === "camera" ? (
