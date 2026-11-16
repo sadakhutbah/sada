@@ -80,6 +80,10 @@ spec:
               value: 0.0.0.0
             - name: SADA_BO_PORT
               value: {{ .Values.backoffice.port | quote }}
+            # The cluster is the hosted platform: no mosque opens by itself at sign-in,
+            # and the live input is a push only (the server never reaches into a mosque).
+            - name: SADA_MODE
+              value: hosted
             # The encoder reads rtsp://receiver:8554/live/<slug> in push mode.
             - name: SADA_RELAY_HOST
               value: receiver
