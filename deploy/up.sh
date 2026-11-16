@@ -7,14 +7,14 @@
 #   ./deploy/up.sh infra     # terraform apply: server, firewall, SSH key, volume (BILLABLE)
 #   ./deploy/up.sh cluster   # ansible: mount the volume, install k3s, fetch the kubeconfig
 #   ./deploy/up.sh deps      # helm: cert-manager + CloudNativePG
-#   ./deploy/up.sh image     # build the image (web/dist included) and push it
+#   ./deploy/up.sh image     # build and push the image by hand (the CI on main normally does it)
 #   ./deploy/up.sh app       # helm upgrade --install sada
 #   ./deploy/up.sh status    # pods, services, ingress, certificates
 #
 # Configuration: environment variables, or deploy/deploy.env (git-ignored), e.g.
 #   SADA_ADMIN_CIDRS="203.0.113.10/32"      # mandatory for `infra`
 #   SADA_IMAGE_REPO="ghcr.io/you/sada"
-#   SADA_IMAGE_TAG="$(git rev-parse --short HEAD)"
+#   SADA_IMAGE_TAG="sha-$(git rev-parse HEAD)"   # default: the image the CI built for HEAD
 #   SADA_ACME_EMAIL="you@example.org"       # creates the Let's Encrypt ClusterIssuer
 #   SADA_HOST="console.sadakhutbah.org"
 #   SADA_VALUES="deploy/values.local.yaml"  # your mosques: [...]
@@ -33,7 +33,8 @@ SADA_NAMESPACE=${SADA_NAMESPACE:-sada}
 SADA_RELEASE=${SADA_RELEASE:-sada}
 SADA_HOST=${SADA_HOST:-console.sadakhutbah.org}
 SADA_IMAGE_REPO=${SADA_IMAGE_REPO:-ghcr.io/sadakhutbah/sada}
-SADA_IMAGE_TAG=${SADA_IMAGE_TAG:-$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo local)}
+# The CI builds and publishes the image on every push to main (tag sha-<full commit>): deploy that.
+SADA_IMAGE_TAG=${SADA_IMAGE_TAG:-sha-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo local)}
 SADA_VALUES=${SADA_VALUES:-$DEPLOY_DIR/values.local.yaml}
 KUBECONFIG=${KUBECONFIG:-$HOME/.config/sada-deploy/kubeconfig}
 export KUBECONFIG
@@ -118,8 +119,20 @@ cmd_image() {
   log "pushed $SADA_IMAGE_REPO:$SADA_IMAGE_TAG"
 }
 
+# The image must exist on the registry before Helm points the cluster at it, otherwise every pod
+# goes into ImagePullBackOff and the back office is down (Recreate strategy).
+image_published() {
+  local repo=${SADA_IMAGE_REPO#ghcr.io/} token
+  [ "$repo" = "$SADA_IMAGE_REPO" ] && return 0 # not ghcr: cannot check anonymously
+  token=$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+  curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+    -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json" \
+    "https://ghcr.io/v2/$repo/manifests/$SADA_IMAGE_TAG"
+}
+
 cmd_app() {
   need helm; need kubectl
+  image_published || die "$SADA_IMAGE_REPO:$SADA_IMAGE_TAG is not on the registry yet: wait for the CI on main to go green"
   local args=(
     --namespace "$SADA_NAMESPACE" --create-namespace
     --set "image.repository=$SADA_IMAGE_REPO"
