@@ -81,6 +81,15 @@ resource "hcloud_firewall" "sada" {
     description = "SRT ingest"
   }
 
+  # WebRTC media of the control room monitors (ICE); the signalling goes through the back office.
+  rule {
+    direction   = "in"
+    protocol    = "udp"
+    port        = "8189"
+    source_ips  = var.http_cidrs
+    description = "WebRTC (control room monitors)"
+  }
+
   rule {
     direction       = "out"
     protocol        = "tcp"
