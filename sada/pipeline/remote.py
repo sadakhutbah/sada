@@ -62,7 +62,9 @@ BYTES_PER_SECOND = 6000
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
 MAX_CHUNK_S = 1500.0  # 25 min : un morceau reste court à téléverser et à transcrire
 OVERLAP_S = 2.0  # léger chevauchement : aucun mot perdu à la coupure
-# Le glossaire part en `prompt` : Whisper n'en garde que 224 tokens (Groq comme OpenAI).
+# Le glossaire ne part plus en `prompt` par défaut : dans cette fenêtre de 224 tokens (Groq comme
+# OpenAI), Whisper recopiait les termes là où ils n'étaient pas dits. L'orthographe est corrigée après
+# coup (`glossary.correct`), comme en local ; `SADA_REMOTE_GLOSSARY_PROMPT=on` le renvoie.
 PROMPT_MAX_TOKENS = 224
 PROMPT_MAX = 900  # garde-fou en caractères, quelle que soit l'estimation
 
@@ -565,6 +567,24 @@ def estimate_tokens(text: str) -> int:
     return total
 
 
+def glossary_prompt_enabled() -> bool:
+    """Le glossaire part-il en `prompt` quand l'appelant n'en donne pas ? Non, sauf demande explicite."""
+    return (os.environ.get("SADA_REMOTE_GLOSSARY_PROMPT") or "").strip().lower() in {"1", "on", "true", "yes", "oui"}
+
+
+def default_prompt() -> str:
+    return glossary.hotwords() if glossary_prompt_enabled() else ""
+
+
+def corrected(segments: list[dict]) -> list[dict]:
+    """Orthographe du glossaire appliquée au texte ET aux mots, comme le fait le transcripteur local."""
+    for seg in segments:
+        seg["text"] = glossary.correct(seg.get("text") or "")
+        for word in seg.get("words") or ():
+            word["w"] = glossary.correct(word["w"])
+    return segments
+
+
 def prompt_text(text: str, *, max_tokens: int = PROMPT_MAX_TOKENS) -> str:
     """Le glossaire tel qu'il part en `prompt` : coupé par termes dans la fenêtre de 224 tokens.
 
@@ -659,7 +679,7 @@ class RemoteEngine:
                 if raw.get(key) is not None:
                     piece[key] = _num(raw.get(key))
             pieces.append(piece)
-        return pieces
+        return corrected(pieces)
 
     def detect_language(self, chunk) -> None:
         """Ces API n'ont pas de détection de langue : seul l'écart de vraisemblance décide."""
@@ -709,7 +729,8 @@ def transcribe(
     duration = wav_duration(wav)
     if duration <= 0:
         raise TranscriptionError(_("Unreadable audio: {name}", name=Path(wav).name))
-    prompt = prompt_text(glossary.hotwords() if hotwords is None else hotwords)
+    # `hotwords` explicite : envoyé tel quel (borné) ; sinon pas de glossaire en prompt (voir plus haut).
+    prompt = prompt_text(default_prompt() if hotwords is None else hotwords)
     plan = chunk_plan(duration)
     log(_("Distant transcription: {provider}", provider=s.label()))
     log(
@@ -738,7 +759,7 @@ def transcribe(
             # La langue n'est transmise que si l'appelant la connaît : imposer la langue détectée du
             # premier morceau rendrait inaudible une citation arabe du second.
             payloads.append((start, _transcribe_file(s, piece, prompt, language, log)))
-        segs = merge(payloads)
+        segs = corrected(merge(payloads))
         retry = arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
         engine = RemoteEngine(s, wav, prompt, log, Path(work))
         # Une intro sans son fait écrire à Whisper des génériques de sous-titres (« ترجمة نانسي

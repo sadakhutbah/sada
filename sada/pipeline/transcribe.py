@@ -63,6 +63,33 @@ def extract_audio(src: str, dst: str, start: float = 0.0, end: float | None = No
     return dst
 
 
+def dominant_language(model, audio, *, sr: int = 16000, samples: int = 7, min_prob: float = 0.6) -> str | None:
+    """Langue majoritaire mesurée sur `samples` fenêtres de 30 s réparties sur la session.
+
+    Sans glossaire en `hotwords`, Whisper en mode multilingue dérive : un cours en français est
+    rendu en arabe sur des minutes entières (dars du 11/11). Fixer la langue majoritaire l'évite ;
+    les citations arabes sont reprises ensuite par `recover_arabic`. None si aucune langue ne
+    l'emporte nettement (session vraiment bilingue) : on reste alors en multilingue.
+    """
+    n = len(audio)
+    win = 30 * sr
+    if n < win:
+        return None
+    votes: dict[str, int] = {}
+    for k in range(samples):
+        start = int((n - win) * (k + 0.5) / samples)
+        try:
+            code, prob = model.detect_language(audio[start : start + win])[:2]
+        except Exception:  # noqa: BLE001
+            continue
+        if prob >= 0.5:
+            votes[code] = votes.get(code, 0) + 1
+    if not votes:
+        return None
+    code, count = max(votes.items(), key=lambda kv: kv[1])
+    return code if count / samples >= min_prob else None
+
+
 def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
     """-> (model, device, compute_type)."""
     free = free_vram_mb()
@@ -207,12 +234,16 @@ def transcribe(
 
     with wave.open(wav, "rb") as w:  # we decode the 16 kHz WAV ourselves (avoids PyAV, which is incompatible here)
         audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
-    # Glossaire des termes islamiques : donné en `hotwords`, il stabilise l'orthographe des
-    # translittérations (tawba plutôt que « taouba » ou un mot français approchant).
-    hw = glossary.hotwords() if hotwords is None else hotwords
+    # Le glossaire n'est plus donné à Whisper par défaut : en `hotwords`, ses termes amorçaient des
+    # boucles (« shukr, shukr… » sur 30 s) qui faisaient sauter la parole voisine (dars du 11/11 :
+    # 12 boucles, ~7 min perdues). L'orthographe est corrigée après coup (`glossary.correct`).
+    hw = hotwords or ""
+    fixed = dominant_language(model, audio)
+    log(_("Dominant language: {code}", code=fixed or "multilingual"))
     segs_iter, info = model.transcribe(
         audio,
-        multilingual=True,
+        multilingual=fixed is None,
+        language=fixed,
         vad_filter=True,
         beam_size=5,
         condition_on_previous_text=False,
@@ -235,6 +266,9 @@ def transcribe(
             seg["words"] = [
                 {"w": w.word.strip(), "s": round(w.start, 2), "e": round(w.end, 2)} for w in s.words if w.word.strip()
             ]
+        seg["text"] = glossary.correct(seg["text"])
+        for w in seg.get("words", ()):
+            w["w"] = glossary.correct(w["w"])
         segs.append(seg)
         if len(segs) % 20 == 0:
             log(f"  … {len(segs)} segments, {s.end:.0f}/{info.duration:.0f}s")
@@ -262,7 +296,7 @@ def transcribe(
     retry = settings.arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
     if retry:
         engine = LocalEngine(model, audio)
-        res["loops_redone"] = repair.redo_loops(engine, segs, log=log, max_segments=repair.LOOP_RETRY_MAX)
+        res["loops_redone"] = repair.redo_loops(engine, segs, log=log, max_segments=repair.LOOP_RETRY_MAX_LOCAL)
         res["arabic_recovered"] = repair.recover_arabic(
             engine, segs, log=log, max_ranges=RETRY_MAX, min_prob=DETECT_MIN_PROB, margin=RETRY_MARGIN, language=lang
         )

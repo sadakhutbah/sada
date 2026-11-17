@@ -166,14 +166,22 @@ class _Model:
         return iter([_Piece(" La tawba est un retour.", 0.0, 1.0)]), _Info()
 
 
-def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
+class _ModelFautif(_Model):
+    def transcribe(self, audio, **kw):
+        self.call = kw
+        return iter([_Piece(" La taouba est un retour.", 0.0, 1.0)]), _Info()
+
+
+def test_transcribe_corrige_apres_coup_sans_hotwords(monkeypatch, tmp_path):
+    """Le glossaire en `hotwords` amorçait des boucles (« shukr, shukr… ») qui faisaient sauter
+    la parole voisine : il n'est plus donné à Whisper, l'orthographe est corrigée après coup."""
     import wave
 
     import faster_whisper
 
     from sada.pipeline import transcribe as T
 
-    monkeypatch.setattr(faster_whisper, "WhisperModel", _Model)
+    monkeypatch.setattr(faster_whisper, "WhisperModel", _ModelFautif)
     monkeypatch.setattr(T, "pick_model", lambda prefer, log: ("tiny", "cpu", "int8"))
     wav = tmp_path / "a.wav"
     with wave.open(str(wav), "wb") as w:
@@ -182,9 +190,8 @@ def test_transcribe_passe_le_glossaire_en_hotwords(monkeypatch, tmp_path):
         w.setframerate(16000)
         w.writeframes(b"\x00\x00" * 16000)
     res = T.transcribe(str(wav), str(tmp_path / "t.json"), "cpu", log=lambda *_: None, arabic_retry=False)
-    hw = _Model.last.call["hotwords"]
-    assert hw and "tawba" in hw and "khutba" in hw
-    assert res["hotwords"] is True and res["segments"][0]["text"] == "La tawba est un retour."
+    assert not _Model.last.call["hotwords"]
+    assert res["hotwords"] is False and res["segments"][0]["text"] == "La tawba est un retour."
 
 
 def test_pas_de_glose_quand_l_orateur_traduit_lui_meme():
@@ -199,3 +206,24 @@ def test_pas_de_glose_quand_l_orateur_traduit_lui_meme():
     assert not any(w.get("gloss") for w in a)
     b = g.gloss_words(ws("la tawba efface les péchés"), terms)
     assert any(w.get("gloss") for w in b)
+
+
+class _Detect:
+    def __init__(self, langs):
+        self.langs = list(langs)
+
+    def detect_language(self, chunk):
+        code = self.langs.pop(0)
+        return code, 0.9, []
+
+
+def test_langue_dominante_fixee_sinon_multilingue():
+    """Sans hotwords, le multilingue rendait un cours français en arabe : la langue majoritaire est fixée."""
+    import numpy as np
+
+    from sada.pipeline.transcribe import dominant_language
+
+    audio = np.zeros(16000 * 600, dtype=np.float32)
+    assert dominant_language(_Detect(["fr"] * 5 + ["ar"] * 2), audio) == "fr"
+    assert dominant_language(_Detect(["fr", "ar"] * 3 + ["fr"]), audio) is None
+    assert dominant_language(_Detect([]), np.zeros(16000, dtype=np.float32)) is None

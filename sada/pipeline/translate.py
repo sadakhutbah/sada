@@ -37,7 +37,7 @@ from pathlib import Path
 from ..i18n import _
 from ..text import has_translit, is_arabic
 from . import glossary as glossmod
-from . import llm
+from . import honorifics, llm
 from .repair import is_loop
 from .verses import formula_fr, match_for, shown
 
@@ -178,7 +178,9 @@ def _store_fr(cache: dict, rows: list[tuple[int, dict]], d: dict, log) -> None:
         if isinstance(e, str):
             e = {"fr": e, "coran": False}
         if e and e.get("fr"):
-            cache["seg"][_seg_key(s["text"])] = {"fr": e["fr"].strip(), "coran": bool(e.get("coran")), "ar": s["text"]}
+            coran = bool(e.get("coran"))
+            fr = e["fr"].strip() if coran else honorifics.apply(e["fr"].strip(), "fr", "full")
+            cache["seg"][_seg_key(s["text"])] = {"fr": fr, "coran": coran, "ar": s["text"]}
 
 
 def _store_ar(cache: dict, rows: list[tuple[int, dict]], d: dict) -> None:
@@ -189,7 +191,7 @@ def _store_ar(cache: dict, rows: list[tuple[int, dict]], d: dict) -> None:
             e = {"ar": e}
         ar = (e or {}).get("ar") or ""
         if ar.strip():
-            cache["seg"][_seg_key(s["text"])] = {"ar": ar.strip(), "fr": s["text"]}
+            cache["seg"][_seg_key(s["text"])] = {"ar": honorifics.apply(ar.strip(), "ar", "full"), "fr": s["text"]}
 
 
 def _store_verse_fr(cache: dict, verses: list[dict], d: dict, log) -> None:

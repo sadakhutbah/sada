@@ -273,7 +273,9 @@ def test_meme_forme_que_la_transcription_locale(monkeypatch, serveur, tmp_path):
     assert set(distant["segments"][0]["words"][0]) == {"w", "s", "e"}
     assert distant["duration"] == pytest.approx(local["duration"])
     assert distant["language"] == local["language"]
-    assert distant["hotwords"] is True and local["hotwords"] is True
+    # glossaire corrigé après coup des deux côtés : plus rien en `hotwords` ni en `prompt`
+    assert distant["hotwords"] is False and local["hotwords"] is False
+    assert b'name="prompt"' not in _Handler.seen[-1]["body"]
     assert all(isinstance(s["start"], float) and isinstance(s["end"], float) for s in distant["segments"])
 
 

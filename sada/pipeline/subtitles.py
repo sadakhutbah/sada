@@ -33,7 +33,7 @@ import re
 
 from ..text import has_translit, is_arabic
 from . import clips as clipmod
-from . import glossary
+from . import glossary, honorifics
 from .repair import is_loop
 from .translate import segment_ar, segment_fr, verse_fr
 from .verses import recited_arabic
@@ -340,15 +340,22 @@ def units(segments: list[dict], matches: list[dict], translations: dict, transla
 
 
 def _passages(units_: list[dict]) -> dict[str, list[dict]]:
+    """Passages of each track, with the honorifics of the track's language (`honorifics`, full form).
+
+    A verse (detected, or Quran recited) keeps its exact text and its translation: nothing is added."""
     out: dict[str, list[dict]] = {"ar": [], "fr": []}
     for unit in units_:
         for code in ("ar", "fr"):
             text = unit[code]
             if not text:
                 continue
+            verse = bool(unit.get("verse") or unit.get("coran"))
             passage = {"start": unit["start"], "end": unit["end"], "text": text}
+            if not verse:
+                passage["text"] = honorifics.apply(text, code, "full")
             if unit.get(f"{code}_words"):
-                passage["words"] = unit[f"{code}_words"]
+                words = unit[f"{code}_words"]
+                passage["words"] = words if verse else honorifics.apply_words(words, code, "full", inline=True)
             out[code].append(passage)
     return {code: passages for code, passages in out.items() if passages}
 

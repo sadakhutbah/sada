@@ -43,6 +43,7 @@ RETRY_MAX = 40  # plafond de plages reprises par session (coût borné : CPU loc
 MERGE_GAP_S = 6.0  # deux passages suspects séparés de moins que ça forment une seule plage
 MAX_RANGE_S = 180.0  # une plage plus longue est découpée : un envoi reste court
 LOOP_RETRY_MAX = 10  # plafond de boucles reprises (une boucle est rare, mais coûteuse à distance)
+LOOP_RETRY_MAX_LOCAL = 40  # en local une reprise ne coûte que du GPU : le dars du 11/11 en comptait 22
 
 NO_SPEECH_MAX = 0.6  # seuil de Whisper : au-delà, la fenêtre est jugée sans parole
 COMPRESSION_MAX = 2.4  # au-delà, le texte se répète (boucle) au lieu de transcrire
