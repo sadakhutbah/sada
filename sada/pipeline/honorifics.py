@@ -3,15 +3,18 @@
 `apply(text, lang, mode)` writes the formula of respect after:
 
 - the Prophet Muhammad (« Muhammad », « le Prophète », « le Messager d'Allah », النبي, رسول الله…);
-- Allah (once per segment, never inside a fixed expression: « in sha Allah », « qu'Allah … »);
 - the other prophets (Moïse/Moussa/Moses, Jésus/Issa/Jesus, Ibrahim/Abraham…);
 - a few companions (Abu Bakr, Omar, Othmane, Ali, Bilal, Abu Hurayra, Ibn Abbas, Ibn Umar, Anas,
   Aïcha, Khadija, Fatima).
 
-`mode` is `full` (« (paix et salut sur lui) ») or `short` (« ﷺ », « (SWT) »); `lang` is `fr`, `en`
+`mode` is `full` (« (paix et salut sur lui) ») or `short` (« ﷺ », « (AS) »); `lang` is `fr`, `en`
 or `ar`, any other language is returned unchanged. A formula already said by the speaker in the next
 few words (« Moussa alayhi salam », « Allah azza wa jal ») is never doubled, and applying twice
 gives the same text. `SADA_HONORIFICS=off` disables everything.
+
+Allah never receives a formula: when the imam does not say one, it is deliberate (Qur'an quoted,
+fixed expression such as « je cherche refuge auprès d'Allah »), and adding words there would alter
+what is recited. Only a formula the speaker actually says is kept.
 
 Limits, by design of a text-only pass:
 - a modern person who bears a prophet's or a companion's name (« Adam », « Omar ») is honoured
@@ -40,10 +43,6 @@ FORMULAS = {
     MUHAMMAD: {
         "full": {"fr": "(paix et salut sur lui)", "en": "(peace be upon him)", "ar": "صلى الله عليه وسلم"},
         "short": {"fr": "ﷺ", "en": "ﷺ", "ar": "ﷺ"},
-    },
-    ALLAH: {
-        "full": {"fr": "(exalté soit-Il)", "en": "(glorified and exalted be He)", "ar": "سبحانه وتعالى"},
-        "short": {"fr": "(SWT)", "en": "(SWT)", "ar": "سبحانه"},
     },
     PROPHET: {
         "full": {"fr": "(paix sur lui)", "en": "(peace be upon him)", "ar": "عليه السلام"},
@@ -115,7 +114,6 @@ _LATIN_TITLE = _alt(
     rf"(?:[Tt]he|[Oo]ur|[Hh]is)\s+(?:Prophet|Messenger(?:\s+of\s+Allah)?)(?:{_AP}s)?",
     rf"(?:[Tt]he)\s+messenger\s+of\s+Allah(?:{_AP}s)?",
 )
-_LATIN_ALLAH = "Allah"
 _LATIN_PROPHETS = _alt(
     "Moussa",
     "Moïse",
@@ -205,7 +203,6 @@ _LATIN_COMPANIONS_F = _alt(
 _AR_CLITIC = "[وفبل]?"
 _AR_MUHAMMAD = _alt(_AR_CLITIC + _ar("محمد") + "[اً]*", _AR_CLITIC + _ar("رسول الله"))
 _AR_TITLE = _alt(_ar("النبي"), "[وفب]" + _ar("النبي"), _ar("للنبي"), _ar("نبينا"))
-_AR_ALLAH = _ar("الله")
 _AR_PROPHETS = _AR_CLITIC + _alt(
     *(
         _ar(name)
@@ -274,7 +271,6 @@ _NAMES = {
     "latin": (
         _Name(MUHAMMAD, _words(_LATIN_MUHAMMAD)),
         _Name(MUHAMMAD, _words(_LATIN_TITLE), title=True),
-        _Name(ALLAH, _words(_LATIN_ALLAH)),
         _Name(PROPHET, _words(_LATIN_PROPHETS)),
         _Name(COMPANION, _words(_LATIN_COMPANIONS)),
         _Name(COMPANION_F, _words(_LATIN_COMPANIONS_F)),
@@ -282,7 +278,6 @@ _NAMES = {
     "ar": (
         _Name(MUHAMMAD, _words(_AR_MUHAMMAD)),
         _Name(MUHAMMAD, _words(_AR_TITLE), title=True),
-        _Name(ALLAH, _words(_AR_ALLAH)),
         _Name(PROPHET, _words(_AR_PROPHETS)),
         _Name(COMPANION, _words(_AR_COMPANIONS)),
         _Name(COMPANION_F, _words(_AR_COMPANIONS_F)),
@@ -395,71 +390,6 @@ _SAID_FOR = {
     COMPANION_F: (COMPANION,),
 }
 
-#: fixed expressions where « Allah » takes no formula (invocations, oaths, other people's formulas)
-_ALLAH_FIXED = re.compile(
-    _START
-    + _alt(
-        rf"(?:[Mm]essager|[Ee]nvoyé|[Pp]rophète)\s+d{_AP}\s?Allah",
-        r"(?:[Mm]essenger|[Pp]rophet)\s+of\s+Allah",
-        rf"qu{_AP}\s?Allah",
-        r"may\s+Allah",
-        rf"inch{_AP}?\s?Allah",
-        rf"in\s?-?\s?[cs]h?[aâ]{{1,2}}{_AP}?\s?-?\s?Allah",
-        r"si\s+Allah\s+(?:le\s+)?veut",
-        r"Allah\s+willing",
-        rf"ma\s?-?\s?[cs]h?[aâ]{{1,2}}{_AP}?\s?-?\s?Allah",
-        r"bism(?:i|e)?\s?-?\s?Allah",
-        rf"au\s+nom\s+d{_AP}\s?Allah",
-        r"in\s+the\s+name\s+of\s+Allah",
-        r"subh?an[ae]?\s?-?\s?Allah",
-        r"(?:al-?\s?)?hamdou?\s?-?\s?li\s?-?\s?Allah",
-        r"(?:al-?\s?)?hamdu\s?-?\s?li\s?-?\s?Allah",
-        r"ill?a\s?-?\s?Allah",
-        r"wa\s?-?\s?Allah(?:i)?",
-        r"fi\s+sabil(?:i)?\s?-?\s?Allah",
-        r"jazak(?:a|i|um)?\s?-?\s?Allah",
-        r"barak(?:a)?\s?-?\s?Allah",
-        r"astaghfir(?:u|ou)?\s?-?\s?Allah",
-        r"s[ao]ll?[ae]?\s?-?\s?Allah",
-        r"radh?[iy]{1,2}[ae]?\s?-?\s?Allah",
-        r"rahima?(?:hu|ha)?\s?-?\s?Allah",
-        r"hafidha?(?:hu|ha)?\s?-?\s?Allah",
-        r"abd\s?-?\s?Allah",
-        r"(?:[ÔôOo]|[Yy]a|[Yy]â)\s+Allah",
-        r"(?:par|by)\s+Allah",
-        r"Allah\s+(?:Akbar|akbar)",
-        r"Allah\s+est\s+(?:le\s+)?plus\s+grand",
-        r"Allah\s+is\s+(?:the\s+)?(?:greatest|most\s+great)",
-        r"(?:louange|gloire|grâce|merci)\s+à\s+Allah",
-        r"(?:praise|glory|thanks)\s+(?:be\s+)?to\s+Allah",
-        rf"Allah\s+a{_AP}?\s?lam",
-        _AR_CLITIC + _ar("بسم الله"),
-        _ar("شاء الله"),
-        _ar("رسول الله"),
-        _ar("سبحان الله"),
-        _ar("إلا الله"),
-        _ar("عبد الله"),
-        _ar("الله أكبر"),
-        _ar("رحمه الله"),
-        _ar("رحمها الله"),
-        _ar("رحمة الله"),
-        _ar("حفظه الله"),
-        _ar("جزاك الله"),
-        _ar("جزاكم الله"),
-        _ar("بارك الله"),
-        _ar("يرحمك الله"),
-        _ar("عباد الله"),
-        _ar("يا الله"),
-        _ar("صلى الله"),
-        _ar("رضي الله"),
-        _ar("أستغفر الله"),
-        _AR_CLITIC + _ar("استغفروا الله"),
-        _AR_CLITIC + _ar("أستغفروا الله"),
-        _AR_CLITIC + _ar("اتقوا الله"),
-    )
-    + _END,
-    _I,
-)
 #: words before a name that make it someone else (a son, a kunya, a mosque, a surah, a family)
 _LATIN_BEFORE = re.compile(
     r"(?:"
@@ -562,21 +492,17 @@ def insertions(text: str, lang: str | None, mode: str = "full") -> list[tuple[in
     before_rule = _AR_BEFORE if script == "ar" else _LATIN_BEFORE
     son_of = _AR_SON_OF if script == "ar" else _LATIN_SON_OF
     said_spans = [span for pattern in _FORMULAS_SAID.values() for span in _spans(pattern, text)]
-    fixed_spans = _spans(_ALLAH_FIXED, text)
     quoted = _spans(_QUOTED, text)
-    allah_done = bool(_FORMULAS_SAID[ALLAH].search(text))
     found = _candidates(text, script)
     out: list[tuple[int, str]] = []
     for index, (start, end, name) in enumerate(found):
         if _inside(start, end, said_spans) or _inside(start, end, quoted):
             continue
-        if name.kind == ALLAH and (allah_done or _inside(start, end, fixed_spans) or re.match(_AP + "s", text[end:])):
-            continue
         if before_rule.search(text[:start]) or son_of.match(text[end:]):
             continue
         if name.kind == MUHAMMAD and _PRAYER_BEFORE.search(text[:start]):
             continue
-        if script == "latin" and not name.title and name.kind != ALLAH and _SURNAME.match(text[end:]):
+        if script == "latin" and not name.title and _SURNAME.match(text[end:]):
             continue
         following = found[index + 1] if index + 1 < len(found) else None
         if (
@@ -588,12 +514,8 @@ def insertions(text: str, lang: str | None, mode: str = "full") -> list[tuple[in
         ):
             continue  # « le Prophète Moïse », « the Prophet Muhammad »: the name carries the formula
         if _said(text, end, name.kind):
-            if name.kind == ALLAH:
-                allah_done = True
             continue
         out.append((end, FORMULAS[name.kind][mode][code]))
-        if name.kind == ALLAH:
-            allah_done = True  # once per segment
     return out
 
 

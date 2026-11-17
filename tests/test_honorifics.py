@@ -14,40 +14,40 @@ FR = "Le Prophète a dit à Abu Bakr et à Aïcha que Allah pardonne, comme Moï
             "full",
             FR,
             "Le Prophète (paix et salut sur lui) a dit à Abu Bakr (qu'Allah l'agrée) et à Aïcha (qu'Allah l'agrée)"
-            " que Allah (exalté soit-Il) pardonne, comme Moïse (paix sur lui) l'a rapporté.",
+            " que Allah pardonne, comme Moïse (paix sur lui) l'a rapporté.",
         ),
         (
             "fr",
             "short",
             FR,
-            "Le Prophète ﷺ a dit à Abu Bakr (RA) et à Aïcha (RA) que Allah (SWT) pardonne, comme Moïse (AS) l'a rapporté.",
+            "Le Prophète ﷺ a dit à Abu Bakr (RA) et à Aïcha (RA) que Allah pardonne, comme Moïse (AS) l'a rapporté.",
         ),
         (
             "en",
             "full",
             "The Prophet told Abu Hurayra and Fatima that Allah forgives, as Moses said.",
             "The Prophet (peace be upon him) told Abu Hurayra (may Allah be pleased with him) and Fatima"
-            " (may Allah be pleased with her) that Allah (glorified and exalted be He) forgives,"
+            " (may Allah be pleased with her) that Allah forgives,"
             " as Moses (peace be upon him) said.",
         ),
         (
             "en",
             "short",
             "The Messenger of Allah told Ibn Abbas that Allah sent Jesus.",
-            "The Messenger of Allah ﷺ told Ibn Abbas (RA) that Allah (SWT) sent Jesus (AS).",
+            "The Messenger of Allah ﷺ told Ibn Abbas (RA) that Allah sent Jesus (AS).",
         ),
         (
             "ar",
             "full",
             "قال رسول الله لأبي بكر وعائشة إن الله غفور كما قال موسى",
             "قال رسول الله صلى الله عليه وسلم لأبي بكر رضي الله عنه وعائشة رضي الله عنها"
-            " إن الله سبحانه وتعالى غفور كما قال موسى عليه السلام",
+            " إن الله غفور كما قال موسى عليه السلام",
         ),
         (
             "ar",
             "short",
             "قال النبي إن الله غفور كما قال موسى",
-            "قال النبي ﷺ إن الله سبحانه غفور كما قال موسى عليه السلام",
+            "قال النبي ﷺ إن الله غفور كما قال موسى عليه السلام",
         ),
     ],
 )
@@ -128,9 +128,13 @@ def test_allah_in_fixed_expressions(text):
     assert "exalté" not in apply(text, "fr", "full")
 
 
-def test_allah_once_per_segment():
-    out = apply("Allah voit, Allah entend, Allah sait.", "fr", "full")
-    assert out == "Allah (exalté soit-Il) voit, Allah entend, Allah sait."
+def test_allah_never_gets_a_formula():
+    assert apply("Allah voit, Allah entend, Allah sait.", "fr", "full") == "Allah voit, Allah entend, Allah sait."
+    assert apply("je cherche refuge auprès d'Allah contre Satan", "fr", "full") == (
+        "je cherche refuge auprès d'Allah contre Satan"
+    )
+    assert apply("إن الله بالغ أمره", "ar", "short") == "إن الله بالغ أمره"
+    assert apply("La gestion d'Allah pour son serviteur", "fr", "short") == "La gestion d'Allah pour son serviteur"
 
 
 def test_title_followed_by_name_takes_one_formula():
@@ -150,7 +154,7 @@ def test_vowelled_quran_untouched():
 
 def test_french_quotation_untouched():
     text = "« Certes, Allah atteint son but. » Et Allah sait."
-    assert apply(text, "fr", "full") == "« Certes, Allah atteint son but. » Et Allah (exalté soit-Il) sait."
+    assert apply(text, "fr", "full") == "« Certes, Allah atteint son but. » Et Allah sait."
 
 
 def test_arabic_fixed_expressions_with_a_clitic():
