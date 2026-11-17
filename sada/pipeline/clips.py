@@ -24,6 +24,7 @@ from ..i18n import _
 from ..paths import FONTS
 from ..text import AR_RUN, is_arabic, is_translit_word, reshaped_view
 from . import glossary as glossmod
+from . import honorifics
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
 
@@ -539,6 +540,9 @@ def build_ass(
     # « la tawba (le repentir) » : première occurrence du terme dans le clip, glose collée au mot.
     if words:
         words = glossmod.gloss_words(words, glossary if glossary is not None else glossmod.load())
+        # « le Prophète ﷺ » : short form, carried by the word that ends the name (same timing, no
+        # extra word), so pages and card intervals are unchanged.
+        words = honorifics.apply_words(words, "fr", "short")
         words[0]["w"] = words[0]["w"][:1].upper() + words[0]["w"][1:]
     sev = _speech_events(words, cards, dur, gold)
     pages = sum(1 for e in sev if ",Glow," in e)

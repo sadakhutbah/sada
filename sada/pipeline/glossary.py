@@ -256,10 +256,12 @@ def gloss_words(words: list[dict], terms: list[dict] | None = None) -> list[dict
 
 
 def display(word: dict) -> str:
-    """Texte du mot avec sa glose éventuelle, ponctuation finale conservée après la parenthèse."""
+    """Texte du mot avec sa glose et sa formule de respect éventuelles (`honorifics.apply_words`),
+    ponctuation finale conservée après elles."""
     raw = str(word.get("w") or "")
-    g = word.get("gloss")
-    if not g:
+    g = word.get("gloss") or ""
+    h = word.get("honorific") or ""
+    if not g and not h:
         return raw
     core = raw.rstrip(_PUNCT)
-    return core + g + raw[len(core) :]
+    return core + g + h + raw[len(core) :]
