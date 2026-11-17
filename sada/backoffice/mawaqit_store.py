@@ -18,7 +18,7 @@ def times(conn, mosque: dict, fetch=None, now=None) -> dict:
     row = conn.execute(select(Mosque.mawaqit_cache, Mosque.mawaqit_cached_at).where(Mosque.id == mosque["id"])).first()
     cache = json.loads(row[0]) if row and row[0] else None
     age = now - float(row[1] or 0) if cache else 0.0
-    data, stored = mawaqit.resolve(mosque.get("mawaqit_url") or "", cache, age, fetch=fetch)
+    data, stored = mawaqit.resolve(mosque.get("mawaqit_url") or "", cache, age, fetch=fetch, now=now)
     if stored is not None:
         conn.execute(
             update(Mosque)

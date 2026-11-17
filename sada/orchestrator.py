@@ -146,6 +146,7 @@ class Orchestrator:
         # a day opened on the fallback (back office down) is retried in the background: the live
         # must not wait on the network, but the plan must not stay wrong until tomorrow either.
         self._plan_day = day
+        self._rolled = False
         self._stale = bool(cfg.backoffice_url) and (self._times_fallback or not self._program_remote)
         self._retry_delay = RETRY_DELAY_S
         self._retry_at = 0.0
@@ -213,6 +214,25 @@ class Orchestrator:
         return jumua + [i.starts for i in instances], [{} for _ in jumua] + [i.as_event() for i in instances]
 
     # --- late back office -----------------------------------------------------
+    def _roll_day(self, sig: Signals):
+        """Midnight: plan the new day at once with what is known, then fetch its times again.
+
+        The process runs for days: without this, the plan of the day it started on would stay.
+        """
+        day = sig.now.date()
+        if day == self._plan_day:
+            return
+        self.instances = events_mod.instances_on(self.program, day, self.prayer_times)
+        sessions, extras = self.day_plan(day)
+        if not self.machine.new_day(sessions, extras, sig):
+            return  # a session runs over midnight: retried on the next tick
+        self._plan_day = day
+        log.info(_("Sessions of the day (mosque clock): {times}", times=[s.strftime("%H:%M") for s in sessions]))
+        if self.cfg.backoffice_url and not self.cfg.jumua_times_override:
+            # today's prayer times (and programme) from the back office: applied by _retry_plan
+            self._stale, self._rolled = True, True
+            self._retry_delay, self._retry_at = RETRY_DELAY_S, 0.0
+
     def _retry_plan(self, sig: Signals):
         """Back office down at start: get the times and the programme again, then replan today.
 
@@ -263,6 +283,14 @@ class Orchestrator:
         day = sig.now.date()
         self.instances = events_mod.instances_on(self.program, day, self.prayer_times)
         sessions, extras = self.day_plan(day)
+        if self._rolled and not any(rec.status != "pending" for rec in self.machine.records):
+            # fresh times right after midnight, nothing played yet: the day is planned again whole
+            self._rolled = False
+            if self.machine.new_day(sessions, extras, sig):
+                log.info(
+                    _("Sessions of the day (mosque clock): {times}", times=[s.strftime("%H:%M") for s in sessions])
+                )
+                return
         added = self.machine.replan(sessions, extras, sig)
         log.info(
             _(
@@ -451,6 +479,7 @@ class Orchestrator:
                     log.info(_("Simulated clock: speed x{speed:g}", speed=want))
                 sig = self.signals()
                 self.machine.tick(sig)
+                self._roll_day(sig)
                 self._retry_plan(sig)
                 self._sync()
             if time.monotonic() - last_status > 30:

@@ -173,5 +173,6 @@
   "{where}: unknown recurrence weekday {weekday} (expected: {valid})": "{where}: يوم تكرار غير معروف {weekday} (المتوقع: {valid})",
   "{where}: unknown type {kind} (expected: {valid})": "{where}: نوع غير معروف {kind} (المتوقع: {valid})",
   "{where}: “recurrence” must be an object": "{where}: يجب أن يكون «recurrence» كائناً",
-  "“events” must be a list": "يجب أن يكون «events» قائمة"
+  "“events” must be a list": "يجب أن يكون «events» قائمة",
+  "New day: {count} session(s) planned": "يوم جديد: {count} جلسة مقررة"
 }

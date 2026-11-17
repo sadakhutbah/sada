@@ -37,13 +37,25 @@ def fetch_live(url: str, timeout: float = 15.0) -> dict:
     }
 
 
-def resolve(url: str, cache: dict | None, age_s: float, max_age_h: float = 20.0, timeout: float = 15.0, fetch=None):
+def resolve(
+    url: str,
+    cache: dict | None,
+    age_s: float,
+    max_age_h: float = 20.0,
+    timeout: float = 15.0,
+    fetch=None,
+    now: float | None = None,
+):
     """(times, data to store or None) from a cache of any kind (file, database row).
 
-    Fresh cache: used as is. Otherwise Mawaqit is fetched; on failure the stale cache is used.
+    Fresh cache (recent AND fetched today): used as is. Otherwise Mawaqit is fetched; on failure the
+    stale cache is used. The prayer times move every day (and by an hour at the clock change): a
+    cache from yesterday is never fresh, however young.
     """
     fetch = fetch or fetch_live
-    if cache and age_s < max_age_h * 3600:
+    now = time.time() if now is None else now
+    same_day = time.localtime(now - age_s)[:3] == time.localtime(now)[:3]  # cached today, local clock
+    if cache and same_day and age_s < max_age_h * 3600:
         cache["origin"] = _("cache (fresh)")
         return _finish(cache), None
     if not url:

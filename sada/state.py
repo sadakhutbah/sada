@@ -361,6 +361,34 @@ class Machine:
         return False
 
     # ------------------------------------------------------------------- replan
+    def engaged(self) -> bool:
+        """A session is open or about to be: the plan must not be swapped under it."""
+        return self.live is not None or self.state in (
+            State.ARMED,
+            State.BEFORE,
+            State.INTERMISSION,
+            State.KHUTBA,
+            State.DARS,
+            State.PRAYER,
+        )
+
+    def new_day(self, sessions: list[dt.datetime], extras: list[dict] | None, sig: Signals) -> bool:
+        """The date changed: yesterday's plan gives way to today's. False (retry later) while engaged."""
+        if self.engaged() or self.paused_from is not None:
+            return False
+        rows = _rows(sessions, extras)
+        self.sessions = [s for s, _m in rows]
+        self.records = [self._rec_of(s, m, i) for i, (s, m) in enumerate(rows)]
+        self.idx = 0
+        self.live, self.cut = None, (None, None)
+        self.janaza_name = self.janaza_info = None
+        self.grace_until, self.grace_reason, self.extend_until_t = None, None, 0.0
+        self.override = False
+        if self.state != State.IDLE:
+            self._go(State.IDLE, sig, "nouveau jour")
+        self.log(_("New day: {count} session(s) planned", count=len(self.sessions)))
+        return True
+
     def replan(self, sessions: list[dt.datetime], extras: list[dict] | None = None, sig: Signals | None = None) -> int:
         """Replace the sessions still to come (real timetable or programme known only late).
 
@@ -373,14 +401,7 @@ class Machine:
             raise ValueError(_("replan needs the current signals"))
         rows = _rows(sessions, extras)
         n = len(self.sessions)  # records of the planned sessions come first, off-programme ones after
-        engaged = self.live is not None or self.state in (
-            State.ARMED,
-            State.BEFORE,
-            State.INTERMISSION,
-            State.KHUTBA,
-            State.DARS,
-            State.PRAYER,
-        )
+        engaged = self.engaged()
         keep = min(self.idx + 1 if engaged else self.idx, n)
         seen = {(s, r.kind) for s, r in zip(self.sessions[:n], self.records[:n], strict=True)}
         fresh: list[tuple[dt.datetime, dict]] = []
