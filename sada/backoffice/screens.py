@@ -174,8 +174,12 @@ def valeurs_apercu(mosque: dict, screen: str, conn=None) -> dict[str, str]:
     return valeurs
 
 
-def preview(mosque: dict, payload, screen: str) -> bytes:
-    """PNG (1280×720) of the screen as it will look, drawn by the engine's own renderer."""
+def preview(mosque: dict, payload, screen: str, overlay: bool = False) -> bytes:
+    """PNG (1280×720) of the screen as it will look, drawn by the engine's own renderer.
+
+    `overlay`: for the banner scenes (camera behind), the banner alone on a transparent background,
+    so the control room can lay it over the live feed.
+    """
     try:
         clean = base.check(payload or {})
     except ValueError as e:
@@ -196,11 +200,13 @@ def preview(mosque: dict, payload, screen: str) -> bytes:
     spec = scenes.SCENES[screen]
     if spec.full:
         img = renderer.background().convert("RGBA")
+    elif overlay:
+        img = Image.new("RGBA", (renderer.W, renderer.H), (0, 0, 0, 0))
     else:
         # Bandeau du direct : la caméra est derrière le bandeau, l'aperçu pose donc ce dernier sur
         # un fond neutre — pas sur le fond vert des écrans pleins, qui laisserait croire le contraire.
         img = Image.new("RGBA", (renderer.W, renderer.H), (24, 26, 24, 255))
     img.alpha_composite(renderer.content(screen, moment))
     out = io.BytesIO()
-    img.convert("RGB").save(out, "PNG")
+    (img if overlay and not spec.full else img.convert("RGB")).save(out, "PNG")
     return out.getvalue()

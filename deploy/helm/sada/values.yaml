@@ -60,6 +60,13 @@ receiver:
   rtmpPort: 1935
   srtPort: 8890
   rtspPort: 8554
+  # WebRTC for the control room monitors. The HTTP signalling stays internal (the back office
+  # proxies it); only the ICE media port is published, in UDP, on the node.
+  webrtc:
+    udpPort: 8189
+    # Public address(es) of the node, announced to browsers as ICE candidates (IP or hostname).
+    # Required in production: without it browsers only get the pod's address and fall back to HLS.
+    additionalHosts: []
   service:
     type: LoadBalancer
     annotations: {}
@@ -139,8 +146,3 @@ certManager:
 
 # Clock of the containers (sessions, dars, logs)
 timezone: Europe/Paris
-
-# Live viewer in the browser: https://<host>/live/<slug>-prog/ (open; set authSecret for basic auth)
-liveViewer:
-  authSecret: ""
-  enabled: true

@@ -151,9 +151,10 @@ def summarize(st: dict) -> dict:
     session = None
     if cur is not None:
         n = planned.index(cur) + 1 if cur in planned else None
-        session = {"n": n, "total": len(planned), "planned": cur.get("planned")}
+        session = {"n": n, "total": len(planned), "planned": cur.get("planned"), "started": cur.get("start_clock")}
     return {
         "state": st.get("state"),
+        "scene": st.get("scene"),
         "clock": st.get("clock"),
         "session": session,
         "has_sessions": bool(planned),
@@ -161,6 +162,7 @@ def summarize(st: dict) -> dict:
         "stream_on": bool(st.get("stream_on")),
         "mic": bool(st.get("mic")),
         "override": bool(st.get("override")),
+        "paused": bool(st.get("paused")),
         "last_reason": st.get("last_reason") or "",
         "run_id": st.get("run_id"),
         "janaza_name": st.get("janaza_name"),

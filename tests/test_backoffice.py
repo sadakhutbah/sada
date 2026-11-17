@@ -321,7 +321,7 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
     d = c.get("/api/v1/dashboard").json()
     assert d["live"]["clock"] == "13:42:10" and d["live"]["state"] == "KHUTBA"
     assert "state_label" not in d["live"] and "sessions" not in d["live"]  # keys, not screen text
-    assert d["live"]["session"] == {"n": 1, "total": 2, "planned": "13:30"}
+    assert d["live"]["session"] == {"n": 1, "total": 2, "planned": "13:30", "started": "13:31"}
     assert [c["key"] for c in d["live_commands"]] == [
         "start",
         "pause",

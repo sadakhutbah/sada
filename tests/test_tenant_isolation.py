@@ -299,7 +299,7 @@ def test_stream_key_per_mosque(env, intruder):
     assert ask(action="publish", path=f"live/{slugs[0]}", password="wrong") == 401
     assert ask(action="read", path=f"live/{slugs[0]}", ip="172.18.0.5") == 200
     assert ask(action="read", path=f"live/{slugs[0]}", ip="8.8.8.8") == 401
-    assert ask(action="api", path="", ip="172.18.0.5") == 401
+    assert ask(action="api", path="", ip="172.18.0.5") == 401  # the API needs the back office's credentials
     internal.new_publish_key(conn, mids[0])
     assert ask(action="publish", path=f"live/{slugs[0]}", password=ka) == 401  # replaced
 

@@ -27,6 +27,14 @@ spec:
           imagePullPolicy: {{ .Values.receiver.imagePullPolicy }}
           args:
             - /etc/mediamtx/mediamtx.yml
+          env:
+            # ICE: the published UDP port, and the public address(es) browsers must reach
+            - name: MTX_WEBRTCLOCALUDPADDRESS
+              value: ":{{ .Values.receiver.webrtc.udpPort }}"
+            {{- with .Values.receiver.webrtc.additionalHosts }}
+            - name: MTX_WEBRTCADDITIONALHOSTS
+              value: {{ join "," . | quote }}
+            {{- end }}
           ports:
             - name: rtmp
               containerPort: {{ .Values.receiver.rtmpPort }}
@@ -39,6 +47,15 @@ spec:
               protocol: TCP
             - name: hls
               containerPort: 8888
+              protocol: TCP
+            - name: whep
+              containerPort: 8889
+              protocol: TCP
+            - name: ice
+              containerPort: {{ .Values.receiver.webrtc.udpPort }}
+              protocol: UDP
+            - name: api
+              containerPort: 9997
               protocol: TCP
           volumeMounts:
             - name: config

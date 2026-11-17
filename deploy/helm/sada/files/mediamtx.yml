@@ -13,13 +13,21 @@ hlsAddress: :8888
 hlsVariant: mpegts
 hlsSegmentDuration: 2s
 hlsAlwaysRemux: no
-hlsAllowOrigins: ['*']
-webrtc: no
+# HLS and WebRTC are read by the back office only (control room monitors, proxied behind the
+# session): their HTTP ports stay inside the cluster. WebRTC media flows over one UDP port (ICE),
+# published on the node; the public address is given by MTX_WEBRTCADDITIONALHOSTS (chart values).
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ''
+# Stream health for the control room (bitrate, viewers). Internal only, asked with authHTTPAddress.
+api: yes
+apiAddress: :9997
 
 # OBS pushes rtmp://<host>:1935/live/<slug> (or SRT, streamid=publish:live/<slug>);
 # the mosque's orchestrator reads rtsp://receiver:8554/live/<slug> inside the network.
 # Every publish/read is asked to the back office: publishing needs the mosque's stream key
-# (`mosque --slug <slug> --publish-key`), reading is allowed from the private network only.
+# (`mosque --slug <slug> --publish-key`), reading (and the API) from the private network only.
 authMethod: http
 authHTTPAddress: http://backoffice:8090/api/v1/internal/publish-auth
 paths:

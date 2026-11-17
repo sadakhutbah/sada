@@ -14,7 +14,18 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from ...i18n import _
-from .. import branding, destinations, events_store, gabarit, internal, live_input, mawaqit_store, orm, storage
+from .. import (
+    branding,
+    destinations,
+    events_store,
+    gabarit,
+    internal,
+    live_input,
+    live_watch,
+    mawaqit_store,
+    orm,
+    storage,
+)
 from .. import screens as screens_mod
 from .. import variables_ecran as variables_mod
 from ..context import ConnDep
@@ -136,7 +147,8 @@ async def publish_auth(request: Request, conn: ConnDep):
     """Asked by the stream receiver (MediaMTX `authHTTPAddress`) for every publish or read.
 
     Publishing `live/<slug>` needs the mosque's stream key as password. Reading is only for the
-    orchestrators, inside the private network (the receiver's read ports are never published).
+    orchestrators and the back office (control room monitors, proxied behind the session), inside
+    the private network: the receiver's read ports are never published.
     """
     import ipaddress
 
@@ -154,6 +166,13 @@ async def publish_auth(request: Request, conn: ConnDep):
             ok = False
     elif action == "publish":
         ok = internal.publish_allowed(conn, slug, q.get("password"))
+    elif action == "api":
+        # stream health for the control room: the back office only, with its derived credentials
+        try:
+            ok = ipaddress.ip_address(str(q.get("ip") or "")).is_private
+        except ValueError:
+            ok = False
+        ok = ok and live_watch.api_allowed(q.get("user"), q.get("password"))
     elif action in ("read", "playback"):
         try:
             ok = bool(slug) and ipaddress.ip_address(str(q.get("ip") or "")).is_private
