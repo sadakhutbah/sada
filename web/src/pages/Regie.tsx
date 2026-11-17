@@ -108,7 +108,40 @@ function Moniteur({ which, titre, sousTitre, available, sante, antenne, prepa, a
   );
 }
 
+/** Narrower than an unfolded foldable or a tablet: a phone. The control room asks for a wider
+ *  screen there, without forbidding it (soft block). */
+const ETROIT = "(max-width: 599px)";
+
+function useEtroit(): boolean {
+  const [v, setV] = useState(() => window.matchMedia(ETROIT).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(ETROIT);
+    const f = () => setV(mq.matches);
+    mq.addEventListener("change", f);
+    return () => mq.removeEventListener("change", f);
+  }, []);
+  return v;
+}
+
 export default function Regie() {
+  const etroit = useEtroit();
+  const [forcer, setForcer] = useState(() => sessionStorage.getItem("regie.mobile") === "1");
+  const { t } = useTranslation();
+  if (etroit && !forcer) {
+    return (
+      <div className="mx-auto grid max-w-sm gap-3 rounded-[10px] bg-night p-5 text-night-ink">
+        <h1 className="m-0 text-[1.1rem] font-bold text-white">{t("regie.narrowTitle")}</h1>
+        <p className="m-0 text-[0.92rem] leading-snug">{t("regie.narrowText")}</p>
+        <Btn variante="light" className="justify-self-start" onClick={() => { sessionStorage.setItem("regie.mobile", "1"); setForcer(true); }}>
+          {t("regie.narrowAnyway")}
+        </Btn>
+      </div>
+    );
+  }
+  return <RegieEcran />;
+}
+
+function RegieEcran() {
   const { t } = useTranslation();
   const [live, setLive] = useState<Live | null>(null);
   const [commandes, setCommandes] = useState<Commande[]>([]);
