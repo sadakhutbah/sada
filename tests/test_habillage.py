@@ -326,7 +326,8 @@ def _pts(fichier: str, flux: str) -> list[float]:
         text=True,
         check=True,
     )
-    return sorted(float(x) for x in p.stdout.split())
+    # certaines versions de ffprobe ajoutent une virgule de fin (champ vide) : on ne garde que la valeur
+    return sorted(float(x.split(",")[0]) for x in p.stdout.split() if x.split(",")[0])
 
 
 def test_plan_segments_coupe_sur_les_images_cles(video_hd, video):
