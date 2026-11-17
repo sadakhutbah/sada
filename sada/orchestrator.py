@@ -206,7 +206,9 @@ class Orchestrator:
 
     def day_plan(self, day: dt.date) -> tuple[list[dt.datetime], list[dict]]:
         """(sessions, events) of a day: the jumua times, then the programme, on the same footing."""
-        jumua = [parse_hhmm(t, day) for t in self.times]
+        # the khutbas only on Friday; times forced by hand (--times, simulation) apply to any day
+        forced = bool(self.cfg.jumua_times_override or self.cfg.sim_start)
+        jumua = [parse_hhmm(t, day) for t in self.times] if forced or day.weekday() == 4 else []
         instances = events_mod.instances_on(self.program, day, self.prayer_times)
         return jumua + [i.starts for i in instances], [{} for _ in jumua] + [i.as_event() for i in instances]
 
