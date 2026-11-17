@@ -155,5 +155,6 @@
   "No mosque to configure on this installation.": "لا يوجد مسجد لضبطه في هذا التثبيت.",
   "Orchestrator connection saved.": "حُفظ الاتصال بالمنسّق.",
   "These settings belong to the platform screen: {fields}.": "هذه الإعدادات تخصّ شاشة المنصة: {fields}.",
-  "the program's own folder": "مجلد البرنامج نفسه"
+  "the program's own folder": "مجلد البرنامج نفسه",
+  "The dressed video is already up to date with these options: nothing to render.": "الفيديو المؤطَّر محدَّث بالفعل بهذه الخيارات: لا شيء للتصيير."
 }

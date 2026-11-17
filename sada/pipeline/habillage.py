@@ -4,13 +4,19 @@ Chaque élément s'active seul :
 - carton d'ouverture : fond aux couleurs de la mosquée, logo, nom de la mosquée, titre, sous-titre (série,
   séance, date), ajouté AVANT la vidéo (il ne cache jamais le début de la parole) ;
 - bandeau « lower third » : nom de l'intervenant et sa qualité, révélé en volet au début de la vidéo ;
-- logo en filigrane dans un coin (position, taille et opacité réglables), le disque des clips ;
+- logo en filigrane dans un coin (position, taille et opacité réglables), le disque des clips, montré
+  pendant le bandeau seulement (le reste de la vidéo est copié tel quel, voir le rendu par segments) ;
 - barre de couleur au bas de l'image, le doré de la mosquée ;
 - écran de fin : logo, nom de la mosquée, message, lien, ajouté APRÈS la vidéo.
 
 Même grammaire que les clips (`clips.py`) : textes en ASS brûlés par libass, mêmes polices, même doré,
 même disque de logo. L'original n'est jamais modifié : le rendu écrit un nouveau fichier.
 Tout ce qui est pur (options, mise en page, ASS, graphe ffmpeg) se teste sans ffmpeg.
+
+Rendu par segments : seuls la tête (carton d'ouverture, bandeau) et la queue (carton de fin) sont
+réencodées ; le milieu, coupé sur des images clés de la source, est copié sans réencodage. Le son est
+réencodé d'un seul tenant (pas de jointure AAC). Repli sur le rendu complet quand la source ne s'y
+prête pas (codec, taille, cadence variable, B-frames profondes) ou que la barre court sur toute la vidéo.
 """
 
 from __future__ import annotations
@@ -21,7 +27,10 @@ import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+import threading
+import time
+from dataclasses import dataclass, replace
+from fractions import Fraction
 from pathlib import Path
 
 from ..i18n import _
@@ -698,8 +707,9 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
 
     courant = "cv"
     poses = []
+    bandeau = fenetre_bandeau(o, c)
     if logo:
-        if p["filigrane"]:
+        if p["filigrane"] and bandeau:  # le filigrane accompagne le bandeau, pas toute la vidéo
             poses.append(("wm", p["filigrane"]))
         if c.i and p["intro"]["logo"]:
             poses.append(("li", p["intro"]["logo"]))
@@ -712,7 +722,7 @@ def graphe(o: dict, cadre: Cadre, ass_name: str, logo: bool, p: dict, apercu: bo
         fc.append(f"[{lg}:v]format=rgba,split={len(poses)}" + "".join(f"[s{nom}]" for nom, _ in poses))
         for nom, (x, y, d) in poses:
             if nom == "wm":
-                a, b = c.i, c.fin_video
+                a, b = bandeau or (c.i, c.fin_video)
                 fx = (
                     f"scale={d}:{d},colorchannelmixer=aa={o['logo_opacity']:.2f},"
                     f"fade=t=in:st={a + 0.4:.3f}:d=0.8:alpha=1,fade=t=out:st={max(a, b - 0.7):.3f}:d=0.6:alpha=1"
@@ -807,6 +817,369 @@ def commande(o: dict, src: str, out: str, fc: str, extra: list[str], c: Chrono, 
     ]
 
 
+def _lire_progres(flux, etat: list) -> None:
+    for ligne in flux:
+        if ligne.startswith("out_time_us="):
+            try:
+                etat[0] = max(etat[0], int(ligne.split("=", 1)[1]) / 1e6)
+            except ValueError:
+                pass
+
+
+def _executer(taches: list[tuple[list[str], float, float]], cwd: str, avance=None) -> None:
+    """Lance ensemble des commandes ffmpeg (commande, durée de sortie, poids) et attend la fin de toutes.
+
+    avance(fraction) est appelé depuis CE fil (pas depuis les lecteurs) : la connexion à la base du
+    back-office n'est jamais partagée entre fils. Une commande en échec arrête les autres."""
+    procs = []
+    try:
+        for i, (cmd, duree, poids) in enumerate(taches):
+            err = open(Path(cwd) / f"ffmpeg-{i}.err", "w", encoding="utf-8")  # noqa: SIM115
+            pr = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=err, text=True)
+            etat = [0.0]
+            th = threading.Thread(target=_lire_progres, args=(pr.stdout, etat), daemon=True)
+            th.start()
+            procs.append((pr, etat, max(duree, 1e-3), poids, err, th))
+        somme = sum(p[3] for p in procs) or 1.0
+        while True:
+            fini = [pr.poll() is not None for pr, *_ in procs]
+            if any(pr.returncode for pr, *_ in procs if pr.returncode is not None):
+                break
+            if avance:
+                avance(
+                    sum((1.0 if f else min(1.0, e[0] / d)) * w for f, (_, e, d, w, *_) in zip(fini, procs, strict=True))
+                    / somme
+                )
+            if all(fini):
+                break
+            time.sleep(0.5)
+    finally:
+        for pr, *_ in procs:
+            if pr.poll() is None:
+                pr.kill()
+            pr.wait()
+        for _pr, _e, _d, _w, err, th in procs:
+            th.join(timeout=5)
+            err.close()
+    for pr, _e, _d, _w, err, _th in procs:
+        if pr.returncode != 0:
+            texte = Path(err.name).read_text(encoding="utf-8", errors="replace").strip().splitlines()
+            raise RuntimeError(_("ffmpeg render failed: {error}", error=(texte or ["?"])[-1][:200]))
+
+
+def _rendre_complet(o, src, part: Path, mosquee, brand, logo, cadre: Cadre, debut: float, td: str, avance) -> Chrono:
+    """L'ancien rendu : toute la vidéo réencodée en une passe (barre sur toute la durée, source rétive)."""
+    fc, extra, c = _preparer(o, src, Path(td), mosquee, brand, logo, cadre)
+    _executer([(commande(o, src, str(part), fc, extra, c, debut), c.total, 1.0)], td, avance)
+    return c
+
+
+# ------------------------------------------------------------------ rendu par segments
+
+MARGE_COUPE = 1.0  # s réencodées au-delà du bandeau et avant le fondu de fin
+MILIEU_MIN = 20.0  # milieu copié plus court : le rendu complet ne coûte guère plus
+PROFILS = {"Baseline": "baseline", "Constrained Baseline": "baseline", "Main": "main", "High": "high"}
+VUI = (("color_primaries", "-color_primaries"), ("color_transfer", "-color_trc"), ("color_space", "-colorspace"))
+
+
+@dataclass(frozen=True)
+class Plan:
+    """Découpe de la source pour le rendu par segments (temps exacts, en secondes de la source).
+
+    Tête [debut, k1) et queue [k2, fin) réencodées ; milieu [k1, k2) copié. k1 et k2 sont des images clés
+    « nettes » : rien de ce qui précède ne s'affiche après, rien de ce qui suit ne s'affiche avant."""
+
+    fps: Fraction
+    debut: Fraction
+    k1: Fraction
+    k2: Fraction
+    n_tete: int
+    n_milieu: int
+    n_queue: int
+    x264: tuple[str, ...]  # profil, niveau, B-frames, couleurs : de quoi raccorder le flux copié
+
+    @property
+    def n(self) -> int:
+        return self.n_tete + self.n_milieu + self.n_queue
+
+
+def _flux_video(src: str) -> dict:
+    exe = _ffprobe()
+    if not exe:
+        raise RuntimeError(_("ffprobe not found on this machine."))
+    p = subprocess.run(
+        [exe, "-v", "error", "-select_streams", "v:0", "-show_streams", "-of", "json", src],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return ((json.loads(p.stdout or "{}").get("streams") or [{}]) if p.returncode == 0 else [{}])[0]
+
+
+def _paquets(src: str, debut: float, fin: float | None) -> list[tuple[int, bool]]:
+    """(pts, image clé) des paquets vidéo, dans l'ordre de décodage ; [] si un pts manque."""
+    exe = _ffprobe()
+    if not exe:
+        return []
+    zone = []
+    if debut > 0 or fin:
+        zone = ["-read_intervals", f"{max(0.0, debut - 30):.3f}" + (f"%{fin + 30:.3f}" if fin else "")]
+    p = subprocess.run(
+        [
+            exe,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            *zone,
+            "-show_entries",
+            "packet=pts,flags",
+            "-of",
+            "csv=p=0",
+            src,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    out = []
+    for ligne in p.stdout.splitlines() if p.returncode == 0 else []:
+        pts, _sep, flags = ligne.partition(",")
+        if not pts.lstrip("-").isdigit():
+            return []
+        out.append((int(pts), "K" in flags))
+    return out
+
+
+def plan_segments(o: dict, src: str, cadre: Cadre, debut: float = 0.0, fin: float | None = None) -> Plan | None:
+    """Où couper la source pour ne réencoder que la tête et la queue ; None : rendu complet.
+
+    Il faut une source que la sortie peut prolonger sans réencodage : H.264 4:2:0 à la taille de sortie,
+    cadence constante, sans rotation, au plus deux images de retard (B-frames) comme x264."""
+    if o["bar_on"]:  # la barre court sur toute la vidéo : rien à copier tel quel
+        return None
+    v = _flux_video(src)
+    rot = str((v.get("tags") or {}).get("rotate") or "0") not in ("0", "")
+    rot = rot or any(int(float(sd.get("rotation") or 0)) % 360 for sd in v.get("side_data_list") or [])
+    profil = PROFILS.get(v.get("profile") or "")
+    retard = int(v.get("has_b_frames") or 0)
+    if (
+        v.get("codec_name") != "h264"
+        or not profil
+        or v.get("pix_fmt") != "yuv420p"
+        or v.get("color_range") == "pc"
+        or rot
+        or (int(v.get("width") or 0), int(v.get("height") or 0)) != (cadre.w, cadre.h)
+        or v.get("sample_aspect_ratio") not in (None, "1:1", "0:1")
+        or v.get("field_order") not in (None, "progressive", "unknown")
+        or retard > 2
+    ):
+        return None
+    try:
+        fps, tb = Fraction(v.get("r_frame_rate") or "0"), Fraction(v.get("time_base") or "0")
+    except (ValueError, ZeroDivisionError):
+        return None
+    if not (10 <= fps <= 61) or tb <= 0:
+        return None
+    paq = _paquets(src, debut, fin)
+    if len(paq) < 2:
+        return None
+    pas = 1 / fps
+    pts = [p * tb for p, _ in paq]
+    tri = sorted(pts)
+    if any(abs((b - a) - pas) > pas / 4 for a, b in zip(tri, tri[1:], strict=False)):
+        return None  # cadence variable ou images manquantes : la copie décalerait le son
+    lo = Fraction(debut) - pas / 2
+    hi = Fraction(fin) - pas / 2 if fin else None
+    garde = [t for t in tri if t >= lo and (hi is None or t < hi)]
+    if len(garde) < 2:
+        return None
+    t0, t_fin = garde[0], garde[-1] + pas
+    # coupes nettes : maximum des pts avant < pts de la clé == minimum des pts à partir d'elle
+    n = len(paq)
+    suf = [Fraction(0)] * n
+    m = None
+    for j in range(n - 1, -1, -1):
+        m = pts[j] if m is None or pts[j] < m else m
+        suf[j] = m
+    nettes, pre = [], None
+    for j in range(n):
+        if paq[j][1] and (pre is None or pre < pts[j]) and suf[j] == pts[j]:
+            nettes.append(pts[j])
+        pre = pts[j] if pre is None or pts[j] > pre else pre
+    c = chrono(o, float(t_fin - t0))
+    f = fenetre_bandeau(o, c)
+    tete = Fraction(max((f[1] - c.i) if f else 0.0, FONDU if c.i else 0.0) + MARGE_COUPE)
+    queue = Fraction((FONDU if c.o else 0.0) + MARGE_COUPE)
+    k1 = min((k for k in nettes if k >= t0 + tete), default=None)
+    k2 = max((k for k in nettes if k <= t_fin - queue), default=None)
+    if k1 is None or k2 is None or k2 - k1 < MILIEU_MIN:
+        return None
+    from bisect import bisect_left
+
+    i1, i2 = bisect_left(garde, k1), bisect_left(garde, k2)
+    niveau = int(v.get("level") or 0)
+    x264 = ["-profile:v", profil, "-bf", {0: "0", 1: "1", 2: "3"}[retard]]
+    if niveau > 0:
+        x264 += ["-level:v", f"{niveau // 10}.{niveau % 10}"]
+    for cle, opt in VUI:
+        if v.get(cle) and v[cle] not in ("unknown", "reserved"):
+            x264 += [opt, str(v[cle])]
+    return Plan(fps, t0, k1, k2, i1, i2 - i1, len(garde) - i2, tuple(x264))
+
+
+def _segment(o: dict, cadre: Cadre, mosquee, brand, lg, p, td: Path, nom: str, images: dict) -> tuple[str, list[str]]:
+    """Graphe d'un bout réencodé ; images {"[0:v]"|"[ci]"|"[co]": n} : coupes au nombre d'images près.
+
+    trim=duration arrondit au pas de la cadence (une image de plus ou de moins selon 29,97 ou 30) : la
+    jointure avec le milieu copié veut le compte exact, d'où trim=end_frame."""
+    (td / f"{nom}.ass").write_text(build_ass(o, cadre, mosquee, brand, logo=bool(lg)), encoding="utf-8")
+    fc, extra = graphe(o, cadre, f"{nom}.ass", bool(lg), p, apercu=True)
+    for entree, n in images.items():
+        a = fc.index(entree)
+        b = fc.index("trim=duration=", a)
+        fin = min(i for i in (fc.find(",", b), fc.find("[", b), len(fc)) if i >= 0)
+        fc = fc[:b] + f"trim=end_frame={n}" + fc[fin:]
+    return fc, extra
+
+
+def _verifier_sortie(out: str, n: int) -> None:
+    """Sortie lisible d'un bout à l'autre : n images, décodage croissant, aucun saut d'affichage."""
+    exe = _ffprobe()
+    p = subprocess.run(
+        [
+            exe or "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "packet=pts,dts",
+            "-of",
+            "csv=p=0",
+            out,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    lignes = [x.split(",") for x in p.stdout.splitlines() if x.strip()]
+    try:
+        pts = sorted(int(a) for a, _b in lignes)
+        dts = [int(b) for _a, b in lignes]
+    except ValueError:
+        raise RuntimeError("timestamps manquants") from None
+    if len(pts) != n:
+        raise RuntimeError(f"{len(pts)} images au lieu de {n}")
+    if any(b <= a for a, b in zip(dts, dts[1:], strict=False)):
+        raise RuntimeError("dts non croissants")
+    ecarts = {b - a for a, b in zip(pts, pts[1:], strict=False)}
+    if ecarts and max(ecarts) > 1.5 * min(ecarts):
+        raise RuntimeError("saut de timestamps")
+
+
+def _rendre_segments(o, src, part: Path, mosquee, brand, logo, cadre: Cadre, plan: Plan, td: str, avance) -> Chrono:
+    fps, pas, tdp = plan.fps, 1 / plan.fps, Path(td)
+    cadre = replace(cadre, fps=fps)  # cadence exacte (30000/1001) : les images tombent sur la grille copiée
+    besoin_logo = bool(logo) and (o["logo_on"] or o["intro_on"] or o["outro_on"])
+    lg = (
+        clipmod.logo_disc(str(logo), str(tdp / "logo.png"), size=round(220 * cadre.u), brand=brand)
+        if besoin_logo
+        else None
+    )
+    p = mise_en_page(o, cadre, mosquee, bool(lg))
+    c0 = chrono(o, 1.0)
+    n_i, n_o = round(c0.i * fps), round(c0.o * fps)
+
+    def demi(k: int) -> float:  # filtres « pts < d » : exactement k images
+        return float((k - Fraction(1, 2)) / fps)
+
+    fond = fond_carton(str(tdp / "fond.png"), cadre, brand) if (n_i or n_o) else ""
+    src_abs = str(Path(src).resolve())
+
+    def cmd_bout(oo: dict, depart: Fraction, k: int, nom: str, n_sortie: int, images: dict) -> list[str]:
+        cc = replace(cadre, duree=demi(k))
+        fc, extra = _segment(oo, cc, mosquee, brand, lg, p, tdp, nom, {"[0:v]": k, **images})
+        extra = [x.replace("{fond}", fond).replace("{logo}", lg or "") for x in extra]
+        return [
+            ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostats", "-y",
+            # deux images de marge à l'entrée : le filtre fps perd la dernière en fin de flux ; trim coupe juste
+            "-ss", f"{float(depart - pas / 4):.6f}", "-t", f"{float((k + 2) * pas):.6f}", "-i", src_abs, *extra,
+            "-filter_complex", fc, "-map", "[v]", "-frames:v", str(n_sortie),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", *plan.x264,
+            "-f", "mpegts", "-progress", "pipe:1", f"{nom}.ts",
+        ]  # fmt: skip
+
+    o_tete = {**o, "outro_on": False, "intro_s": demi(n_i) if n_i else o["intro_s"]}
+    o_queue = {**o, "intro_on": False, "lower_on": False, "outro_s": demi(n_o) if n_o else o["outro_s"]}
+    n_tete, n_queue = n_i + plan.n_tete, plan.n_queue + n_o
+    milieu = [
+        ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostats", "-y",
+        "-ss", f"{float(plan.k1 + pas / 4):.6f}", "-i", src_abs, "-map", "0:v:0", "-c", "copy",
+        "-frames:v", str(plan.n_milieu), "-f", "mpegts", "-progress", "pipe:1", "milieu.ts",
+    ]  # fmt: skip
+    # Le son d'un seul tenant : silence du carton, son de la source, silence de fin, encodés en une passe.
+    # Coller des morceaux AAC laisserait à chaque jointure un trou ou un clic (trames de 1024 échantillons,
+    # amorce de l'encodeur) ; réencoder le son est de toute façon rapide.
+    v, total = float(plan.n * pas), float((n_i + plan.n + n_o) * pas)
+    morceaux, fa = [], []
+    if n_i:
+        fa.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={float(n_i * pas):.6f}[ia]")
+        morceaux.append("[ia]")
+    if cadre.audio:
+        fa.append(
+            f"[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,"
+            f"atrim=duration={v:.6f},asetpts=PTS-STARTPTS"
+            + (",afade=t=in:d=0.3" if n_i else "")
+            + (f",afade=t=out:st={max(0.0, v - 0.6):.6f}:d=0.6" if n_o else "")
+            + "[a0]"
+        )
+    else:
+        fa.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={v:.6f}[a0]")
+    morceaux.append("[a0]")
+    if n_o:
+        fa.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={float(n_o * pas):.6f}[oa]")
+        morceaux.append("[oa]")
+    fa.append("".join(morceaux) + f"concat=n={len(morceaux)}:v=0:a=1[ca]")
+    entree_son = ["-ss", f"{float(plan.debut):.6f}", "-t", f"{v + 1:.6f}", "-i", src_abs] if cadre.audio else []
+    son = [
+        ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostats", "-y", *entree_son,
+        "-filter_complex", ";".join(fa), "-map", "[ca]", "-t", f"{total:.6f}",
+        "-c:a", "aac", "-b:a", "160k", "-f", "mp4", "-progress", "pipe:1", "son.m4a",
+    ]  # fmt: skip
+    _executer(
+        [
+            (
+                cmd_bout(o_tete, plan.debut, plan.n_tete, "tete", n_tete, {"[ci]": n_i} if n_i else {}),
+                n_tete * float(pas),
+                n_tete * float(pas),
+            ),
+            (
+                cmd_bout(o_queue, plan.k2, plan.n_queue, "queue", n_queue, {"[co]": n_o} if n_o else {}),
+                n_queue * float(pas),
+                n_queue * float(pas),
+            ),
+            (milieu, plan.n_milieu * float(pas), plan.n_milieu * float(pas) * 0.004),
+            (son, total, total * 0.01),
+        ],
+        td,
+        lambda f: avance(f, 0.0, 0.95),
+    )
+    liste = ["ffconcat version 1.0"]
+    for nom, k in (("tete", n_tete), ("milieu", plan.n_milieu), ("queue", n_queue)):
+        liste += [f"file {nom}.ts", f"duration {float(k * pas):.6f}"]
+    (tdp / "segments.ffconcat").write_text("\n".join(liste) + "\n", encoding="utf-8")
+    assemble = [
+        ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostats", "-y",
+        "-f", "concat", "-safe", "0", "-i", "segments.ffconcat", "-i", "son.m4a",
+        "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-movflags", "+faststart",
+        "-progress", "pipe:1", str(part.resolve()),
+    ]  # fmt: skip
+    _executer([(assemble, total, 1.0)], td, lambda f: avance(f, 0.95, 0.99))
+    _verifier_sortie(str(part), n_tete + plan.n_milieu + n_queue)
+    return Chrono(n_i * float(pas), v, n_o * float(pas))
+
+
 def rendre(
     o: dict,
     src: str,
@@ -818,33 +1191,54 @@ def rendre(
     log=print,
     debut: float = 0.0,
     fin: float | None = None,
+    segments: bool = True,
 ) -> str:
     """Vidéo habillée complète dans `out` (écrite à côté puis renommée : jamais de fichier à moitié servi).
 
-    progres(fraction) est appelé pendant l'encodage, d'après le temps de sortie donné par ffmpeg."""
+    Par segments quand la source s'y prête (seuls la tête et la queue sont réencodées), sinon en une
+    passe. progres(fraction) est appelé pendant le rendu, toujours croissant, jamais 1 avant la fin."""
     verifier(o)
     cadre = _bornes(sonder(src), debut, fin)
     dest = Path(out)
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.stem + ".part" + dest.suffix)
-    with tempfile.TemporaryDirectory() as td:
-        fc, extra, c = _preparer(o, src, Path(td), mosquee, brand, logo, cadre)
-        cmd = commande(o, src, str(part), fc, extra, c, debut)
-        proc = subprocess.Popen(cmd, cwd=td, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        assert proc.stdout is not None
-        for ligne in proc.stdout:
-            if ligne.startswith("out_time_us=") and progres:
+    vu = [0.0]
+
+    def avance(f: float, a: float = 0.0, b: float = 1.0) -> None:
+        g = min(0.999, a + (b - a) * max(0.0, min(1.0, f)))
+        if g > vu[0]:
+            vu[0] = g
+            if progres:
+                progres(g)
+
+    t0 = time.monotonic()
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            plan = plan_segments(o, src, cadre, debut, fin) if segments else None
+            c = None
+            if plan:
                 try:
-                    progres(min(0.999, max(0.0, int(ligne.split("=", 1)[1]) / 1e6 / c.total)))
-                except ValueError:
-                    pass
-        err = proc.stderr.read() if proc.stderr else ""
-        if proc.wait() != 0:
-            part.unlink(missing_ok=True)
-            last = (err.strip().splitlines() or ["?"])[-1][:200]
-            raise RuntimeError(_("ffmpeg render failed: {error}", error=last))
+                    c = _rendre_segments(o, src, part, mosquee, brand, logo, cadre, plan, td, avance)
+                    log(
+                        _(
+                            "segmented render: {copied:.0f}s copied, {encoded:.0f}s encoded",
+                            copied=float(plan.n_milieu / plan.fps),
+                            encoded=c.total - float(plan.n_milieu / plan.fps),
+                        )
+                    )
+                except RuntimeError as e:
+                    log(_("segmented render impossible ({error}): full render", error=e))
+                    c = None
+            if c is None:
+                base = vu[0]
+                c = _rendre_complet(
+                    o, src, part, mosquee, brand, logo, cadre, debut, td, lambda f: avance(f, base, 1.0)
+                )
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
     part.replace(dest)
-    log(_("branding -> {path} ({seconds:.0f}s)", path=dest, seconds=c.total))
+    log(_("branding -> {path} ({seconds:.0f}s)", path=dest, seconds=c.total) + f" [{time.monotonic() - t0:.0f}s]")
     return str(dest)
 
 
@@ -856,7 +1250,7 @@ def instants_apercu(o: dict, c: Chrono) -> list[tuple[str, float]]:
     f = fenetre_bandeau(o, c)
     if f:
         out.append(("bandeau", min(f[1] - 0.3, f[0] + 1.6)))
-    if o["logo_on"] or o["bar_on"]:
+    if o["bar_on"]:  # le logo, lui, n'est plus montré hors des cartons et du bandeau
         t = (f[1] + 1.2) if f else c.i + min(3.0, c.v / 2)
         if t < c.fin_video - 0.3:
             out.append(("video", t))

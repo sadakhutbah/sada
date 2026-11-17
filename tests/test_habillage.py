@@ -188,6 +188,19 @@ def test_graphe_complet():
     assert "subtitles=filename=habillage.ass" in fc and fc.endswith("[v]")
 
 
+def test_filigrane_pendant_le_bandeau_seulement():
+    o = opts(lower_at=3, lower_s=8)
+    c = h.chrono(o, CADRE.duree)
+    f = h.fenetre_bandeau(o, c)
+    assert f is not None
+    a, b = f
+    fc, _ = h.graphe(o, CADRE, "h.ass", True, h.mise_en_page(o, CADRE, MOSQUEE, logo=True))
+    assert f"between(t,{a:.3f},{b:.3f})" in fc
+    o = opts(lower_on=False)  # sans bandeau : le logo n'apparaît que sur les cartons
+    fc, _ = h.graphe(o, CADRE, "h.ass", True, h.mise_en_page(o, CADRE, MOSQUEE, logo=True))
+    assert fc.count("overlay=") == 2
+
+
 def test_graphe_sans_carton_ni_logo():
     o = opts(intro_on=False, outro_on=False, logo_on=False)
     fc, extra = h.graphe(o, CADRE, "h.ass", False, h.mise_en_page(o, CADRE, MOSQUEE, logo=False))
@@ -276,6 +289,92 @@ def test_rendu_coupe_aux_bornes_de_la_session(video, tmp_path):
     o = opts(intro_on=False, outro_on=False, lower_on=False, logo_on=False, bar_on=True)
     out = h.rendre(o, str(video), str(tmp_path / "o.mp4"), MOSQUEE, debut=1.0, fin=4.0, log=lambda *a: None)
     assert abs(h.sonder(out).duree - 3.0) < 0.3
+
+
+@pytest.fixture(scope="module")
+def video_hd(tmp_path_factory):
+    """Une vraie captation : 1080p30, image clé toutes les 2 s, B-frames, son ; 40 s."""
+    if not FFMPEG:
+        pytest.skip("ffmpeg absent")
+    f = tmp_path_factory.mktemp("hd") / "dars-hd.mp4"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30:duration=40",
+         "-f", "lavfi", "-i", "sine=frequency=440:duration=40",
+         "-c:v", "libx264", "-preset", "ultrafast", "-bf", "2", "-g", "60", "-keyint_min", "60",
+         "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(f)],
+        check=True,
+    )  # fmt: skip
+    return f
+
+
+def _pts(fichier: str, flux: str) -> list[float]:
+    p = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            flux,
+            "-show_entries",
+            "packet=pts_time",
+            "-of",
+            "csv=p=0",
+            fichier,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return sorted(float(x) for x in p.stdout.split())
+
+
+def test_plan_segments_coupe_sur_les_images_cles(video_hd, video):
+    o = opts(intro_s=3, outro_s=3, lower_at=1, lower_s=5)
+    cadre = h.sonder(str(video_hd))
+    p = h.plan_segments(o, str(video_hd), cadre)
+    assert p is not None and p.fps == 30 and p.k1 % 2 == 0 and p.k2 % 2 == 0
+    assert p.k1 >= 6 + h.MARGE_COUPE and p.k2 <= 40 - h.FONDU - h.MARGE_COUPE
+    assert p.n == 1200 and p.n_milieu == (p.k2 - p.k1) * 30
+    assert p.x264[:2] == ("-profile:v", "main")  # ultrafast : profil Main, repris pour la tête et la queue
+    assert h.plan_segments(opts(bar_on=True), str(video_hd), cadre) is None  # barre sur toute la vidéo
+    assert h.plan_segments(o, str(video), h.sonder(str(video))) is None  # 640x360 : pas à la taille de sortie
+    p = h.plan_segments(o, str(video_hd), h._bornes(cadre, 5.1, 39.0), 5.1, 39.0)
+    assert p is not None and float(p.debut) == pytest.approx(5.1, abs=0.02) and p.k1 > 5.1
+    assert p.n == round((39.0 - 5.1) * 30)
+    # milieu copié trop court (< MILIEU_MIN) : rendu complet
+    assert h.plan_segments(o, str(video_hd), h._bornes(cadre, 5.1, 35.0), 5.1, 35.0) is None
+
+
+def test_rendu_par_segments(video_hd, logo, tmp_path):
+    o = opts(intro_s=3, outro_s=3, lower_at=1, lower_s=5)
+    journal, prog = [], []
+    out = h.rendre(o, str(video_hd), str(tmp_path / "s.mp4"), MOSQUEE, None, str(logo), progres=prog.append,
+                   log=journal.append, debut=2.0, fin=38.0)  # fmt: skip
+    assert any("segmented render" in m or "par segments" in m for m in journal), journal
+    assert not any("impossible" in m for m in journal), journal
+    v = _pts(out, "v:0")
+    assert len(v) == (3 + 36 + 3) * 30
+    assert max(b - a for a, b in zip(v, v[1:], strict=False)) < 0.04  # aucun saut aux jointures
+    a = _pts(out, "a:0")
+    assert abs(a[-1] - v[-1]) < 0.1 and a[0] <= 0.0
+    assert abs(h.sonder(out).duree - 42.0) < 0.1
+    assert prog and prog == sorted(prog) and prog[-1] < 1
+    assert not list(tmp_path.glob("*.part*"))
+
+    # le milieu est copié tel quel : image identique à la source, au bit près
+    def image(f, t):
+        return subprocess.run(["ffmpeg", "-v", "error", "-ss", str(t), "-i", f, "-frames:v", "1", "-f", "rawvideo",
+                               "-pix_fmt", "gray", "-"], capture_output=True, check=True).stdout  # fmt: skip
+
+    assert image(out, 3 + 18) == image(str(video_hd), 2 + 18)
+
+
+def test_rendu_segments_et_complet_meme_duree(video_hd, tmp_path):
+    o = opts(intro_s=2, outro_s=2, lower_at=1, lower_s=4, logo_on=False)
+    s = h.rendre(o, str(video_hd), str(tmp_path / "s.mp4"), MOSQUEE, log=lambda *a: None, fin=30.0)
+    c = h.rendre(o, str(video_hd), str(tmp_path / "c.mp4"), MOSQUEE, log=lambda *a: None, fin=30.0, segments=False)
+    assert len(_pts(s, "v:0")) == len(_pts(c, "v:0")) == 34 * 30
 
 
 def test_vrai_apercu(video, logo, tmp_path):
@@ -375,9 +474,22 @@ def test_api_apercu_puis_rendu(env, video):
         "habillee.mp4" in v.headers["content-disposition"] and str(env["tmp"]) not in v.headers["content-disposition"]
     )
     assert video.exists()  # la source n'est pas touchée
+    # mêmes options, même source, même marque : rien n'est rendu à nouveau
+    from sada.backoffice import habillage as bo
+
+    k = one(conn, models.Khutba, id=kid)
+    assert k is not None
+    avant = bo.fichier_video(k).stat().st_mtime_ns
+    r = c.ecrire(f"/sermons/{kid}/habillage", {"options": options})
+    assert r.status_code == 200 and ("up to date" in r.text or "à jour" in r.text), r.text
+    assert bo.fichier_video(k).stat().st_mtime_ns == avant
+    # une option change : nouveau rendu
+    r = c.ecrire(f"/sermons/{kid}/habillage", {"options": {**options, "logo_pos": "tr"}})
+    assert r.status_code == 200 and "up to date" not in r.text and "à jour" not in r.text
+    assert bo.fichier_video(k).stat().st_mtime_ns != avant
     # la mosquée retient son identité (pas le titre de ce dars)
     retenu = json.loads(one(conn, models.Mosque, id=env["mid"])["habillage_defaults"])
-    assert retenu["outro_link"] == "mosquee-exemple.fr" and retenu["logo_pos"] == "bl" and "title" not in retenu
+    assert retenu["outro_link"] == "mosquee-exemple.fr" and retenu["logo_pos"] == "tr" and "title" not in retenu
     actions = [a["action"] for a in audit_rows(conn)]
     assert "habillage.lance" in actions and "habillage.pret" in actions
 

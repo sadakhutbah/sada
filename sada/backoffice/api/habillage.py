@@ -55,7 +55,7 @@ async def habillage_lancer(kid: int, ctx: CtxDep):
     ctx.require("assign")
     k = khutba_or_404(ctx, kid)
     try:
-        habillage.lancer(
+        o = habillage.lancer(
             ctx.conn,
             ctx.request.app.state.db_path,
             k,
@@ -67,6 +67,8 @@ async def habillage_lancer(kid: int, ctx: CtxDep):
         )
     except ValueError as e:
         raise Invalid(str(e)) from e
+    if o.get("_a_jour"):
+        return _ok(_("The dressed video is already up to date with these options: nothing to render."), **_vue(ctx, k))
     return _ok(
         _("Rendering started: the dressed video will be ready in a few minutes, this page follows the progress."),
         **_vue(ctx, k),

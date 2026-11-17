@@ -155,5 +155,6 @@
   "No mosque to configure on this installation.": "Aucune mosquée à configurer sur cette installation.",
   "Orchestrator connection saved.": "Connexion à l'orchestrateur enregistrée.",
   "These settings belong to the platform screen: {fields}.": "Ces réglages relèvent de l'écran de la plateforme : {fields}.",
-  "the program's own folder": "le dossier du programme"
+  "the program's own folder": "le dossier du programme",
+  "The dressed video is already up to date with these options: nothing to render.": "La vidéo habillée est déjà à jour avec ces options : rien à rendre."
 }

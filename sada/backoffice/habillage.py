@@ -354,13 +354,58 @@ def apercu(conn, k: dict, m: dict, brut: dict) -> dict:
     return o
 
 
+def _fichier_empreinte(p: str | None) -> list | None:
+    if not p:
+        return None
+    try:
+        st = Path(p).stat()
+    except OSError:
+        return None
+    return [str(Path(p).resolve()), st.st_size, int(st.st_mtime)]
+
+
+def empreinte(k: dict, m: dict) -> dict | None:
+    """Tout ce qui, hors options, change l'image rendue : source et ses bornes, nom, couleurs et logo."""
+    src = source(k)
+    if not src:
+        return None
+    brand, logo = marque(m)
+    return {
+        "source": _fichier_empreinte(src[0]),
+        "debut": src[1],
+        "fin": src[2],
+        "mosquee": m.get("name") or "",
+        "brand": brand,
+        "logo": _fichier_empreinte(logo),
+    }
+
+
+def a_jour(conn, k: dict, m: dict, o: dict) -> bool:
+    """La vidéo habillée en place a déjà été rendue avec ces options, cette source et cette marque."""
+    h = ligne(conn, k["id"])
+    rendues = fichier_options_rendues(k)
+    if not (h and h["status"] == "pret" and fichier_video(k).exists() and rendues.exists()):
+        return False
+    try:
+        d = json.loads(rendues.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return False
+    vu = d.pop("_rendu", None)
+    return vu is not None and vu == empreinte(k, m) and rendu.normaliser(d) == o
+
+
 def lancer(conn, db_path: str, k: dict, m: dict, brut: dict, user: dict, ip=None, background: bool = True) -> dict:
+    """Lance le rendu ; renvoie les options. Rien n'est relancé si la vidéo en place est déjà à jour
+    (options, source et marque identiques au dernier rendu réussi) : la clé "_a_jour" le signale."""
     o = _options(conn, k, brut)
     h = ligne(conn, k["id"])
     if h and h["status"] == "en_cours":
         raise ValueError(_("a render is already running for this video"))
     if not source(k):
         raise ValueError(_("source video not found: nothing to dress"))
+    if a_jour(conn, k, m, o):
+        retenir(conn, m, o)
+        return {**o, "_a_jour": True}
     _enregistrer(
         conn,
         k,
@@ -403,6 +448,7 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
         if not src:
             raise RuntimeError(_("source video not found"))
         brand, logo = marque(m)
+        vu = empreinte(k, m or {})  # avant le rendu : une source changée pendant le rendu sera re-rendue
         dernier = [0.0]
 
         def progres(f: float) -> None:
@@ -432,7 +478,7 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
         # Le nouveau rendu remplace l'ancien d'un coup : l'ancienne vidéo est supprimée à cet instant.
         final = fichier_video(k)
         Path(out).replace(final)
-        fichier_options_rendues(k).write_text(json.dumps(o, ensure_ascii=False), encoding="utf-8")
+        fichier_options_rendues(k).write_text(json.dumps({**o, "_rendu": vu}, ensure_ascii=False), encoding="utf-8")
         out = str(final)
         conn.execute(
             update(Habillage)
