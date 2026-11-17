@@ -1,13 +1,21 @@
 # mediamtx : joue à la fois la « caméra de la mosquée » (RTSP) et le « serveur Facebook » (RTMP local)
 logLevel: info
-api: no
 metrics: no
 rtsp: yes
 rtspAddress: 127.0.0.1:8554
 rtmp: yes
 rtmpAddress: 127.0.0.1:1935
-hls: no
-webrtc: no
+# Control room monitors: read by the back office on this machine only (it proxies them behind the
+# session). Only the WebRTC media port (UDP 8189) listens on the network, for the browsers of the
+# LAN; a media session exists only after an offer the back office forwarded.
+api: yes
+apiAddress: 127.0.0.1:9997
+hls: yes
+hlsAddress: 127.0.0.1:8888
+webrtc: yes
+webrtcAddress: 127.0.0.1:8889
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ''
 srt: no
 moq: no
 # écoute uniquement en local : rien n'est exposé

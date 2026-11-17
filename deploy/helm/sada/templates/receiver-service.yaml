@@ -26,12 +26,22 @@ spec:
       port: 8888
       targetPort: hls
       protocol: TCP
+    # control room monitors: WHEP signalling and stream health, read by the back office only
+    - name: whep
+      port: 8889
+      targetPort: whep
+      protocol: TCP
+    - name: api
+      port: 9997
+      targetPort: api
+      protocol: TCP
   selector:
     {{- include "sada.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: receiver
 ---
-# Public ingest only (1935/tcp and 8890/udp): k3s ServiceLB binds them on the node, the
-# Hetzner firewall decides who may reach them. RTSP stays inside the cluster.
+# Public ingest (1935/tcp, 8890/udp) and WebRTC media of the control room monitors (ICE, udp):
+# k3s ServiceLB binds them on the node, the Hetzner firewall decides who may reach them. RTSP,
+# HLS, WHEP signalling and the API stay inside the cluster.
 apiVersion: v1
 kind: Service
 metadata:
@@ -57,6 +67,10 @@ spec:
     - name: srt
       port: {{ .Values.receiver.srtPort }}
       targetPort: srt
+      protocol: UDP
+    - name: ice
+      port: {{ .Values.receiver.webrtc.udpPort }}
+      targetPort: ice
       protocol: UDP
   selector:
     {{- include "sada.selectorLabels" . | nindent 4 }}
