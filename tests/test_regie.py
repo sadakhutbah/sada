@@ -191,3 +191,20 @@ def test_camera_on_local_relay_and_remote_camera(env, monkeypatch):
         lambda conn, m: {"mode": "camera", "url": "rtsp://user:pw@192.168.1.20:554/h264"},
     )
     assert live_watch.path_of(env["conn"], mosque, "source") is None  # never dialled by the proxy
+
+
+def test_scene_preview_for_studio_mode(env, relay):
+    """Studio mode: a scene is drawn before going on air; banners come transparent, over the feed."""
+    import io
+
+    from PIL import Image
+
+    c = client(env, "imam")
+    r = c.get("/api/v1/live/regie/scene/priere.png")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert Image.open(io.BytesIO(r.content)).mode == "RGB"
+    banner = Image.open(io.BytesIO(c.get("/api/v1/live/regie/scene/khutba.png").content))
+    assert banner.mode == "RGBA" and banner.getpixel((0, 0))[3] == 0
+    assert c.get("/api/v1/live/regie/scene/janaza.png").status_code == 404
+    assert c.get("/api/v1/live/regie/scene/nope.png").status_code == 404
+    assert client(env).get("/api/v1/live/regie/scene/priere.png").status_code == 401

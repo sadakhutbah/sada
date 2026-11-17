@@ -162,6 +162,7 @@ def summarize(st: dict) -> dict:
         "stream_on": bool(st.get("stream_on")),
         "mic": bool(st.get("mic")),
         "override": bool(st.get("override")),
+        "paused": bool(st.get("paused")),
         "last_reason": st.get("last_reason") or "",
         "run_id": st.get("run_id"),
         "janaza_name": st.get("janaza_name"),

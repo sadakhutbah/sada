@@ -7,9 +7,11 @@ stream name from the request: the path comes from the session's mosque (live_wat
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from .. import live, live_watch
+from .. import screens as screens_mod
 from ..context import CtxDep, NotFound
 
 router = APIRouter()
@@ -41,6 +43,18 @@ def regie(ctx: CtxDep):
         ],
         "monitors": {w: {"available": bool(p), "health": health[w]} for w, p in paths.items()},
     }
+
+
+@router.get("/live/regie/scene/{name}.png")
+async def scene_preview(name: str, ctx: CtxDep):
+    """Studio mode: the scene as it would go on air, with the mosque's saved texts. Banner scenes come
+    without background, to be laid over the preview feed."""
+    ctx.require("live")
+    if name not in live.choices("scene"):
+        raise NotFound()
+    textes = screens_mod.saved(ctx.conn, ctx.mosque["id"])
+    png = await run_in_threadpool(screens_mod.preview, ctx.mosque, textes, name, True)
+    return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=30"})
 
 
 @router.post("/live/watch/{which}/whep")

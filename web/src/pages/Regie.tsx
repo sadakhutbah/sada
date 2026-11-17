@@ -13,7 +13,7 @@ type Health = { online: boolean; kbps?: number | null; readers?: number } | null
 type Live = {
   ok?: boolean; state?: string; scene?: string | null; clock?: string | null;
   session?: { n?: number | null; total?: number; planned?: string | null; started?: string | null } | null;
-  has_sessions?: boolean; next_session?: string | null; stream_on?: boolean; override?: boolean;
+  has_sessions?: boolean; next_session?: string | null; stream_on?: boolean; override?: boolean; paused?: boolean;
   last_reason?: string; janaza_name?: string | null; janaza_info?: string | null;
 };
 type Commande = { key: string; destructive: boolean; choices: string[] };
@@ -31,8 +31,12 @@ function hms(s: number): string {
 }
 
 /** One monitor: 16:9 picture, muted by default, a clean “offline” slate when nothing is received. */
-function Moniteur({ which, titre, sousTitre, available, sante, antenne }: {
+/** Studio mode: the scene staged in the preview, before it is sent on air. */
+type Prepa = { scene: string; plein: boolean };
+
+function Moniteur({ which, titre, sousTitre, available, sante, antenne, prepa, actions }: {
   which: "source" | "program"; titre: string; sousTitre: string; available: boolean; sante: Health; antenne: boolean;
+  prepa?: Prepa | null; actions?: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const video = useRef<HTMLVideoElement>(null);
@@ -58,13 +62,18 @@ function Moniteur({ which, titre, sousTitre, available, sante, antenne }: {
       </figcaption>
       <div className={`relative aspect-video overflow-hidden rounded-lg bg-black ring-2 ${antenne && enLigne ? "ring-live" : "ring-white/10"}`}>
         <video ref={video} autoPlay muted={muet} playsInline className={`size-full object-contain ${enLigne ? "" : "hidden"}`} />
+        {prepa && (
+          // Full screens hide the feed; a banner scene is drawn over it, as on air.
+          <img src={`/api/v1/live/regie/scene/${prepa.scene}.png`} alt=""
+               className={`absolute inset-0 z-10 size-full object-contain ${prepa.plein ? "bg-black" : ""}`} />
+        )}
         {enLigne ? (
           <>
             <button
               type="button"
               onClick={() => setMuet((m) => !m)}
               aria-pressed={!muet}
-              className="absolute right-2 bottom-2 inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-white/25 bg-black/60 px-2.5 text-[0.8rem] font-semibold text-white hover:bg-black/80 max-md:min-h-11"
+              className="absolute right-2 bottom-2 z-20 inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-white/25 bg-black/60 px-2.5 text-[0.8rem] font-semibold text-white hover:bg-black/80 max-md:min-h-11"
             >
               <svg aria-hidden="true" viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 8h3l4-3v10l-4-3H3z" />
@@ -73,7 +82,7 @@ function Moniteur({ which, titre, sousTitre, available, sante, antenne }: {
               {muet ? t("regie.soundOn") : t("regie.soundOff")}
             </button>
           </>
-        ) : (
+        ) : prepa ? null : (
           <div className="flex size-full flex-col items-center justify-center gap-1.5 bg-[repeating-linear-gradient(135deg,#0b1d18_0_14px,#0e231d_14px_28px)] text-center">
             <span className="inline-flex items-center gap-2 text-[0.95rem] font-semibold text-night-ink">
               <span className={`inline-block size-2 rounded-full ${available && etat === "connecting" ? "animate-pulse bg-gold" : "bg-dot-off"}`} />
@@ -83,7 +92,8 @@ function Moniteur({ which, titre, sousTitre, available, sante, antenne }: {
           </div>
         )}
       </div>
-      <p className="m-0 mt-1 flex gap-3 text-[0.78rem] text-night-muted tabular-nums">
+      <div className="mt-1 flex min-h-[1.2rem] items-center gap-3">
+      <p className="m-0 flex gap-3 text-[0.78rem] text-night-muted tabular-nums">
         {enLigne && <span>{etat === "webrtc" ? "WebRTC" : "HLS"}</span>}
         {sante?.online ? (
           <>
@@ -92,6 +102,8 @@ function Moniteur({ which, titre, sousTitre, available, sante, antenne }: {
           </>
         ) : !enLigne && <span>&nbsp;</span>}
       </p>
+      {actions && <div className="ml-auto flex gap-2">{actions}</div>}
+      </div>
     </figure>
   );
 }
@@ -107,6 +119,7 @@ export default function Regie() {
   const [retour, setRetour] = useState<{ ok: boolean; texte: string } | null>(null);
   const [nom, setNom] = useState("");
   const [mention, setMention] = useState("");
+  const [prepa, setPrepa] = useState<string | null>(null);
 
   // State refreshed every 3 s; a second ticker moves the clock and the duration in between.
   useEffect(() => {
@@ -142,6 +155,7 @@ export default function Regie() {
       const r = await api.liveCommande(key, corps);
       setRetour({ ok: true, texte: r.message });
       if (r.live) { setLive(r.live); setLu(Date.now()); }
+      if (key === "scene") setPrepa(null);
     } catch (e: any) {
       setRetour({ ok: false, texte: e?.message ?? t("common.error") });
     } finally {
@@ -165,6 +179,9 @@ export default function Regie() {
   const a = (key: string) => commandes.some((c) => c.key === key);
   const pastille = horsService ? "bg-dot-off" : live.stream_on ? "bg-live" : "bg-leaf";
   const panneau = "rounded-[10px] bg-night p-4 text-night-ink";
+  const enDirect = !!live.stream_on;
+  const enPause = !!live.paused;
+  const plein = (sc: string) => sc !== "khutba" && sc !== "dars";
   const petit = "min-h-9 px-3 py-1.5 text-[0.9rem]";
 
   return (
@@ -195,8 +212,16 @@ export default function Regie() {
 
       {/* Monitors: preview (the mosque's raw feed) and programme (what goes on air). */}
       <section className={`${panneau} grid gap-4 py-3 md:grid-cols-2`}>
-        <Moniteur which="source" titre={t("regie.preview")} sousTitre={t("regie.previewHint")}
-                  available={!!moniteurs.source?.available} sante={moniteurs.source?.health ?? null} antenne={false} />
+          <Moniteur which="source" titre={t("regie.preview")}
+                    sousTitre={prepa ? t("regie.staged", { scene: t(`dashboard.choice.${prepa}`) }) : t("regie.previewHint")}
+                    available={!!moniteurs.source?.available} sante={moniteurs.source?.health ?? null} antenne={false}
+                    prepa={prepa ? { scene: prepa, plein: plein(prepa) } : null}
+                    actions={prepa && (
+                      <>
+                        <Btn variante="light" className="min-h-8 px-2.5 py-1 text-[0.85rem]" disabled={occupe} onClick={() => setPrepa(null)}>{t("regie.unstage")}</Btn>
+                        <Btn variante="leaf" className="min-h-8 px-2.5 py-1 text-[0.85rem]" disabled={occupe} onClick={() => envoyer("scene", { valeur: prepa })}>{t("regie.take")}</Btn>
+                      </>
+                    )} />
         <Moniteur which="program" titre={t("regie.program")} sousTitre={t("regie.programHint")}
                   available={!!moniteurs.program?.available} sante={moniteurs.program?.health ?? null} antenne={!!live.stream_on} />
       </section>
@@ -208,15 +233,18 @@ export default function Regie() {
           <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2">
             {scenes.map((sc) => {
               const actif = live.scene === sc;
+              const prete = prepa === sc;
               return (
-                <button key={sc} type="button" disabled={occupe} aria-pressed={actif}
-                        onClick={() => envoyer("scene", { valeur: sc })}
+                <button key={sc} type="button" disabled={occupe} aria-pressed={prete}
+                        onClick={() => setPrepa(prete || actif ? null : sc)}
                         className={`flex min-h-12 cursor-pointer flex-col items-start justify-center rounded-lg border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed ${
-                          actif ? "border-live bg-live/20 text-white" : "border-white/15 bg-white/5 text-night-ink hover:border-leaf hover:bg-white/10"
+                          actif ? "border-live bg-live/20 text-white"
+                            : prete ? "border-leaf bg-leaf/20 text-white"
+                            : "border-white/15 bg-white/5 text-night-ink hover:border-leaf hover:bg-white/10"
                         }`}>
                   <span className="text-[0.9rem] leading-tight font-semibold">{t(`dashboard.choice.${sc}`)}</span>
-                  <span className={`text-[0.72rem] ${actif ? "text-[#ffb4ae]" : "text-night-muted"}`}>
-                    {actif ? t("regie.sceneActive") : sc === "khutba" || sc === "dars" ? t("regie.sceneCamera") : t("regie.sceneScreen")}
+                  <span className={`text-[0.72rem] ${actif ? "text-[#ffb4ae]" : prete ? "text-leaf" : "text-night-muted"}`}>
+                    {actif ? t("regie.sceneActive") : prete ? t("regie.sceneStaged") : plein(sc) ? t("regie.sceneScreen") : t("regie.sceneCamera")}
                   </span>
                 </button>
               );
@@ -228,9 +256,10 @@ export default function Regie() {
         <section className={`${panneau} grid content-start gap-2.5`}>
           <h2 className="m-0 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-leaf">{t("regie.transport")}</h2>
           <div className="flex flex-wrap gap-2">
-            {a("start") && <Btn variante="leaf" className={petit} disabled={occupe} onClick={() => envoyer("start")}>{t("dashboard.cmd.start")}</Btn>}
-            {a("pause") && <Btn variante="light" className={petit} disabled={occupe} onClick={() => envoyer("pause")}>{t("dashboard.cmd.pause")}</Btn>}
-            {a("resume") && <Btn variante="light" className={petit} disabled={occupe} onClick={() => envoyer("resume")}>{t("dashboard.cmd.resume")}</Btn>}
+            {/* The transport follows the state: start only off air, pause or resume depending on the pause. */}
+            {a("start") && !enDirect && <Btn variante="leaf" className={petit} disabled={occupe} onClick={() => envoyer("start")}>{t("dashboard.cmd.start")}</Btn>}
+            {a("pause") && enDirect && !enPause && <Btn variante="light" className={petit} disabled={occupe} onClick={() => envoyer("pause")}>{t("dashboard.cmd.pause")}</Btn>}
+            {a("resume") && enPause && <Btn variante="leaf" className={petit} disabled={occupe} onClick={() => envoyer("resume")}>{t("dashboard.cmd.resume")}</Btn>}
             {extend.map((m) => (
               <Btn key={m} variante="light" className={petit} disabled={occupe} onClick={() => envoyer("extend", { valeur: m })}>{t(`dashboard.choice.${m}`)}</Btn>
             ))}

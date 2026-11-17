@@ -649,6 +649,7 @@ class Machine:
             "state": self.state.value,
             "scene": self.scene,
             "override": self.override,
+            "paused": self.paused_from is not None,
             "stream_on": self.stream_on,
             "next_session": s.strftime("%H:%M") if s else None,
             "last_reason": self.last_reason,
