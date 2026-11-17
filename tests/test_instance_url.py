@@ -46,17 +46,20 @@ def test_l_adresse_publique_alimente_les_liens_de_documentation(env, monkeypatch
     """L'administrateur doit voir l'adresse qu'il a saisie, pas celle du serveur."""
     monkeypatch.setenv("SADA_INSTANCE_FILE", str(tmp_path / "i.json"))
     c = client(env, username="admin")
-    r = c.put("/api/v1/settings/instance", json={"public_url": "https://sada.exemple.org"}, headers={"X-CSRF": csrf(c)})
+    r = c.put(
+        "/api/v1/platform/public-url", json={"public_url": "https://sada.exemple.org"}, headers={"X-CSRF": csrf(c)}
+    )
     assert r.status_code == 200, r.text
     reglages = c.get("/api/v1/settings").json()
     assert reglages["guide"]["human"] == "https://sada.exemple.org/docs/ecrans-mode-emploi"
     assert reglages["guide"]["docs"] == "https://sada.exemple.org/docs"
-    assert reglages["guide"]["public_url"] == "https://sada.exemple.org"
+    assert "public_url" not in reglages["guide"]
+    assert c.get("/api/v1/platform/settings").json()["public_url"] == "https://sada.exemple.org"
 
 
 def test_une_adresse_invalide_est_refusee_par_l_api(env, monkeypatch, tmp_path):
     monkeypatch.setenv("SADA_INSTANCE_FILE", str(tmp_path / "i.json"))
     c = client(env, username="admin")
-    r = c.put("/api/v1/settings/instance", json={"public_url": "pas une adresse"}, headers={"X-CSRF": csrf(c)})
+    r = c.put("/api/v1/platform/public-url", json={"public_url": "pas une adresse"}, headers={"X-CSRF": csrf(c)})
     assert r.status_code == 422, r.text
     assert "http" in r.json()["message"]

@@ -13,14 +13,40 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from ..context import PRE_COOKIE, ConnDep, Ctx, CtxDep
-from . import agenda, audit, clips, dashboard, habillage, internal, publications, sermons, session, settings, users
+from . import (
+    agenda,
+    audit,
+    clips,
+    dashboard,
+    habillage,
+    internal,
+    platform,
+    publications,
+    sermons,
+    session,
+    settings,
+    users,
+)
 from .common import PERMISSIONS
 
 __all__ = ["router", "Ctx", "CtxDep", "ConnDep", "PRE_COOKIE", "PERMISSIONS"]
 
 router = APIRouter(prefix="/api/v1", tags=["api"], include_in_schema=False)
 
-for _module in (session, sermons, habillage, clips, dashboard, publications, settings, audit, users, agenda, internal):
+for _module in (
+    session,
+    sermons,
+    habillage,
+    clips,
+    dashboard,
+    publications,
+    settings,
+    platform,
+    audit,
+    users,
+    agenda,
+    internal,
+):
     router.include_router(_module.router)
 
 

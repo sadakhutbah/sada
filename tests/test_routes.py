@@ -57,7 +57,7 @@ def test_les_anciennes_adresses_redirigent(env):
     cas = {
         "/journal": "/audit",
         "/sante": "/health",
-        "/api/dossiers": "/api/v1/folders",
+        "/api/dossiers": "/api/v1/platform/folders",
         "/admin/utilisateurs": "/users",
         "/admin/mosquee": "/settings",
         "/sermons": "/khutbas",

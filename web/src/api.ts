@@ -13,6 +13,9 @@ export type Session = {
   counts?: { pending: number; failed?: number };
 };
 
+/** A mosque as the operator's platform screens show it: the orchestrator token never in clear. */
+export type PlatformMosque = { id: number; slug: string; name: string; orchestrator_url: string;
+                               orchestrator_token: string; has_token: boolean };
 export type MosqueChoice = { id: number; slug: string; name: string; access: "member" | "support" };
 
 /** Error carrying the HTTP status and the server message, to display it as-is. */
@@ -165,7 +168,11 @@ export const api = {
       `/audit?limit=${taille}&offset=${page * taille}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
   /** Dars and conference schedule (file read by the orchestrator). */
   events: () => demande<EventsList>("/events"),
-  folders: (path = "") => demande<any>(`/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  folders: (path = "") => demande<any>(`/platform/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  /** The installation's own settings (operator only), opened without any mosque. */
+  platform: () => demande<any>("/platform/settings"),
+  /** Every mosque with its orchestrator connection (token masked), for the operator's picker. */
+  platformMosques: () => demande<{ mosques: PlatformMosque[] }>("/platform/mosques"),
 
   // Writes
   liveCommande: (cmd: string, corps: Record<string, string> = {}) => ecrire<any>("POST", `/live/${cmd}`, corps),
@@ -205,13 +212,17 @@ export const api = {
   majCompte: (id: number, corps: Record<string, string>) => ecrire<any>("PATCH", `/users/${id}`, corps),
   mdpCompte: (id: number, password: string) => ecrire<any>("POST", `/users/${id}/password`, { password }),
   reglagesMosquee: (corps: Record<string, string>) => ecrire<any>("PATCH", "/settings/mosque", corps),
-  adresseInstance: (public_url: string) => ecrire<any>("PUT", "/settings/instance", { public_url }),
-  modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/model", corps),
-  transcription: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/transcription", corps),
-  testerTranscription: () => ecrire<{ ok: boolean; message: string }>("POST", "/settings/transcription/test"),
+  adresseInstance: (public_url: string) => ecrire<any>("PUT", "/platform/public-url", { public_url }),
+  modele: (corps: Record<string, string>) => ecrire<any>("PUT", "/platform/model", corps),
+  transcription: (corps: Record<string, string>) => ecrire<any>("PUT", "/platform/transcription", corps),
+  testerTranscription: () => ecrire<{ ok: boolean; message: string }>("POST", "/platform/transcription/test"),
+  dossiers: (corps: Record<string, string>) => ecrire<any>("PUT", "/platform/folders", corps),
+  /** Orchestrator of one mosque: sending the mask back keeps the stored token. */
+  orchestrateur: (mid: number, url: string, token: string) =>
+    ecrire<{ ok: boolean; message: string; mosque: PlatformMosque }>("PUT", `/platform/mosques/${mid}/orchestrator`, { url, token }),
   traitement: (clips: string, enabled: boolean) =>
     ecrire<any>("PUT", "/settings/processing", { clips, enabled: enabled ? "1" : "0" }),
-  testerModele: () => ecrire<any>("POST", "/settings/model/test"),
+  testerModele: () => ecrire<any>("POST", "/platform/model/test"),
   creerEvenement: (corps: EventForm) => ecrire<{ ok: boolean; message: string; id: string }>("POST", "/events", corps),
   majEvenement: (id: string, corps: EventForm) =>
     ecrire<{ ok: boolean; message: string; id: string }>("PUT", `/events/${encodeURIComponent(id)}`, corps),
@@ -271,9 +282,9 @@ export const api = {
   /** Video input: a camera address, or "a computer pushes its picture" (the relay's address is built server-side). */
   saveInput: (mode: string, url: string) => ecrire<any>("PUT", "/settings/input", { mode, url }),
   /** Replays bucket (S3 / R2): the secret comes back masked, sending the mask keeps it. */
-  stockage: (v: Record<string, any>) => ecrire<any>("PUT", "/settings/storage", v),
+  stockage: (v: Record<string, any>) => ecrire<any>("PUT", "/platform/storage", v),
   testStockage: (v: Record<string, any>) =>
-    ecrire<{ ok: boolean; detail: string }>("POST", "/settings/storage/test", v),
+    ecrire<{ ok: boolean; detail: string }>("POST", "/platform/storage/test", v),
   /** Texts of the live screens (slates): {écran: {champ: texte}}, an empty field means "default". */
   ecrans: (screens: Record<string, Record<string, string>>) => ecrire<any>("PUT", "/settings/screens", { screens }),
   /** Common template texts: the mosque's Arabic lines, never a text invented by the application. */

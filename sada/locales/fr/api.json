@@ -150,5 +150,10 @@
   "Programme: entry skipped ({error})": "Programme : entrée ignorée ({error})",
   "Times: back office unreachable ({error}), local cache used": "Horaires : back-office injoignable ({error}), cache local utilisé",
   "issue a new stream key for OBS (replaces the previous one)": "émettre une nouvelle clé de diffusion pour OBS (remplace la précédente)",
-  "Stream key (shown once). In OBS, server and key:": "Clé de diffusion (affichée une seule fois). Dans OBS, serveur et clé :"
+  "Stream key (shown once). In OBS, server and key:": "Clé de diffusion (affichée une seule fois). Dans OBS, serveur et clé :",
+  "Folders saved. The pipeline reads them at its next run.": "Dossiers enregistrés. La chaîne les lira à son prochain passage.",
+  "No mosque to configure on this installation.": "Aucune mosquée à configurer sur cette installation.",
+  "Orchestrator connection saved.": "Connexion à l'orchestrateur enregistrée.",
+  "These settings belong to the platform screen: {fields}.": "Ces réglages relèvent de l'écran de la plateforme : {fields}.",
+  "the program's own folder": "le dossier du programme"
 }

@@ -55,20 +55,20 @@ def test_valeurs_nettoyees():
 
 def test_enregistrement_puis_masque(env):
     c = client(env, "admin")
-    r = c.ecrire("/settings/storage", BON, methode="PUT")
+    r = c.ecrire("/platform/storage", BON, methode="PUT")
     assert r.status_code == 200, r.text
     v = r.json()["storage"]
     assert v["bucket"] == "sada-rediffusions" and v["enabled"] is True and v["configured"] is True
     assert v["secret_key"] == "••••••" and v["access_key"] == "AKIAEXEMPLE"
-    assert c.get("/api/v1/settings").json()["storage"]["secret_key"] == "••••••"
+    assert c.get("/api/v1/platform/settings").json()["storage"]["secret_key"] == "••••••"
 
 
 def test_masque_renvoye_garde_le_secret(env):
     from sada.backoffice import storage
 
     c = client(env, "admin")
-    c.ecrire("/settings/storage", BON, methode="PUT")
-    c.ecrire("/settings/storage", {**BON, "secret_key": "••••••", "bucket": "autre-bucket"}, methode="PUT")
+    c.ecrire("/platform/storage", BON, methode="PUT")
+    c.ecrire("/platform/storage", {**BON, "secret_key": "••••••", "bucket": "autre-bucket"}, methode="PUT")
     t = storage.effective(env["conn"], env["mid"])
     assert t["secret_key"] == "secret-tres-secret" and t["bucket"] == "autre-bucket"
 
@@ -79,15 +79,15 @@ def test_l_envoi_est_une_option_pas_le_defaut(env):
 
     c = client(env, "admin")
     sans_case = {k: v for k, v in BON.items() if k != "enabled"}
-    v = c.ecrire("/settings/storage", sans_case, methode="PUT").json()["storage"]
+    v = c.ecrire("/platform/storage", sans_case, methode="PUT").json()["storage"]
     assert v["enabled"] is False and v["configured"] is True
     assert storage.effective(env["conn"], env["mid"]) is None
     # une valeur vide ou fausse n'active pas non plus
     assert (
-        c.ecrire("/settings/storage", {**sans_case, "enabled": ""}, methode="PUT").json()["storage"]["enabled"] is False
+        c.ecrire("/platform/storage", {**sans_case, "enabled": ""}, methode="PUT").json()["storage"]["enabled"] is False
     )
     assert (
-        c.ecrire("/settings/storage", {**sans_case, "enabled": "1"}, methode="PUT").json()["storage"]["enabled"] is True
+        c.ecrire("/platform/storage", {**sans_case, "enabled": "1"}, methode="PUT").json()["storage"]["enabled"] is True
     )
     assert storage.effective(env["conn"], env["mid"]) is not None
 
@@ -96,17 +96,17 @@ def test_compartiment_desactive_n_est_pas_lu_par_le_moteur(env):
     from sada.backoffice import storage
 
     c = client(env, "admin")
-    c.ecrire("/settings/storage", {**BON, "enabled": "0"}, methode="PUT")
+    c.ecrire("/platform/storage", {**BON, "enabled": "0"}, methode="PUT")
     assert storage.effective(env["conn"], env["mid"]) is None
 
 
 def test_reserve_a_l_admin(env):
-    assert client(env, "imam").ecrire("/settings/storage", BON, methode="PUT").status_code == 403
+    assert client(env, "imam").ecrire("/platform/storage", BON, methode="PUT").status_code == 403
 
 
 def test_audit_sans_cle(env):
     c = client(env, "admin")
-    c.ecrire("/settings/storage", BON, methode="PUT")
+    c.ecrire("/platform/storage", BON, methode="PUT")
     lignes = audit_rows(env["conn"], action="rediffusion.configure")
     assert lignes and "secret-tres-secret" not in lignes[-1]["details"]
 
@@ -271,8 +271,8 @@ def test_bouton_tester_utilise_le_secret_enregistre(env, monkeypatch):
     faux = FauxClient()
     monkeypatch.setattr(upload, "client", lambda target: faux)
     c = client(env, "admin")
-    c.ecrire("/settings/storage", BON, methode="PUT")
-    r = c.ecrire("/settings/storage/test", {**BON, "secret_key": "••••••"}, methode="POST")
+    c.ecrire("/platform/storage", BON, methode="PUT")
+    r = c.ecrire("/platform/storage/test", {**BON, "secret_key": "••••••"}, methode="POST")
     assert r.status_code == 200 and r.json()["ok"] is True
 
 
@@ -283,7 +283,7 @@ def test_le_moteur_recoit_le_reglage_en_clair(env):
     from sada.backoffice import internal
 
     c = client(env, "admin")
-    c.ecrire("/settings/storage", BON, methode="PUT")
+    c.ecrire("/platform/storage", BON, methode="PUT")
     assert c.get("/api/v1/internal/storage").status_code == 403
     d = c.get("/api/v1/internal/storage", headers={internal.HEADER: internal.token()}).json()
     assert d["target"]["secret_key"] == "secret-tres-secret" and d["target"]["bucket"] == "sada-rediffusions"

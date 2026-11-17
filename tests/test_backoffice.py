@@ -371,10 +371,10 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
     for var in ("SADA_LLM_ENABLED", "SADA_LLM_URL", "SADA_LLM_MODEL", "SADA_LLM_PROTOCOL"):
         monkeypatch.delenv(var, raising=False)
     c = client(env, "admin")
-    assert c.get("/api/v1/settings").json()["model"]["label"]
+    assert c.get("/api/v1/platform/settings").json()["model"]["label"]
 
     r = c.ecrire(
-        "/settings/model",
+        "/platform/model",
         {"enabled": "1", "url": "http://127.0.0.1:9/v1", "model": "petit", "protocol": "openai"},
         methode="PUT",
     )
@@ -387,17 +387,17 @@ def test_reglage_du_modele_depuis_le_backoffice(env, tmp_path, monkeypatch):
     }
     assert llm.enabled() and llm.label() == "openai · petit"  # the pipeline would read this
 
-    r = c.ecrire("/settings/model", {"url": "", "model": "", "protocol": ""}, methode="PUT")
+    r = c.ecrire("/platform/model", {"url": "", "model": "", "protocol": ""}, methode="PUT")
     assert r.status_code == 200
     assert json.loads(cfg.read_text())["enabled"] is False and llm.enabled() is False
 
-    r = c.ecrire("/settings/model", {"enabled": "1", "url": "file:///etc/passwd"}, methode="PUT")
+    r = c.ecrire("/platform/model", {"enabled": "1", "url": "file:///etc/passwd"}, methode="PUT")
     assert r.status_code == 422
     assert json.loads(cfg.read_text())["enabled"] is False  # rejected: the file did not move
 
     for who in ("imam", "responsable"):
         ci = client(env, who)
-        assert ci.ecrire("/settings/model", {"enabled": "1"}, methode="PUT").status_code == 403
+        assert ci.ecrire("/platform/model", {"enabled": "1"}, methode="PUT").status_code == 403
 
 
 def test_nombre_d_extraits_reglable_depuis_le_backoffice(env, tmp_path, monkeypatch):
@@ -464,11 +464,11 @@ def test_test_de_connexion_du_modele(env, tmp_path, monkeypatch):
     monkeypatch.delenv("SADA_LLM_ENABLED", raising=False)
     c = client(env, "admin")
     c.ecrire(
-        "/settings/model",
+        "/platform/model",
         {"enabled": "1", "url": "http://127.0.0.1:9/v1", "model": "petit", "protocol": "openai"},
         methode="PUT",
     )
-    r = c.ecrire("/settings/model/test")
+    r = c.ecrire("/platform/model/test")
     assert r.status_code == 422
     assert "unreachable" in r.json()["message"]
 

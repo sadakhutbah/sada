@@ -64,6 +64,29 @@ def base(defaut: str) -> str:
     return public_url() or (defaut or "").rstrip("/")
 
 
+#: Folders of the machine the platform runs on: their roots are the operator's, not a mosque's.
+FOLDERS = ("state", "output", "publish")
+
+
+def platform_folders() -> dict:
+    """Roots chosen by the operator, empty when unset (the program's folders then apply).
+
+    Hosted: each mosque writes under its own slug, like the replays bucket's prefix.
+    """
+    data = lire().get("folders")
+    if not isinstance(data, dict):
+        return {}
+    return {k: str(data.get(k) or "").strip() for k in FOLDERS if str(data.get(k) or "").strip()}
+
+
+def save_platform_folders(values: dict) -> dict:
+    """Stores the roots (already checked by `dirs.check`); an empty value means "the default one"."""
+    data = lire()
+    data["folders"] = {k: str(values.get(k) or "").strip() for k in FOLDERS}
+    _ecrire(data)
+    return platform_folders()
+
+
 def platform_storage() -> dict:
     """Bucket of the hosted platform: one for every mosque, each writing under its own slug."""
     data = lire().get("storage")

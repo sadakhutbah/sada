@@ -18,6 +18,7 @@ import Audit from "./pages/Audit";
 import Onboarding from "./pages/Onboarding";
 import FirstPassword from "./pages/FirstPassword";
 import MosquePicker from "./pages/MosquePicker";
+import PlatformSettings from "./pages/PlatformSettings";
 import { setCurrentSession } from "./session";
 import { Bulle } from "./ui";
 
@@ -65,6 +66,19 @@ export default function App() {
   // Signed in, but no mosque open yet (hosted mode, operator console): choose one first.
   const mosque = session.mosque;
   const adopter = (s: Session) => { setCurrentSession(s); setCsrf(s.csrf); setSession(s); };
+  // The operator's platform page needs no mosque: it opens from the picker, with a way back.
+  if (!mosque && pathname === "/platform/settings" && session.user.operator)
+    return (
+      <div className="min-h-screen px-4 pt-6 pb-16">
+        <div className="mx-auto mb-4 w-full max-w-[800px]">
+          <button type="button" onClick={() => navigate("/", { replace: true })}
+            className="cursor-pointer border-0 bg-transparent p-0 text-[0.9rem] font-semibold text-deep underline decoration-line underline-offset-4">
+            {t("platform.back")}
+          </button>
+        </div>
+        <PlatformSettings />
+      </div>
+    );
   if (!mosque)
     return (
       <MosquePicker
@@ -167,6 +181,9 @@ export default function App() {
             {lien("/publications", "publications", "publish")}
             {lien("/audit", "audit", "journal")}
             {lien("/settings", "settings", "admin")}
+            {/* Self-hosted: the administrator who runs the machine also sets the platform. In
+                support mode (hosted operator inside a mosque), the page is reached from the picker. */}
+            {session.user.operator && !session.support && lien("/platform/settings", "platform")}
           </nav>
           <div
             className={`${menuOuvert ? "flex" : "hidden"} order-last w-full flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/10 py-2
@@ -227,6 +244,7 @@ export default function App() {
           <Route path="/publications" element={<Publications />} />
           <Route path="/demarrage" element={<Onboarding />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/platform/settings" element={<PlatformSettings />} />
           <Route path="/users" element={<Users />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="*" element={<p className="py-16 text-center text-muted">404</p>} />

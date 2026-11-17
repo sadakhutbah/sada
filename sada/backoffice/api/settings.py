@@ -1,7 +1,9 @@
-"""Mosque, model, folders, replays, notifications and logo settings.
+"""Mosque, live, screens, notifications and logo settings.
 
-The screen shows one tab per section the server announces: `sections` lists them for this account,
-so a hosted mosque administration never receives the platform's tabs (replays, folders, model).
+The screen shows one tab per section the server announces: the same tabs for every account, no
+branch by role. What belongs to the installation rather than to a mosque (replays bucket, folders
+of the machine, public address, model, transcription, orchestrator) lives in `platform.py`, behind
+the operator's screen.
 """
 
 from __future__ import annotations
@@ -14,8 +16,6 @@ from sqlalchemy import update
 
 from ... import notify
 from ...i18n import _
-from ...pipeline import llm
-from ...pipeline import remote as remote_transcription
 from ...pipeline import settings as pipeline_settings
 from .. import (
     auth,
@@ -26,14 +26,12 @@ from .. import (
     live_input,
     orm,
     publish,
-    storage,
     tenant_config,
     variables_ecran,
 )
-from .. import dirs as dirs_mod
 from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
-from ..context import CtxDep, Forbidden, Invalid, NotFound
+from ..context import CtxDep, Invalid, NotFound
 from ..models import Mosque, Notification
 from .common import _mosque, _notification_settings, _ok
 
@@ -44,59 +42,20 @@ SECTIONS = (
     "logo",
     "screens",
     "live",
-    "replays",
-    "folders",
-    "model",
-    "transcription",
     "processing",
 )
 
-
-#: Shared by every mosque of the hosting: only the platform administrator sees and sets them.
-PLATFORM_SECTIONS = frozenset({"model", "transcription"})
-#: Hosted: the replays bucket and the machine's folders are the platform's, one set for all mosques.
-HOSTED_SECTIONS = frozenset({"replays", "folders"})
-#: Hosted: fields of the mosque form (and of the live connection) that belong to the platform.
-HOSTED_FIELDS = ("public_url", "orchestrator_url", "orchestrator_token")
-#: Hosted: columns a mosque administrator must not change either (the folders belong to the
-#: machine the platform runs). They stay readable — the engine needs them — but are refused.
-HOSTED_MOSQUE_FIELDS = ("orchestrator_url", "orchestrator_token", "state_dir", "output_dir", "publish_dir")
-
-
-def _sections(platform: bool) -> list[str]:
-    """Tabs of the screen: the server decides, the front end only renders the list."""
-    if platform:
-        return list(SECTIONS)
-    hidden = PLATFORM_SECTIONS | (HOSTED_SECTIONS if auth.hosted() else frozenset())
-    return [s for s in SECTIONS if s not in hidden]
-
-
-def _locked_fields(platform: bool) -> list[str]:
-    """Fields the mosque administrator must not see nor set here (empty for the operator)."""
-    if platform or not auth.hosted():
-        return []
-    return list(HOSTED_FIELDS)
-
-
-def _refuse_platform_fields(ctx, form: dict) -> None:
-    """Hosted: the orchestrator belongs to the operator, changing it from a mosque form is a 403.
-
-    A value equal to the stored one passes, so an older page can still save the rest of the form.
-    """
-    for k in HOSTED_MOSQUE_FIELDS:
-        valeur = str(form.get(k) or "").strip()
-        if k not in form or valeur in ("", db.MASK) or valeur == str(ctx.mosque.get(k) or "").strip():
-            continue
-        db.audit(
-            ctx.conn,
-            ctx.mosque["id"],
-            ctx.user["id"],
-            "acces.refuse",
-            ip=ctx.ip,
-            chemin=ctx.request.url.path,
-            droit=k,
-        )
-        raise Forbidden()
+#: Fields the mosque's own form carries: nothing else is written through it.
+MOSQUE_FIELDS = ("name", "timezone", "mawaqit_url")
+#: Settings of the installation (operator's screen). Sent to the mosque form, they are refused.
+PLATFORM_FIELDS = (
+    "orchestrator_url",
+    "orchestrator_token",
+    "state_dir",
+    "output_dir",
+    "publish_dir",
+    "public_url",
+)
 
 
 def _host(ctx) -> str:
@@ -115,21 +74,6 @@ def _seed(mosque: dict, name: str) -> None:
         own.chmod(src.stat().st_mode & 0o777)
 
 
-def _model_view() -> dict:
-    """Model setting for the screen: never the API key, only its presence."""
-    cfg = llm.config()
-    eff = llm.settings()
-    return {
-        "enabled": llm.enabled(),
-        "url": cfg.get("url", ""),
-        "model": cfg.get("model", ""),
-        "protocol": cfg.get("protocol", ""),
-        "has_key": bool(cfg.get("key")),
-        "effective": {"url": eff.url, "model": eff.model, "protocol": eff.protocol},
-        "label": eff.label(),
-    }
-
-
 def _processing_view(mosque: dict) -> dict:
     """Traitement d'après-direct: what is saved, the bounds, and what the pipeline would use."""
     path = tenant_config.read_path(mosque, "pipeline")
@@ -146,28 +90,17 @@ def _processing_view(mosque: dict) -> dict:
 
 @router.get("/settings")
 def settings(ctx: CtxDep):
-    """Everything the Settings screen shows: the interface splits it into tabs itself."""
+    """Everything the mosque's Settings screen shows: the interface splits it into tabs itself."""
     ctx.require("admin")
-    platform = ctx.can(auth.PLATFORM)
-    locked = _locked_fields(platform)
-    sections = _sections(platform)
     m = _mosque(ctx)
-    # A field the platform keeps: empty here, so the screen has nothing to show nor to send back.
-    m.update({k: "" if k in locked else (ctx.mosque.get(k) or "") for k in db.MOSQUE_SETTINGS if k != "logo_path"})
-    # a stored secret never comes back in clear: the mask returned as is means "unchanged"
-    m["orchestrator_token"] = db.MASK if m["orchestrator_token"] else ""
+    m.update({k: ctx.mosque.get(k) or "" for k in MOSQUE_FIELDS})
     m["has_logo"] = bool((ctx.mosque.get("logo_path") or "").strip())
-    # "default: data/state" — never a path of the machine.
-    defauts = {k: dirs_mod.label(v) for k, v in db.mosque_dirs(ctx.mosque).items()}
     # L'adresse affichée doit être celle par laquelle la mosquée nous atteint : réglage s'il existe,
     # sinon celle de la requête (juste en local, fausse derrière un proxy).
     base = instance.base(str(ctx.request.base_url))
     return {
         "mosque": m,
-        "defaults": defauts,
-        "sections": sections,
-        # Names the mosque administrator cannot set here; the operator gets none.
-        "locked_fields": locked,
+        "sections": list(SECTIONS),
         "guide": {
             "url": base + "/docs/agent-gabarit-ecrans.md",
             "human": base + "/docs/ecrans-mode-emploi",
@@ -175,65 +108,37 @@ def settings(ctx: CtxDep):
             "url_en": base + "/docs/en/screen-template-prompt.md",
             "human_en": base + "/docs/en/screens",
             "docs_en": base + "/docs?langue=en",
-            "public_url": "" if "public_url" in locked else instance.public_url(),
         },
         "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
         "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
         "targets": destinations.rows(ctx.conn, ctx.mosque),
         "input": live_input.view(ctx.conn, ctx.mosque, _host(ctx)),
-        # The bucket belongs to the platform: nothing to show a mosque administrator.
-        **({"storage": storage.view(ctx.conn, ctx.mosque["id"])} if "replays" in sections else {}),
         "screens": screens_mod.view(ctx.conn, ctx.mosque),
         # Lignes arabes du gabarit : saisies par la mosquée, jamais fournies par le code.
         "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
         "gabarit": gabarit_mod.view(ctx.mosque),
-        **({"model": _model_view(), "transcription": remote_transcription.view()} if platform else {}),
         "processing": _processing_view(ctx.mosque),
     }
 
 
-@router.put("/settings/instance")
-async def settings_instance(ctx: CtxDep):
-    """Adresse publique de cette installation : elle sert dans les liens de documentation affichés."""
-    ctx.require_installation()
-    corps = await ctx.raw_body()
-    try:
-        valeur = instance.enregistrer(str((corps or {}).get("public_url") or ""))
-    except ValueError as e:
-        raise Invalid(str(e)) from e
-    return {"ok": True, "public_url": valeur, "docs": (valeur or str(ctx.request.base_url).rstrip("/")) + "/docs"}
-
-
-@router.get("/folders")
-def folders(ctx: CtxDep, path: str = ""):
-    """Tree of the machine hosting the application, for the "Browse" button."""
-    ctx.require_installation()
-    try:
-        return {"roots": dirs_mod.roots(), **dirs_mod.listing(path or None)}
-    except ValueError as e:
-        raise Invalid(str(e)) from e
-
-
 @router.patch("/settings/mosque")
 async def mosque_save(ctx: CtxDep):
+    """The mosque's own form: its name, its time zone, its Mawaqit address.
+
+    The installation's settings are not fields of this route: a request that carries one gets a
+    readable refusal instead of a silent write, whatever the account.
+    """
     f = await ctx.body()
     ctx.require("admin")
-    if _locked_fields(ctx.can(auth.PLATFORM)):
-        _refuse_platform_fields(ctx, f)
-    vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS if k != "logo_path" and k in f}
-    current = {k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"}
-    vals = {**current, **vals}  # a partial form does not empty the other settings
+    refuse = [k for k in PLATFORM_FIELDS if k in f]
+    if refuse:
+        raise Invalid(_("These settings belong to the platform screen: {fields}.", fields=", ".join(refuse)))
+    vals = {
+        **{k: ctx.mosque.get(k) or "" for k in MOSQUE_FIELDS},
+        **{k: (f.get(k) or "").strip() for k in MOSQUE_FIELDS if k in f},
+    }
     if not vals["name"]:
         raise Invalid(_("The name is required."))
-    if vals["orchestrator_url"] and not re.match(r"^https?://", vals["orchestrator_url"]):
-        raise Invalid(_("The orchestrator address must start with http:// or https://."))
-    if vals["orchestrator_token"] == db.MASK:
-        vals["orchestrator_token"] = ctx.mosque["orchestrator_token"]
-    for cle in ("state_dir", "output_dir", "publish_dir"):
-        if vals[cle]:
-            ok, pourquoi = dirs_mod.check(vals[cle], create_if_missing=True)
-            if not ok:
-                raise Invalid(_("Folder refused ({reason}).", reason=pourquoi))
     di = auth.imam_id(ctx.conn, ctx.mosque["id"], f.get("default_imam_id", ctx.mosque["default_imam_id"]))
     auto = f.get("auto_import")
     auto_import = (
@@ -248,44 +153,9 @@ async def mosque_save(ctx: CtxDep):
         "mosquee",
         ctx.mosque["id"],
         ip=ctx.ip,
-        champs=[k for k in vals if k != "orchestrator_token" and str(vals[k]) != str(ctx.mosque.get(k))],
+        champs=[k for k in vals if str(vals[k]) != str(ctx.mosque.get(k))],
     )
     return _ok(_("Configuration saved."))
-
-
-@router.put("/settings/model")
-async def model_save(ctx: CtxDep):
-    f = await ctx.body()
-    ctx.require(auth.PLATFORM)
-    url = (f.get("url") or "").strip()
-    model = (f.get("model") or "").strip()
-    proto = (f.get("protocol") or "").strip()
-    if url and not re.match(r"^https?://", url):
-        raise Invalid(_("The model address must start with http:// or https://."))
-    if proto not in ("", "openai", "anthropic"):
-        raise Invalid(_("Unknown API format."))
-    enabled = str(f.get("enabled", "0")) in ("1", "true", "on", "oui")
-    llm.save_config(enabled=enabled, url=url, model=model, protocol=proto)
-    db.audit(
-        ctx.conn,
-        ctx.mosque["id"],
-        ctx.user["id"],
-        "modele.configure",
-        "mosque",
-        ctx.mosque["id"],
-        ip=ctx.ip,
-        actif=enabled,
-        url=url,
-        modele=model,
-        protocole=proto,
-    )
-    return _ok(
-        _(
-            "Language model saved. The pipeline applies it at the next run (environment variables "
-            "still take precedence)."
-        ),
-        label=llm.settings().label(),
-    )
 
 
 @router.put("/settings/processing")
@@ -368,56 +238,6 @@ async def onboarding_done(ctx: CtxDep):
         ip=ctx.ip,
     )
     return _ok(_("Onboarding saved."), needs_onboarding=not done)
-
-
-@router.put("/settings/storage")
-async def storage_save(ctx: CtxDep):
-    """Replays bucket: where the recordings are sent after the live."""
-    f = await ctx.body()
-    ctx.require_installation()
-    try:
-        v = storage.save(ctx.conn, ctx.mosque["id"], f)
-    except storage.InvalidStorage as e:
-        raise Invalid(" ".join(e.erreurs.values())) from e
-    db.audit(
-        ctx.conn,
-        ctx.mosque["id"],
-        ctx.user["id"],
-        "rediffusion.configure",
-        "mosque",
-        ctx.mosque["id"],
-        ip=ctx.ip,
-        compartiment=v["bucket"],
-        dossier=v["prefix"],
-        actif=v["enabled"],
-    )
-    return _ok(_("Replays bucket saved. The engine uses it from the next live."), storage=v)
-
-
-@router.post("/settings/storage/test")
-async def storage_test(ctx: CtxDep):
-    """Writes then removes a tiny object: says whether the bucket really accepts uploads."""
-    f = await ctx.body()
-    ctx.require_installation()
-    secret = str(f.get("secret_key", ""))
-    if secret in ("", db.MASK):
-        target_secret = storage.effective(ctx.conn, ctx.mosque["id"]) or {}
-        f = dict(f, secret_key=target_secret.get("secret_key", ""))
-    try:
-        propre = storage.check(
-            f.get("endpoint", ""),
-            f.get("bucket", ""),
-            f.get("region", ""),
-            f.get("prefix", ""),
-            f.get("access_key", ""),
-        )
-    except storage.InvalidStorage as e:
-        raise Invalid(" ".join(e.erreurs.values())) from e
-    if not f.get("secret_key"):
-        raise Invalid(_("Secret key required."))
-    propre.update(secret_key=f["secret_key"], bucket=propre["bucket"])
-    ok, detail = storage.probe(propre)
-    return {"ok": ok, "detail": detail, "bucket": propre["bucket"], "prefix": propre["prefix"]}
 
 
 @router.put("/settings/screens")
@@ -511,62 +331,6 @@ async def input_test(ctx: CtxDep):
         raise Invalid(err)
     ok, detail = live_input.probe(url)
     return {"ok": ok, "detail": detail, "url": url}
-
-
-@router.put("/settings/transcription")
-async def transcription_save(ctx: CtxDep):
-    """Local ou distant : écrit le réglage que `sada.pipeline.remote` lit à chaque transcription."""
-    f = await ctx.body()
-    ctx.require(auth.PLATFORM)
-    mode = (f.get("mode") or "").strip().lower()
-    if mode not in remote_transcription.MODES:
-        raise Invalid(_("Unknown transcription mode."))
-    provider = (f.get("provider") or remote_transcription.DEFAULT_PROVIDER).strip().lower()
-    if provider not in remote_transcription.PROVIDERS and provider != remote_transcription.CUSTOM:
-        raise Invalid(_("Unknown transcription provider."))
-    url = (f.get("url") or "").strip()
-    model = (f.get("model") or "").strip()
-    if provider == remote_transcription.CUSTOM:
-        if not re.match(r"^https?://", url):
-            raise Invalid(_("The transcription address must start with http:// or https://."))
-        if not model:
-            raise Invalid(_("The model is required for a custom address."))
-    key = str(f.get("key") or "").strip()
-    if key == db.MASK:  # masque renvoyé tel quel : la clé enregistrée reste
-        key = ""
-    vue = remote_transcription.save_config(mode=mode, provider=provider, url=url, model=model, key=key)
-    db.audit(
-        ctx.conn,
-        ctx.mosque["id"],
-        ctx.user["id"],
-        "transcription.configure",
-        "mosque",
-        ctx.mosque["id"],
-        ip=ctx.ip,
-        methode=mode,
-        fournisseur=provider,
-        modele=vue["model"],
-        cle=vue["has_key"],
-    )
-    return _ok(
-        _("Transcription saved. The pipeline applies it at the next run."),
-        transcription=vue,
-    )
-
-
-@router.post("/settings/transcription/test")
-def transcription_test(ctx: CtxDep):
-    """Le fournisseur répond-il vraiment ? Envoie un court extrait généré (jamais la clé en retour)."""
-    ctx.require(auth.PLATFORM)
-    ok, msg = remote_transcription.probe()
-    return JSONResponse({"ok": ok, "message": msg}, status_code=200 if ok else 422)
-
-
-@router.post("/settings/model/test")
-def model_test(ctx: CtxDep):
-    ctx.require(auth.PLATFORM)
-    ok, msg = llm.probe()
-    return JSONResponse({"ok": ok, "message": msg}, status_code=200 if ok else 422)
 
 
 @router.post("/settings/connectors/{key}")
