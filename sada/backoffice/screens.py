@@ -10,18 +10,18 @@ from __future__ import annotations
 
 import datetime as dt
 import io
-from types import SimpleNamespace
-from typing import Any
+import re
 
 from PIL import Image
 from sqlalchemy import delete, select
 
+from .. import events as events_mod
 from .. import scenes
 from .. import screens as base
 from ..config import Config
 from ..events import KHUTBA_TITLE
 from ..i18n import _
-from . import branding, db, orm, variables_ecran
+from . import branding, db, events_store, live, mawaqit_store, orm, variables_ecran
 from .models import ScreenText
 
 
@@ -134,47 +134,107 @@ def import_gabarit(conn, mosque: dict, filename: str, content: bytes, user_id=No
     }
 
 
-def valeurs_apercu(mosque: dict, screen: str, conn=None) -> dict[str, str]:
-    """Les valeurs des variables pour un aperçu : les mêmes que celles que le moteur emploiera.
+# A dars of the programme is taken as in progress for this long when it gives no length.
+DARS_MIN_DEFAUT = 90
+HHMM = re.compile(r"(\d{1,2}):(\d{2})$")
 
-    Le direct n'a pas de « prochaine classe » connue à la seconde près dans un aperçu ; on annonce
-    donc un cours plausible, exactement comme le fait l'image du moteur, pour que les deux aperçus
-    montrent le même texte. Le bandeau (khutba, dars) reçoit en plus son titre, sa deuxième ligne,
-    son orateur, sa série et sa séance.
+
+def moment_reel(mosque: dict, conn=None) -> scenes.Moment:
+    """The moment the engine would show now, from the mosque's real data — nothing made up.
+
+    Planned session: the one the live reports, else the next jumu'a or programme entry of the day.
+    Class in progress and next class: from the programme. What is not known stays empty, and the
+    slots that need it disappear, exactly as on air.
     """
-    now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque))
-    nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf", kind="dars")
-    moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
+    # Naive local time, like the engine's clock and the programme's instances.
+    now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque)).replace(tzinfo=None)
+    if conn is None:
+        return scenes.Moment(now=now)
+    try:
+        times = mawaqit_store.times(conn, mosque)
+    except Exception:  # site down and no cache: no jumu'a time known
+        times = None
+    programme = []
+    for i, raw in enumerate(events_store.read(conn, mosque["id"])):
+        try:
+            programme.append(events_mod.parse(raw, i))
+        except ValueError:
+            continue
+    today = events_mod.instances_on(programme, now.date(), times)
+    en_cours = next(
+        (e for e in today if e.starts <= now < e.starts + dt.timedelta(minutes=e.max_min or DARS_MIN_DEFAUT)),
+        None,
+    )
+    nxt = events_mod.next_instances(programme, now, count=1, times_for=lambda _d: times)
+    return scenes.Moment(
+        now=now,
+        planned=_prevue(mosque, now, times, today),
+        event=en_cours.as_event() if en_cours else None,
+        next_event=nxt[0] if nxt else None,
+    )
+
+
+def _prevue(mosque: dict, now: dt.datetime, times, today) -> dt.datetime | None:
+    v = live.status_cached(mosque)
+    session = v.get("session") if v.get("ok") is not False else None
+    m = HHMM.search(str((session or {}).get("planned") or ""))
+    if m:
+        return now.replace(hour=int(m[1]), minute=int(m[2]), second=0, microsecond=0)
+    candidats = [e.starts for e in today if e.starts >= now]
+    if now.weekday() == 4 and times:
+        for hhmm in times.get("jumua_list") or []:
+            m = HHMM.search(str(hhmm))
+            if m:
+                t = now.replace(hour=int(m[1]), minute=int(m[2]), second=0, microsecond=0)
+                if t >= now:
+                    candidats.append(t)
+    return min(candidats) if candidats else None
+
+
+def valeurs_apercu(mosque: dict, screen: str, conn=None) -> dict[str, str]:
+    """Les valeurs des variables pour un aperçu : celles que le moteur poserait maintenant.
+
+    Rien n'est inventé : sans séance prévue, pas d'heure ; sans dars au programme, pas de
+    « prochain cours » ; le bandeau du dars reprend la séance en cours, sinon « Dars » seul.
+    """
+    moment = moment_reel(mosque, conn)
+    nxt = moment.next_event
     valeurs = base.variables(
         moment,
         title=KHUTBA_TITLE,
         mosque=mosque.get("name") or "",
-        heure=f"{moment.planned:%H} h {moment.planned:%M}",
-        cours=nxt.title,
-        jour=f"{moment.planned:%A}".capitalize(),
+        heure=f"{moment.planned:%H} h {moment.planned:%M}" if moment.planned else "",
+        cours=getattr(nxt, "title", "") or "",
+        jour=f"{moment.planned:%A}".capitalize() if moment.planned else "",
     )
-    # Textes communs (logo, ligne arabe) et bandeau : les mêmes variables que le moteur posera.
     valeurs["logo"] = branding.url(mosque) if (mosque.get("logo_path") or "").strip() else ""
     arabes = variables_ecran.lire(conn, mosque["id"]) if conn is not None else {}
     slot = {"khutba": "arabe_khutba", "dars": "arabe_dars"}.get(screen, "")
     valeurs["arabe"] = arabes.get(slot, "") if slot else ""
-    valeurs["ligne2"] = ""
-    valeurs["orateur"] = ""
-    valeurs["serie"] = ""
-    valeurs["seance"] = ""
+    valeurs.update(ligne2="", orateur="", serie="", seance="")
     if screen == "khutba":
         valeurs["ligne2"] = valeurs["mosquee"]
     elif screen == "dars":
-        # Un dars plausible, pour que le bandeau ne soit pas vide dans l'aperçu.
-        valeurs["titre"] = nxt.title
-        valeurs["ligne2"] = f"{valeurs['mosquee']}  ·  {nxt.title}"
-        valeurs["orateur"] = ""
-        valeurs["serie"] = nxt.title
-        valeurs["seance"] = "1"
+        ev = moment.event
+        if ev is None:
+            valeurs["titre"] = "Dars"
+            valeurs["ligne2"] = valeurs["mosquee"]
+        else:
+            valeurs["titre"] = ev.get("title") or "Dars"
+            bits = [valeurs["mosquee"]] if valeurs["mosquee"] else []
+            if ev.get("speaker"):
+                valeurs["orateur"] = ev["speaker"]
+                bits.append(ev["speaker"])
+            no = ev.get("session_no")
+            if ev.get("series"):
+                valeurs["serie"] = ev["series"]
+                valeurs["seance"] = str(no) if no else ""
+                bits.append(ev["series"] + (f" · séance {no}" if no else ""))
+            valeurs["ligne2"] = "  ·  ".join(bits)
     return valeurs
 
 
-def preview(mosque: dict, payload, screen: str, overlay: bool = False) -> bytes:
+def preview(mosque: dict, payload, screen: str, overlay: bool = False, conn=None) -> bytes:
     """PNG (1280×720) of the screen as it will look, drawn by the engine's own renderer.
 
     `overlay`: for the banner scenes (camera behind), the banner alone on a transparent background,
@@ -192,10 +252,7 @@ def preview(mosque: dict, payload, screen: str, overlay: bool = False) -> bytes:
         logo=str(logo) if logo and (mosque.get("logo_path") or "").strip() else "",
         screen_texts=clean,
     )
-    now = dt.datetime.now(dt.UTC).astimezone(db.timezone(mosque))
-    # Stand-in for the next class: the preview announces a plausible one instead of a blank line.
-    nxt: Any = SimpleNamespace(starts=now + dt.timedelta(minutes=42), title="Tafsir de la sourate Al-Kahf", kind="dars")
-    moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
+    moment = moment_reel(mosque, conn)
     renderer = scenes.SceneRenderer(cfg)
     spec = scenes.SCENES[screen]
     if spec.full:

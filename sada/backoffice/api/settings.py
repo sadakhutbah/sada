@@ -296,7 +296,7 @@ async def screens_preview(ctx: CtxDep):
     f = await ctx.raw_body()
     ctx.require("admin")
     try:
-        png = screens_mod.preview(ctx.mosque, f.get("screens", {}), str(f.get("screen", "")))
+        png = screens_mod.preview(ctx.mosque, f.get("screens", {}), str(f.get("screen", "")), conn=ctx.conn)
     except screens_mod.InvalidScreens as e:
         raise Invalid(str(e)) from e
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})

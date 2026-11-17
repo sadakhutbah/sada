@@ -41,7 +41,12 @@ def regie(ctx: CtxDep):
         "commands": [
             {"key": k, "destructive": k in live.DESTRUCTIVE, "choices": list(live.choices(k))} for k in live.COMMANDS
         ],
-        "monitors": {w: {"available": bool(p), "health": health[w]} for w, p in paths.items()},
+        # A monitor is only connected once its stream is received: an empty path (programme while the
+        # engine is off, preview while OBS is not sending) would answer 404 on every retry.
+        "monitors": {
+            w: {"available": bool(p) and (health[w] is None or bool(health[w].get("online"))), "health": health[w]}
+            for w, p in paths.items()
+        },
     }
 
 
@@ -53,7 +58,7 @@ async def scene_preview(name: str, ctx: CtxDep):
     if name not in live.choices("scene"):
         raise NotFound()
     textes = screens_mod.saved(ctx.conn, ctx.mosque["id"])
-    png = await run_in_threadpool(screens_mod.preview, ctx.mosque, textes, name, True)
+    png = await run_in_threadpool(screens_mod.preview, ctx.mosque, textes, name, True, ctx.conn)
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=30"})
 
 

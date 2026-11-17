@@ -4,6 +4,7 @@ Le fichier produit par un assistant reste une référence visuelle : le direct e
 le moteur. L'import reprend les textes du bloc `#sada-screens` et les enregistre comme réglages.
 """
 
+import datetime as dt
 import json
 
 import pytest
@@ -11,6 +12,8 @@ import pytest
 pytest.importorskip("fastapi")
 
 from conftest import client  # noqa: E402,F401
+
+from sada.backoffice import events_store  # noqa: E402
 
 SCREENS = ("avant", "priere", "entracte", "termine", "janaza", "dars_fin")
 
@@ -301,20 +304,37 @@ def test_l_apercu_remplit_le_cours_et_le_jour_comme_le_moteur(env, stockage):
     )
     url = _envoi(c, _html(bloc)).json()["gabarit"]["url"]
     base = url.split("?")[0]
+    # Without a programme, no class is made up.
     html = c.get(f"{base}?ecran=dars_fin").text
-    assert "Tafsir de la sourate Al-Kahf" in html
+    assert "Tafsir" not in html
+    demain = dt.date.today() + dt.timedelta(days=1)
+    events_store.write(
+        env["conn"],
+        env["mid"],
+        [{"kind": "dars", "title": "Sira du Prophète", "date": demain.isoformat(), "time": "20:00"}],
+    )
+    html = c.get(f"{base}?ecran=dars_fin").text
+    assert "Sira du Prophète" in html
     for variable in ("{cours}", "{jour}", "{date}", "{mosquee}"):
         assert variable not in html, variable
 
 
-def test_l_apercu_remplit_les_variables_comme_le_moteur(env, stockage):
+def test_l_apercu_remplit_les_variables_comme_le_moteur(env, stockage, monkeypatch):
     """L'aperçu montrait « Début à {heure} » là où le moteur affiche l'heure : deux vérités."""
+    from sada.backoffice import live
+
     c = client(env, "admin")
     url = _envoi(c, _page_six()).json()["gabarit"]["url"]
     base = url.split("?")[0]
+    # No session planned: no time is made up, the line disappears as on air.
+    monkeypatch.setattr(live, "status_cached", lambda *a, **k: {"ok": False})
     html = c.get(f"{base}?ecran=avant").text
     assert "{heure}" not in html
-    assert " h " in html  # « 14 h 36 », la forme du moteur
+    assert " h " not in html
+    # The session the live reports gives the time.
+    monkeypatch.setattr(live, "status_cached", lambda *a, **k: {"ok": True, "session": {"planned": "14:36"}})
+    html = c.get(f"{base}?ecran=avant").text
+    assert "14 h 36" in html  # la forme du moteur
     assert "{mosquee}" not in html
 
 
