@@ -319,7 +319,7 @@ def translate_french(
         # Un index oublié par le modèle laisserait un trou dans la piste arabe : un second appel,
         # une seule fois, sur les seuls passages restés sans traduction.
         reste = [(i, s) for i, s in todo if _seg_key(s["text"]) not in cache["seg"]]
-        for chunk in _chunks(reste, batch):
+        for chunk in _chunks(reste, batch) if reste else []:
             d = llm.ask_json(_prompt_ar(chunk, _glossary_hint([s["text"] for _, s in chunk])), timeout, log)
             if not d:
                 break

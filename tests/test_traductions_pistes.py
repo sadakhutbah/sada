@@ -124,10 +124,12 @@ def test_traduction_fr_vers_ar_par_lots(tmp_path, monkeypatch):
 
     monkeypatch.setattr(translate.llm, "ask_json", ask)
     translate.translate_french(segments, [], tmp_path / "ar.json", log=lambda m: None, batch=2)
-    assert len(appels) == 4  # 2 + 2 + 1, puis un seul rattrapage pour les cinq passages
+    # 2 + 2 + 1, puis le rattrapage, lui aussi par lots : jamais toute la session d'un bloc (413)
+    assert len(appels) == 6
     assert "Phrase française numéro 4." in appels[2]
     assert "Phrase française numéro 0." not in appels[2]
-    assert "Phrase française numéro 0." in appels[3] and "Phrase française numéro 4." in appels[3]
+    assert "Phrase française numéro 0." in appels[3] and "Phrase française numéro 2." not in appels[3]
+    assert "Phrase française numéro 4." in appels[5]
 
 
 def test_une_omission_du_modele_est_rattrapee_une_fois(tmp_path, monkeypatch):
