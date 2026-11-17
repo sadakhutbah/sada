@@ -250,11 +250,16 @@ def translate_session(
         # seule fois, sur les seuls passages restés sans traduction.
         reste = [(i, s) for i, s in todo if _seg_key(s["text"]) not in cache["seg"]]
         vreste = [m for m in vtodo if verse_key(m) not in cache["verse_fr"]]
-        if reste or vreste:
-            d = llm.ask_json(_prompt_fr(reste, vreste), timeout, log)
-            if d:
-                _store_fr(cache, reste, d, log)
-                _store_verse_fr(cache, vreste, d, log)
+        # Par lots, comme la première passe : d'un seul bloc, une passe ratée renverrait toute la
+        # session en un appel, que l'API refuse (413).
+        for n, chunk in enumerate(_chunks(reste, batch) or [[]] if (reste or vreste) else []):
+            vchunk = vreste if n == 0 else []
+            d = llm.ask_json(_prompt_fr(chunk, vchunk), timeout, log)
+            if not d:
+                break
+            _store_fr(cache, chunk, d, log)
+            if vchunk:
+                _store_verse_fr(cache, vchunk, d, log)
     # known ritual formulas: fixed translation when the LLM is unavailable
     for _i, s in ar:
         key = _seg_key(s["text"])
@@ -314,10 +319,11 @@ def translate_french(
         # Un index oublié par le modèle laisserait un trou dans la piste arabe : un second appel,
         # une seule fois, sur les seuls passages restés sans traduction.
         reste = [(i, s) for i, s in todo if _seg_key(s["text"]) not in cache["seg"]]
-        if reste:
-            d = llm.ask_json(_prompt_ar(reste, _glossary_hint([s["text"] for _, s in reste])), timeout, log)
-            if d:
-                _store_ar(cache, reste, d)
+        for chunk in _chunks(reste, batch):
+            d = llm.ask_json(_prompt_ar(chunk, _glossary_hint([s["text"] for _, s in chunk])), timeout, log)
+            if not d:
+                break
+            _store_ar(cache, chunk, d)
     cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1))
     missing = sum(1 for _, s in fr if _seg_key(s["text"]) not in cache["seg"])
     if missing:

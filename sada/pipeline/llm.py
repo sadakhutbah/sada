@@ -21,6 +21,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -164,13 +166,33 @@ def _json_object(text: str) -> dict | None:
     return d if isinstance(d, dict) else None
 
 
+#: 429 (débit dépassé, palier gratuit de Groq notamment) : on attend puis on relance, au plus tant de fois.
+RATE_LIMIT_RETRIES = 8
+RATE_LIMIT_MAX_WAIT = 90.0
+
+
+def _retry_after(err: urllib.error.HTTPError, attempt: int) -> float:
+    """Délai demandé par le serveur (`retry-after`), sinon un recul exponentiel borné."""
+    try:
+        wait = float(err.headers.get("retry-after") or 0)
+    except (TypeError, ValueError):
+        wait = 0.0
+    return min(RATE_LIMIT_MAX_WAIT, max(wait, 2.0 * 2**attempt))
+
+
 def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
     # Sans User-Agent propre, urllib se présente en « Python-urllib » : Cloudflare (Groq, entre autres) répond 403.
-    req = urllib.request.Request(
-        url, data=json.dumps(body).encode(), headers={"User-Agent": "sada/1.0", **headers}, method="POST"
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    data = json.dumps(body).encode()
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        req = urllib.request.Request(url, data=data, headers={"User-Agent": "sada/1.0", **headers}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == RATE_LIMIT_RETRIES:
+                raise
+            time.sleep(_retry_after(e, attempt))
+    raise AssertionError("unreachable")
 
 
 def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
