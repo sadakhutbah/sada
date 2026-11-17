@@ -119,6 +119,9 @@ class Config(MachineParams):
     # --- Back-office (same machine) ------------------------------------------
     # Where to ask for the settings an administrator saved in the interface (notifications).
     backoffice_url: str = "http://127.0.0.1:8090"
+    # At start, how long to wait for it (deployed together, it often boots second) before falling
+    # back on the caches: the plan, the screens and the replays are all read from it.
+    backoffice_wait_s: float = 90.0
 
     @classmethod
     def load(cls, path: str | None = None, **overrides) -> Config:

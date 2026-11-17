@@ -174,5 +174,8 @@
   "{where}: unknown type {kind} (expected: {valid})": "{where}: نوع غير معروف {kind} (المتوقع: {valid})",
   "{where}: “recurrence” must be an object": "{where}: يجب أن يكون «recurrence» كائناً",
   "“events” must be a list": "يجب أن يكون «events» قائمة",
-  "New day: {count} session(s) planned": "يوم جديد: {count} جلسة مقررة"
+  "New day: {count} session(s) planned": "يوم جديد: {count} جلسة مقررة",
+  "Back office ready": "لوحة الإدارة جاهزة",
+  "Back office still unreachable after {limit:g} s: start on the caches": "لوحة الإدارة غير متاحة بعد {limit:g} ث: البدء من النسخ المخزنة",
+  "Waiting for the back office (at most {limit:g} s)": "انتظار لوحة الإدارة ({limit:g} ث كحد أقصى)"
 }
