@@ -33,7 +33,6 @@ def _mosque(ctx: Ctx) -> dict:
         "name": m["name"],
         "timezone": m.get("timezone") or "",
         "logo": branding.url(m),
-        "clip_title": m.get("clip_title") or "",
         # first login, or a mosque whose live was never set up: offer the three-step wizard once
         "needs_onboarding": not (m.get("onboarded_at") or "").strip(),
     }

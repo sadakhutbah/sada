@@ -40,7 +40,6 @@ mosques = sa.Table(
     sa.Column("state_dir", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("output_dir", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("publish_dir", sa.Text, nullable=False, server_default=_d("''")),
-    sa.Column("clip_title", sa.Text, nullable=False),
     sa.Column("default_imam_id", sa.Integer),
     sa.Column("auto_import", sa.Integer, nullable=False, server_default=_d("1")),
     sa.Column("created_at", sa.Text, nullable=False),

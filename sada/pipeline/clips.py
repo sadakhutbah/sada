@@ -19,6 +19,7 @@ import tempfile
 from functools import cache, lru_cache
 from pathlib import Path
 
+from ..events import KHUTBA_TITLE
 from ..i18n import _
 from ..paths import FONTS
 from ..text import AR_RUN, is_arabic, is_translit_word, reshaped_view
@@ -26,7 +27,7 @@ from . import glossary as glossmod
 from .translate import segment_fr, verse_fr
 from .verses import match_for, recited_arabic, shown
 
-DEFAULT_TITLE = "Khutba du vendredi"
+DEFAULT_TITLE = KHUTBA_TITLE
 
 W, H = 1080, 1920
 

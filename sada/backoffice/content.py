@@ -18,6 +18,7 @@ from pathlib import Path
 
 from sqlalchemy import delete, func, select, update
 
+from ..events import header_title
 from ..i18n import _
 from ..pipeline import clips as clipmod
 from ..pipeline import translate, verses
@@ -339,7 +340,8 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
             c["video_source"],
             c["source_offset"],
             Path(c["file_path"]).parent,
-            {"title": m["clip_title"], "subtitle": c.get("title") or ""},
+            # The header comes from the record type (khutba, dars…); the clip keeps its own subject below.
+            {"title": header_title(c["kind"]), "subtitle": c.get("title") or ""},
             json.loads(c["crop"]) if c["crop"] else None,
             log,
             logo=logo,

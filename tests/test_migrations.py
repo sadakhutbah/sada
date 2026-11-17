@@ -2,6 +2,7 @@
 existantes, refus d'une base plus récente que le code."""
 
 import pytest
+import sqlalchemy as sa
 from conftest import (  # noqa: E402
     applied_versions,
     columns,
@@ -71,11 +72,7 @@ def test_adoption_d_une_base_existante(tmp_path):
     create_schema(path, old)
     conn = db.connect(path)
     try:
-        conn.execute(
-            old.tables["mosques"]
-            .insert()
-            .values(slug="exemple", name="Mosquée Exemple", clip_title="Khutba du vendredi", created_at="now")
-        )
+        conn.execute(old.tables["mosques"].insert().values(slug="exemple", name="Mosquée Exemple", created_at="now"))
         conn.execute(
             old.tables["khutbas"]
             .insert()
@@ -104,6 +101,31 @@ def test_adoption_d_une_base_existante(tmp_path):
         assert one(conn, models.Mosque)["slug"] == "exemple"
         # version de départ (1) enregistrée, puis 2 et 3 appliquées
         assert applied_versions(conn) == VERSIONS
+    finally:
+        conn.close()
+
+
+def test_le_titre_des_clips_est_retire_d_une_base_existante(tmp_path):
+    """Le titre des clips n'est plus un réglage : la colonne disparaît, la mosquée reste intacte."""
+    path = tmp_path / "clips.db"
+    old = legacy_metadata(
+        without={"khutbas": {"kind", "title", "series", "session_no"}, "mosques": {"logo_path", "onboarded_at"}}
+    )
+    create_schema(path, old)
+    conn = db.connect(path)
+    try:
+        conn.execute(sa.text("ALTER TABLE mosques ADD COLUMN clip_title TEXT NOT NULL DEFAULT ''"))
+        conn.execute(old.tables["mosques"].insert().values(slug="exemple", name="Mosquée Exemple", created_at="now"))
+        conn.execute(sa.text("UPDATE mosques SET clip_title = 'Ancien titre'"))
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.init(path)
+    conn = db.connect(path)
+    try:
+        assert "clip_title" not in columns(conn, "mosques")
+        assert one(conn, models.Mosque)["name"] == "Mosquée Exemple"
     finally:
         conn.close()
 

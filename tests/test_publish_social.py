@@ -92,7 +92,7 @@ def item(tmp_path):
         "kind": "khutba",
         "title": "",
     }
-    mosque = {"slug": "exemple", "name": "Mosquée Exemple", "clip_title": "Khutba du vendredi"}
+    mosque = {"slug": "exemple", "name": "Mosquée Exemple"}
     return SimpleNamespace(
         clip=clip,
         khutba=khutba,

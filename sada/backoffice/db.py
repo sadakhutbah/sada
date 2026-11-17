@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy as sa
 
-from .. import defaults, paths
+from .. import paths
 from ..i18n import _
 from . import migrations, models
 
@@ -32,7 +32,6 @@ MOSQUE_SETTINGS = (
     "state_dir",
     "output_dir",
     "publish_dir",
-    "clip_title",
     "logo_path",
     "brand_green",
     "brand_gold",
@@ -137,7 +136,6 @@ def update_mosque(conn, mosque_id: int, **vals) -> None:
 
 
 def create_mosque(conn, slug: str, name: str, **fields) -> int:
-    fields.setdefault("clip_title", defaults.CLIP_TITLE)
     m = models.Mosque(slug=slug, name=name, created_at=now_iso(), **fields)
     conn.add(m)
     conn.flush()

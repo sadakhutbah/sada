@@ -68,6 +68,14 @@ def _add_columns(conn: sa.Connection, table: str, columns: tuple[tuple[str, str]
             conn.exec_driver_sql(f'ALTER TABLE "{table}" ADD COLUMN {decl}')
 
 
+def _drop_columns(conn: sa.Connection, table: str, columns: tuple[str, ...]) -> None:
+    """Retire des colonnes devenues inutiles (SQLite >= 3.35 et PostgreSQL savent le faire)."""
+    have = {c["name"] for c in sa.inspect(conn).get_columns(table)}
+    for col in columns:
+        if col in have:
+            conn.exec_driver_sql(f'ALTER TABLE "{table}" DROP COLUMN "{col}"')
+
+
 def _khutbas_dars(conn: sa.Connection) -> None:
     """Migration 2 : colonnes « dars » des khutbas, ajoutées après coup."""
     _add_columns(
@@ -194,6 +202,11 @@ def _multi_tenant(conn: sa.Connection) -> None:
     )
 
 
+def _mosques_titre_des_clips(conn: sa.Connection) -> None:
+    """Migration 17 : le titre des clips n'est plus un réglage — l'en-tête vient du type d'enregistrement."""
+    _drop_columns(conn, "mosques", ("clip_title",))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -211,6 +224,9 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(14, "mosques : cache des horaires Mawaqit", _mosques_cache_mawaqit),
     Migration(15, "mosques : clé de diffusion", _mosques_cle_diffusion),
     Migration(16, "multi-tenant : rattachements et mosquée de la session", _multi_tenant),
+    Migration(
+        17, "mosques : titre des clips retiré (l'en-tête vient du type d'enregistrement)", _mosques_titre_des_clips
+    ),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

@@ -35,10 +35,23 @@ from .text import JOURS
 KINDS = {"khutba", "dars", "conference"}
 PRAYERS = ("dhuhr", "asr", "maghrib", "isha")
 KIND_LABELS = {"khutba": "Khutba", "dars": "Dars", "conference": "Conférence"}
+#: Header of a Friday khutba, used wherever a clip or a publication needs one: the type of the
+#: record gives the header, the subject of the clip stays the subtitle. One constant only.
+KHUTBA_TITLE = "Khutba du vendredi"
 
 
 def kind_label(kind: str) -> str:
     return KIND_LABELS.get(kind, kind)
+
+
+def header_title(kind: str, subject: str = "") -> str:
+    """Header line of a clip or a publication: the record type, followed by its subject if any."""
+    kind = (kind or "khutba").strip()
+    if kind == "khutba":
+        return KHUTBA_TITLE
+    label = kind_label(kind)
+    subject = (subject or "").strip()
+    return f"{label} : {subject}" if subject else label
 
 
 def parse_hhmm(value: str) -> dt.time:

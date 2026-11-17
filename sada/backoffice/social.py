@@ -19,7 +19,7 @@ from pathlib import Path
 import requests
 
 from .. import runs
-from ..events import kind_label
+from ..events import header_title
 from ..i18n import _
 from . import db
 
@@ -162,8 +162,7 @@ def google_token(settings: dict) -> str:
 def youtube_title(item) -> str:
     """A title YouTube accepts: 100 characters, and the clip's own subject when it has one."""
     k, m = item.khutba, item.mosque
-    kind = k.get("kind") or "khutba"
-    head = f"{kind_label(kind)} : {k['title']}" if kind != "khutba" and k.get("title") else m["clip_title"]
+    head = header_title(k.get("kind") or "khutba", k.get("title") or "")
     title = f"{head} — {m['name']}" + (f" ({k['date']})" if k.get("date") else "")
     return title if len(title) <= 100 else title[:99].rstrip() + "…"
 

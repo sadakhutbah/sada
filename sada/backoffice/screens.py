@@ -19,6 +19,7 @@ from sqlalchemy import delete, select
 from .. import scenes
 from .. import screens as base
 from ..config import Config
+from ..events import KHUTBA_TITLE
 from ..i18n import _
 from . import branding, db, orm, variables_ecran
 from .models import ScreenText
@@ -146,7 +147,7 @@ def valeurs_apercu(mosque: dict, screen: str, conn=None) -> dict[str, str]:
     moment = scenes.Moment(now=now, planned=now + dt.timedelta(minutes=17), next_event=nxt)
     valeurs = base.variables(
         moment,
-        title=mosque.get("clip_title") or "",
+        title=KHUTBA_TITLE,
         mosque=mosque.get("name") or "",
         heure=f"{moment.planned:%H} h {moment.planned:%M}",
         cours=nxt.title,
@@ -183,7 +184,6 @@ def preview(mosque: dict, payload, screen: str) -> bytes:
         raise InvalidScreens(_("unknown screen: {screen}", screen=screen))
     logo = branding.path_for(mosque)
     cfg = Config(
-        title=mosque.get("clip_title") or "",
         mosque_name=mosque.get("name") or "",
         logo=str(logo) if logo and (mosque.get("logo_path") or "").strip() else "",
         screen_texts=clean,

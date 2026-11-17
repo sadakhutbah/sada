@@ -13,7 +13,8 @@ import os
 from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
 
-from . import defaults, paths
+from . import paths
+from .events import KHUTBA_TITLE
 from .state import MachineParams, SessionParams
 
 ENV_PREFIX = "SADA_"
@@ -100,7 +101,7 @@ class Config(MachineParams):
     face_fps: float = 5.0  # analysed frames per second
     face_width: int = 320
     face_height: int = 180
-    title: str = defaults.CLIP_TITLE
+    title: str = KHUTBA_TITLE
     # Free texts of the live screens (Settings → Écrans): {"avant": {"foot": "…"}}; empty = default
     screen_texts: dict = field(default_factory=dict)
     dark_green: str = "#1E7A3C"

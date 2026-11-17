@@ -22,7 +22,7 @@ from pathlib import Path
 
 from sqlalchemy import insert, select, update
 
-from ..events import kind_label
+from ..events import header_title
 from ..i18n import _
 from . import db, orm, social
 from .models import Clip, Khutba, Mosque, Publication, User
@@ -209,11 +209,8 @@ def connector_rows(conn, mosque: dict) -> list[dict]:
 
 
 def default_caption(khutba: dict, mosque: dict, verses: list[str]) -> str:
-    kind = khutba.get("kind") or "khutba"
-    if kind != "khutba" and khutba.get("title"):
-        first = f"{kind_label(kind)} : {khutba['title']} — {mosque['name']}"
-    else:
-        first = f"{mosque['clip_title']} — {mosque['name']}"
+    head = header_title(khutba.get("kind") or "khutba", khutba.get("title") or "")
+    first = f"{head} — {mosque['name']}"
     parts = [first, f"{khutba['date'] or ''} · {khutba['label']}".strip(" ·")]
     if verses:
         parts.append("Versets : " + ", ".join(verses))

@@ -6,7 +6,7 @@ from conftest import columns, create_schema, legacy_metadata, one  # noqa: E402
 from sada.backoffice import db, models, publish
 from sada.backoffice.importer import khutba_label
 
-MOSQUE = {"name": "Mosquée Exemple", "clip_title": "Khutba du vendredi"}
+MOSQUE = {"name": "Mosquée Exemple"}
 
 
 def test_libelle_dars_et_khutba():
@@ -37,11 +37,7 @@ def test_migration_ajoute_les_colonnes(tmp_path):
     create_schema(path, old)
     conn = db.connect(path)
     try:
-        conn.execute(
-            old.tables["mosques"]
-            .insert()
-            .values(slug="exemple", name="Mosquée Exemple", clip_title="Khutba du vendredi", created_at="now")
-        )
+        conn.execute(old.tables["mosques"].insert().values(slug="exemple", name="Mosquée Exemple", created_at="now"))
         conn.execute(
             old.tables["khutbas"]
             .insert()
