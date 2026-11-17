@@ -4,7 +4,7 @@ export type Session = {
   user: { id: number; name: string; role: string; role_label: string; permissions: string[];
           must_change_password?: boolean; operator?: boolean };
   /** null until a mosque is chosen (hosted mode never opens one by itself). */
-  mosque: { id: number; slug: string; name: string; timezone: string; logo: string; clip_title: string;
+  mosque: { id: number; slug: string; name: string; timezone: string; logo: string;
             needs_onboarding?: boolean } | null;
   mosques?: MosqueChoice[];
   /** The operator is inside a mosque as support: every action is audited. */

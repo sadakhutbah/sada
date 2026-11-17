@@ -4,6 +4,10 @@ L'adresse publique d'une instance n'est pas une donnée de la mosquée : c'est l
 l'atteint depuis l'extérieur. Elle vit donc à côté du fichier du modèle, dans ``data/instance.json``,
 et sert à composer les adresses que l'interface affiche (documentation, guide). Sans elle, on retombe
 sur l'adresse de la requête — juste en local, faux derrière un proxy.
+
+Le fichier porte aussi, en mode hébergé, le compartiment des rediffusions de la plateforme : un seul
+compartiment pour toutes les mosquées, chacune écrivant sous le préfixe de son slug. Ce n'est pas une
+donnée de mosquée non plus, mais celle de qui héberge.
 """
 
 from __future__ import annotations
@@ -31,6 +35,15 @@ def lire() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _ecrire(data: dict) -> None:
+    """Replaces the file in one step: a crash leaves the previous settings, never a half-written file."""
+    f = _file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(f)
+
+
 def public_url() -> str:
     """L'adresse saisie, sans barre finale, ou chaîne vide."""
     return str(lire().get("public_url") or "").strip().rstrip("/")
@@ -42,14 +55,24 @@ def enregistrer(public_url: str) -> str:
         raise ValueError(_("public address must be http:// or https://"))
     data = lire()
     data["public_url"] = valeur
-    f = _file()
-    f.parent.mkdir(parents=True, exist_ok=True)
-    tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(f)
+    _ecrire(data)
     return valeur
 
 
 def base(defaut: str) -> str:
     """L'adresse à utiliser dans les liens affichés : celle qu'on a saisie, sinon celle de la requête."""
     return public_url() or (defaut or "").rstrip("/")
+
+
+def platform_storage() -> dict:
+    """Bucket of the hosted platform: one for every mosque, each writing under its own slug."""
+    data = lire().get("storage")
+    return dict(data) if isinstance(data, dict) else {}
+
+
+def save_platform_storage(values: dict) -> dict:
+    """Stores the platform bucket (already checked by `storage.check`); a secret stays as given."""
+    data = lire()
+    data["storage"] = dict(values)
+    _ecrire(data)
+    return dict(values)

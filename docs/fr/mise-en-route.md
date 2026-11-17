@@ -78,9 +78,8 @@ Vérifiez-le avant tout, dans **Réglages → Mosquée**.
 | --- | --- |
 | **Nom de la mosquée** | les écrans pleins, les légendes, les titres envoyés aux réseaux |
 | **Fuseau horaire** | l'heure affichée sur les écrans, les horaires du programme et les dates du journal |
-| **Titre des clips** | la première ligne des clips et des légendes proposées à la publication |
 | **Adresse Mawaqit** | facultative ; elle donne les horaires de prière de la mosquée |
-| **Adresse publique** | l'adresse par laquelle la mosquée ouvre ce back-office, utilisée dans les liens de documentation |
+| **Adresse publique** | l'adresse par laquelle la mosquée ouvre ce back-office, utilisée dans les liens de documentation ; réglée par l'opérateur de la plateforme en mode hébergé |
 
 Le fuseau doit être le **nom officiel** de la zone, pas un décalage. `Europe/Paris` est proposé par
 défaut ; un nom inconnu est refusé à l'enregistrement. Un mauvais fuseau ne coupe pas le direct, mais

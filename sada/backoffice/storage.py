@@ -4,6 +4,10 @@ Rien n'est stocké dans le dépôt : l'adresse, le compartiment et les clés se 
 le back-office ; la clé secrète ne revient jamais en clair (masque, renvoyer le masque = inchangé).
 Envoi en HTTPS signé (SigV4) par la bibliothèque aws (boto3), qui gère aussi le découpage des gros
 fichiers et les reprises.
+
+Hosted mode (`SADA_MODE=hosted`): the bucket belongs to the platform, not to the mosque. There is
+one bucket for the whole hosting, held in `data/instance.json`; each mosque writes under
+`<prefix><slug>/`, so the recordings stay apart without a bucket per mosque.
 """
 
 from __future__ import annotations
@@ -12,8 +16,8 @@ import re
 from urllib.parse import urlsplit
 
 from ..i18n import _
-from . import db, orm
-from .models import Storage
+from . import auth, db, instance, orm
+from .models import Mosque, Storage
 
 BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 REGION_DEFAULT = "auto"
@@ -67,25 +71,45 @@ def check(endpoint: str, bucket: str, region: str, prefix: str, access_key: str)
     }
 
 
-def view(conn, mosque_id: int) -> dict:
-    """Ce que montre l'écran : la clé secrète est masquée."""
-    r = orm.first(conn, Storage, mosque_id=mosque_id) or {}
-    secret = r.get("secret_key") or ""
+def platform_view() -> dict:
+    """The platform's bucket as the screen shows it: the secret key stays masked."""
+    r = instance.platform_storage()
+    secret = str(r.get("secret_key") or "")
     return {
-        "endpoint": r.get("endpoint") or "",
-        "region": r.get("region") or REGION_DEFAULT,
-        "bucket": r.get("bucket") or "",
-        "access_key": r.get("access_key") or "",
+        # One bucket for every mosque: the screen adds that the folder is completed by the slug.
+        "scope": "platform",
+        "endpoint": str(r.get("endpoint") or ""),
+        "region": str(r.get("region") or REGION_DEFAULT),
+        "bucket": str(r.get("bucket") or ""),
+        "access_key": str(r.get("access_key") or ""),
         "secret_key": db.MASK if secret else "",
-        "prefix": r.get("prefix") or PREFIX_DEFAULT,
+        "prefix": str(r.get("prefix") or PREFIX_DEFAULT),
         "enabled": bool(r.get("enabled")),
         "configured": bool(r.get("bucket") and r.get("access_key") and secret),
     }
 
 
-def save(conn, mosque_id: int, payload: dict) -> dict:
-    """Enregistre ; un champ secret renvoyé sous sa forme masquée garde la valeur précédente."""
-    avant = orm.first(conn, Storage, mosque_id=mosque_id) or {}
+def view(conn, mosque_id: int) -> dict:
+    """Ce que montre l'écran : la clé secrète est masquée."""
+    if auth.hosted():
+        return platform_view()
+    r = orm.first(conn, Storage, mosque_id=mosque_id) or {}
+    secret = r.get("secret_key") or ""
+    return {
+        "scope": "mosque",
+        "endpoint": str(r.get("endpoint") or ""),
+        "region": str(r.get("region") or REGION_DEFAULT),
+        "bucket": str(r.get("bucket") or ""),
+        "access_key": str(r.get("access_key") or ""),
+        "secret_key": db.MASK if secret else "",
+        "prefix": str(r.get("prefix") or PREFIX_DEFAULT),
+        "enabled": bool(r.get("enabled")),
+        "configured": bool(r.get("bucket") and r.get("access_key") and secret),
+    }
+
+
+def _cleaned(payload: dict, before: dict) -> tuple[dict, str, int]:
+    """Fields checked, secret kept when it comes back masked or empty, and the on/off switch."""
     propre = check(
         payload.get("endpoint", ""),
         payload.get("bucket", ""),
@@ -95,11 +119,20 @@ def save(conn, mosque_id: int, payload: dict) -> dict:
     )
     secret = _net(payload.get("secret_key", ""))
     if secret in ("", db.MASK):
-        secret = avant.get("secret_key") or ""
+        secret = str(before.get("secret_key") or "")
     if not secret:
         raise InvalidStorage({"secret_key": _("Secret key required.")})
     # Opt-in: without an explicit "on", the replays stay on the machine.
     actif = str(payload.get("enabled", "0")).strip().lower() in ("1", "true", "on", "oui", "yes")
+    return propre, secret, 1 if actif else 0
+
+
+def save(conn, mosque_id: int, payload: dict) -> dict:
+    """Enregistre ; un champ secret renvoyé sous sa forme masquée garde la valeur précédente."""
+    if auth.hosted():
+        return platform_save(payload)
+    avant = orm.first(conn, Storage, mosque_id=mosque_id) or {}
+    propre, secret, actif = _cleaned(payload, avant)
     orm.upsert(
         conn,
         Storage,
@@ -111,15 +144,42 @@ def save(conn, mosque_id: int, payload: dict) -> dict:
         access_key=propre["access_key"],
         secret_key=secret,
         prefix=propre["prefix"],
-        enabled=1 if actif else 0,
+        enabled=actif,
         updated_at=db.now_iso(),
     )
     conn.commit()
     return view(conn, mosque_id)
 
 
+def platform_save(payload: dict) -> dict:
+    """Hosted: the one bucket of the platform, stored with the installation (no mosque row)."""
+    propre, secret, actif = _cleaned(payload, instance.platform_storage())
+    instance.save_platform_storage({**propre, "secret_key": secret, "enabled": actif})
+    return platform_view()
+
+
+def platform_effective(conn, mosque_id: int) -> dict | None:
+    """Hosted: the platform bucket, with the mosque's slug as folder (`<prefix><slug>/`)."""
+    r = instance.platform_storage()
+    if not (r.get("enabled") and r.get("bucket") and r.get("access_key") and r.get("secret_key")):
+        return None
+    prefix = str(r.get("prefix") or PREFIX_DEFAULT)
+    prefix = prefix if prefix.endswith("/") else prefix + "/"
+    slug = (orm.first(conn, Mosque, id=mosque_id) or {}).get("slug") or ""
+    return {
+        "endpoint": str(r.get("endpoint") or ""),
+        "region": str(r.get("region") or REGION_DEFAULT),
+        "bucket": r["bucket"],
+        "access_key": r["access_key"],
+        "secret_key": r["secret_key"],
+        "prefix": f"{prefix}{slug}/" if slug else prefix,
+    }
+
+
 def effective(conn, mosque_id: int) -> dict | None:
     """Réglage complet, clés en clair : réservé au moteur, par l'endpoint interne."""
+    if auth.hosted():
+        return platform_effective(conn, mosque_id)
     r = orm.first(conn, Storage, mosque_id=mosque_id) or {}
     if not (r.get("enabled") and r.get("bucket") and r.get("access_key") and r.get("secret_key")):
         return None

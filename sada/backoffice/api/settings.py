@@ -1,4 +1,8 @@
-"""Mosque, model, folders, connectors, notifications and logo settings."""
+"""Mosque, model, folders, replays, notifications and logo settings.
+
+The screen shows one tab per section the server announces: `sections` lists them for this account,
+so a hosted mosque administration never receives the platform's tabs (replays, folders, model).
+"""
 
 from __future__ import annotations
 
@@ -29,7 +33,7 @@ from .. import (
 from .. import dirs as dirs_mod
 from .. import gabarit as gabarit_mod
 from .. import screens as screens_mod
-from ..context import CtxDep, Invalid, NotFound
+from ..context import CtxDep, Forbidden, Invalid, NotFound
 from ..models import Mosque, Notification
 from .common import _mosque, _notification_settings, _ok
 
@@ -45,13 +49,54 @@ SECTIONS = (
     "model",
     "transcription",
     "processing",
-    "connectors",
-    "access",
 )
 
 
 #: Shared by every mosque of the hosting: only the platform administrator sees and sets them.
 PLATFORM_SECTIONS = frozenset({"model", "transcription"})
+#: Hosted: the replays bucket and the machine's folders are the platform's, one set for all mosques.
+HOSTED_SECTIONS = frozenset({"replays", "folders"})
+#: Hosted: fields of the mosque form (and of the live connection) that belong to the platform.
+HOSTED_FIELDS = ("public_url", "orchestrator_url", "orchestrator_token")
+#: Hosted: columns a mosque administrator must not change either (the folders belong to the
+#: machine the platform runs). They stay readable — the engine needs them — but are refused.
+HOSTED_MOSQUE_FIELDS = ("orchestrator_url", "orchestrator_token", "state_dir", "output_dir", "publish_dir")
+
+
+def _sections(platform: bool) -> list[str]:
+    """Tabs of the screen: the server decides, the front end only renders the list."""
+    if platform:
+        return list(SECTIONS)
+    hidden = PLATFORM_SECTIONS | (HOSTED_SECTIONS if auth.hosted() else frozenset())
+    return [s for s in SECTIONS if s not in hidden]
+
+
+def _locked_fields(platform: bool) -> list[str]:
+    """Fields the mosque administrator must not see nor set here (empty for the operator)."""
+    if platform or not auth.hosted():
+        return []
+    return list(HOSTED_FIELDS)
+
+
+def _refuse_platform_fields(ctx, form: dict) -> None:
+    """Hosted: the orchestrator belongs to the operator, changing it from a mosque form is a 403.
+
+    A value equal to the stored one passes, so an older page can still save the rest of the form.
+    """
+    for k in HOSTED_MOSQUE_FIELDS:
+        valeur = str(form.get(k) or "").strip()
+        if k not in form or valeur in ("", db.MASK) or valeur == str(ctx.mosque.get(k) or "").strip():
+            continue
+        db.audit(
+            ctx.conn,
+            ctx.mosque["id"],
+            ctx.user["id"],
+            "acces.refuse",
+            ip=ctx.ip,
+            chemin=ctx.request.url.path,
+            droit=k,
+        )
+        raise Forbidden()
 
 
 def _host(ctx) -> str:
@@ -104,8 +149,11 @@ def settings(ctx: CtxDep):
     """Everything the Settings screen shows: the interface splits it into tabs itself."""
     ctx.require("admin")
     platform = ctx.can(auth.PLATFORM)
+    locked = _locked_fields(platform)
+    sections = _sections(platform)
     m = _mosque(ctx)
-    m.update({k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"})
+    # A field the platform keeps: empty here, so the screen has nothing to show nor to send back.
+    m.update({k: "" if k in locked else (ctx.mosque.get(k) or "") for k in db.MOSQUE_SETTINGS if k != "logo_path"})
     # a stored secret never comes back in clear: the mask returned as is means "unchanged"
     m["orchestrator_token"] = db.MASK if m["orchestrator_token"] else ""
     m["has_logo"] = bool((ctx.mosque.get("logo_path") or "").strip())
@@ -117,7 +165,9 @@ def settings(ctx: CtxDep):
     return {
         "mosque": m,
         "defaults": defauts,
-        "sections": [s for s in SECTIONS if s not in PLATFORM_SECTIONS or platform],
+        "sections": sections,
+        # Names the mosque administrator cannot set here; the operator gets none.
+        "locked_fields": locked,
         "guide": {
             "url": base + "/docs/agent-gabarit-ecrans.md",
             "human": base + "/docs/ecrans-mode-emploi",
@@ -125,13 +175,14 @@ def settings(ctx: CtxDep):
             "url_en": base + "/docs/en/screen-template-prompt.md",
             "human_en": base + "/docs/en/screens",
             "docs_en": base + "/docs?langue=en",
-            "public_url": instance.public_url(),
+            "public_url": "" if "public_url" in locked else instance.public_url(),
         },
         "imams": auth.imams(ctx.conn, ctx.mosque["id"]),
         "connectors": publish.connector_rows(ctx.conn, ctx.mosque),
         "targets": destinations.rows(ctx.conn, ctx.mosque),
         "input": live_input.view(ctx.conn, ctx.mosque, _host(ctx)),
-        "storage": storage.view(ctx.conn, ctx.mosque["id"]),
+        # The bucket belongs to the platform: nothing to show a mosque administrator.
+        **({"storage": storage.view(ctx.conn, ctx.mosque["id"])} if "replays" in sections else {}),
         "screens": screens_mod.view(ctx.conn, ctx.mosque),
         # Lignes arabes du gabarit : saisies par la mosquée, jamais fournies par le code.
         "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
@@ -144,7 +195,7 @@ def settings(ctx: CtxDep):
 @router.put("/settings/instance")
 async def settings_instance(ctx: CtxDep):
     """Adresse publique de cette installation : elle sert dans les liens de documentation affichés."""
-    ctx.require("admin")
+    ctx.require_installation()
     corps = await ctx.raw_body()
     try:
         valeur = instance.enregistrer(str((corps or {}).get("public_url") or ""))
@@ -156,7 +207,7 @@ async def settings_instance(ctx: CtxDep):
 @router.get("/folders")
 def folders(ctx: CtxDep, path: str = ""):
     """Tree of the machine hosting the application, for the "Browse" button."""
-    ctx.require("admin")
+    ctx.require_installation()
     try:
         return {"roots": dirs_mod.roots(), **dirs_mod.listing(path or None)}
     except ValueError as e:
@@ -167,6 +218,8 @@ def folders(ctx: CtxDep, path: str = ""):
 async def mosque_save(ctx: CtxDep):
     f = await ctx.body()
     ctx.require("admin")
+    if _locked_fields(ctx.can(auth.PLATFORM)):
+        _refuse_platform_fields(ctx, f)
     vals = {k: (f.get(k) or "").strip() for k in db.MOSQUE_SETTINGS if k != "logo_path" and k in f}
     current = {k: ctx.mosque.get(k) or "" for k in db.MOSQUE_SETTINGS if k != "logo_path"}
     vals = {**current, **vals}  # a partial form does not empty the other settings
@@ -321,7 +374,7 @@ async def onboarding_done(ctx: CtxDep):
 async def storage_save(ctx: CtxDep):
     """Replays bucket: where the recordings are sent after the live."""
     f = await ctx.body()
-    ctx.require("admin")
+    ctx.require_installation()
     try:
         v = storage.save(ctx.conn, ctx.mosque["id"], f)
     except storage.InvalidStorage as e:
@@ -345,7 +398,7 @@ async def storage_save(ctx: CtxDep):
 async def storage_test(ctx: CtxDep):
     """Writes then removes a tiny object: says whether the bucket really accepts uploads."""
     f = await ctx.body()
-    ctx.require("admin")
+    ctx.require_installation()
     secret = str(f.get("secret_key", ""))
     if secret in ("", db.MASK):
         target_secret = storage.effective(ctx.conn, ctx.mosque["id"]) or {}

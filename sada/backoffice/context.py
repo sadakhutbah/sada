@@ -72,6 +72,14 @@ class Ctx:
             )
             raise Forbidden()
 
+    def require_installation(self) -> None:
+        """Rights on the installation itself: an administrator, or the platform operator when hosted.
+
+        Hosted mode: the public address, the orchestrator, the replays bucket and the folders of the
+        machine belong to whoever runs the platform — a mosque administration gets a 403.
+        """
+        self.require(auth.PLATFORM if auth.hosted() else "admin")
+
     def csrf_ok(self) -> bool:
         """Anti-replay token for writes: `X-CSRF` header (the front), or `csrf` parameter."""
         jeton = self.request.headers.get("x-csrf") or self.request.query_params.get("csrf")

@@ -21,8 +21,6 @@ def test_les_sections_sont_annoncees(env):
         "model",
         "transcription",
         "processing",
-        "connectors",
-        "access",
     ]
     assert d["mosque"]["name"] == "Mosquée Exemple" and d["mosque"]["slug"] == "ma-mosquee"
     assert d["imams"] and d["model"]["label"]

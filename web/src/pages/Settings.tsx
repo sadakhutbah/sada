@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { api } from "../api";
 import { liste } from "../format";
 import { Bulle, Btn, Card, Dialogue, Field, Segmented, Tabs, Title, inputClass, toucher, toucherEnLigne } from "../ui";
@@ -38,7 +37,7 @@ const CHAMPS_ECRAN = [
 ] as const;
 
 const CHAMPS_MOSQUEE = [
-  "name", "timezone", "clip_title", "mawaqit_url", "orchestrator_url", "orchestrator_token",
+  "name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token",
   "state_dir", "output_dir", "publish_dir",
 ] as const;
 const CHAMPS_MODELE = ["enabled", "url", "model", "protocol"] as const;
@@ -231,6 +230,8 @@ export default function Settings() {
   }, [ecrans, ecranVue, d]);
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
+  // Champs que le serveur réserve à l'opérateur de la plateforme : on ne les affiche ni ne les envoie.
+  const verrouille = (cle: string): boolean => ((d.locked_fields ?? []) as string[]).includes(cle);
   const defauts = d.defaults ?? {};
   // Les documents existent en deux langues : on ouvre celle de l'interface, pas celle du code.
   const en = i18n.language === "en";
@@ -258,7 +259,7 @@ export default function Settings() {
     try {
       const avant = JSON.parse(initial);
       const mosquee: Record<string, string> = {};
-      for (const k of CHAMPS_MOSQUEE) mosquee[k] = f[k];
+      for (const k of CHAMPS_MOSQUEE) if (!verrouille(k)) mosquee[k] = f[k];
       await api.reglagesMosquee(mosquee);
       if (f.clips !== avant.clips || f.clips_enabled !== avant.clips_enabled) {
         await api.traitement(f.clips, f.clips_enabled === "1");
@@ -285,7 +286,7 @@ export default function Settings() {
         setEssaiStockage(null);
       }
       if (ecransModifies) await api.ecrans(ecrans);
-      if (adresseModifiee) await api.adresseInstance(adresse.trim());
+      if (adresseModifiee && !verrouille("public_url")) await api.adresseInstance(adresse.trim());
       await charger();
       setTest(null);
       setEssaiTranscription(null);
@@ -425,16 +426,15 @@ export default function Settings() {
             <datalist id="fuseaux">{fuseaux.map((z) => <option key={z} value={z} />)}</datalist>
           </Field>
         </div>
-        <Field label={t("settings.clipTitle")} aide={t("settings.clipTitleHelp")}>
-          <input className={`${inputClass} max-w-[420px]`} value={f.clip_title} onChange={maj("clip_title")} />
-        </Field>
         <Field label={t("settings.mawaqit")} aide={t("settings.mawaqitHelp")}>
           <input className={inputClass} value={f.mawaqit_url} onChange={maj("mawaqit_url")} placeholder="https://mawaqit.net/fr/…" inputMode="url" />
         </Field>
-        <Field label={t("settings.publicUrl")} aide={t("settings.publicUrlHelp")}>
-          <input className={inputClass} value={adresse} placeholder="https://sada.exemple.org"
-            onChange={(e) => { setAdresse(e.target.value); setMsg(null); }} inputMode="url" />
-        </Field>
+        {!verrouille("public_url") && (
+          <Field label={t("settings.publicUrl")} aide={t("settings.publicUrlHelp")}>
+            <input className={inputClass} value={adresse} placeholder="https://sada.exemple.org"
+              onChange={(e) => { setAdresse(e.target.value); setMsg(null); }} inputMode="url" />
+          </Field>
+        )}
       </div>
     ),
     logo: (
@@ -459,21 +459,26 @@ export default function Settings() {
           valeur={sousOnglet} onChange={(c) => { setSousOnglet(c); setMsg(null); }} />
         {sousOnglet === "connexion" && <div className="grid max-w-[520px] gap-3.5"
           role="tabpanel" id={idPanneau("reglages-live", "connexion")} aria-labelledby={idOnglet("reglages-live", "connexion")}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
-            <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8088" />
-          </Field>
-          <Field label={t("settings.token")} aide={t("settings.tokenHelp")}>
-            <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
-          </Field>
-        </div>
-        <p className="m-0 text-[0.82rem] leading-[1.5] text-muted">
-          {t("settings.orchDoc")}{" "}
-          <a href="/docs/orchestrateur" target="_blank" rel="noreferrer"
-            className={`${toucherEnLigne} font-semibold text-deep underline decoration-line decoration-1 underline-offset-4`}>
-            {t("settings.orchDocLink")}
-          </a>
-        </p>
+        {/* Hosted: the connection to the live program is the platform's, so nothing to show here. */}
+        {!verrouille("orchestrator_url") && (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
+                <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8088" />
+              </Field>
+              <Field label={t("settings.token")} aide={t("settings.tokenHelp")}>
+                <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
+              </Field>
+            </div>
+            <p className="m-0 text-[0.82rem] leading-[1.5] text-muted">
+              {t("settings.orchDoc")}{" "}
+              <a href="/docs/orchestrateur" target="_blank" rel="noreferrer"
+                className={`${toucherEnLigne} font-semibold text-deep underline decoration-line decoration-1 underline-offset-4`}>
+                {t("settings.orchDocLink")}
+              </a>
+            </p>
+          </>
+        )}
 
         {/* Video input: the same choice as in "Mise en route", editable here afterwards. */}
         <div className="border-t border-line pt-3.5">
@@ -849,6 +854,9 @@ export default function Settings() {
               onChange={(e) => { setStockage((s) => ({ ...s, secret_key: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
           </Field>
         </div>
+        {d.storage?.scope === "platform" && (
+          <p className="m-0 max-w-[80ch] text-[0.85rem] leading-[1.5] text-muted">{t("settings.replayPrefixPlatform")}</p>
+        )}
         <div className="grid items-end gap-2 sm:grid-cols-[1fr_auto_auto]">
           <Field label={t("settings.replayPrefix")}>
             <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.prefix} spellCheck={false}
@@ -872,20 +880,6 @@ export default function Settings() {
       </div>
     ),
   };
-
-  // Two tabs have nothing to save here: they point to the screen that owns them.
-  contenu.connectors = (
-    <div className="grid gap-2 max-w-[520px] text-[0.95rem]">
-      <p className="m-0 text-muted">{t("settings.connectorsHint")}</p>
-      <Link className={`${toucher} w-fit font-semibold text-deep underline`} to="/publications">{t("settings.connectorsGo")}</Link>
-    </div>
-  );
-  contenu.access = (
-    <div className="grid gap-2 max-w-[520px] text-[0.95rem]">
-      <p className="m-0 text-muted">{t("settings.accessHint")}</p>
-      <Link className={`${toucher} w-fit font-semibold text-deep underline`} to="/users">{t("settings.accessGo")}</Link>
-    </div>
-  );
 
   // Only the tabs that have content are offered; the others are announced as disabled.
   const onglets = d.sections.map((s: string) => ({

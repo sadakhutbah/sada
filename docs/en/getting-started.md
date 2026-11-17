@@ -78,9 +78,8 @@ all, in **Settings → Mosque**.
 | --- | --- |
 | **Mosque name** | the full screens, the captions, the titles sent to the networks |
 | **Time zone** | the time shown on the screens, the schedule times and the log dates |
-| **Clip title** | the first line of the clips and of the captions proposed for publication |
 | **Mawaqit address** | optional; it gives the prayer times of the mosque |
-| **Public address** | the address through which the mosque opens this back office, used in documentation links |
+| **Public address** | the address through which the mosque opens this back office, used in documentation links; set by the platform operator in hosted mode |
 
 The time zone must be the **official name** of the zone, not an offset. `Europe/Paris` is proposed by
 default; an unknown name is refused on saving. A wrong time zone does not cut the live, but it shifts
