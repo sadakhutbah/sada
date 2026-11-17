@@ -173,5 +173,6 @@
   "{where}: unknown recurrence weekday {weekday} (expected: {valid})": "{where} : jour de récurrence inconnu {weekday} (attendu : {valid})",
   "{where}: unknown type {kind} (expected: {valid})": "{where} : type inconnu {kind} (attendu : {valid})",
   "{where}: “recurrence” must be an object": "{where} : « recurrence » doit être un objet",
-  "“events” must be a list": "« events » doit être une liste"
+  "“events” must be a list": "« events » doit être une liste",
+  "New day: {count} session(s) planned": "Nouveau jour : {count} session(s) prévue(s)"
 }

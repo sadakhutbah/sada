@@ -50,7 +50,7 @@ def orchestrator(down):
     )
     # simulated start: the khutba times apply on this Saturday too
     o.times, o.program, o.mawaqit_data, o.instances = ["12:30", "13:30"], [], None, []
-    o._plan_day = D
+    o._plan_day, o._rolled = D, False
     o._stale, o._times_fallback, o._program_remote = True, True, False
     o._retry_delay, o._retry_at = orch.RETRY_DELAY_S, 0.0
     o._retry_thread, o._fetched = None, None
@@ -158,3 +158,34 @@ def test_khutbas_only_on_friday():
     o.cfg.jumua_times_override = ["12:30"]  # forced by hand: any day
     o.program = []
     assert len(o.day_plan(dt.date(2026, 11, 17))[0]) == 2
+
+
+def test_midnight_plans_the_new_day_then_refreshes_its_times(monkeypatch):
+    """The process runs for days: at midnight the plan of the new day replaces yesterday's."""
+    down = [False]
+    o = orchestrator(down)
+    o._stale = False
+    monkeypatch.setattr(orch.mawaqit, "from_backoffice", lambda *a, **k: o.fetched_times(*a, **k))
+    monkeypatch.setattr(orch.events_mod, "from_backoffice", lambda *a, **k: o.fetched_program(*a, **k))
+    o._plan_day = D - dt.timedelta(days=1)
+    o.machine.records[0].status = "done"  # yesterday's session, played
+
+    o._roll_day(sig(at(0, 1)))
+    assert o._plan_day == D and o._stale and o._rolled
+    assert o.machine.sessions == [at(12, 30), at(13, 30)]  # at once, with what is known
+    assert all(r.status == "pending" for r in o.machine.records)
+
+    o._retry_plan(sig(at(0, 2)))
+    o._retry_thread.join(10)
+    o._retry_plan(sig(at(0, 3)))
+    assert o.machine.sessions == [at(13, 0), at(17, 12)]  # today's times, the day planned whole
+    assert not o._stale and not o._rolled
+
+
+def test_new_day_waits_for_a_session_running_over_midnight():
+    m = Machine([at(23, 0)], MachineParams())
+    m.state = State.DARS
+    assert not m.new_day([at(13, 0)], None, sig(at(0, 1)))
+    m.state = State.ENDED
+    assert m.new_day([at(13, 0)], None, sig(at(0, 2)))
+    assert m.state == State.IDLE and m.sessions == [at(13, 0)]
