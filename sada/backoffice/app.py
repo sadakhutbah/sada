@@ -429,11 +429,11 @@ def create_app(
         "/sermons": "/khutbas",
         "/publication": "/publications",
         "/sante": "/health",
-        "/api/dossiers": "/api/v1/folders",
+        "/api/dossiers": "/api/v1/platform/folders",
         "/admin/utilisateurs": "/users",
         "/admin/mosquee": "/settings",
-        "/admin/modele": "/settings",
-        "/admin/modele/tester": "/api/v1/settings/model/test",
+        "/admin/modele": "/platform/settings",
+        "/admin/modele/tester": "/api/v1/platform/model/test",
     }
     ANCIENS_MOTIFS = (
         ("/sermons/{kid}", "/khutbas/{kid}"),

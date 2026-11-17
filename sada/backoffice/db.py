@@ -85,11 +85,27 @@ def audit(
 
 
 def mosque_dirs(m: dict) -> dict:
-    """Effective folders of a mosque (empty values = folders of the repository, mode A)."""
+    """Effective folders of a mosque (empty values = folders of the repository, mode A).
+
+    Hosted: the roots set on the platform screen are the machine's; a mosque writes under its own
+    slug, the way it writes under its own prefix in the replays bucket.
+    """
+    from . import auth, instance
+
+    roots = instance.platform_folders() if auth.hosted() else {}
+    slug = str(m.get("slug") or "")
+
+    def pick(key: str, column: str, default: Path) -> Path:
+        # Hosted: the machine's root wins over a leftover column of the mosque.
+        root = roots.get(key)
+        if root:
+            return Path(root) / slug if slug else Path(root)
+        return Path(m[column]) if m.get(column) else default
+
     return {
-        "state": Path(m.get("state_dir") or paths.STATE),
-        "output": Path(m.get("output_dir") or paths.OUTPUT),
-        "publish": Path(m.get("publish_dir") or local_folder_default(m)),
+        "state": pick("state", "state_dir", paths.STATE),
+        "output": pick("output", "output_dir", paths.OUTPUT),
+        "publish": pick("publish", "publish_dir", local_folder_default(m)),
     }
 
 

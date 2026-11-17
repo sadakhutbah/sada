@@ -150,5 +150,10 @@
   "Programme: entry skipped ({error})": "البرنامج: أُهمل إدخال ({error})",
   "Times: back office unreachable ({error}), local cache used": "المواقيت: تعذّر الوصول إلى لوحة الإدارة ({error})، استُخدمت النسخة المحلية",
   "issue a new stream key for OBS (replaces the previous one)": "إصدار مفتاح بثّ جديد لـ OBS (يحلّ محلّ السابق)",
-  "Stream key (shown once). In OBS, server and key:": "مفتاح البثّ (يُعرض مرة واحدة). في OBS، الخادم والمفتاح:"
+  "Stream key (shown once). In OBS, server and key:": "مفتاح البثّ (يُعرض مرة واحدة). في OBS، الخادم والمفتاح:",
+  "Folders saved. The pipeline reads them at its next run.": "حُفظت المجلدات. ستقرؤها السلسلة في دورتها القادمة.",
+  "No mosque to configure on this installation.": "لا يوجد مسجد لضبطه في هذا التثبيت.",
+  "Orchestrator connection saved.": "حُفظ الاتصال بالمنسّق.",
+  "These settings belong to the platform screen: {fields}.": "هذه الإعدادات تخصّ شاشة المنصة: {fields}.",
+  "the program's own folder": "مجلد البرنامج نفسه"
 }

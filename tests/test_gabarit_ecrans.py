@@ -204,7 +204,7 @@ def test_import_ne_touche_pas_aux_autres_reglages(env, stockage):
 
     apres = c.get("/api/v1/settings").json()
     assert apres["mosque"]["name"] == avant["mosque"]["name"]
-    assert apres["model"] == avant["model"]
+    assert apres["processing"] == avant["processing"]
     assert apres["targets"] == avant["targets"]
     assert apres["screens"]["priere"]["sub"]["value"] == "Texte déjà enregistré."  # vide ≠ effacer
     assert apres["screens"]["entracte"]["title_cours"]["value"] == "Cours maison"  # absent ≠ effacé

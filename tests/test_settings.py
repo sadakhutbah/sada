@@ -10,21 +10,20 @@ from sada.backoffice import models
 
 
 def test_les_sections_sont_annoncees(env):
+    """The mosque's screen announces its own tabs only: the installation's live elsewhere."""
     d = client(env, "admin").get("/api/v1/settings").json()
     assert list(d["sections"]) == [
         "mosque",
         "logo",
         "screens",
         "live",
-        "replays",
-        "folders",
-        "model",
-        "transcription",
         "processing",
     ]
     assert d["mosque"]["name"] == "Mosquée Exemple" and d["mosque"]["slug"] == "ma-mosquee"
-    assert d["imams"] and d["model"]["label"]
+    assert d["imams"]
     assert d["processing"]["clips"] >= 1 and d["processing"]["max"] >= d["processing"]["min"]
+    assert not {"replays", "folders", "model", "transcription", "public_url"} & set(d)
+    assert not {"locked_fields", "defaults", "public_url"} & set(d)
 
 
 def test_reglages_reserves_a_l_admin(env):
@@ -35,29 +34,37 @@ def test_reglages_reserves_a_l_admin(env):
 def test_registre_partiel_ne_vide_pas_les_autres_reglages(env):
 
     c = client(env, "admin")
-    r = c.ecrire(
-        "/settings/mosque", {"orchestrator_url": "http://127.0.0.1:8089", "orchestrator_token": ""}, methode="PATCH"
-    )
+    r = c.ecrire("/settings/mosque", {"name": "Nouveau nom"}, methode="PATCH")
     assert r.status_code == 200, r.text
     m = one(env["conn"], models.Mosque, id=env["mid"])
-    assert m["orchestrator_url"] == "http://127.0.0.1:8089"
-    assert m["name"] == "Mosquée Exemple" and m["output_dir"] == str(env["tmp"] / "output")
+    assert m["name"] == "Nouveau nom"
+    assert m["timezone"] == "Europe/Paris" and m["output_dir"] == str(env["tmp"] / "output")
+
+
+def test_champ_de_la_plateforme_refuse_par_le_reglage_de_la_mosquee(env):
+    """Name, time zone and Mawaqit only: the installation's fields are refused, for every account."""
+    c = client(env, "admin")
+    avant = one(env["conn"], models.Mosque, id=env["mid"])
+    for champ in ("orchestrator_url", "output_dir", "public_url"):
+        r = c.ecrire("/settings/mosque", {champ: "http://127.0.0.1:8089"}, methode="PATCH")
+        assert r.status_code == 422, champ
+        assert "platform" in r.json()["message"], champ
+    apres = one(env["conn"], models.Mosque, id=env["mid"])
+    assert (apres["orchestrator_url"], apres["output_dir"]) == (avant["orchestrator_url"], avant["output_dir"])
 
 
 def test_valeur_refusee(env):
     c = client(env, "admin")
     assert c.ecrire("/settings/mosque", {"name": ""}, methode="PATCH").status_code == 422
-    r = c.ecrire("/settings/mosque", {"orchestrator_url": "pas-une-adresse"}, methode="PATCH")
-    assert r.status_code == 422 and "http" in r.json()["message"]
 
 
 def test_api_dossiers_liste_la_machine_reelle(env):
     from pathlib import Path
 
     c = client(env, "admin")
-    d = c.get("/api/v1/folders").json()
+    d = c.get("/api/v1/platform/folders").json()
     assert d["path"] == str(Path.home()) and d["roots"]
-    d2 = c.get("/api/v1/folders", params={"path": str(env["tmp"])}).json()
+    d2 = c.get("/api/v1/platform/folders", params={"path": str(env["tmp"])}).json()
     assert {"output", "state"} <= {e["name"] for e in d2["entries"]}
     assert all(e["path"].startswith(str(env["tmp"])) for e in d2["entries"])
 
@@ -66,14 +73,14 @@ def test_api_dossiers_masque_ce_qui_n_est_pas_dossier(env):
     c = client(env, "admin")
     f = env["tmp"] / "fichier.txt"
     f.write_text("x")
-    d = c.get("/api/v1/folders", params={"path": str(env["tmp"])}).json()
+    d = c.get("/api/v1/platform/folders", params={"path": str(env["tmp"])}).json()
     assert "fichier.txt" not in [e["name"] for e in d["entries"]]
-    nope = c.get("/api/v1/folders", params={"path": str(env["tmp"] / "absent")}).json()
+    nope = c.get("/api/v1/platform/folders", params={"path": str(env["tmp"] / "absent")}).json()
     assert nope["exists"] is False
 
 
 def test_api_dossiers_reservee_a_l_admin(env):
-    assert client(env, "responsable").get("/api/v1/folders").status_code == 403
+    assert client(env, "responsable").get("/api/v1/platform/folders").status_code == 403
 
 
 def test_dossier_choisi_enregistre_et_valide(env):
@@ -81,7 +88,8 @@ def test_dossier_choisi_enregistre_et_valide(env):
 
     c = client(env, "admin")
     target = env["tmp"] / "nouveau" / "output"
-    c.ecrire("/settings/mosque", {"output_dir": str(target)}, methode="PATCH")
+    r = c.ecrire("/platform/folders", {"output": str(target)}, methode="PUT")
+    assert r.status_code == 200, r.text
     m = one(env["conn"], models.Mosque, id=env["mid"])
     assert m["output_dir"] == str(target)
     assert db.mosque_dirs(m)["output"] == target
@@ -99,12 +107,27 @@ def test_aucun_chemin_de_la_machine_dans_les_reglages(env):
 
     from sada import paths
 
-    d = client(env, "admin").get("/api/v1/settings").json()
-    texte = json.dumps({k: d[k] for k in ("defaults", "sections")}, ensure_ascii=False)
+    c = client(env, "admin")
+    reglages = c.get("/api/v1/settings").json()
+    plateforme = c.get("/api/v1/platform/settings").json()
+    # What the screen writes itself: hints, addresses, labels. The values typed by an administrator
+    # are their own text, echoed back in the field, and are not part of this check.
+    hints = {cle: {"default": dossier["default"]} for cle, dossier in plateforme["folders"].items()}
+    texte = json.dumps(
+        {
+            "sections": reglages["sections"],
+            "public_url": plateforme["public_url"],
+            "docs": plateforme["docs"],
+            "model": plateforme["model"],
+            "transcription": plateforme["transcription"],
+            "folders": hints,
+        },
+        ensure_ascii=False,
+    )
     assert str(paths.ROOT) not in texte and str(_P.home()) not in texte
-    for valeur in d["defaults"].values():
-        assert not valeur.startswith("/"), valeur
-        assert "home" not in valeur and "Users" not in valeur and "mnt" not in valeur, valeur
+    for dossier in hints.values():
+        assert not dossier["default"].startswith("/"), dossier
+        assert "home" not in dossier["default"] and "Users" not in dossier["default"], dossier
 
 
 def test_les_connecteurs_sont_decoupes(env):
@@ -139,17 +162,31 @@ def test_le_jeton_et_la_cle_ne_ressortent_jamais_en_clair(env, monkeypatch):
 
     monkeypatch.setenv("SADA_LLM_CONFIG", str(env["tmp"] / "llm.json"))
     c = client(env, "admin")
-    c.ecrire("/settings/mosque", {"orchestrator_token": "tres-secret"}, methode="PATCH")
+    r = c.ecrire(
+        f"/platform/mosques/{env['mid']}/orchestrator",
+        {"url": "http://127.0.0.1:8089", "token": "tres-secret"},
+        methode="PUT",
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["mosque"]["orchestrator_token"] == db.MASK
     llm.config_path().write_text(json.dumps({"enabled": True, "url": "http://h:1/v1", "key": "cle-api-secrete"}))
-    d = c.get("/api/v1/settings").json()
-    texte = json.dumps(d, ensure_ascii=False)
-    assert d["mosque"]["orchestrator_token"] == db.MASK
+    reglages = c.get("/api/v1/settings").json()
+    plateforme = c.get("/api/v1/platform/settings").json()
+    texte = json.dumps({"reglages": reglages, "plateforme": plateforme}, ensure_ascii=False)
     assert "tres-secret" not in texte and "cle-api-secrete" not in texte
-    assert d["model"]["has_key"] is True and d["mosque"]["has_logo"] is False and "logo_path" not in d["mosque"]
+    assert plateforme["model"]["has_key"] is True
+    assert c.get("/api/v1/platform/mosques").json()["mosques"][0]["orchestrator_token"] == db.MASK
+    # the mosque's screen knows none of these fields
+    assert not {"orchestrator_url", "orchestrator_token", "logo_path"} & set(reglages["mosque"])
+    assert reglages["mosque"]["has_logo"] is False
     # the mask returned as-is leaves the token unchanged
-    c.ecrire("/settings/mosque", {"orchestrator_token": db.MASK, "name": "Autre nom"}, methode="PATCH")
+    c.ecrire(
+        f"/platform/mosques/{env['mid']}/orchestrator",
+        {"url": "http://127.0.0.1:8089", "token": db.MASK},
+        methode="PUT",
+    )
     m = one(env["conn"], models.Mosque, id=env["mid"])
-    assert m["orchestrator_token"] == "tres-secret" and m["name"] == "Autre nom"
+    assert m["orchestrator_token"] == "tres-secret"
 
 
 def test_mawaqit_et_fuseau_enregistres_et_valides(env):
@@ -174,10 +211,10 @@ def test_dossier_inutilisable_refuse(env):
     c = client(env, "admin")
     f = env["tmp"] / "un-fichier"
     f.write_text("x")
-    r = c.ecrire("/settings/mosque", {"publish_dir": str(f)}, methode="PATCH")
+    r = c.ecrire("/platform/folders", {"publish": str(f)}, methode="PUT")
     assert r.status_code == 422 and "Folder refused" in r.json()["message"]
     ok = env["tmp"] / "cree" / "ici"
-    assert c.ecrire("/settings/mosque", {"publish_dir": str(ok)}, methode="PATCH").status_code == 200
+    assert c.ecrire("/platform/folders", {"publish": str(ok)}, methode="PUT").status_code == 200
     assert ok.is_dir()
 
 
@@ -185,14 +222,14 @@ def test_modele_enregistre_et_relu(env, monkeypatch):
     monkeypatch.setenv("SADA_LLM_CONFIG", str(env["tmp"] / "llm.json"))
     c = client(env, "admin")
     r = c.ecrire(
-        "/settings/model",
+        "/platform/model",
         {"enabled": "1", "url": "http://127.0.0.1:1/v1", "model": "m", "protocol": "openai"},
         methode="PUT",
     )
     assert r.status_code == 200, r.text
-    m = c.get("/api/v1/settings").json()["model"]
+    m = c.get("/api/v1/platform/settings").json()["model"]
     assert (m["enabled"], m["url"], m["model"], m["protocol"]) == (True, "http://127.0.0.1:1/v1", "m", "openai")
-    assert c.ecrire("/settings/model", {"protocol": "inconnu"}, methode="PUT").status_code == 422
+    assert c.ecrire("/platform/model", {"protocol": "inconnu"}, methode="PUT").status_code == 422
 
 
 def test_publications_real_status_and_notifications(env, monkeypatch):

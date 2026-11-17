@@ -573,10 +573,10 @@ def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
     ):
         monkeypatch.delenv(nom, raising=False)
     c = client(env, "admin")
-    assert c.get("/api/v1/settings").json()["transcription"]["mode"] == "local"  # défaut : local
+    assert c.get("/api/v1/platform/settings").json()["transcription"]["mode"] == "local"  # défaut : local
 
     r = c.ecrire(
-        "/settings/transcription",
+        "/platform/transcription",
         {"mode": "distant", "provider": "groq", "model": "whisper-large-v3", "key": "sk-tres-secret"},
         methode="PUT",
     )
@@ -587,7 +587,7 @@ def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
     assert json.loads(cfg.read_text(encoding="utf-8"))["key"] == "sk-tres-secret"  # gardée côté serveur
     assert oct(cfg.stat().st_mode)[-3:] == "600"
 
-    ecran = c.get("/api/v1/settings").json()["transcription"]
+    ecran = c.get("/api/v1/platform/settings").json()["transcription"]
     assert ecran["has_key"] is True and "key" not in ecran and "sk-tres-secret" not in json.dumps(ecran)
     assert ecran["providers"] and {p["key"] for p in ecran["providers"]} == {"groq", "openai"}
     assert ecran["url"] == ""  # aucune adresse propre : c'est celle du fournisseur qui sert
@@ -595,7 +595,7 @@ def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
     assert count(env["conn"], models.Audit, action="transcription.configure") == 1
     # le masque renvoyé tel quel garde la clé enregistrée
     r = c.ecrire(
-        "/settings/transcription",
+        "/platform/transcription",
         {"mode": "distant", "provider": "openai", "model": "whisper-1", "key": db.MASK},
         methode="PUT",
     )
@@ -604,16 +604,16 @@ def test_le_reglage_ne_renvoie_jamais_la_cle(env, monkeypatch, tmp_path):
 
     # adresse personnalisée : exige une adresse et un modèle
     r = c.ecrire(
-        "/settings/transcription", {"mode": "distant", "provider": "custom", "url": "", "model": "x"}, methode="PUT"
+        "/platform/transcription", {"mode": "distant", "provider": "custom", "url": "", "model": "x"}, methode="PUT"
     )
     assert r.status_code == 422 and "http" in r.json()["message"]
     r = c.ecrire(
-        "/settings/transcription",
+        "/platform/transcription",
         {"mode": "distant", "provider": "custom", "url": "https://exemple/v1", "model": ""},
         methode="PUT",
     )
     assert r.status_code == 422 and "model" in r.json()["message"].lower()
-    r = c.ecrire("/settings/transcription", {"mode": "magique", "provider": "groq"}, methode="PUT")
+    r = c.ecrire("/platform/transcription", {"mode": "magique", "provider": "groq"}, methode="PUT")
     assert r.status_code == 422
 
 
@@ -625,7 +625,7 @@ def test_endpoint_de_test_envoie_un_extrait_genere(env, monkeypatch, serveur, tm
     _Handler.plan = [
         (200, {"language": "en", "text": " Bonjour", "segments": [{"start": 0, "end": 1, "text": " Bonjour"}]})
     ]
-    r = client(env, "admin").ecrire("/settings/transcription/test", {}, methode="POST")
+    r = client(env, "admin").ecrire("/platform/transcription/test", {}, methode="POST")
     assert r.status_code == 200, r.text
     assert r.json()["ok"] is True and "Bonjour" in r.json()["message"]
     assert len(_Handler.seen) == 1
@@ -640,7 +640,7 @@ def test_endpoint_de_test_signale_un_refus(env, monkeypatch, serveur, tmp_path):
     monkeypatch.setenv("SADA_TRANSCRIPTION_CONFIG", str(tmp_path / "transcription.json"))
     _reglage(monkeypatch, serveur)
     _Handler.plan = [(401, {"error": {"message": "Invalid API Key"}})]
-    r = client(env, "admin").ecrire("/settings/transcription/test", {}, methode="POST")
+    r = client(env, "admin").ecrire("/platform/transcription/test", {}, methode="POST")
     assert r.status_code == 422
     assert r.json()["ok"] is False and "Invalid API Key" in r.json()["message"]
 
@@ -652,6 +652,6 @@ def test_le_reglage_est_reserve_a_l_admin(env, monkeypatch, tmp_path):
     for role in ("imam", "responsable"):
         c = client(env, role)
         assert (
-            c.ecrire("/settings/transcription", {"mode": "local", "provider": "groq"}, methode="PUT").status_code == 403
+            c.ecrire("/platform/transcription", {"mode": "local", "provider": "groq"}, methode="PUT").status_code == 403
         )
-        assert c.ecrire("/settings/transcription/test", {}, methode="POST").status_code == 403
+        assert c.ecrire("/platform/transcription/test", {}, methode="POST").status_code == 403

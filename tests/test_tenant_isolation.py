@@ -106,15 +106,18 @@ def test_platform_settings_are_hidden_from_a_mosque_admin(env, intruder):
     d = intruder.get("/api/v1/settings").json()
     assert "model" not in d and "transcription" not in d
     assert "model" not in d["sections"] and "transcription" not in d["sections"]
+    assert intruder.get("/api/v1/platform/settings").status_code == 403
     for method, url in (
-        ("PUT", "/settings/model"),
-        ("PUT", "/settings/transcription"),
-        ("POST", "/settings/model/test"),
-        ("POST", "/settings/transcription/test"),
+        ("PUT", "/platform/model"),
+        ("PUT", "/platform/transcription"),
+        ("POST", "/platform/model/test"),
+        ("POST", "/platform/transcription/test"),
     ):
         assert intruder.ecrire(url, {"mode": "local"}, methode=method).status_code == 403, url
+    # The mosque's settings are the same for every role: the operator finds them on its own page.
     owner = client(env, "admin")
-    assert "model" in owner.get("/api/v1/settings").json()["sections"]
+    assert "model" not in owner.get("/api/v1/settings").json()["sections"]
+    assert "model" in owner.get("/api/v1/platform/settings").json()["sections"]
 
 
 def test_platform_permission_cannot_be_granted_by_a_form(env):
