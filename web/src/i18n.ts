@@ -74,8 +74,8 @@ const fr = {
   dashboard: {
     pending: "Clips à valider", ready: "Prêts à publier", sermons: "Khutbas archivées", dars: "Dars enregistrés",
     live: "Live du jour", recent: "Dernières khutbas", commands: "Dernières commandes du live",
-    liveOn: "En direct", liveOff: "Hors ligne", unreachable: "Injoignable",
-    unreachableHint: "L'orchestrateur ne répond pas : le live n'est probablement pas lancé sur cette machine.", noCommands: "Aucune commande manuelle.",
+    liveOn: "En direct", liveOff: "Hors ligne", unreachable: "Pas de direct",
+    unreachableHint: "Aucun direct en cours : le moteur de diffusion n'est pas lancé.", noCommands: "Aucune commande manuelle.",
     janaza: "Déclarer une janaza", janazaName: "Nom du défunt", janazaInfo: "Mention (ex. 67 ans)",
     janazaSend: "Déclarer la janaza", more5: "+5 min", stop: "Arrêter", cancelDay: "Annuler aujourd'hui",
     sceneChoose: "Choisir une scène", sceneApply: "Afficher",
@@ -603,8 +603,8 @@ const en: typeof fr = {
   dashboard: {
     pending: "Clips to review", ready: "Ready to publish", sermons: "Archived sermons", dars: "Recorded lessons",
     live: "Today's live", recent: "Latest sermons", commands: "Latest live commands",
-    liveOn: "Live", liveOff: "Off air", unreachable: "Unreachable",
-    unreachableHint: "The orchestrator is not answering: the live is probably not running on this machine.", noCommands: "No manual command.",
+    liveOn: "Live", liveOff: "Off air", unreachable: "No live",
+    unreachableHint: "No live in progress: the broadcast engine is not running.", noCommands: "No manual command.",
     janaza: "Declare a janaza", janazaName: "Name of the deceased", janazaInfo: "Note (e.g. 67 years old)",
     janazaSend: "Declare the janaza", more5: "+5 min", stop: "Stop", cancelDay: "Cancel today",
     sceneChoose: "Choose a scene", sceneApply: "Show",
