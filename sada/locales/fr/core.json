@@ -174,5 +174,8 @@
   "{where}: unknown type {kind} (expected: {valid})": "{where} : type inconnu {kind} (attendu : {valid})",
   "{where}: “recurrence” must be an object": "{where} : « recurrence » doit être un objet",
   "“events” must be a list": "« events » doit être une liste",
-  "New day: {count} session(s) planned": "Nouveau jour : {count} session(s) prévue(s)"
+  "New day: {count} session(s) planned": "Nouveau jour : {count} session(s) prévue(s)",
+  "Back office ready": "Back-office prêt",
+  "Back office still unreachable after {limit:g} s: start on the caches": "Back-office toujours injoignable après {limit:g} s : démarrage sur les caches",
+  "Waiting for the back office (at most {limit:g} s)": "Attente du back-office ({limit:g} s au plus)"
 }

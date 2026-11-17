@@ -38,6 +38,41 @@ RETRY_DELAY_S = 30.0
 RETRY_MAX_S = 300.0
 
 
+def wait_for_backoffice(url: str, limit_s: float, probe=None, sleep=time.sleep, clock=time.monotonic) -> bool:
+    """Wait (bounded) until the back office answers its /health, so the day is not opened on fallbacks.
+
+    True when it answers; False after `limit_s` — then the start goes on, and the background retry
+    takes over (see Orchestrator._retry_plan).
+    """
+    if not url or limit_s <= 0:
+        return False
+
+    def _probe() -> bool:  # pragma: no cover (network)
+        import urllib.request
+
+        try:
+            with urllib.request.urlopen(url.rstrip("/") + "/health", timeout=3) as r:  # noqa: S310 — configured back office
+                return r.status == 200
+        except Exception:  # noqa: BLE001
+            return False
+
+    probe = probe or _probe
+    end, delay, said = clock() + limit_s, 1.0, False
+    while True:
+        if probe():
+            if said:
+                log.info(_("Back office ready"))
+            return True
+        if clock() >= end:
+            log.warning(_("Back office still unreachable after {limit:g} s: start on the caches", limit=limit_s))
+            return False
+        if not said:
+            log.info(_("Waiting for the back office (at most {limit:g} s)", limit=limit_s))
+            said = True
+        sleep(min(delay, max(0.0, end - clock())))
+        delay = min(delay * 2, 10.0)
+
+
 class Orchestrator:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -48,6 +83,7 @@ class Orchestrator:
         self.run_dir = Path(cfg.state_dir) / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._setup_logging()
+        wait_for_backoffice(cfg.backoffice_url, 0.0 if cfg.sim_start else cfg.backoffice_wait_s)
         self.times = self._load_times()
         day = self.clock.now().date()
         # today's programme: dars and conferences are added to the khutbas, on the same footing

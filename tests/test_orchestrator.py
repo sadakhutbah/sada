@@ -189,3 +189,20 @@ def test_new_day_waits_for_a_session_running_over_midnight():
     m.state = State.ENDED
     assert m.new_day([at(13, 0)], None, sig(at(0, 2)))
     assert m.state == State.IDLE and m.sessions == [at(13, 0)]
+
+
+def test_start_waits_for_the_back_office_then_gives_up():
+    """Deployed together, the back office often boots second: the start waits for it, bounded."""
+    t = [0.0]
+    answers = iter([False, False, True])
+    assert orch.wait_for_backoffice(
+        "http://bo", 90, probe=lambda: next(answers), sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0]
+    )
+    assert t[0] == 3.0  # 1 s, then 2 s
+
+    t[0] = 0.0
+    assert not orch.wait_for_backoffice(
+        "http://bo", 30, probe=lambda: False, sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0]
+    )
+    assert t[0] == 30.0  # never beyond the limit
+    assert not orch.wait_for_backoffice("", 90, probe=lambda: 1 / 0)  # no back office: no wait
