@@ -45,7 +45,10 @@ def dars_event(title="Tafsir Al-Kahf"):
 def orchestrator(down):
     """Orchestrator stripped to the schedule, as it stands after a start on the fallback."""
     o = object.__new__(orch.Orchestrator)
-    o.cfg = SimpleNamespace(backoffice_url="http://127.0.0.1:8090", api_port=8088)
+    o.cfg = SimpleNamespace(
+        backoffice_url="http://127.0.0.1:8090", api_port=8088, jumua_times_override=[], sim_start="12:00"
+    )
+    # simulated start: the khutba times apply on this Saturday too
     o.times, o.program, o.mawaqit_data, o.instances = ["12:30", "13:30"], [], None, []
     o._plan_day = D
     o._stale, o._times_fallback, o._program_remote = True, True, False
@@ -141,3 +144,17 @@ def test_replan_ignores_sessions_whose_window_is_closed():
     m = Machine([at(12, 30)], MachineParams())
     m.tick(sig(at(12, 31), 0.0))
     assert m.replan([at(12, 0)], [{}], sig(at(14, 0), 100.0)) == 0
+
+
+def test_khutbas_only_on_friday():
+    """Mawaqit's jumua times are not a daily plan: outside Friday only the programme remains."""
+    o = object.__new__(orch.Orchestrator)
+    o.cfg = SimpleNamespace(jumua_times_override=[], sim_start=None)
+    o.times, o.program, o.mawaqit_data = ["12:30", "13:30"], [], {"times": TIMES}
+    assert o.day_plan(dt.date(2026, 11, 17)) == ([], [])  # Tuesday
+    assert [s.strftime("%H:%M") for s in o.day_plan(dt.date(2026, 11, 20))[0]] == ["12:30", "13:30"]
+    o.program = [dars()]
+    assert [s.strftime("%H:%M") for s in o.day_plan(D)[0]] == ["17:12"]  # Saturday: the dars alone
+    o.cfg.jumua_times_override = ["12:30"]  # forced by hand: any day
+    o.program = []
+    assert len(o.day_plan(dt.date(2026, 11, 17))[0]) == 2
