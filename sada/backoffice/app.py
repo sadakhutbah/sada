@@ -177,7 +177,7 @@ def create_app(
     async def headers(request: Request, call_next):
         resp = await call_next(request)
         csp = (
-            "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
             "form-action 'self'; base-uri 'none'"
         )
