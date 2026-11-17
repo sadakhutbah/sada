@@ -206,3 +206,24 @@ def test_pas_de_glose_quand_l_orateur_traduit_lui_meme():
     assert not any(w.get("gloss") for w in a)
     b = g.gloss_words(ws("la tawba efface les péchés"), terms)
     assert any(w.get("gloss") for w in b)
+
+
+class _Detect:
+    def __init__(self, langs):
+        self.langs = list(langs)
+
+    def detect_language(self, chunk):
+        code = self.langs.pop(0)
+        return code, 0.9, []
+
+
+def test_langue_dominante_fixee_sinon_multilingue():
+    """Sans hotwords, le multilingue rendait un cours français en arabe : la langue majoritaire est fixée."""
+    import numpy as np
+
+    from sada.pipeline.transcribe import dominant_language
+
+    audio = np.zeros(16000 * 600, dtype=np.float32)
+    assert dominant_language(_Detect(["fr"] * 5 + ["ar"] * 2), audio) == "fr"
+    assert dominant_language(_Detect(["fr", "ar"] * 3 + ["fr"]), audio) is None
+    assert dominant_language(_Detect([]), np.zeros(16000, dtype=np.float32)) is None

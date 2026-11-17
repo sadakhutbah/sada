@@ -77,5 +77,6 @@
   "translation: {kept} segments inside the kept windows (out of {total})": "الترجمة: {kept} مقطعًا داخل النوافذ المحتفظ بها (من {total})",
   "translation: {segments} Arabic segment(s), {verses} verse(s) via {model}": "الترجمة: {segments} مقطعًا عربيًا، {verses} آية عبر {model}",
   "translation: {count} Arabic segment(s) without translation (no subtitle for them)": "الترجمة: {count} مقطعًا عربيًا بلا ترجمة (لا ترجمة نصية لها)",
-  "translation: Hamidullah excerpt not literal for {key}, full translation kept": "الترجمة: مقتطف حميد الله غير حرفي لـ {key}، أُبقيت الترجمة الكاملة"
+  "translation: Hamidullah excerpt not literal for {key}, full translation kept": "الترجمة: مقتطف حميد الله غير حرفي لـ {key}، أُبقيت الترجمة الكاملة",
+  "Dominant language: {code}": "اللغة الغالبة: {code}"
 }

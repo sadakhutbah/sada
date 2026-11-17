@@ -63,6 +63,33 @@ def extract_audio(src: str, dst: str, start: float = 0.0, end: float | None = No
     return dst
 
 
+def dominant_language(model, audio, *, sr: int = 16000, samples: int = 7, min_prob: float = 0.6) -> str | None:
+    """Langue majoritaire mesurée sur `samples` fenêtres de 30 s réparties sur la session.
+
+    Sans glossaire en `hotwords`, Whisper en mode multilingue dérive : un cours en français est
+    rendu en arabe sur des minutes entières (dars du 11/11). Fixer la langue majoritaire l'évite ;
+    les citations arabes sont reprises ensuite par `recover_arabic`. None si aucune langue ne
+    l'emporte nettement (session vraiment bilingue) : on reste alors en multilingue.
+    """
+    n = len(audio)
+    win = 30 * sr
+    if n < win:
+        return None
+    votes: dict[str, int] = {}
+    for k in range(samples):
+        start = int((n - win) * (k + 0.5) / samples)
+        try:
+            code, prob = model.detect_language(audio[start : start + win])[:2]
+        except Exception:  # noqa: BLE001
+            continue
+        if prob >= 0.5:
+            votes[code] = votes.get(code, 0) + 1
+    if not votes:
+        return None
+    code, count = max(votes.items(), key=lambda kv: kv[1])
+    return code if count / samples >= min_prob else None
+
+
 def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
     """-> (model, device, compute_type)."""
     free = free_vram_mb()
@@ -211,9 +238,12 @@ def transcribe(
     # boucles (« shukr, shukr… » sur 30 s) qui faisaient sauter la parole voisine (dars du 11/11 :
     # 12 boucles, ~7 min perdues). L'orthographe est corrigée après coup (`glossary.correct`).
     hw = hotwords or ""
+    fixed = dominant_language(model, audio)
+    log(_("Dominant language: {code}", code=fixed or "multilingual"))
     segs_iter, info = model.transcribe(
         audio,
-        multilingual=True,
+        multilingual=fixed is None,
+        language=fixed,
         vad_filter=True,
         beam_size=5,
         condition_on_previous_text=False,
