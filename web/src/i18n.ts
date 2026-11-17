@@ -9,7 +9,7 @@ const fr = {
   player: { play: "Lire", pause: "Pause", seek: "Position", back: "Reculer de 10 s", forward: "Avancer de 10 s", mute: "Couper le son", unmute: "Remettre le son", volume: "Volume", speed: "Vitesse de lecture", fullscreen: "Plein écran", exitFullscreen: "Quitter le plein écran", subtitles: "Sous-titres", subtitlesKey: "Sous-titres (C)", subtitlesChoose: "Langue des sous-titres", subtitlesOff: "Aucun" },
   nav: {
     dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", clips: "Clips", publications: "Publication",
-    settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu",
+    settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu", platform: "Plateforme",
   },
   states: {
     clip: {
@@ -62,6 +62,14 @@ const fr = {
     none: "Aucune mosquée n'est rattachée à ce compte.", search: "Rechercher une mosquée", noMatch: "Aucune mosquée ne correspond.", support: "Accès support",
     supportNote: "Entrer dans une mosquée se fait en accès support : chaque modification est inscrite au journal de la mosquée.",
     banner: "Accès support à {{name}} : vos actions sont journalisées.", switch: "Changer de mosquée", leave: "Quitter",
+    orchestrator: "Orchestrateur", orchestratorFor: "Orchestrateur de {{name}}", orchestratorTitle: "Orchestrateur — {{name}}",
+  },
+  platform: {
+    title: "Réglages de la plateforme", open: "Réglages de la plateforme", back: "← Retour aux mosquées",
+    hint: "Ce qui vaut pour toute l'installation : rien ici n'appartient à une mosquée.",
+    hintHosted: "Ce qui vaut pour toute la plateforme, toutes mosquées confondues. Chaque mosquée garde ses propres réglages.",
+    foldersHostedHint: "Racines des dossiers de la plateforme : chaque mosquée y reçoit son propre sous-dossier. Un champ vide garde le dossier du programme.",
+    tabs: { replays: "Rediffusions", folders: "Dossiers", public_url: "Adresse publique", model: "Modèle", transcription: "Transcription", orchestrator: "Orchestrateur" },
   },
   dashboard: {
     pending: "Clips à valider", ready: "Prêts à publier", sermons: "Khutbas archivées", dars: "Dars enregistrés",
@@ -322,7 +330,7 @@ const fr = {
   },
   settings: {
     title: "Réglages",
-    tabs: { mosque: "Mosquée", logo: "Logo", screens: "Écrans", live: "Direct", replays: "Rediffusions", folders: "Dossiers", model: "Modèle", transcription: "Transcription", processing: "Traitement" },
+    tabs: { mosque: "Mosquée", logo: "Logo", screens: "Écrans", live: "Direct", processing: "Traitement" },
     screensHint: "Les textes des écrans pleins, un écran par sous-onglet.",
     screensGuide: "Pour un visuel à vous : collez cette adresse dans un assistant (ChatGPT, Claude, Gemini), il rend un fichier HTML.",
     screensGuideCopy: "Copier l'adresse",
@@ -348,7 +356,6 @@ const fr = {
     shortOutput: "transcriptions, clips",
     shortPublish: "clips publiés en local",
     stateDir: "États des runs", outputDir: "Sorties du pipeline", publishDir: "Dossier de publication",
-    byDefault: "par défaut :",
     defaultFolder: "dossier par défaut du programme",
     soon: "Cet onglet arrive avec la suite du passage.",
     publicUrl: "Adresse publique de cette installation",
@@ -415,7 +422,7 @@ const fr = {
     transcriptionTestSave: "Enregistrez d'abord : le test utilise le réglage enregistré.",
   },
   onboarding: {
-    step_entree: "Entrée vidéo", step_destinations: "Destinations", step_rediffusions: "Rediffusions", step_fin: "Terminé",
+    step_entree: "Entrée vidéo", step_destinations: "Destinations", step_fin: "Terminé",
     inputKicker: "Étape 1", inputTitle: "D'où vient l'image ?",
     cameraTitle: "Caméra de la mosquée", cameraHint: "Une caméra qui diffuse déjà en RTSP sur le réseau.",
     pushTitle: "Poussée depuis un ordinateur", pushHint: "OBS envoie son image ici, qui la relaie vers les réseaux.",
@@ -429,11 +436,6 @@ const fr = {
     doneKicker: "Étape 3", doneTitle: "C'est prêt",
     doneBody: "L'entrée et les destinations sont enregistrées. Le moteur les lit au prochain démarrage du direct. Rien ne s'interrompt si cette interface s'arrête.",
     summary: "Entrée : {{entree}} · {{n}} destination(s) active(s)",
-    summaryReplays: "Rediffusions : {{bucket}} (dossier {{prefix}})",
-    replayKicker: "Facultatif",
-    replayTitle: "Rediffusions dans un compartiment",
-    replayHint: "Si vous le souhaitez, les enregistrements du direct partent chez un service de stockage (Cloudflare R2, AWS S3, MinIO). Sans la case cochée, tout reste sur cette machine — c'est le comportement par défaut.",
-    replaySkipNote: "Laissez vide pour passer : tout se règle plus tard dans Réglages → Rediffusions.",
     finish: "Aller au tableau de bord", next: "Continuer", back: "Retour", skip: "Passer la mise en route",
   },
   role: { admin: "Administrateur", responsable: "Responsable", imam: "Imam" },
@@ -520,7 +522,7 @@ const en: typeof fr = {
   player: { play: "Play", pause: "Pause", seek: "Position", back: "Back 10 s", forward: "Forward 10 s", mute: "Mute", unmute: "Unmute", volume: "Volume", speed: "Playback speed", fullscreen: "Full screen", exitFullscreen: "Exit full screen", subtitles: "Subtitles", subtitlesKey: "Subtitles (C)", subtitlesChoose: "Subtitle language", subtitlesOff: "None" },
   nav: {
     dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", clips: "Clips", publications: "Publishing",
-    settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu",
+    settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu", platform: "Platform",
   },
   states: {
     clip: {
@@ -573,6 +575,14 @@ const en: typeof fr = {
     none: "No mosque is attached to this account.", search: "Search for a mosque", noMatch: "No mosque matches.", support: "Support access",
     supportNote: "Entering a mosque is done as support access: every change is written to that mosque's log.",
     banner: "Support access to {{name}}: your actions are logged.", switch: "Switch mosque", leave: "Leave",
+    orchestrator: "Orchestrator", orchestratorFor: "Orchestrator of {{name}}", orchestratorTitle: "Orchestrator — {{name}}",
+  },
+  platform: {
+    title: "Platform settings", open: "Platform settings", back: "← Back to the mosques",
+    hint: "What applies to the whole installation: nothing here belongs to a mosque.",
+    hintHosted: "What applies to the whole platform, across every mosque. Each mosque keeps its own settings.",
+    foldersHostedHint: "Root folders of the platform: each mosque gets its own subfolder inside. An empty field keeps the program's own folder.",
+    tabs: { replays: "Replays", folders: "Folders", public_url: "Public address", model: "Model", transcription: "Transcription", orchestrator: "Orchestrator" },
   },
   dashboard: {
     pending: "Clips to review", ready: "Ready to publish", sermons: "Archived sermons", dars: "Recorded lessons",
@@ -830,7 +840,7 @@ const en: typeof fr = {
   },
   settings: {
     title: "Settings",
-    tabs: { mosque: "Mosque", logo: "Logo", screens: "Screens", live: "Live", replays: "Replays", folders: "Folders", model: "Model", transcription: "Transcription", processing: "Processing" },
+    tabs: { mosque: "Mosque", logo: "Logo", screens: "Screens", live: "Live", processing: "Processing" },
     screensHint: "Texts of the full-screen slates, one screen per tab.",
     screensGuide: "For your own look: paste this address into an assistant (ChatGPT, Claude, Gemini), it returns an HTML file.",
     screensGuideCopy: "Copy address",
@@ -856,7 +866,6 @@ const en: typeof fr = {
     shortOutput: "transcripts, clips",
     shortPublish: "clips published locally",
     stateDir: "Run state", outputDir: "Pipeline output", publishDir: "Publishing folder",
-    byDefault: "default:",
     defaultFolder: "program's default folder",
     soon: "This tab arrives with the rest of the migration.",
     publicUrl: "Public address of this installation",
@@ -923,7 +932,7 @@ const en: typeof fr = {
     transcriptionTestSave: "Save your changes first: the test uses the saved setting.",
   },
   onboarding: {
-    step_entree: "Video input", step_destinations: "Destinations", step_rediffusions: "Replays", step_fin: "Done",
+    step_entree: "Video input", step_destinations: "Destinations", step_fin: "Done",
     inputKicker: "Step 1", inputTitle: "Where does the picture come from?",
     cameraTitle: "Mosque camera", cameraHint: "A camera already streaming RTSP on the network.",
     pushTitle: "Pushed from a computer", pushHint: "OBS sends its picture here, which relays it to the networks.",
@@ -937,11 +946,6 @@ const en: typeof fr = {
     doneKicker: "Step 3", doneTitle: "Ready",
     doneBody: "Input and destinations are saved. The engine reads them at the next live start. Nothing stops if this interface goes down.",
     summary: "Input: {{entree}} · {{n}} active destination(s)",
-    summaryReplays: "Replays: {{bucket}} (folder {{prefix}})",
-    replayKicker: "Optional",
-    replayTitle: "Replays to a bucket",
-    replayHint: "If you want, the recordings of the live are sent to a storage service (Cloudflare R2, AWS S3, MinIO). Without the box ticked, everything stays on this machine — that is the default.",
-    replaySkipNote: "Leave empty to skip: it can all be set later in Settings → Replays.",
     finish: "Go to the dashboard", next: "Continue", back: "Back", skip: "Skip the setup",
   },
   role: { admin: "Administrator", responsable: "Manager", imam: "Imam" },

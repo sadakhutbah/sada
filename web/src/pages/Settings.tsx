@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { liste } from "../format";
-import { Bulle, Btn, Card, Dialogue, Field, Segmented, Tabs, Title, inputClass, toucher, toucherEnLigne } from "../ui";
+import { Btn, Card, Field, Tabs, Title, inputClass, toucher } from "../ui";
 import { idOnglet, idPanneau } from "../onglets";
 
 type Message = { ok: boolean; texte: string } | null;
@@ -10,8 +10,6 @@ type Message = { ok: boolean; texte: string } | null;
 /** A live destination as the screen edits it: the key comes back masked, and stays masked. */
 type Entree = { mode: "camera" | "push"; url: string; push_rtmp: string; has_key?: boolean;
                 modes?: ("camera" | "push")[] };
-type Stockage = { endpoint: string; region: string; bucket: string; access_key: string;
-                  secret_key: string; prefix: string; enabled: boolean };
 type Cible = { id?: number; label: string; url: string; enabled: boolean };
 /** Texts of the slates as the screen edits them: {écran: {champ: texte}}; empty = default. */
 type Ecrans = Record<string, Record<string, string>>;
@@ -36,118 +34,20 @@ const CHAMPS_ECRAN = [
   { champ: "foot", large: true },
 ] as const;
 
-const CHAMPS_MOSQUEE = [
-  "name", "timezone", "mawaqit_url", "orchestrator_url", "orchestrator_token",
-  "state_dir", "output_dir", "publish_dir",
-] as const;
-const CHAMPS_MODELE = ["enabled", "url", "model", "protocol"] as const;
-// La transcription se règle à part : mode distant, fournisseur, adresse, modèle, clé (jamais relue).
-const CHAMPS_TRANSCRIPTION = [
-  "transcription_mode", "transcription_provider", "transcription_url", "transcription_model", "transcription_key",
-] as const;
+const CHAMPS_MOSQUEE = ["name", "timezone", "mawaqit_url"] as const;
 
 /** Form values from the server response (all as text, as the API expects). */
 function depuisServeur(d: any): Record<string, string> {
   const f: Record<string, string> = {};
   for (const k of CHAMPS_MOSQUEE) f[k] = d.mosque[k] ?? "";
-  // Modèle et transcription : absents pour qui n'administre pas la plateforme.
-  f.enabled = d.model?.enabled ? "1" : "0";
-  for (const k of ["url", "model", "protocol"]) f[k] = d.model?.[k] ?? "";
   f.clips = String(d.processing?.clips ?? 3);
   f.clips_enabled = d.processing?.enabled === false ? "0" : "1";
-  // La clé ne revient jamais de l'API : le champ repart vide, et vide veut dire « garder l'ancienne ».
-  f.transcription_mode = d.transcription?.mode === "distant" ? "distant" : "local";
-  f.transcription_provider = d.transcription?.provider ?? "groq";
-  f.transcription_url = d.transcription?.url ?? "";
-  f.transcription_model = d.transcription?.model ?? "";
-  f.transcription_key = "";
   return f;
 }
 
-/** Folder picker window: we browse the server's real folders, without typing anything. */
-function Parcourir({ depart, onChoix, onFermer }: { depart: string; onChoix: (chemin: string) => void; onFermer: () => void }) {
-  const { t } = useTranslation();
-  const [vue, setVue] = useState<any>(null);
-  const [erreur, setErreur] = useState("");
-
-  const ouvrir = (chemin: string) => {
-    setErreur("");
-    api.folders(chemin).then(setVue).catch((e) => setErreur(e.message));
-  };
-  // First listing: the error is still empty, only the answer is awaited.
-  useEffect(() => { api.folders(depart).then(setVue).catch((e) => setErreur(e.message)); }, [depart]);
-
-  return (
-    // Le focus entre dans la fenêtre, Tab y tourne en rond, Échap la ferme et le
-    // focus revient au bouton « Parcourir » qui l'a ouverte.
-    <Dialogue label={t("settings.folderTitle")} onFermer={onFermer}
-      boite="grid max-h-[85vh] w-full max-w-[640px] grid-rows-[auto_auto_1fr_auto] gap-3 rounded-[10px] border border-line bg-white p-4.5">
-      <Title>{t("settings.folderTitle")}</Title>
-      {erreur && <p role="alert" className="m-0 text-[0.9rem] text-[#7a1f20]">{erreur}</p>}
-      {!vue ? (
-        <p className="text-muted">{t("common.loading")}</p>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              className={`${inputClass} w-auto`}
-              aria-label={t("settings.folderRoots")}
-              value=""
-              onChange={(e) => e.target.value && ouvrir(e.target.value)}
-            >
-              <option value="">{t("settings.folderRoots")}</option>
-              {vue.roots.map((r: any) => <option key={r.path} value={r.path}>{r.label}</option>)}
-            </select>
-            <Btn type="button" variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.9rem]" disabled={!vue.parent} onClick={() => ouvrir(vue.parent)}>
-              {t("settings.folderUp")}
-            </Btn>
-          </div>
-          <div className="min-h-0 overflow-auto rounded-lg border border-line">
-            <p className="m-0 border-b border-line bg-paper-2 px-3 py-2 font-mono text-[0.85rem] text-muted">
-              {t("settings.folderCurrent")} : {vue.path}
-            </p>
-            {vue.entries.length === 0 ? (
-              <p className="m-0 px-3 py-3 text-[0.9rem] text-muted">{t("settings.folderEmpty")}</p>
-            ) : (
-              <ul className="m-0 list-none p-0">
-                {vue.entries.map((e: any) => (
-                  <li key={e.path}>
-                    <button type="button" onClick={() => ouvrir(e.path)}
-                      className="w-full cursor-pointer border-0 border-b border-line bg-transparent px-3 py-2 text-left font-mono text-[0.88rem] hover:bg-paper-2">
-                      {e.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {!vue.writable && <p className="m-0 text-[0.85rem] text-[#7a1f20]">{t("settings.folderNotWritable")}</p>}
-        </>
-      )}
-      <div className="flex flex-wrap justify-end gap-2">
-        <Btn type="button" variante="ghost" onClick={onFermer}>{t("settings.folderCancel")}</Btn>
-        <Btn type="button" disabled={!vue || !vue.exists || !vue.writable} onClick={() => vue && onChoix(vue.path)}>
-          {t("settings.folderUse")}
-        </Btn>
-      </div>
-    </Dialogue>
-  );
-}
-
-/** An empty folder field is not a blank box: it is the program's default folder,
- *  and the default path is recalled below in relative plain text (“data/state”). */
-function Chemin({ valeur, defaut }: { valeur: string; defaut?: string }) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <input className={`${inputClass} font-mono text-[0.88rem]`} value={valeur} placeholder={t("settings.defaultFolder")} readOnly />
-      <span className="mt-1 block text-[0.82rem] text-muted">
-        {t("settings.byDefault")}{" "}<span className="font-mono">{defaut || t("settings.defaultFolder")}</span>
-      </span>
-    </>
-  );
-}
-
+/** Settings of one mosque: the same tabs for every role. What belongs to the installation
+ *  (replays bucket, folders, public address, model, transcription, orchestrator) lives on the
+ *  operator's platform page, never here. */
 export default function Settings() {
   const { t, i18n } = useTranslation();
   const [d, setD] = useState<any>(null);
@@ -157,18 +57,11 @@ export default function Settings() {
   const [sousOnglet, setSousOnglet] = useState("connexion");
   const [enCours, setEnCours] = useState(false);
   const [msg, setMsg] = useState<Message>(null);
-  const [parcourir, setParcourir] = useState<string | null>(null);
   const [cibles, setCibles] = useState<Cible[]>([]);
   const [ciblesInitiales, setCiblesInitiales] = useState("");
   const [entree, setEntree] = useState<Entree>({ mode: "camera", url: "", push_rtmp: "" });
   const [entreeInitiale, setEntreeInitiale] = useState("");
   const [essai, setEssai] = useState<{ ok: boolean; detail: string } | null>(null);
-  const [stockage, setStockage] = useState<Stockage>({ endpoint: "", region: "auto", bucket: "", access_key: "",
-    secret_key: "", prefix: "rediffusions/", enabled: false });
-  const [stockageInitial, setStockageInitial] = useState("");
-  const [essaiStockage, setEssaiStockage] = useState<{ ok: boolean; detail: string } | null>(null);
-  const [test, setTest] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
-  const [essaiTranscription, setEssaiTranscription] = useState<{ etat: "cours" | "ok" | "echec"; texte: string } | null>(null);
   const [ecrans, setEcrans] = useState<Ecrans>({});
   const [ecransInitial, setEcransInitial] = useState("");
   const [ecranVue, setEcranVue] = useState<string>("avant");
@@ -177,8 +70,6 @@ export default function Settings() {
   const [rapport, setRapport] = useState<RapportImport | null>(null);
   const [importe, setImporte] = useState(false);
   const [guide, setGuide] = useState({ agent: "", humain: "", docs: "", agentEn: "", humainEn: "", docsEn: "" });
-  const [adresse, setAdresse] = useState("");
-  const [adresseInitiale, setAdresseInitiale] = useState("");
   const [cle, setCle] = useState<{ obs_server: string; obs_key: string } | null>(null);
   const fichier = useRef<HTMLInputElement>(null);
   const gabaritFichier = useRef<HTMLInputElement>(null);
@@ -196,14 +87,7 @@ export default function Settings() {
                  agentEn: typeof r.guide?.url_en === "string" ? r.guide.url_en : `${window.location.origin}/docs/en/screen-template-prompt.md`,
                  humainEn: typeof r.guide?.human_en === "string" ? r.guide.human_en : `${window.location.origin}/docs/en/screens`,
                  docsEn: typeof r.guide?.docs_en === "string" ? r.guide.docs_en : `${window.location.origin}/docs?langue=en` });
-      const ad = typeof r.guide?.public_url === "string" ? r.guide.public_url : "";
-      setAdresse(ad); setAdresseInitiale(ad);
       setEntree(e); setEntreeInitiale(JSON.stringify(e));
-      const st: Stockage = { endpoint: r.storage?.endpoint ?? "", region: r.storage?.region ?? "auto",
-        bucket: r.storage?.bucket ?? "", access_key: r.storage?.access_key ?? "",
-        secret_key: r.storage?.secret_key ?? "", prefix: r.storage?.prefix ?? "rediffusions/",
-        enabled: !!r.storage?.enabled };
-      setStockage(st); setStockageInitial(JSON.stringify(st));
       const ec: Ecrans = {};
       for (const [nom, champs] of Object.entries<any>(r.screens ?? {})) {
         ec[nom] = {};
@@ -230,19 +114,14 @@ export default function Settings() {
   }, [ecrans, ecranVue, d]);
 
   if (!d) return <p className="py-16 text-center text-muted">{t("common.loading")}</p>;
-  // Champs que le serveur réserve à l'opérateur de la plateforme : on ne les affiche ni ne les envoie.
-  const verrouille = (cle: string): boolean => ((d.locked_fields ?? []) as string[]).includes(cle);
-  const defauts = d.defaults ?? {};
   // Les documents existent en deux langues : on ouvre celle de l'interface, pas celle du code.
   const en = i18n.language === "en";
   const lienHumain = en && guide.humainEn ? guide.humainEn : guide.humain;
   const lienAgent = en && guide.agentEn ? guide.agentEn : guide.agent;
   const entreeModifiee = JSON.stringify(entree) !== entreeInitiale;
-  const stockageModifie = JSON.stringify(stockage) !== stockageInitial;
   const ecransModifies = JSON.stringify(ecrans) !== ecransInitial;
-  const adresseModifiee = adresse.trim().replace(/\/+$/, "") !== adresseInitiale;
   const modifie = JSON.stringify(f) !== initial || JSON.stringify(cibles) !== ciblesInitiales
-    || entreeModifiee || stockageModifie || ecransModifies || adresseModifiee;
+    || entreeModifiee || ecransModifies;
   const majCible = (i: number, champ: keyof Cible, valeur: string | boolean) => {
     setCibles((x) => x.map((c, j) => (j === i ? { ...c, [champ]: valeur } : c)));
     setMsg(null);
@@ -252,59 +131,27 @@ export default function Settings() {
     setMsg(null);
   };
 
-  /** A single save for the whole screen: the mosque, then the model if it changed. */
+  /** A single save for the whole screen: each part is sent only if it changed. */
   const enregistrer = async (e: React.FormEvent) => {
     e.preventDefault();
     setEnCours(true); setMsg(null);
     try {
       const avant = JSON.parse(initial);
       const mosquee: Record<string, string> = {};
-      for (const k of CHAMPS_MOSQUEE) if (!verrouille(k)) mosquee[k] = f[k];
+      for (const k of CHAMPS_MOSQUEE) mosquee[k] = f[k];
       await api.reglagesMosquee(mosquee);
       if (f.clips !== avant.clips || f.clips_enabled !== avant.clips_enabled) {
         await api.traitement(f.clips, f.clips_enabled === "1");
       }
-      if (CHAMPS_MODELE.some((k) => f[k] !== avant[k])) {
-        const modele: Record<string, string> = {};
-        for (const k of CHAMPS_MODELE) modele[k] = f[k];
-        await api.modele(modele);
-      }
-      if (CHAMPS_TRANSCRIPTION.some((k) => f[k] !== avant[k])) {
-        // Noms de l'API, pas ceux du formulaire : mode, fournisseur, adresse, modèle, clé.
-        await api.transcription({
-          mode: f.transcription_mode,
-          provider: f.transcription_provider,
-          url: f.transcription_url,
-          model: f.transcription_model,
-          key: f.transcription_key,
-        });
-      }
       if (JSON.stringify(cibles) !== ciblesInitiales) await api.destinations(cibles);
       if (entreeModifiee) await api.saveInput(entree.mode, entree.url);
-      if (stockageModifie) {
-        await api.stockage({ ...stockage, enabled: stockage.enabled ? "1" : "0" });
-        setEssaiStockage(null);
-      }
       if (ecransModifies) await api.ecrans(ecrans);
-      if (adresseModifiee && !verrouille("public_url")) await api.adresseInstance(adresse.trim());
       await charger();
-      setTest(null);
-      setEssaiTranscription(null);
       setMsg({ ok: true, texte: t("settings.saved") });
     } catch (err: any) {
       setMsg({ ok: false, texte: err.message });
     } finally {
       setEnCours(false);
-    }
-  };
-
-  const testerStockage = async () => {
-    setEssaiStockage(null);
-    try {
-      const r = await api.testStockage({ ...stockage, enabled: stockage.enabled ? "1" : "0" });
-      setEssaiStockage({ ok: r.ok, detail: r.detail });
-    } catch (err: any) {
-      setEssaiStockage({ ok: false, detail: err.message });
     }
   };
 
@@ -325,27 +172,6 @@ export default function Settings() {
       setEssai({ ok: r.ok, detail: r.detail });
     } catch (err: any) {
       setEssai({ ok: false, detail: err.message });
-    }
-  };
-
-  const tester = async () => {
-    setTest({ etat: "cours", texte: t("settings.modelTesting") });
-    try {
-      const r = await api.testerModele();
-      setTest({ etat: "ok", texte: r.message });
-    } catch (err: any) {
-      setTest({ etat: "echec", texte: err.message });
-    }
-  };
-
-  /** Teste le réglage enregistré : un court extrait part au fournisseur et le texte entendu revient. */
-  const testerTranscription = async () => {
-    setEssaiTranscription({ etat: "cours", texte: t("settings.transcriptionTesting") });
-    try {
-      const r = await api.testerTranscription();
-      setEssaiTranscription({ etat: "ok", texte: r.message });
-    } catch (err: any) {
-      setEssaiTranscription({ etat: "echec", texte: err.message });
     }
   };
 
@@ -402,19 +228,7 @@ export default function Settings() {
     }
   };
 
-  const dossiers = [
-    { cle: "state_dir", defaut: defauts.state, label: t("settings.stateDir"), quoi: t("settings.shortState") },
-    { cle: "output_dir", defaut: defauts.output, label: t("settings.outputDir"), quoi: t("settings.shortOutput") },
-    { cle: "publish_dir", defaut: defauts.publish, label: t("settings.publishDir"), quoi: t("settings.shortPublish") },
-  ];
   const fuseaux: string[] = typeof (Intl as any).supportedValuesOf === "function" ? (Intl as any).supportedValuesOf("timeZone") : [];
-  // Tarif public du fournisseur préréglé, arrondi au millième : une ligne discrète, pas un tableau.
-  const tx = d.transcription ?? {};
-  const presetTx = (tx.providers ?? []).find((p: any) => p.key === f.transcription_provider);
-  const prixTx = typeof presetTx?.price_per_hour === "number" ? presetTx.price_per_hour : null;
-  const prix = (v: number) =>
-    new Intl.NumberFormat(i18n.language, { style: "currency", currency: "USD", maximumFractionDigits: 3 }).format(v);
-
   const contenu: Record<string, React.ReactNode> = {
     mosque: (
       <div className="grid gap-3.5">
@@ -429,12 +243,6 @@ export default function Settings() {
         <Field label={t("settings.mawaqit")} aide={t("settings.mawaqitHelp")}>
           <input className={inputClass} value={f.mawaqit_url} onChange={maj("mawaqit_url")} placeholder="https://mawaqit.net/fr/…" inputMode="url" />
         </Field>
-        {!verrouille("public_url") && (
-          <Field label={t("settings.publicUrl")} aide={t("settings.publicUrlHelp")}>
-            <input className={inputClass} value={adresse} placeholder="https://sada.exemple.org"
-              onChange={(e) => { setAdresse(e.target.value); setMsg(null); }} inputMode="url" />
-          </Field>
-        )}
       </div>
     ),
     logo: (
@@ -459,27 +267,6 @@ export default function Settings() {
           valeur={sousOnglet} onChange={(c) => { setSousOnglet(c); setMsg(null); }} />
         {sousOnglet === "connexion" && <div className="grid max-w-[520px] gap-3.5"
           role="tabpanel" id={idPanneau("reglages-live", "connexion")} aria-labelledby={idOnglet("reglages-live", "connexion")}>
-        {/* Hosted: the connection to the live program is the platform's, so nothing to show here. */}
-        {!verrouille("orchestrator_url") && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t("settings.orchestrator")} aide={t("settings.orchestratorHelp")}>
-                <input className={inputClass} value={f.orchestrator_url} onChange={maj("orchestrator_url")} placeholder="http://127.0.0.1:8088" />
-              </Field>
-              <Field label={t("settings.token")} aide={t("settings.tokenHelp")}>
-                <input className={inputClass} type="password" autoComplete="off" value={f.orchestrator_token} onChange={maj("orchestrator_token")} />
-              </Field>
-            </div>
-            <p className="m-0 text-[0.82rem] leading-[1.5] text-muted">
-              {t("settings.orchDoc")}{" "}
-              <a href="/docs/orchestrateur" target="_blank" rel="noreferrer"
-                className={`${toucherEnLigne} font-semibold text-deep underline decoration-line decoration-1 underline-offset-4`}>
-                {t("settings.orchDocLink")}
-              </a>
-            </p>
-          </>
-        )}
-
         {/* Video input: the same choice as in "Mise en route", editable here afterwards. */}
         <div className="border-t border-line pt-3.5">
           <p className="m-0 mb-2 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-green">{t("settings.inputKicker")}</p>
@@ -559,152 +346,6 @@ export default function Settings() {
             {t("settings.destAdd")}
           </Btn>
         </div>}
-      </div>
-    ),
-    folders: (
-      <div>
-        {/* The introduction describes the three fields: it goes before, not under the first one. */}
-        <p className="mt-0 mb-3 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.foldersHint")}</p>
-        <div className="grid gap-2.5">
-          {dossiers.map((ch) => (
-            /* One folder per line: the path, and its two buttons beside it. */
-            <div key={ch.cle} className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-              <Field label={`${ch.label} — ${ch.quoi}`}>
-                <Chemin valeur={f[ch.cle]} defaut={ch.defaut} />
-              </Field>
-              <div className="flex gap-2 sm:pb-0.5">
-                <Btn type="button" variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.9rem]" onClick={() => setParcourir(ch.cle)}>
-                  {t("common.browse")}
-                </Btn>
-                <Btn type="button" variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.9rem]" disabled={!f[ch.cle]}
-                  onClick={() => { setF((x) => ({ ...x, [ch.cle]: "" })); setMsg(null); }}>
-                  {t("settings.folderClear")}
-                </Btn>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    ),
-    model: d.model && (
-      <div className="grid gap-3">
-        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.modelHint")}</p>
-        <label className="flex items-center gap-2 text-[0.95rem] font-semibold">
-          <input type="checkbox" checked={f.enabled === "1"}
-            onChange={(e) => { setF((x) => ({ ...x, enabled: e.target.checked ? "1" : "0" })); setMsg(null); }} />
-          {t("settings.modelEnabled")}
-        </label>
-        {/* Three fields on two lines rather than one column: the tab fits on a laptop screen. */}
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <Field label={t("settings.modelUrl")}>
-            <input className={inputClass} value={f.url} onChange={maj("url")} placeholder={d.model.effective?.url} inputMode="url" />
-          </Field>
-          <Field label={t("settings.modelName")}>
-            <input className={inputClass} value={f.model} onChange={maj("model")} placeholder={d.model.effective?.model} />
-          </Field>
-        </div>
-        <Field label={t("settings.modelProtocol")} aide={d.model.has_key ? t("settings.modelKeyKept") : undefined}>
-          <select className={`${inputClass} max-w-[260px]`} value={f.protocol} onChange={maj("protocol")}>
-            <option value="">{t("settings.modelAuto")}</option>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-          </select>
-        </Field>
-        <p className="m-0 text-[0.85rem] text-muted">{t("settings.modelNow", { label: d.model.label })}</p>
-        <div className="flex flex-wrap items-center gap-3">
-          <Bulle texte={t("settings.modelTestSave")} actif={modifie}>
-            <Btn type="button" variante="ghost" disabled={modifie || test?.etat === "cours"} onClick={tester}>
-              {t("settings.modelTest")}
-            </Btn>
-          </Bulle>
-          {test && (
-            <span role="status" className={`text-[0.9rem] ${test.etat === "echec" ? "text-[#7a1f20]" : "text-muted"}`}>{test.texte}</span>
-          )}
-        </div>
-      </div>
-    ),
-    transcription: d.transcription && (
-      <div className="grid max-w-[560px] gap-3.5">
-        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.transcriptionHint")}</p>
-        {/* Deux modes dans un seul contrôle : le formulaire s'allonge, la page ne bouge pas. */}
-        <div>
-          <span className="mb-1 block text-[0.9rem] font-semibold">{t("settings.transcriptionMode")}</span>
-          <Segmented
-            items={[
-              { cle: "local", label: t("settings.transcriptionLocal") },
-              { cle: "distant", label: t("settings.transcriptionDistant") },
-            ]}
-            base="reglages-transcription" label={t("settings.transcriptionMode")}
-            valeur={f.transcription_mode}
-            onChange={(c) => {
-              setF((x) => ({ ...x, transcription_mode: c }));
-              setMsg(null); setEssaiTranscription(null);
-            }}
-          />
-          <p className="m-0 max-w-[72ch] text-[0.84rem] leading-[1.5] text-muted">
-            {t(f.transcription_mode === "distant" ? "settings.transcriptionDistantHelp" : "settings.transcriptionLocalHelp")}
-          </p>
-        </div>
-        {f.transcription_mode === "distant" && (
-          <>
-            <div className="grid gap-3.5 sm:grid-cols-2">
-              <Field label={t("settings.transcriptionProvider")}>
-                <select className={inputClass} value={f.transcription_provider}
-                  onChange={(e) => {
-                    // Changer de fournisseur reprend son adresse et son modèle ; la clé, elle, reste.
-                    const p = e.target.value;
-                    setF((x) => ({ ...x, transcription_provider: p, transcription_url: "", transcription_model: "" }));
-                    setMsg(null); setEssaiTranscription(null);
-                  }}>
-                  {(tx.providers ?? []).map((p: any) => <option key={p.key} value={p.key}>{p.label}</option>)}
-                  <option value="custom">{t("settings.transcriptionCustom")}</option>
-                </select>
-              </Field>
-              <Field label={t("settings.transcriptionModel")}>
-                <input className={inputClass} value={f.transcription_model} spellCheck={false}
-                  placeholder={presetTx?.model ?? "whisper-1"} onChange={maj("transcription_model")} />
-              </Field>
-            </div>
-            {f.transcription_provider === "custom" ? (
-              <Field label={t("settings.transcriptionUrl")} aide={t("settings.transcriptionUrlHelp")}>
-                <input className={`${inputClass} font-mono text-[0.88rem]`} value={f.transcription_url}
-                  placeholder="https://exemple.org/v1" inputMode="url" spellCheck={false} autoComplete="off"
-                  onChange={maj("transcription_url")} />
-              </Field>
-            ) : (
-              <p className="m-0 font-mono text-[0.82rem] text-muted">{presetTx?.url}</p>
-            )}
-            <Field label={t("settings.transcriptionKey")} aide={t("settings.transcriptionKeyHelp")}>
-              <input className={inputClass} type="password" value={f.transcription_key} spellCheck={false}
-                placeholder={tx.has_key ? t("settings.transcriptionKeySet") : "sk-…"}
-                autoComplete="new-password" onChange={maj("transcription_key")} />
-            </Field>
-            <p className="m-0 text-[0.85rem] text-muted">
-              {prixTx !== null
-                ? t("settings.transcriptionCost", { price: prix(prixTx) })
-                : t("settings.transcriptionCostUnknown")}
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <Bulle texte={t("settings.transcriptionTestSave")} actif={modifie}>
-                <Btn type="button" variante="ghost" disabled={modifie || essaiTranscription?.etat === "cours"}
-                  onClick={testerTranscription}>
-                  {t("settings.transcriptionTest")}
-                </Btn>
-              </Bulle>
-              {essaiTranscription && (
-                <span role="status"
-                  className={`text-[0.9rem] ${essaiTranscription.etat === "echec" ? "text-[#7a1f20]" : "text-muted"}`}>
-                  {essaiTranscription.texte}
-                </span>
-              )}
-            </div>
-          </>
-        )}
-        <p className="m-0 text-[0.85rem] text-muted">
-          {tx.mode === "distant"
-            ? t("settings.transcriptionNow", { label: tx.label })
-            : t("settings.transcriptionNowLocal")}
-        </p>
       </div>
     ),
     processing: (
@@ -822,63 +463,6 @@ export default function Settings() {
         </div>
       </div>
     ),
-    replays: (
-      <div className="grid gap-1.5">
-        {/* Where the recordings go after the live: one line per field, the folder beside its switch. */}
-        <p className="m-0 max-w-[80ch] text-[0.9rem] text-muted">{t("settings.replayHint")}</p>
-        <Field label={t("settings.replayEndpoint")}>
-          <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.endpoint} spellCheck={false}
-            placeholder="https://<compte>.r2.cloudflarestorage.com"
-            onChange={(e) => { setStockage((s) => ({ ...s, endpoint: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
-        </Field>
-        <div className="grid gap-2.5 sm:grid-cols-[1fr_9rem]">
-          <Field label={t("settings.replayBucket")}>
-            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.bucket} spellCheck={false}
-              placeholder="sada-rediffusions"
-              onChange={(e) => { setStockage((s) => ({ ...s, bucket: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
-          </Field>
-          <Field label={t("settings.replayRegion")}>
-            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.region} spellCheck={false}
-              placeholder="auto"
-              onChange={(e) => { setStockage((s) => ({ ...s, region: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
-          </Field>
-        </div>
-        <div className="grid gap-2.5 sm:grid-cols-2">
-          <Field label={t("settings.replayAccessKey")}>
-            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.access_key}
-              autoComplete="off" spellCheck={false}
-              onChange={(e) => { setStockage((s) => ({ ...s, access_key: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
-          </Field>
-          <Field label={t("settings.replaySecretKey")} aide={stockage.secret_key === "••••••" ? t("settings.replayKeyKept") : undefined}>
-            <input className={inputClass} type="password" autoComplete="off" value={stockage.secret_key}
-              onChange={(e) => { setStockage((s) => ({ ...s, secret_key: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
-          </Field>
-        </div>
-        {d.storage?.scope === "platform" && (
-          <p className="m-0 max-w-[80ch] text-[0.85rem] leading-[1.5] text-muted">{t("settings.replayPrefixPlatform")}</p>
-        )}
-        <div className="grid items-end gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <Field label={t("settings.replayPrefix")}>
-            <input className={`${inputClass} font-mono text-[0.85rem]`} value={stockage.prefix} spellCheck={false}
-              placeholder="rediffusions/"
-              onChange={(e) => { setStockage((s) => ({ ...s, prefix: e.target.value })); setEssaiStockage(null); setMsg(null); }} />
-          </Field>
-          <label className="flex items-center gap-1.5 pb-2.5 text-[0.9rem] font-semibold whitespace-nowrap">
-            <input type="checkbox" checked={stockage.enabled}
-              onChange={(e) => { setStockage((s) => ({ ...s, enabled: e.target.checked })); setMsg(null); }} />
-            {t("settings.replayEnabled")}
-          </label>
-          <Bulle texte={t("settings.replaySaveFirst")} actif={stockageModifie}>
-            <Btn type="button" variante="ghost" className="mb-0.5 whitespace-nowrap" disabled={stockageModifie} onClick={testerStockage}>
-              {t("settings.replayTest")}
-            </Btn>
-          </Bulle>
-        </div>
-        {essaiStockage && (
-          <span role="status" className={`text-[0.88rem] ${essaiStockage.ok ? "text-green" : "text-[#7a1f20]"}`}>{essaiStockage.detail}</span>
-        )}
-      </div>
-    ),
   };
 
   // Only the tabs that have content are offered; the others are announced as disabled.
@@ -911,13 +495,6 @@ export default function Settings() {
           )}
         </Card>
       </form>
-      {parcourir && (
-        <Parcourir
-          depart={f[parcourir]}
-          onFermer={() => setParcourir(null)}
-          onChoix={(chemin) => { setF((x) => ({ ...x, [parcourir]: chemin })); setMsg(null); setParcourir(null); }}
-        />
-      )}
     </div>
   );
 }
