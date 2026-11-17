@@ -5,6 +5,7 @@ import { api, onUnauthorized, setCsrf, type Session } from "./api";
 import { LANGUAGES, setLanguage } from "./i18n";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import Regie from "./pages/Regie";
 import Sermons from "./pages/Sermons";
 import SermonDetail from "./pages/SermonDetail";
 import Habillage from "./pages/Habillage";
@@ -97,7 +98,7 @@ export default function App() {
         to={to}
         end={to === "/"}
         className={({ isActive }) =>
-          `flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 min-[1120px]:px-2 text-[0.95rem] font-semibold whitespace-nowrap no-underline transition-colors max-md:min-h-11 pointer-coarse:min-h-11 ${
+          `flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 min-[1120px]:px-1.5 min-[1600px]:px-2 text-[0.95rem] font-semibold whitespace-nowrap no-underline transition-colors max-md:min-h-11 pointer-coarse:min-h-11 ${
             isActive ? "bg-leaf/15 text-white" : "text-night-link hover:bg-leaf/20 hover:text-white"
           }`
         }
@@ -175,6 +176,7 @@ export default function App() {
               min-[1120px]:order-none min-[1120px]:ml-auto min-[1120px]:w-auto min-[1120px]:min-w-0 min-[1120px]:shrink`}
           >
             {lien("/", "dashboard")}
+            {lien("/regie", "regie", "live")}
             {lien("/khutbas", "sermons")}
             {lien("/dars", "dars")}
             {lien("/clips", "clips", undefined, session.counts?.pending ?? 0, session.counts?.failed ?? 0)}
@@ -232,6 +234,7 @@ export default function App() {
       <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-6 pb-16">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/regie" element={<Regie />} />
           <Route path="/khutbas" element={<Sermons />} />
           <Route path="/dars" element={<Dars />} />
           <Route path="/clips" element={<Clips />} />

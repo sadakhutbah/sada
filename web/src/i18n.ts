@@ -8,7 +8,7 @@ const fr = {
   app: { name: "Sadā" },
   player: { play: "Lire", pause: "Pause", seek: "Position", back: "Reculer de 10 s", forward: "Avancer de 10 s", mute: "Couper le son", unmute: "Remettre le son", volume: "Volume", speed: "Vitesse de lecture", fullscreen: "Plein écran", exitFullscreen: "Quitter le plein écran", subtitles: "Sous-titres", subtitlesKey: "Sous-titres (C)", subtitlesChoose: "Langue des sous-titres", subtitlesOff: "Aucun" },
   nav: {
-    dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", clips: "Clips", publications: "Publication",
+    dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", clips: "Clips", publications: "Publication", regie: "Régie",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu", platform: "Plateforme",
   },
   states: {
@@ -112,6 +112,18 @@ const fr = {
       hiddenPath: "fichier",
       state: { attente: "en attente", en_cours: "transcription en cours", termine: "extraits prêts", echec: "échec" },
     },
+  },
+  regie: {
+    title: "Régie", connecting: "Connexion…",
+    preview: "Aperçu", previewHint: "entrée brute de la mosquée", program: "Programme", programHint: "sortie à l'antenne",
+    onAir: "À l'antenne", offline: "Hors ligne", offlineHint: "Aucun flux reçu pour le moment.",
+    soundOn: "Son", soundOff: "Couper", kbps: "{{n}} kb/s", readers: "Lecteurs : {{n}}",
+    clock: "Heure", onAirFor: "À l'antenne depuis", next: "Prochaine session", mode: "Mode",
+    auto: "automatique", manual: "manuel",
+    scenes: "Scènes", sceneActive: "à l'antenne", sceneCamera: "caméra", sceneScreen: "écran",
+    transport: "Commandes", skip: "Passer", autoOn: "Auto actif", autoResume: "Reprendre l'auto",
+    janazaShown: "À l'écran :",
+    janazaHint: "Le nom et la mention s'affichent sur l'écran de janaza, avec l'accord de la famille.",
   },
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
@@ -521,7 +533,7 @@ const en: typeof fr = {
   app: { name: "Sadā" },
   player: { play: "Play", pause: "Pause", seek: "Position", back: "Back 10 s", forward: "Forward 10 s", mute: "Mute", unmute: "Unmute", volume: "Volume", speed: "Playback speed", fullscreen: "Full screen", exitFullscreen: "Exit full screen", subtitles: "Subtitles", subtitlesKey: "Subtitles (C)", subtitlesChoose: "Subtitle language", subtitlesOff: "None" },
   nav: {
-    dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", clips: "Clips", publications: "Publishing",
+    dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", clips: "Clips", publications: "Publishing", regie: "Control room",
     settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu", platform: "Platform",
   },
   states: {
@@ -622,6 +634,18 @@ const en: typeof fr = {
       hiddenPath: "file",
       state: { attente: "waiting", en_cours: "transcribing", termine: "clips ready", echec: "failed" },
     },
+  },
+  regie: {
+    title: "Control room", connecting: "Connecting…",
+    preview: "Preview", previewHint: "raw feed from the mosque", program: "Programme", programHint: "on-air output",
+    onAir: "On air", offline: "Offline", offlineHint: "No stream received yet.",
+    soundOn: "Sound", soundOff: "Mute", kbps: "{{n}} kb/s", readers: "Viewers: {{n}}",
+    clock: "Time", onAirFor: "On air for", next: "Next session", mode: "Mode",
+    auto: "automatic", manual: "manual",
+    scenes: "Scenes", sceneActive: "on air", sceneCamera: "camera", sceneScreen: "screen",
+    transport: "Controls", skip: "Skip", autoOn: "Auto on", autoResume: "Resume auto",
+    janazaShown: "On screen:",
+    janazaHint: "The name and note appear on the janaza screen, with the family's consent.",
   },
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",

@@ -38,6 +38,9 @@ let jeton = "";
 export function setCsrf(valeur: string) {
   jeton = valeur;
 }
+export function csrf(): string {
+  return jeton;
+}
 
 async function demande<T>(chemin: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -133,6 +136,8 @@ export const api = {
   selectMosque: (mosque_id: number) => ecrire<Session>("POST", "/mosques/select", { mosque_id }),
   leaveMosque: () => ecrire<Session>("POST", "/mosques/leave"),
   dashboard: () => demande<any>("/dashboard"),
+  /** Control room: live state, commands, scenes and the health of the two monitors. */
+  regie: () => demande<any>("/live/regie"),
   /** Runs after the live, newest first (ten at most). Absent backend: the call answers 404 and the
    *  panel stays hidden. */
   traitements: () => demande<TraitementsList>("/traitements"),
