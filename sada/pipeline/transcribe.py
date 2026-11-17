@@ -207,9 +207,10 @@ def transcribe(
 
     with wave.open(wav, "rb") as w:  # we decode the 16 kHz WAV ourselves (avoids PyAV, which is incompatible here)
         audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
-    # Glossaire des termes islamiques : donné en `hotwords`, il stabilise l'orthographe des
-    # translittérations (tawba plutôt que « taouba » ou un mot français approchant).
-    hw = glossary.hotwords() if hotwords is None else hotwords
+    # Le glossaire n'est plus donné à Whisper par défaut : en `hotwords`, ses termes amorçaient des
+    # boucles (« shukr, shukr… » sur 30 s) qui faisaient sauter la parole voisine (dars du 11/11 :
+    # 12 boucles, ~7 min perdues). L'orthographe est corrigée après coup (`glossary.correct`).
+    hw = hotwords or ""
     segs_iter, info = model.transcribe(
         audio,
         multilingual=True,
@@ -235,6 +236,9 @@ def transcribe(
             seg["words"] = [
                 {"w": w.word.strip(), "s": round(w.start, 2), "e": round(w.end, 2)} for w in s.words if w.word.strip()
             ]
+        seg["text"] = glossary.correct(seg["text"])
+        for w in seg.get("words", ()):
+            w["w"] = glossary.correct(w["w"])
         segs.append(seg)
         if len(segs) % 20 == 0:
             log(f"  … {len(segs)} segments, {s.end:.0f}/{info.duration:.0f}s")
@@ -262,7 +266,7 @@ def transcribe(
     retry = settings.arabic_retry_enabled() if arabic_retry is None else bool(arabic_retry)
     if retry:
         engine = LocalEngine(model, audio)
-        res["loops_redone"] = repair.redo_loops(engine, segs, log=log, max_segments=repair.LOOP_RETRY_MAX)
+        res["loops_redone"] = repair.redo_loops(engine, segs, log=log, max_segments=repair.LOOP_RETRY_MAX_LOCAL)
         res["arabic_recovered"] = repair.recover_arabic(
             engine, segs, log=log, max_ranges=RETRY_MAX, min_prob=DETECT_MIN_PROB, margin=RETRY_MARGIN, language=lang
         )
