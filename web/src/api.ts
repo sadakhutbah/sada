@@ -152,6 +152,8 @@ export const api = {
   dashboard: () => demande<any>("/dashboard"),
   /** Control room: live state, commands, scenes and the health of the two monitors. */
   regie: () => demande<any>("/live/regie"),
+  /** Is the mosque on the air right now? One flag, served from the status snapshot (top bar). */
+  liveIndicator: () => demande<{ on: boolean }>("/live/indicator"),
   /** Runs after the live, newest first (ten at most). Absent backend: the call answers 404 and the
    *  panel stays hidden. */
   traitements: () => demande<TraitementsList>("/traitements"),

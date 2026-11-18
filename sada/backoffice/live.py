@@ -138,6 +138,16 @@ def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = N
     return _call(mosque, "POST", cmd, params or None)
 
 
+# States in which the mosque is on the air (the top bar shows "Live"). ARMED and ENDED are part of
+# a live run but nothing is broadcast yet / any more.
+ON_AIR_STATES = frozenset({"BEFORE", "KHUTBA", "PRAYER", "INTERMISSION", "JANAZA", "DARS"})
+
+
+def on_air(st: dict) -> bool:
+    """True when a summarized status says the mosque is broadcasting right now."""
+    return bool(st.get("ok")) and (st.get("state") in ON_AIR_STATES or bool(st.get("stream_on")))
+
+
 def summarize(st: dict) -> dict:
     """Raw orchestrator status -> protocol data: keys and values, no interface text.
 

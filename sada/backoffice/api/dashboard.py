@@ -57,6 +57,14 @@ def dashboard(ctx: CtxDep):
     }
 
 
+@router.get("/live/indicator")
+def live_indicator(ctx: CtxDep):
+    """Is the mosque on the air? Read by the top bar on every page: snapshot only, a single flag."""
+    if not ctx.mosque:
+        return {"on": False}
+    return {"on": live.on_air(live_status(ctx))}
+
+
 @router.post("/live/{cmd}")
 async def live_command(cmd: str, ctx: CtxDep):
     f = await ctx.body()

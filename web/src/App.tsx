@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, onUnauthorized, setCsrf, type Session } from "./api";
-import { LANGUAGES, setLanguage } from "./i18n";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Regie from "./pages/Regie";
@@ -22,19 +21,15 @@ import FirstPassword from "./pages/FirstPassword";
 import MosquePicker from "./pages/MosquePicker";
 import PlatformSettings from "./pages/PlatformSettings";
 import { setCurrentSession } from "./session";
-import { Bulle } from "./ui";
+import TopBar from "./TopBar";
 
 export default function App() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [session, setSession] = useState<Session | null>(null);
   const [pret, setPret] = useState(false);
   const navigate = useNavigate();
   const demarragePropose = useRef(false);
-  // Menu compact sur téléphone : refermé à chaque changement de page.
-  const [menuOuvert, setMenuOuvert] = useState(false);
   const { pathname } = useLocation();
-  const [pageVue, setPageVue] = useState(pathname);
-  if (pageVue !== pathname) { setPageVue(pathname); setMenuOuvert(false); }
 
   useEffect(() => {
     api.session()
@@ -92,44 +87,13 @@ export default function App() {
   const peutChanger = (session.mosques?.length ?? 0) > 1 || !!session.user.operator;
   const changerDeMosquee = () => api.leaveMosque().then(adopter);
 
-  const lien = (to: string, cle: string, perm?: string, compte?: number, echecs?: number) =>
-    perm && !session.user.permissions.includes(perm) ? null : (
-      <NavLink
-        key={to}
-        to={to}
-        end={to === "/"}
-        className={({ isActive }) =>
-          `flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 min-[1120px]:px-1.5 min-[1600px]:px-2 text-[0.95rem] font-semibold whitespace-nowrap no-underline transition-colors max-md:min-h-11 pointer-coarse:min-h-11 ${
-            isActive ? "bg-leaf/15 text-white" : "text-night-link hover:bg-leaf/20 hover:text-white"
-          }`
-        }
-      >
-        {t(`nav.${cle}`)}
-        {compte !== null && compte !== undefined && compte > 0 && (
-          <span className="inline-flex min-w-[1.35rem] justify-center rounded-full bg-leaf px-1.5 text-[0.78rem] font-bold text-night">
-            {compte}
-          </span>
-        )}
-        {!!echecs && (
-          <span title={t("states.menuFailed")} className="inline-flex min-w-[1.35rem] justify-center rounded-full bg-live px-1.5 text-[0.78rem] font-bold text-white">
-            !
-          </span>
-        )}
-      </NavLink>
-    );
-
   // Sign-out: the server clears the session, the login screen takes over without a reload.
-  const deconnexion = async (e: React.MouseEvent) => {
-    e.preventDefault();
+  const deconnexion = async () => {
     await api.logout().catch(() => {});
     setCurrentSession(null);
     setCsrf("");
     setSession(null);
   };
-
-  // Le nom du compte et son rôle portent souvent le même mot (« Administrateur ») : le rôle n'est
-  // affiché que s'il apprend quelque chose.
-  const roleLabel = t(`role.${session.user.role}`, { defaultValue: session.user.role_label });
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -139,100 +103,11 @@ export default function App() {
           <button type="button" onClick={changerDeMosquee} className="cursor-pointer rounded border border-night/40 bg-transparent px-2 py-0.5 font-semibold text-night">{t("picker.leave")}</button>
         </div>
       )}
-      <header className="bg-night text-night-ink shadow-[0_1px_0_rgba(0,0,0,0.2)]">
-        {/* Large écran : une ligne. Tablette : la navigation passe sur une seconde ligne qui défile
-            dans son propre conteneur. Téléphone : bouton « Menu » qui déplie la liste. La page ne
-            doit jamais être plus large que l'écran (sinon iOS dézoome tout le site). */}
-        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 min-[1120px]:flex-nowrap">
-          {/* Brand on two lines: the program, then the mosque below in small text. */}
-          <div className="flex min-w-0 shrink-0 items-center gap-2.5">
-            {/* Identité produit : la marque منبر ; le logo de la mosquée reste dans les écrans live et les clips. */}
-            <img src="/sada-mark-or.svg" alt="" className="h-[26px] w-auto shrink-0" />
-            <span className="flex min-w-0 flex-col">
-              <span className="font-serif text-[1.3rem] leading-none text-white">{t("app.name")}</span>
-              <span className="truncate text-[0.75rem] leading-tight text-night-muted">{mosque.name}</span>
-            </span>
-          </div>
-          <button
-            type="button"
-            aria-expanded={menuOuvert}
-            aria-controls="menu-principal"
-            onClick={() => setMenuOuvert((o) => !o)}
-            className="ml-auto inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 text-[0.95rem] font-semibold text-white md:hidden"
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              {menuOuvert ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 5h14M3 10h14M3 15h14" />}
-            </svg>
-            {t("nav.menu")}
-            {(session.counts?.pending ?? 0) > 0 && (
-              <span className="inline-flex min-w-[1.35rem] justify-center rounded-full bg-leaf px-1.5 text-[0.78rem] font-bold text-night">
-                {session.counts?.pending}
-              </span>
-            )}
-          </button>
-          <nav
-            id="menu-principal"
-            className={`${menuOuvert ? "flex" : "hidden"} order-last w-full flex-col gap-0.5 border-t border-white/10 pt-2
-              md:flex md:flex-row md:flex-nowrap md:items-center md:overflow-x-auto md:border-t-0 md:pt-0
-              min-[1120px]:order-none min-[1120px]:ml-auto min-[1120px]:w-auto min-[1120px]:min-w-0 min-[1120px]:shrink`}
-          >
-            {lien("/", "dashboard")}
-            {lien("/regie", "regie", "live")}
-            {lien("/khutbas", "sermons")}
-            {lien("/dars", "dars")}
-            {lien("/search", "search")}
-            {lien("/clips", "clips", undefined, session.counts?.pending ?? 0, session.counts?.failed ?? 0)}
-            {lien("/publications", "publications", "publish")}
-            {lien("/audit", "audit", "journal")}
-            {lien("/settings", "settings", "admin")}
-            {/* Self-hosted: the administrator who runs the machine also sets the platform. In
-                support mode (hosted operator inside a mosque), the page is reached from the picker. */}
-            {session.user.operator && !session.support && lien("/platform/settings", "platform")}
-          </nav>
-          <div
-            className={`${menuOuvert ? "flex" : "hidden"} order-last w-full flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/10 py-2
-              md:order-none md:ml-auto md:flex md:w-auto md:flex-nowrap md:gap-2.5 md:border-t-0 md:py-0
-              min-[1120px]:ml-0 min-[1120px]:shrink-0 min-[1120px]:border-l min-[1120px]:border-white/15 min-[1120px]:pl-3`}
-          >
-            <select
-              aria-label="Langue"
-              value={i18n.language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="appearance-none rounded-md border border-white/20 bg-white/5 px-1.5 py-1 text-[0.82rem] text-night-ink max-md:min-h-11 max-md:px-3 pointer-coarse:min-h-11"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code} className="text-ink">{l.label}</option>
-              ))}
-            </select>
-            {/* Le rôle passe en info-bulle sur grand écran : la barre tient sur une ligne même avec un badge.
-                La bulle se lit aussi au clavier (aria-describedby), pas seulement à la souris. */}
-            <Bulle texte={roleLabel} actif={roleLabel !== session.user.name}>
-              {/* Le nom porte la bulle : il prend le focus (tabindex 0) pour que le clavier
-                  l'atteigne, comme le demande le motif « tooltip » d'ARIA. */}
-              <span tabIndex={0} className="text-[0.85rem] whitespace-nowrap text-night-link focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf">{session.user.name}</span>
-            </Bulle>
-            {roleLabel !== session.user.name && (
-              <span className="text-[0.78rem] whitespace-nowrap text-night-muted min-[1120px]:hidden">{roleLabel}</span>
-            )}
-            {peutChanger && !session.support && (
-              <button
-                type="button"
-                onClick={changerDeMosquee}
-                className="inline-flex cursor-pointer items-center border-0 bg-transparent p-0 text-[0.85rem] whitespace-nowrap text-night-link hover:text-white max-md:min-h-11 pointer-coarse:min-h-11"
-              >
-                {t("picker.switch")}
-              </button>
-            )}
-            <a
-              href="/"
-              onClick={deconnexion}
-              className="inline-flex items-center text-[0.85rem] whitespace-nowrap text-night-link underline decoration-white/40 underline-offset-4 no-underline hover:text-white max-md:ml-auto max-md:min-h-11 pointer-coarse:min-h-11"
-            >
-              {t("nav.logout")}
-            </a>
-          </div>
-        </div>
-      </header>
+      <TopBar
+        session={session}
+        onLogout={deconnexion}
+        onSwitchMosque={peutChanger && !session.support ? changerDeMosquee : undefined}
+      />
       <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-6 pb-16">
         <Routes>
           <Route path="/" element={<Dashboard />} />
