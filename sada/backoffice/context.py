@@ -195,9 +195,11 @@ def count_clips(ctx: Ctx, status: str) -> int:
     return ctx.conn.scalar(stmt.where(*imam_filter(ctx), Clip.status == status)) or 0
 
 
-def khutba_or_404(ctx: Ctx, kid: int) -> dict:
+def khutba_or_404(ctx: Ctx, kid: int, tarawih: bool = False) -> dict:
+    """A session of the mosque. A tarawih night is a replay only (no transcript, clips, subtitles,
+    dressing): the routes of a khutba do not see it, unless `tarawih` (player, night detail)."""
     k = orm.first(ctx.conn, Khutba, Khutba.id == kid, *imam_filter(ctx))
-    if not k:
+    if not k or (k["kind"] == "tarawih" and not tarawih):
         raise NotFound()
     return k
 

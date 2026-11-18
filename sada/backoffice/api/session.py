@@ -6,6 +6,7 @@ import secrets
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from starlette.concurrency import run_in_threadpool
 
 from .. import auth, db, orm
@@ -21,8 +22,17 @@ from ..context import (
     get_pre_ctx,
     open_mosque,
 )
-from ..models import User
+from ..models import Khutba, User
 from .common import _mosque, _user
+
+
+def _tarawih_nights(ctx) -> int:
+    """Number of tarawih replays: the navigation shows their page only when there are some."""
+    if not ctx.mosque:
+        return 0
+    q = select(func.count()).where(Khutba.mosque_id == ctx.mosque["id"], Khutba.kind == "tarawih")
+    return int(ctx.conn.execute(q).scalar() or 0)
+
 
 router = APIRouter()
 
@@ -115,7 +125,8 @@ async def select_mosque(ctx: PreCtxDep):
     ctx.session = {**ctx.session, "mosque_id": mid, "support": 1 if kind == "support" else 0}
     ctx.support = kind == "support"
     ctx.mosque = open_mosque(ctx.conn, ctx.session, ctx.user)
-    return {**_state(ctx), "counts": {"pending": count_clips(ctx, "a_valider"), "failed": clip_problems(ctx)}}
+    counts = {"pending": count_clips(ctx, "a_valider"), "failed": clip_problems(ctx), "tarawih": _tarawih_nights(ctx)}
+    return {**_state(ctx), "counts": counts}
 
 
 @router.post("/mosques/leave")
@@ -152,4 +163,5 @@ def session(request: Request, conn: ConnDep):
     # The number of clips to validate comes with the session: the navigation shows it as a badge
     # without a second request at startup.
     pending = count_clips(ctx, "a_valider") if ctx.mosque else 0
-    return {**_state(ctx), "counts": {"pending": pending, "failed": clip_problems(ctx) if ctx.mosque else 0}}
+    counts = {"pending": pending, "failed": clip_problems(ctx) if ctx.mosque else 0, "tarawih": _tarawih_nights(ctx)}
+    return {**_state(ctx), "counts": counts}

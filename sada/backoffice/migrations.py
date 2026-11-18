@@ -19,6 +19,7 @@ bases existantes auxquelles il manque des colonnes.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -215,6 +216,32 @@ def _recherche(conn: sa.Connection) -> None:
     _baseline(conn)
 
 
+def _tarawih(conn: sa.Connection) -> None:
+    """Migration 19 : réglages des tarawih par mosquée (mode, période, après-isha, fin sur silence,
+    récitants)."""
+    models.metadata.tables["tarawih"].create(conn, checkfirst=True)
+
+
+_TARAWIH_SIGNAUX = ("after_isha", "isha_min", "silence_end_min", "reciters", "nights")
+
+
+def _khutbas_chapitres(conn: sa.Connection) -> None:
+    """Migration 20 : chapitres d'une séance (récitants d'une nuit de tarawih), et table tarawih
+    d'une première version (un seul imam, fin fixe) mise à jour : l'imam devient la liste des
+    récitants, les colonnes du début et de la fin sur signaux arrivent avec leurs valeurs par défaut."""
+    _add_columns(conn, "khutbas", (("chapters", "TEXT NOT NULL DEFAULT ''"),))
+    have = {c["name"] for c in sa.inspect(conn).get_columns("tarawih")}
+    _add_columns(conn, "tarawih", tuple((c, "") for c in _TARAWIH_SIGNAUX))
+    if "imam" in have:
+        for mid, imam in conn.exec_driver_sql("SELECT mosque_id, imam FROM tarawih").all():
+            if (imam or "").strip():
+                conn.execute(
+                    sa.text("UPDATE tarawih SET reciters = :r WHERE mosque_id = :m"),
+                    {"r": json.dumps([imam.strip()], ensure_ascii=False), "m": mid},
+                )
+        _drop_columns(conn, "tarawih", ("imam",))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -236,6 +263,8 @@ MIGRATIONS: tuple[Migration, ...] = (
         17, "mosques : titre des clips retiré (l'en-tête vient du type d'enregistrement)", _mosques_titre_des_clips
     ),
     Migration(18, "recherche : segments de transcription et versets cités", _recherche),
+    Migration(19, "tarawih : réglages de diffusion par mosquée", _tarawih),
+    Migration(20, "khutbas : chapitres (récitants des tarawih)", _khutbas_chapitres),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

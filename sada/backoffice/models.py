@@ -131,6 +131,8 @@ khutbas = sa.Table(
     sa.Column("title", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("series", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("session_no", sa.Integer),
+    # tarawih: {"reciters": [...], "segments": [{"name", "start", "end"}]} (offsets in s)
+    sa.Column("chapters", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("imported_at", sa.Text, nullable=False),
     sa.UniqueConstraint("mosque_id", "run_id", "session_index"),
 )
@@ -305,6 +307,36 @@ storage = sa.Table(
     sa.Column("secret_key", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("prefix", sa.Text, nullable=False, server_default=_d("'rediffusions/'")),
     sa.Column("enabled", sa.Integer, nullable=False, server_default=_d("0")),
+    sa.Column("updated_at", sa.Text),
+)
+
+# Tarawih of a mosque: one row, read by the engine only between the two dates (Ramadan).
+tarawih = sa.Table(
+    "tarawih",
+    metadata,
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), primary_key=True),
+    sa.Column(
+        "mode",
+        sa.Text,
+        sa.CheckConstraint("mode IN ('off', 'audio', 'video')"),
+        nullable=False,
+        server_default=_d("'audio'"),
+    ),
+    sa.Column("start_date", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("end_date", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("offset_min", sa.Integer, nullable=False, server_default=_d("20")),
+    # safety cap only: a night ends on a long silence with nobody at the front
+    sa.Column("max_min", sa.Integer, nullable=False, server_default=_d("180")),
+    # broadcast the time right after isha (announcements, appeals for donations)
+    sa.Column("after_isha", sa.Integer, nullable=False, server_default=_d("0")),
+    sa.Column("isha_min", sa.Integer, nullable=False, server_default=_d("10")),
+    sa.Column("silence_end_min", sa.Integer, nullable=False, server_default=_d("6")),
+    # ordered roster of reciters (JSON list) and per-night overrides (JSON {"YYYY-MM-DD": [names]})
+    sa.Column("reciters", sa.Text, nullable=False, server_default=_d("'[]'")),
+    sa.Column("nights", sa.Text, nullable=False, server_default=_d("'{}'")),
+    # who confirmed filming the prayer, and when (video mode only)
+    sa.Column("video_confirmed_by", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("video_confirmed_at", sa.Text),
     sa.Column("updated_at", sa.Text),
 )
 
@@ -550,6 +582,10 @@ class LiveInput(Base):
 
 class Storage(Base):
     __table__ = storage
+
+
+class Tarawih(Base):
+    __table__ = tarawih
 
 
 class ScreenText(Base):

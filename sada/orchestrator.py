@@ -339,7 +339,8 @@ class Orchestrator:
     # --- events ---------------------------------------------------------------
     def _next_event(self, now: dt.datetime):
         """Next class, announced on the end screen and during the interlude."""
-        found = events_mod.next_instances(self.program, now, count=1, days=21, times_for=lambda d: self.prayer_times)
+        classes = [e for e in self.program if e.kind != "tarawih"]  # a prayer is not a class to announce
+        found = events_mod.next_instances(classes, now, count=1, days=21, times_for=lambda d: self.prayer_times)
         return found[0] if found else None
 
     # --- broadcast -----------------------------------------------------------
@@ -349,7 +350,7 @@ class Orchestrator:
         if m.scene is not None:
             now = self.clock.now()
             spec = SCENES[m.scene]
-            ev = m.rec.event() if m.scene == "dars" and m.rec is not None else None
+            ev = m.rec.event() if m.scene in ("dars", "tarawih", "tarawih_video") and m.rec is not None else None
             nxt = self._next_event(now) if m.scene in ("dars_fin", "entracte") else None
             key = (
                 m.scene,
@@ -357,6 +358,7 @@ class Orchestrator:
                 m.janaza_name,
                 m.janaza_info,
                 (ev or {}).get("title"),
+                (ev or {}).get("reciter"),
                 getattr(nxt, "starts", None),
                 now.strftime("%H:%M:%S") if spec.ticking else None,
             )

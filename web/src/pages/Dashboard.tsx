@@ -165,9 +165,9 @@ export default function Dashboard() {
 
         {/* Live commands: the list comes from the server (live_commands), with keys, values and a
             danger flag only. Commands with choices (extend, scene) expand; the janaza has its
-            collapsible form. */}
+            collapsible form; the tarawih commands live in the Régie, next to tonight's reciters. */}
         <div className="mt-4 flex flex-wrap items-center gap-2.5">
-          {commandes.filter((c: any) => c.key !== "janaza" && c.key !== "scene").map((c: any) =>
+          {commandes.filter((c: any) => !["janaza", "scene", "tarawih", "next_reciter"].includes(c.key)).map((c: any) =>
             c.choices.length > 0 ? (
               c.choices.map((valeur: string) => (
                 <Btn key={`${c.key}-${valeur}`} variante={variante(c)} disabled={occupe}

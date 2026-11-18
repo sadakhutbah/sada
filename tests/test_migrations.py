@@ -189,3 +189,35 @@ def test_le_schema_des_modeles_est_applique_via_les_migrations(tmp_path):
             assert columns(conn, table.name) == {c.name for c in table.columns}, table.name
     finally:
         conn.close()
+
+
+def test_tarawih_de_la_premiere_version_mis_a_jour(tmp_path):
+    """A base that ran the first tarawih table (single imam, fixed end): the imam becomes the roster,
+    the signal columns arrive with their defaults, and the nights get their chapters column."""
+    path = tmp_path / "tw.db"
+    db.init(path)
+    conn = db.connect(path)
+    try:
+        conn.execute(sa.text("DELETE FROM schema_migrations WHERE version = 20"))
+        conn.execute(sa.text("ALTER TABLE khutbas DROP COLUMN chapters"))
+        for col in migrations._TARAWIH_SIGNAUX:
+            conn.execute(sa.text(f"ALTER TABLE tarawih DROP COLUMN {col}"))
+        conn.execute(sa.text("ALTER TABLE tarawih ADD COLUMN imam TEXT NOT NULL DEFAULT ''"))
+        conn.execute(models.Mosque.__table__.insert().values(slug="exemple", name="Mosquée Exemple", created_at="now"))
+        mid = conn.execute(sa.text("SELECT id FROM mosques")).scalar()
+        conn.execute(
+            sa.text("INSERT INTO tarawih (mosque_id, mode, imam, updated_at) VALUES (:m, 'audio', ' Imam A ', 'now')"),
+            {"m": mid},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db.init(path)
+    conn = db.connect(path)
+    try:
+        assert "imam" not in columns(conn, "tarawih") and "chapters" in columns(conn, "khutbas")
+        row = conn.execute(sa.text("SELECT reciters, silence_end_min, after_isha FROM tarawih")).one()
+        assert row == ('["Imam A"]', 6, 0)
+    finally:
+        conn.close()

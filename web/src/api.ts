@@ -10,7 +10,7 @@ export type Session = {
   /** The operator is inside a mosque as support: every action is audited. */
   support?: boolean;
   csrf: string;
-  counts?: { pending: number; failed?: number };
+  counts?: { pending: number; failed?: number; tarawih?: number };
 };
 
 /** A mosque as the operator's platform screens show it: the orchestrator token never in clear. */
@@ -175,6 +175,7 @@ export const api = {
   /** The months that contain khutbas: the period picker is based on them. */
   sermonsMois: (kind = "") => demande<{ items: { mois: string; n: number }[] }>(`/sermons/mois${kind ? `?kind=${kind}` : ""}`),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
+  tarawihNight: (id: number) => demande<any>(`/tarawih/nights/${id}`),
   search: (q: string, limit = 20) => demande<SearchResponse>(`/search?${new URLSearchParams({ q, limit: String(limit) })}`),
   clips: (status = "", limit = 20, offset = 0) => {
     const p = new URLSearchParams({ limit: String(limit), offset: String(offset) });
@@ -242,6 +243,7 @@ export const api = {
   /** Orchestrator of one mosque: sending the mask back keeps the stored token. */
   orchestrateur: (mid: number, url: string, token: string) =>
     ecrire<{ ok: boolean; message: string; mosque: PlatformMosque }>("PUT", `/platform/mosques/${mid}/orchestrator`, { url, token }),
+  tarawih: (corps: Record<string, unknown>) => ecrire<any>("PUT", "/settings/tarawih", corps),
   traitement: (clips: string, enabled: boolean) =>
     ecrire<any>("PUT", "/settings/processing", { clips, enabled: enabled ? "1" : "0" }),
   testerModele: () => ecrire<any>("POST", "/platform/model/test"),

@@ -16,6 +16,13 @@ An event has either a `date` + `time` (one-off), or a weekly `recurrence`:
 `weekday` (in French), and the time — absolute (`time`) or relative to a prayer (`after` = dhuhr, asr,
 maghrib, isha + `offset_min`), recomputed each day with the Mawaqit times.
 
+Tarawih (Ramadan night prayers) is the one kind that is daily: it carries a `period`
+(`{"from": "2027-02-08", "until": "2027-03-09"}`) and nothing happens outside it. Its session time
+is the END of isha (`isha_end`: the isha iqama from Mawaqit, else the adhan plus a usual delay,
+plus the estimated length of isha), so isha itself is never broadcast; `offset_min` is the delay
+from there to the tarawih proper. It is not kept in the programme: the back office builds it from
+the mosque's Tarawih settings.
+
 No I/O here apart from the programme file itself (tolerant read, atomic write): all the
 computation is testable.
 """
@@ -32,9 +39,16 @@ from pathlib import Path
 from .i18n import _
 from .text import JOURS
 
-KINDS = {"khutba", "dars", "conference"}
+KINDS = {"khutba", "dars", "conference", "tarawih"}
 PRAYERS = ("dhuhr", "asr", "maghrib", "isha")
-KIND_LABELS = {"khutba": "Khutba", "dars": "Dars", "conference": "Conférence"}
+KIND_LABELS = {"khutba": "Khutba", "dars": "Dars", "conference": "Conférence", "tarawih": "Tarawih"}
+#: How a tarawih is broadcast: `audio` = sound with a fixed full screen (the default), `video` =
+#: camera and sound (chosen deliberately), `off` = not broadcast (never sent to the engine).
+TARAWIH_MODES = ("off", "audio", "video")
+#: Isha iqama unknown (no Mawaqit iqama): the prayer is assumed to start this long after the adhan.
+ISHA_IQAMA_DELAY_MIN = 10.0
+#: Default estimated length of the isha prayer itself, from its iqama.
+ISHA_DEFAULT_MIN = 10.0
 #: Header of a Friday khutba, used wherever a clip or a publication needs one: the type of the
 #: record gives the header, the subject of the clip stays the subtitle. One constant only.
 KHUTBA_TITLE = "Khutba du vendredi"
@@ -82,16 +96,21 @@ class EventInstance:
     max_min: float | None = None
     publish: bool = True
     uid: str = ""
+    mode: str = ""  # tarawih only: audio | video
+    tarawih: dict | None = None  # tarawih only: after_isha, offset_min, silence_end_min, night, reciters
 
     def as_event(self) -> dict:
         """Canonical form of an event: the keys read by the machine and the scenes (those of SessionRec)."""
-        return {
+        out = {
             "kind": self.kind,
             "title": self.title,
             "speaker": self.speaker,
             "series": self.series,
             "session_no": self.session,
         }
+        if self.kind == "tarawih":
+            out.update(mode=self.mode, max_min=self.max_min, **(self.tarawih or {}))
+        return out
 
     @property
     def label(self) -> str:
@@ -100,7 +119,7 @@ class EventInstance:
 
 @dataclass
 class Recurrence:
-    weekday: int
+    weekday: int | None  # None: every day (tarawih, bounded by its period)
     time: str | None = None
     after: str | None = None
     offset_min: float = 0.0
@@ -120,11 +139,17 @@ class Event:
     time: dt.time | None = None
     recurrence: Recurrence | None = None
     uid: str = ""
+    mode: str = ""
+    period: tuple[dt.date, dt.date] | None = None  # first and last day (tarawih)
+    isha_min: float = ISHA_DEFAULT_MIN  # tarawih: estimated length of isha
 
     def occurs_on(self, day: dt.date) -> bool:
+        if self.period is not None and not (self.period[0] <= day <= self.period[1]):
+            return False
         if self.date is not None:
             return self.date == day
-        return self.recurrence is not None and self.recurrence.weekday == day.weekday()
+        rec = self.recurrence
+        return rec is not None and (rec.weekday is None or rec.weekday == day.weekday())
 
     def starts_on(self, day: dt.date, times: Mapping[str, object] | None = None) -> dt.datetime | None:
         """Start time on that day, or None if it cannot be computed (prayer missing)."""
@@ -135,6 +160,8 @@ class Event:
         rec = self.recurrence
         if rec is None:
             return None
+        if self.kind == "tarawih":
+            return isha_end(day, times, self.isha_min)
         if rec.time:
             return dt.datetime.combine(day, parse_hhmm(rec.time))
         if rec.after:
@@ -158,7 +185,23 @@ class Event:
             max_min=self.max_min,
             publish=self.publish,
             uid=self.uid,
+            mode=self.mode,
+            tarawih=self._night(day) if self.kind == "tarawih" else None,
         )
+
+    def _night(self, day: dt.date) -> dict:
+        """What a tarawih night carries to the engine: start rules, night number, reciters (the
+        night's own list when the mosque set one, otherwise the roster, in order)."""
+        raw = self.raw
+        nights = raw.get("nights") if isinstance(raw.get("nights"), dict) else {}
+        reciters = nights.get(day.isoformat()) or raw.get("reciters") or []
+        return {
+            "after_isha": bool(raw.get("after_isha")),
+            "offset_min": float(self.recurrence.offset_min if self.recurrence else 0.0),
+            "silence_end_min": float(raw["silence_end_min"]) if raw.get("silence_end_min") else None,
+            "night": (day - self.period[0]).days + 1 if self.period else None,
+            "reciters": [str(n).strip() for n in reciters if str(n).strip()],
+        }
 
 
 def uid_of(raw: Mapping, idx: int) -> str:
@@ -175,6 +218,8 @@ def _parse(raw: dict, idx: int) -> Event:
         raise ValueError(
             _("{where}: unknown type {kind} (expected: {valid})", where=where, kind=repr(kind), valid=sorted(KINDS))
         )
+    if kind == "tarawih":
+        return _parse_tarawih(raw, idx, where)
     title = str(raw.get("title", "")).strip()
     if not title:
         raise ValueError(_("{where}: title missing", where=where))
@@ -234,6 +279,53 @@ def _parse(raw: dict, idx: int) -> Event:
         recurrence=rec,
         uid=uid_of(raw, idx),
     )
+
+
+def _parse_tarawih(raw: dict, idx: int, where: str) -> Event:
+    """Nightly tarawih: a period, a start after isha, a broadcast mode. Anything else is refused,
+    so a malformed entry can never be planned all year long or on top of isha."""
+    mode = str(raw.get("mode", "audio")).strip().lower()
+    if mode not in ("audio", "video"):
+        raise ValueError(_("{where}: invalid tarawih mode {mode}", where=where, mode=repr(mode)))
+    period = raw.get("period")
+    try:
+        first = dt.date.fromisoformat(str(period["from"]))
+        last = dt.date.fromisoformat(str(period["until"]))
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(_("{where}: a tarawih needs a period (from, until)", where=where)) from e
+    if last < first:
+        raise ValueError(_("{where}: the period ends before it starts", where=where))
+    r = raw.get("recurrence") or {}
+    offset = float(r.get("offset_min", 0) or 0) if isinstance(r, dict) else 0.0
+    isha_min = float(raw.get("isha_min") or ISHA_DEFAULT_MIN)
+    if offset < 0 or isha_min < 5:
+        raise ValueError(_("{where}: a tarawih starts after isha (positive offset)", where=where))
+    return Event(
+        raw=raw,
+        kind="tarawih",
+        title=str(raw.get("title", "") or "").strip() or KIND_LABELS["tarawih"],
+        speaker=str(raw.get("speaker", "") or "").strip(),
+        max_min=float(raw["max_min"]) if raw.get("max_min") else None,
+        publish=bool(raw.get("publish", True)),
+        recurrence=Recurrence(weekday=None, after="isha", offset_min=offset),
+        uid=uid_of(raw, idx),
+        mode=mode,
+        period=(first, last),
+        isha_min=isha_min,
+    )
+
+
+def isha_end(day: dt.date, times: Mapping[str, object] | None, isha_min: float = ISHA_DEFAULT_MIN):
+    """Estimated end of isha on that day: its iqama (Mawaqit, `isha_iqama`) when published, else
+    the adhan plus the usual delay, plus the length of the prayer. None without an isha time."""
+    times = times or {}
+    if times.get("isha_iqama"):
+        start = _as_datetime(day, times["isha_iqama"])
+    elif times.get("isha"):
+        start = _as_datetime(day, times["isha"]) + dt.timedelta(minutes=ISHA_IQAMA_DELAY_MIN)
+    else:
+        return None
+    return start + dt.timedelta(minutes=isha_min)
 
 
 def loads(text: str) -> list[Event]:

@@ -221,6 +221,8 @@ def test_le_tableau_de_bord_n_envoie_aucun_texte_d_interface(env):
         "skip",
         "scene",
         "janaza",
+        "tarawih",
+        "next_reciter",
         "stop",
         "cancel",
     ]

@@ -138,9 +138,22 @@ def command(mosque: dict, cmd: str, arg: str | None = None, info: str | None = N
     return _call(mosque, "POST", cmd, params or None)
 
 
+def _tarawih(ev: dict | None) -> dict | None:
+    """Tonight's tarawih as the control room needs it: night number, reciters, current reciter
+    (None until the control room says who: never guessed)."""
+    if not isinstance(ev, dict) or ev.get("kind") != "tarawih":
+        return None
+    return {
+        "night": ev.get("night"),
+        "mode": ev.get("mode"),
+        "reciters": list(ev.get("reciters") or []),
+        "reciter": ev.get("reciter"),
+    }
+
+
 # States in which the mosque is on the air (the top bar shows "Live"). ARMED and ENDED are part of
 # a live run but nothing is broadcast yet / any more.
-ON_AIR_STATES = frozenset({"BEFORE", "KHUTBA", "PRAYER", "INTERMISSION", "JANAZA", "DARS"})
+ON_AIR_STATES = frozenset({"BEFORE", "KHUTBA", "PRAYER", "INTERMISSION", "JANAZA", "DARS", "TARAWIH"})
 
 
 def on_air(st: dict) -> bool:
@@ -177,6 +190,7 @@ def summarize(st: dict) -> dict:
         "run_id": st.get("run_id"),
         "janaza_name": st.get("janaza_name"),
         "janaza_info": st.get("janaza_info"),
+        "tarawih": _tarawih(st.get("event")),
         "encoder_alive": bool((st.get("encoder") or {}).get("alive")),
         "vad_connected": bool((st.get("vad") or {}).get("connected")),
     }

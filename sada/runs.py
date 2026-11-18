@@ -57,8 +57,9 @@ def latest(state_dir: Path = paths.STATE) -> Path | None:
 
 
 def produces_content(s: dict) -> bool:
-    """The session feeds the pipeline (transcription, clips, import): everything but the Janaza."""
-    return s.get("status") != "janaza"
+    """The session feeds the pipeline (transcription, clips, import): everything but the Janaza and
+    the tarawih (prayers: recorded like any session, never cut into clips)."""
+    return s.get("status") != "janaza" and s.get("kind") != "tarawih"
 
 
 def is_done(s: dict) -> bool:

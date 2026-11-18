@@ -23,7 +23,7 @@ def dashboard(ctx: CtxDep):
         ctx.conn,
         select(Khutba.__table__, User.display_name.label("imam"))
         .outerjoin(User, User.id == Khutba.imam_id)
-        .where(*where)
+        .where(*where, func.coalesce(Khutba.kind, "") != "tarawih")  # replays: their own page
         .order_by(Khutba.date.desc(), Khutba.run_id.desc(), Khutba.session_index)
         .limit(6),
     )

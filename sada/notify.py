@@ -16,9 +16,9 @@ from .i18n import _, translate
 from .state import Machine, State
 
 # states that deserve a message (ARMED/IDLE round trips are noise)
-NOTIFY_STATES = {State.ARMED, State.KHUTBA, State.DARS, State.STOPPED}
+NOTIFY_STATES = {State.ARMED, State.KHUTBA, State.DARS, State.TARAWIH, State.STOPPED}
 # wording of a session type in a sentence (translated where the sentence is built)
-KIND_NOUNS = {"khutba": "the khutba", "dars": "the dars", "conference": "the conference"}
+KIND_NOUNS = {"khutba": "the khutba", "dars": "the dars", "conference": "the conference", "tarawih": "the tarawih"}
 
 
 def should_send(state: State, m: Machine, now: dt.datetime) -> bool:
@@ -35,7 +35,7 @@ def message_for(state: State, m: Machine) -> str | None:
     titre = f" · {m.rec.title}" if m.rec is not None and m.rec.title else ""
     if state == State.ARMED:
         return _("Reminder: {what} at {time} is approaching; the live stream is being prepared.", what=quoi, time=ref)
-    if state in (State.KHUTBA, State.DARS):
+    if state in (State.KHUTBA, State.DARS, State.TARAWIH):
         return _("The live stream has started ({what} at {time}{title}).", what=quoi, time=ref, title=titre)
     if state == State.STOPPED:
         fin = m.rec.end_reason if m.rec is not None else None

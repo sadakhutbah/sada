@@ -37,6 +37,7 @@ class State(str, Enum):
     JANAZA = "JANAZA"  # manual mode: dedicated full screen, without camera or banner
     DARS = "DARS"  # dars or conference: camera + event banner
     DARS_END = "DARS_END"  # end screen of a dars (next class), before the stream stops
+    TARAWIH = "TARAWIH"  # Ramadan night prayer: sound + fixed full screen, or camera if the mosque chose it
     STOPPED = "STOPPED"  # stream stopped
 
 
@@ -53,8 +54,14 @@ SCENE_OF = {
     State.JANAZA: "janaza",
     State.DARS: "dars",
     State.DARS_END: "dars_fin",
+    State.TARAWIH: "tarawih",
 }
-STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v}
+#: Scene of a tarawih whose mosque chose to film it (see Machine.scene); "tarawih" is the audio one.
+TARAWIH_VIDEO_SCENE = "tarawih_video"
+# a tarawih is never forced by the scene command: only its planned night, in the mosque's mode
+STATE_OF_SCENE = {v: k for k, v in SCENE_OF.items() if v and v != "tarawih"}
+#: States in which a session is open and broadcast with the mic on.
+SESSION_STATES = (State.KHUTBA, State.DARS, State.TARAWIH)
 WAITING = (State.IDLE, State.ARMED, State.BEFORE, State.INTERMISSION)
 
 # Values of the “extend” command, in minutes: the engine default, the local API buttons and the
@@ -63,7 +70,8 @@ EXTEND_MINUTES = ("5", "15")
 
 # Scenes that can be picked by hand, in display order. Janaza has its own command, which opens the
 # form for the name of the deceased. Protocol values only: the front end translates them.
-PICKABLE_SCENES = tuple(sc for sc in SCENE_OF.values() if sc and sc != "janaza")
+# Tarawih is never picked by hand: a prayer is only broadcast on its planned night, in the mode chosen.
+PICKABLE_SCENES = tuple(sc for sc in STATE_OF_SCENE if sc != "janaza")
 
 
 @dataclass
@@ -95,6 +103,12 @@ KHUTBA_TIMING = SessionParams(
     window_after_min=45.0, max_s=3600.0, silence_stop_s=180.0, grace_s=45.0, ended_hold_s=45.0
 )
 DARS_TIMING = SessionParams(window_after_min=90.0, max_s=7200.0, silence_stop_s=180.0, grace_s=90.0, ended_hold_s=45.0)
+# Tarawih: no end screen (the stream stops). No fixed end either: the night ends on a silence longer
+# than the pauses between sets of rak'as, with nobody at the front (see Machine._tick_tarawih);
+# max_s is only a safety cap, replaced by the mosque's own.
+TARAWIH_TIMING = SessionParams(
+    window_after_min=60.0, max_s=10800.0, silence_stop_s=360.0, grace_s=90.0, ended_hold_s=0.0
+)
 
 
 @dataclass
@@ -118,6 +132,8 @@ class MachineParams:
     # per session type: a khutba is bounded by the prayer that follows it, a dars is not
     khutba: SessionParams = field(default_factory=lambda: replace(KHUTBA_TIMING))
     dars: SessionParams = field(default_factory=lambda: replace(DARS_TIMING))
+    tarawih: SessionParams = field(default_factory=lambda: replace(TARAWIH_TIMING))
+    tarawih_min_s: float = 1200.0  # a tarawih night never ends by itself before this
 
 
 @dataclass
@@ -131,23 +147,41 @@ class SessionRec:
     start_clock: str | None = None
     end_clock: str | None = None
     end_reason: str | None = None
-    kind: str = "khutba"  # khutba | dars | conference
+    kind: str = "khutba"  # khutba | dars | conference | tarawih
     title: str = ""
     speaker: str = ""
     series: str = ""
     session_no: int | None = None
+    mode: str = ""  # tarawih: audio | video
+    max_min: float | None = None  # tarawih: safety cap chosen by the mosque
+    after_isha: bool = False  # tarawih: the time right after isha (announcements) may be broadcast
+    offset_min: float = 0.0  # tarawih: from the end of isha to the tarawih proper
+    silence_end_min: float | None = None  # tarawih: silence that ends the night
+    night: int | None = None  # tarawih: night number in the period
+    reciters: list[str] = field(default_factory=list)  # tarawih: the night's reciters, in order
+    reciter: str | None = None  # tarawih: current reciter, only when known (never guessed)
+    reciter_marks: list[dict] = field(default_factory=list)  # tarawih: {"at": s from start, "name"}
 
     def event(self) -> dict | None:
         """Event carried by the session (None for an ordinary khutba); same shape as EventInstance.as_event()."""
         if self.kind == "khutba":
             return None
-        return {
+        out = {
             "kind": self.kind,
             "title": self.title,
             "speaker": self.speaker,
             "series": self.series,
             "session_no": self.session_no,
         }
+        if self.kind == "tarawih":
+            out.update(
+                mode=self.mode,
+                max_min=self.max_min,
+                night=self.night,
+                reciters=list(self.reciters),
+                reciter=self.reciter,
+            )
+        return out
 
 
 def _rows(sessions: list[dt.datetime], extras: list[dict] | None) -> list[tuple[dt.datetime, dict]]:
@@ -211,10 +245,22 @@ class Machine:
             speaker=meta.get("speaker", ""),
             series=meta.get("series", ""),
             session_no=meta.get("session_no"),
+            mode=meta.get("mode") or "",
+            max_min=meta.get("max_min"),
+            after_isha=bool(meta.get("after_isha")),
+            offset_min=float(meta.get("offset_min") or 0.0),
+            silence_end_min=meta.get("silence_end_min"),
+            night=meta.get("night"),
+            reciters=list(meta.get("reciters") or []),
+            # a lone reciter is known; with several, nobody is shown until the control room says who
+            reciter=(meta.get("reciters") or [None])[0] if len(meta.get("reciters") or []) == 1 else None,
         )
 
     @property
     def scene(self) -> str | None:
+        """Scene of the state; a tarawih is filmed only when its mosque chose `video` explicitly."""
+        if self.state == State.TARAWIH and self.rec is not None and self.rec.mode == "video":
+            return TARAWIH_VIDEO_SCENE
         return SCENE_OF[self.state]
 
     @property
@@ -250,9 +296,9 @@ class Machine:
             and reason in ("silence prolongé", "minbar sans visage de face")
         ):
             self.cut = (self.live, old)  # doubtful end: the session can resume (see PRAYER)
-        if self.live and new not in (State.KHUTBA, State.DARS, State.JANAZA) and self.paused_from is None:
+        if self.live and new not in (*SESSION_STATES, State.JANAZA) and self.paused_from is None:
             self._close(sig, reason)  # the open session stops as soon as we leave its screen (except pause)
-        if new in (State.KHUTBA, State.DARS) and not (self.live and self.live.status == "live"):
+        if new in SESSION_STATES and not (self.live and self.live.status == "live"):
             r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
             self._open(r, sig)
@@ -315,16 +361,24 @@ class Machine:
         return self.rec.kind if self.rec else "khutba"
 
     def _entry_state(self) -> State:
-        """Entry state of a session: DARS for a dars / a conference, KHUTBA otherwise."""
-        return State.KHUTBA if self.kind == "khutba" else State.DARS
+        """Entry state of a session: KHUTBA, TARAWIH, or DARS for a dars / a conference."""
+        return {"khutba": State.KHUTBA, "tarawih": State.TARAWIH}.get(self.kind, State.DARS)
+
+    def _timing_of(self, kind: str) -> SessionParams:
+        return {"khutba": self.p.khutba, "tarawih": self.p.tarawih}.get(kind, self.p.dars)
 
     def timing(self) -> SessionParams:
-        """Timing of the session in progress (or of the next one): the khutba's, otherwise the dars's."""
-        return self.p.khutba if self.kind == "khutba" else self.p.dars
+        """Timing of the session in progress (or of the next one); a tarawih ends at its mosque's maximum."""
+        t = self._timing_of(self.kind)
+        if self.kind == "tarawih" and self.rec is not None and self.rec.max_min:
+            t = replace(t, max_s=float(self.rec.max_min) * 60)
+        return t
 
     def _window_end(self) -> dt.datetime:
         assert self.session is not None
         late = self.timing().window_after_min
+        if self.kind == "tarawih" and self.rec is not None:
+            late += self.rec.offset_min  # counted from the tarawih proper, not from the end of isha
         return self.session + dt.timedelta(minutes=late)
 
     def _next_session(self, sig: Signals) -> State:
@@ -339,6 +393,11 @@ class Machine:
         if self.session is None:
             return self._end_state()
         return State.INTERMISSION if self.stream_on else State.IDLE
+
+    def _after_tarawih(self, sig: Signals) -> State:
+        """Where a finished tarawih leads: the next session if any, otherwise the stream stops."""
+        nxt = self._next_session(sig)
+        return State.STOPPED if nxt == State.ENDED else nxt
 
     def _end_state(self) -> State:
         """End of the live: Terminé screen if the stream is running, STOPPED directly otherwise."""
@@ -367,8 +426,7 @@ class Machine:
             State.ARMED,
             State.BEFORE,
             State.INTERMISSION,
-            State.KHUTBA,
-            State.DARS,
+            *SESSION_STATES,
             State.PRAYER,
         )
 
@@ -407,7 +465,7 @@ class Machine:
         fresh: list[tuple[dt.datetime, dict]] = []
         for s, meta in rows:
             kind = meta.get("kind") or "khutba"
-            late = (self.p.khutba if kind == "khutba" else self.p.dars).window_after_min
+            late = self._timing_of(kind).window_after_min
             if (s, kind) in seen or s <= sig.now - dt.timedelta(minutes=late):
                 continue  # already planned, or its window is closed: nothing left to play
             seen.add((s, kind))
@@ -440,7 +498,7 @@ class Machine:
         self.override = True
         st = self._entry_state()
         self._go(st, sig, "commande start")
-        sc = SCENE_OF[st]
+        sc = self.scene
         return _("stream started, scene {scene} (auto suspended: “auto” to resume)", scene=sc)
 
     def _stop(self, sig, arg):
@@ -506,6 +564,43 @@ class Machine:
         self._go(self._end_state(), sig, "live du jour annulé")
         return _("today's live stream cancelled")
 
+    def _tarawih_now(self, sig, arg):
+        """Start tonight's tarawih now (the control room saw it begin). Refused when no tarawih is
+        planned today: outside the period or broadcast off, the back office sends none."""
+        n = len(self.sessions)
+        i = next(
+            (i for i, r in enumerate(self.records[:n]) if r.kind == "tarawih" and r.status in ("pending", "live")),
+            None,
+        )
+        if i is None:
+            return _("no tarawih tonight: outside the period or broadcast off")
+        if self.state == State.TARAWIH:
+            return _("the tarawih is already on air")
+        for r in self.records[self.idx : i]:
+            if r.status == "pending":
+                r.status, r.end_reason = "skipped", "commande tarawih"
+        if self.live is not None:
+            self._close(sig, "commande tarawih")
+        self.idx = i
+        self.paused_from = None
+        self.override = False  # the end stays automatic: silence, presence, safety cap
+        self._go(State.TARAWIH, sig, "commande tarawih")
+        return _("tarawih started by hand, scene {scene}", scene=self.scene)
+
+    def _next_reciter(self, sig, arg):
+        """The next reciter of the night takes over: shown on the slate, kept as a chapter."""
+        r = self.live
+        if self.state != State.TARAWIH or r is None or r.kind != "tarawih":
+            return _("no tarawih on air")
+        if not r.reciters:
+            return _("no reciter listed for tonight")
+        i = (r.reciters.index(r.reciter) + 1) % len(r.reciters) if r.reciter in r.reciters else 0
+        r.reciter = r.reciters[i]
+        rec, pos = self.pos_fn()
+        at = pos - r.start_pos if rec == r.recording and r.start_pos is not None else None
+        r.reciter_marks.append({"at": round(max(at, 0.0), 1) if at is not None else None, "name": r.reciter})
+        return _("current reciter: {name}", name=r.reciter)
+
     def _janaza(self, sig, arg):
         """arg = "name" or "name|note": the record entered in the dashboard (optional fields).
 
@@ -531,6 +626,8 @@ class Machine:
         "skip": _skip_cmd,
         "scene": _scene,
         "janaza": _janaza,
+        "tarawih": _tarawih_now,
+        "next_reciter": _next_reciter,
         "stop": _stop,
         "cancel": _cancel,
     }
@@ -554,6 +651,9 @@ class Machine:
         s = self.session
         if st in WAITING and s is None:
             self._go(self._end_state(), sig, "plus aucune session")
+            return
+        if st in WAITING and self.kind == "tarawih":
+            self._wait_tarawih(sig, s)
             return
 
         if st == State.IDLE:
@@ -584,14 +684,20 @@ class Machine:
                 self._go(State.BEFORE, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
             return
 
-        if st in (State.KHUTBA, State.DARS):
-            dars = st == State.DARS
+        if st == State.TARAWIH:
+            self._tick_tarawih(sig)
+            return
+
+        if st in SESSION_STATES:
+            # a dars or a tarawih is not ended by the face: the imam turns his back in prayer
+            dars = st != State.KHUTBA
             timing = self.timing()
             max_s, silence_s, grace_s = timing.max_s, timing.silence_stop_s, timing.grace_s
-            end = State.DARS_END if dars else State.PRAYER
+            # tarawih: no end screen, the stream stops (or the next session waits), decided on leaving
+            end = {State.KHUTBA: State.PRAYER, State.DARS: State.DARS_END}.get(st)
             elapsed = sig.t - self.entered_t
             if elapsed >= max_s and sig.t >= self.extend_until_t:
-                self._go(end, sig, "durée maximale")
+                self._go(end or self._after_tarawih(sig), sig, "durée maximale")
                 return
             if sig.t < self.extend_until_t:
                 self.grace_until = None
@@ -628,7 +734,9 @@ class Machine:
                     self.grace_until = None
                     self.log(_("voice or face back during the grace period: carrying on"))
                 elif sig.t >= self.grace_until:
-                    self._go(end, sig, getattr(self, "grace_reason", None) or "silence prolongé")
+                    self._go(
+                        end or self._after_tarawih(sig), sig, getattr(self, "grace_reason", None) or "silence prolongé"
+                    )
             return
 
         if st == State.PRAYER:
@@ -639,6 +747,60 @@ class Machine:
             if sig.now >= self.entered_now + dt.timedelta(minutes=self.p.prayer_min):
                 self.cut = (None, None)
                 self._go(self._next_session(sig), sig, "fin de la prière (durée prévue)")
+
+    def _wait_tarawih(self, sig: Signals, s: dt.datetime) -> None:
+        """Before a tarawih night. `s` is the estimated end of isha: nothing is armed earlier, so
+        isha itself is never on air. Then, if the mosque broadcasts the time after isha
+        (announcements, appeals for donations), sustained voice starts at once; otherwise only
+        from the tarawih proper (`offset_min` later), on sustained voice."""
+        r = self.rec
+        assert r is not None
+        if sig.now > self._window_end():
+            self._skip("aucun signal dans la fenêtre")
+            nxt = self._next_session(sig)
+            self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
+            return
+        if sig.now < s:
+            return  # isha in progress: never armed, never broadcast
+        if self.state == State.IDLE:
+            self._go(State.ARMED, sig, f"isha terminée ({s:%H:%M}) : écoute des tarawih")
+        start_at = s + dt.timedelta(minutes=r.offset_min)
+        if self._voice_ok(sig) and (r.after_isha or sig.now >= start_at):
+            why = "voix après l'isha" if sig.now < start_at else "voix (tarawih)"
+            self._go(State.TARAWIH, sig, f"{why} {sig.voice_run:.0f}s")
+
+    def _tick_tarawih(self, sig: Signals) -> None:
+        """End of a tarawih night: no fixed end. The pauses between sets of rak'as (a few minutes
+        of silence, people seated) must not end it, so the end needs a silence longer than a pause
+        (`silence_end_min`), nobody at the front (presence, frontal face) and a minimum length.
+        A silence twice as long ends it even if someone is still there. Grace delay as for a
+        dars: the voice coming back cancels it. The maximum duration is only a safety cap."""
+        timing = self.timing()
+        r = self.live or self.rec
+        elapsed = sig.t - self.entered_t
+        if elapsed >= timing.max_s and sig.t >= self.extend_until_t:
+            self._go(self._after_tarawih(sig), sig, "durée maximale (sécurité)")
+            return
+        if sig.t < self.extend_until_t:
+            self.grace_until = None
+            return
+        need = float(r.silence_end_min) * 60 if r is not None and r.silence_end_min else timing.silence_stop_s
+        someone = sig.presence is True or (
+            sig.face_run is not None and self.p.face_absence_s > 0 and sig.face_run < self.p.face_absence_s
+        )
+        very_long = sig.silence_run >= 2 * need
+        if self.grace_until is None:
+            if elapsed >= self.p.tarawih_min_s and sig.silence_run >= need and (very_long or not someone):
+                self.grace_until = sig.t + timing.grace_s
+                self.grace_reason = "silence prolongé"
+                self.log(
+                    _("silence {silence:.0f}s: grace delay {grace:.0f}s", silence=sig.silence_run, grace=timing.grace_s)
+                )
+        elif sig.voice_run >= 2.0 or (someone and not very_long):
+            self.grace_until = None
+            self.log(_("voice or face back during the grace period: carrying on"))
+        elif sig.t >= self.grace_until:
+            self._go(self._after_tarawih(sig), sig, self.grace_reason or "silence prolongé")
 
     def _resume_cut_session(self, sig: Signals) -> bool:
         """The prayer was displayed on a mistaken end (short silence): the voice comes back, so the

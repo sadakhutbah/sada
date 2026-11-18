@@ -331,6 +331,8 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
         "skip",
         "scene",
         "janaza",
+        "tarawih",
+        "next_reciter",
         "stop",
         "cancel",
     ]
@@ -339,6 +341,15 @@ def test_tableau_de_bord_et_commandes_live(env, orch):
     assert orch.calls == [("extend", "5"), ("janaza", None), ("stop", None), ("cancel", None)]
     log = audit_rows(env["conn"], action="live.commande")
     assert len(log) == 4 and all(a["user_id"] == env["ids"]["imam"] for a in log)
+
+
+def test_commandes_tarawih_journalisees(env, orch):
+    """Start tarawih now and next reciter: live permission, audit-logged like every command."""
+    c = client(env, "imam")
+    for cmd in ("tarawih", "next_reciter"):
+        assert c.ecrire(f"/live/{cmd}").status_code == 200
+    assert orch.calls == [("tarawih", None), ("next_reciter", None)]
+    assert len(audit_rows(env["conn"], action="live.commande")) == 2
 
 
 def test_fiche_janaza_depuis_le_tableau_de_bord(env, orch):

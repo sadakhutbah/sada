@@ -15,6 +15,7 @@ type Live = {
   session?: { n?: number | null; total?: number; planned?: string | null; started?: string | null } | null;
   has_sessions?: boolean; next_session?: string | null; stream_on?: boolean; override?: boolean; paused?: boolean;
   last_reason?: string; janaza_name?: string | null; janaza_info?: string | null;
+  tarawih?: { night?: number | null; mode?: string; reciters: string[]; reciter?: string | null } | null;
 };
 type Commande = { key: string; destructive: boolean; choices: string[] };
 
@@ -309,6 +310,32 @@ function RegieEcran() {
           </div>
           {retour && <p role="status" className={`m-0 text-[0.88rem] ${retour.ok ? "text-leaf" : "text-[#ff9b94]"}`}>{retour.texte}</p>}
         </section>
+
+        {live.tarawih && (a("tarawih") || a("next_reciter")) && (
+          <section className={`${panneau} grid content-start gap-2`}>
+            <h2 className="m-0 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-leaf">
+              {t("regie.tarawih")}{live.tarawih.night ? ` · ${t("regie.tarawihNight", { n: live.tarawih.night })}` : ""}
+            </h2>
+            <p className="m-0 text-[0.88rem] text-white">
+              <span className="text-night-muted">{t("regie.tarawihReciter")}</span>{" "}
+              {live.tarawih.reciter || <span className="text-night-muted">{t("regie.tarawihNobody")}</span>}
+            </p>
+            {live.tarawih.reciters.length > 0 && (
+              <ol className="m-0 flex flex-wrap gap-x-3 gap-y-1 pl-4 text-[0.8rem] text-night-muted">
+                {live.tarawih.reciters.map((n) => <li key={n} className={n === live.tarawih?.reciter ? "text-white" : ""}>{n}</li>)}
+              </ol>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {a("tarawih") && live.state !== "TARAWIH" && (
+                <Btn variante="leaf" className={petit} disabled={occupe} onClick={() => envoyer("tarawih")}>{t("dashboard.cmd.tarawih")}</Btn>
+              )}
+              {a("next_reciter") && live.state === "TARAWIH" && live.tarawih.reciters.length > 0 && (
+                <Btn variante="light" className={petit} disabled={occupe} onClick={() => envoyer("next_reciter")}>{t("dashboard.cmd.next_reciter")}</Btn>
+              )}
+            </div>
+            <p className="m-0 text-[0.76rem] leading-snug text-night-muted">{t("regie.tarawihHint")}</p>
+          </section>
+        )}
 
         {a("janaza") && (
           <section className={`${panneau} grid content-start gap-2`}>

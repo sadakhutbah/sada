@@ -5,7 +5,7 @@ mosque changed (an empty value means "keep the default"). Nothing is duplicated 
 
 Variables, replaced when the screen is drawn: {heure} (time of the announced session), {date}
 (today, in French), {jour} (weekday of the next class), {cours} (title of the class), {titre}
-(title of the mosque settings), {mosquee} (mosque name). A slot whose variable is unknown at that
+(title of the mosque settings), {mosquee} (mosque name), {imam} (tarawih imam or reciter). A slot whose variable is unknown at that
 moment is left empty (never "Début à "), and an unknown {braces} stays visible so a typo shows.
 """
 
@@ -58,6 +58,14 @@ DEFAULTS: dict[str, dict[str, str]] = {
         "sub": "Qu'Allah vous récompense.",
         "foot_cours": "Prochain cours : {jour} {heure} — {cours}",
         "foot": "Merci de votre présence.",
+    },
+    # Not in SCREENS yet: the slate draws these defaults, templates and the Screens tab predate it.
+    "tarawih": {
+        "eyebrow": "Ramadan",
+        "title": "Tarawih",
+        "sub_imam": "Imam : {imam}",
+        "sub": "Prière de la nuit, en écoute seulement.",
+        "foot": "Qu'Allah accepte notre jeûne et nos prières.",
     },
 }
 
@@ -116,10 +124,11 @@ def _placeholders(template: str) -> list[str]:
 
 
 def variables(
-    moment, title: str = "", mosque: str = "", heure: str = "", cours: str = "", jour: str = ""
+    moment, title: str = "", mosque: str = "", heure: str = "", cours: str = "", jour: str = "", imam: str = ""
 ) -> dict[str, str]:
     """Values available for the substitution; an empty value hides the slots that use it."""
     return {
+        "imam": imam,
         "heure": heure,
         "cours": cours,
         "jour": jour,

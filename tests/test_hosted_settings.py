@@ -43,7 +43,7 @@ def test_le_reglage_d_une_mosquee_est_le_meme_pour_tous(env, hosted, chef):
     chef_view = connected(env, "chef").get("/api/v1/settings").json()
     operateur_view = connected(env, "admin").get("/api/v1/settings").json()
     assert chef_view["sections"] == operateur_view["sections"]
-    assert chef_view["sections"] == ["mosque", "logo", "screens", "live", "processing"]
+    assert chef_view["sections"] == ["mosque", "logo", "screens", "live", "processing", "tarawih"]
     assert "locked_fields" not in chef_view and "locked_fields" not in operateur_view
     assert not {"storage", "model", "transcription", "folders", "public_url"} & set(chef_view)
     assert set(chef_view["mosque"]) == set(operateur_view["mosque"])

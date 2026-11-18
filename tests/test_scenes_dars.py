@@ -7,7 +7,7 @@ from PIL import ImageChops
 from sada.config import Config
 from sada.events import EventInstance
 from sada.scenes import SCENES, Moment, SceneRenderer
-from sada.state import SCENE_OF
+from sada.state import SCENE_OF, TARAWIH_VIDEO_SCENE
 
 NOW = dt.datetime(2026, 11, 10, 19, 10)
 EV = {
@@ -40,7 +40,7 @@ def test_scenes_dars_declarees():
 
 def test_les_tables_de_scenes_s_accordent():
     """A scene referenced by the state machine but missing from the renderer breaks the live."""
-    assert set(SCENES) == {v for v in SCENE_OF.values() if v}
+    assert set(SCENES) == {v for v in SCENE_OF.values() if v} | {TARAWIH_VIDEO_SCENE}
 
 
 def test_calque_de_dars_se_pose_sur_la_camera():

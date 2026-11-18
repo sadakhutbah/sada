@@ -2,6 +2,7 @@
 
 The stream is composed like this: camera + shared background of the full screens + scene content (encoder.py).
  - full screens (avant, priere, entracte, termine): the background masks the camera, the content is the text block;
+ - tarawih: full screen like the janaza (sound on, camera masked); tarawih_video: banner, camera on.
  - khutba: banner at the bottom left; janaza: sober full screen (the prayer can be heard, the image is
    replaced). The microphone is open on these two scenes only.
 
@@ -49,6 +50,7 @@ AR_JAZAKUM = "جزاكم الله خيرا"
 AR_JANAZA = "صلاة الجنازة"
 AR_DARS = "درس"
 AR_CONF = "محاضرة"
+AR_TARAWIH = "صلاة التراويح"
 
 
 def _hex(c: str, a: int = 255):
@@ -586,6 +588,20 @@ class SceneRenderer:
         sub = (info or t["sub"]) if name else t["sub"]
         return self._full_content(name or t["title"], sub, "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_JANAZA)
 
+    def _tarawih(self, m: Moment) -> Image.Image:
+        """Tarawih heard, not seen: the camera is masked by a full screen (mosque branding, the
+        night prayer, the current reciter only when the control room said who), the mic stays open."""
+        imam = (m.event or {}).get("reciter") or ""
+        t = self.txt("tarawih", m, imam=imam)
+        sub = t["sub_imam"] or t["sub"]
+        return self._full_content(t["title"], sub, "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_TARAWIH)
+
+    def _tarawih_video(self, m: Moment) -> Image.Image:
+        """Banner of a tarawih the mosque chose to film: title, mosque and current reciter (if known)."""
+        ev = m.event or {}
+        bits = [b for b in (self.cfg.mosque_name, ev.get("reciter")) if b]
+        return self._banner(ev.get("title") or "Tarawih", "  ·  ".join(bits), AR_TARAWIH)
+
     def content(self, scene: str, m: Moment) -> Image.Image:
         """Content layer of the scene; the encoder lays it over the shared background if the scene is a full screen.
 
@@ -631,4 +647,7 @@ SCENES = {
     "janaza": Scene(full=True, mic=True, draw=SceneRenderer._janaza),
     "dars": Scene(full=False, mic=True, draw=SceneRenderer._dars),
     "dars_fin": Scene(full=True, mic=False, draw=SceneRenderer._dars_fin),
+    # tarawih: sound only behind a full screen by default; camera only if the mosque chose `video`
+    "tarawih": Scene(full=True, mic=True, draw=SceneRenderer._tarawih),
+    "tarawih_video": Scene(full=False, mic=True, draw=SceneRenderer._tarawih_video),
 }

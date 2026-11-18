@@ -237,7 +237,7 @@ def create_app(
     # ---------------------------------------------------------- media (by id: no path in the URL)
     @app.get("/media/sermon/{kid}.mp4")
     def media_khutba(kid: int, ctx: CtxDep):
-        k = khutba_or_404(ctx, kid)
+        k = khutba_or_404(ctx, kid, tarawih=True)
         if not k["video_path"] or not Path(k["video_path"]).exists():
             raise NotFound()
         return FileResponse(k["video_path"], media_type="video/mp4")
