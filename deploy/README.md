@@ -111,6 +111,30 @@ it unless that is your registry.
 
 ## 5. Sadā
 
+**Production is driven by Flux CD**, not by this command. The cluster state (HelmRelease
+`sada`, production values, image automation) lives in the private repository
+`sadakhutbah/sada-gitops` (`clusters/prod/`). Flux reads the chart from this repository
+(`deploy/helm/sada`, branch `main`) and the image from the CI: every push to `main` builds
+`ghcr.io/sadakhutbah/sada:main-<run number>-<short sha>`, Flux picks the highest run number,
+commits the new `image.tag` to `sada-gitops` and upgrades the release (a few minutes after
+the CI turns green). Prod never runs an image built on a workstation.
+
+- Follow a rollout: `flux get helmreleases -n sada`, `flux get images all -A`,
+  `helm -n sada history sada`.
+- Roll back: revert the automation commit in `sada-gitops` (or pin `image.tag` there and
+  suspend the automation: `flux suspend image update sada`). In an emergency,
+  `flux suspend helmrelease sada -n sada` then `helm -n sada rollback sada <revision>`.
+- Pause deployments: `flux suspend helmrelease sada -n sada`; resume with
+  `flux resume helmrelease sada -n sada`.
+- Change a production value (mosques, host, fps…): edit the HelmRelease in `sada-gitops`.
+  Values set by hand with `helm` or `kubectl` are overwritten at the next reconciliation.
+- Chart changes on `main` are applied when the chart `version` in `Chart.yaml` is bumped.
+- Never delete the HelmRelease: uninstalling the release deletes the data PVC and the
+  PostgreSQL cluster.
+
+The manual command below is for a fresh cluster or disaster recovery only, with Flux
+suspended:
+
 ```sh
 helm upgrade --install sada deploy/helm/sada -n sada --create-namespace \
   --set image.repository=ghcr.io/<owner>/sada --set image.tag=<tag> \
