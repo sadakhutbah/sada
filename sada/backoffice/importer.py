@@ -20,7 +20,7 @@ from ..i18n import _
 from ..pipeline import notes
 from ..pipeline import verses as verses_mod
 from ..pipeline.output import SessionOutput
-from . import db, orm
+from . import db, orm, search
 from .models import Clip, Khutba
 
 
@@ -204,6 +204,13 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
             conn.flush()
             res["clips_new"] += 1
             db.audit(conn, mosque["id"], None, "import.clip", "clip", cur.id, file=c["file"])
+        orm.done(conn)  # the import is kept even if the index below fails
+        try:
+            if k and search.index_sermon(conn, k, o):
+                orm.done(conn)
+        except Exception as e:  # noqa: BLE001 — an index failure must not block the import
+            conn.rollback()
+            log(_("{run} {session}: search index failed: {error}", run=run_id, session=sdir.name, error=e))
     return res
 
 

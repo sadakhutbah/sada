@@ -125,6 +125,7 @@ def create_app(
                 m = dict(m)
                 traitement.tour(conn, m, log=lambda msg: print("[traitement]", msg, flush=True))
                 importer.scan(conn, m, log=lambda msg: print("[import]", msg, flush=True))
+            traitement.embed_pending(conn, log=lambda msg: print("[traitement]", msg, flush=True))
         except Exception as e:  # noqa: BLE001
             print(_("[import] error:"), e, flush=True)
         finally:

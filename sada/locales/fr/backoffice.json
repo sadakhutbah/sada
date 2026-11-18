@@ -186,5 +186,15 @@
   "Publish clips": "Publier les clips",
   "Assign sessions, import, dress videos": "Attribuer les séances, importer, habiller les vidéos",
   "Read the log": "Consulter le journal",
-  "Administration (accounts, settings, connectors)": "Administration (comptes, réglages, connecteurs)"
+  "Administration (accounts, settings, connectors)": "Administration (comptes, réglages, connecteurs)",
+  "also compute the semantic vectors (never during a live)": "calcule aussi les vecteurs sémantiques (jamais pendant un live)",
+  "embedding model failed to load: {error}": "le modèle d'embeddings n'a pas pu être chargé : {error}",
+  "embedding model unavailable: {error}": "modèle d'embeddings indisponible : {error}",
+  "index the imported sermons for the search (backfill)": "indexe les sermons importés pour la recherche (rattrapage)",
+  "rebuild the index of every sermon, even unchanged": "reconstruit l'index de chaque sermon, même inchangé",
+  "semantic index: paused, a live is on": "index sémantique : en pause, un live est en cours",
+  "semantic index: {n} segment(s) embedded in {s} s": "index sémantique : {n} segment(s) vectorisé(s) en {s} s",
+  "sermon {id}: {n} segment(s) indexed": "sermon {id} : {n} segment(s) indexé(s)",
+  "{run} {session}: search index failed: {error}": "{run} {session} : échec de l'index de recherche : {error}",
+  "{n} sermon(s) indexed, {pending} segment(s) without semantic vector": "{n} sermon(s) indexé(s), {pending} segment(s) sans vecteur sémantique"
 }

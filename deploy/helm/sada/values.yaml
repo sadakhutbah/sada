@@ -40,6 +40,9 @@ backoffice:
   secureCookies: ""
   # Automatic import of finished runs, in seconds (0 = disabled).
   importEvery: 60
+  # Search by meaning (multilingual-e5-small, int8 ONNX, ~135 MB on the data volume, ~0.5 GB RSS once
+  # loaded). Runs inside the back-office on one ONNX thread, only between lives; false = words and verses only.
+  semanticSearch: true
   resources:
     requests:
       cpu: 200m
