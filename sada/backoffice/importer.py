@@ -2,7 +2,8 @@
 
 Idempotent: a khutba is identified by (mosque, run, session) and a clip by (khutba, number); re-running
 the import overwrites neither validation decisions nor corrections. Janaza sessions (excluded from the pipeline)
-are never imported.
+are never imported. Tarawih nights are imported apart (`import_tarawih`): a replay for the imams, with
+neither transcription, clips nor translation.
 """
 
 from __future__ import annotations
@@ -214,10 +215,121 @@ def import_run(conn, mosque: dict, run_id: str, extract_video: bool = True, log=
     return res
 
 
+def _slate_video(rec: str | None, start: float | None, end: float | None, slate: bytes, out: Path, log) -> str | None:
+    """MP4 of an audio-only night: the fixed slate as the picture, the recording's sound only.
+    The camera was hidden on air, it stays hidden in the replay (its picture is never read)."""
+    if out.exists() and out.stat().st_size > 0:
+        return str(out)
+    ffmpeg = _ffmpeg()
+    if not rec or start is None or not Path(rec).exists() or not ffmpeg:
+        log(_("video extraction impossible ({recording}): ffmpeg or recording missing", recording=rec))
+        return None
+    png = out.with_suffix(".png")
+    png.write_bytes(slate)
+    dur = (end - start) if end else None
+    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "1", "-i", str(png)]
+    cmd += ["-ss", f"{start:.2f}", "-i", rec] + (["-t", f"{dur:.2f}"] if dur else [])
+    cmd += ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p"]
+    cmd += ["-r", "1", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", str(out)]
+    try:
+        subprocess.run(cmd, check=True, timeout=max(600, int((dur or 0) * 0.5)), capture_output=True)
+        log(_("session video -> {path}", path=out))
+        return str(out)
+    except Exception as e:  # noqa: BLE001
+        log(_("video extraction impossible ({recording}): {error}", recording=rec, error=e))
+        out.unlink(missing_ok=True)
+        return None
+    finally:
+        png.unlink(missing_ok=True)
+
+
+def reciter_chapters(s: dict) -> dict:
+    """Reciters of a night and, when the control room switched them, the segments (offsets in s
+    from the start of the night). No switch: the reciters only, nothing is guessed."""
+    end = None
+    if s.get("start_pos") is not None and s.get("end_pos") is not None:
+        end = round(s["end_pos"] - s["start_pos"], 1)
+    marks = [m for m in s.get("reciter_marks") or [] if m.get("at") is not None and m.get("name")]
+    segments = []
+    for i, m in enumerate(marks):
+        stop = marks[i + 1]["at"] if i + 1 < len(marks) else end
+        segments.append({"name": m["name"], "start": m["at"], "end": stop})
+    return {"reciters": list(s.get("reciters") or []), "segments": segments}
+
+
+def import_tarawih(conn, mosque: dict, run_id: str, extract_video: bool = True, slate=None, log=print) -> int:
+    """Each finished tarawih night of a run becomes its own entry (kind `tarawih`, night number,
+    reciters, chapters), playable but never transcribed, clipped nor translated. An audio-only
+    night is replayed over the fixed slate (`slate`: PNG bytes or a function returning them).
+    Returns the number of new entries."""
+    dirs = db.mosque_dirs(mosque)
+    sj = dirs["state"] / run_id / runs.SESSIONS
+    if not runs.RUN_RE.match(run_id) or not sj.exists():
+        return 0
+    data = runs.load(sj)
+    new = 0
+    for s in data.get("sessions", []):
+        if s.get("kind") != "tarawih" or not runs.is_done(s) or s.get("start_pos") is None:
+            continue
+        idx = s["index"]
+        rec_path, _sources = runs.sources(data, s)
+        start, end = s.get("start_pos"), s.get("end_pos")
+        chapters = reciter_chapters(s)
+        k = orm.first(conn, Khutba, mosque_id=mosque["id"], run_id=run_id, session_index=idx)
+        if not k:
+            sdir = dirs["output"] / run_id / f"tarawih{runs.session_number(idx)}"
+            sdir.mkdir(parents=True, exist_ok=True)
+            night = s.get("night")
+            cur = Khutba(
+                mosque_id=mosque["id"],
+                run_id=run_id,
+                session_index=idx,
+                label=f"Tarawih · {_('night {n}', n=night)}" if night else "Tarawih",
+                planned=s.get("planned") or "",
+                date=runs.run_date(run_id),
+                start_clock=s.get("start_clock"),
+                end_clock=s.get("end_clock"),
+                duration_s=(end - start) if end is not None else None,
+                speaker=", ".join(chapters["reciters"]),
+                output_dir=str(sdir),
+                recording=rec_path,
+                start_pos=start,
+                end_pos=end,
+                kind="tarawih",
+                title="Tarawih",
+                series=s.get("mode") or "audio",
+                session_no=night,
+                chapters=json.dumps(chapters, ensure_ascii=False),
+                imported_at=db.now_iso(),
+            )
+            conn.add(cur)
+            conn.flush()
+            k = orm.first(conn, Khutba, id=cur.id)
+            new += 1
+            db.audit(conn, mosque["id"], None, "import.tarawih", "khutba", k["id"], run=run_id, night=night)
+        if extract_video and not (k["video_path"] and Path(k["video_path"]).exists()):
+            target = Path(k["output_dir"]) / "video.mp4"
+            if (s.get("mode") or "audio") == "video":
+                v = _extract_video(rec_path, start, end, target, log)
+            else:
+                v = _slate_video(rec_path, start, end, slate() if callable(slate) else slate or b"", target, log)
+            if v:
+                conn.execute(update(Khutba).where(Khutba.id == k["id"]).values(video_path=v))
+        orm.done(conn)
+    return new
+
+
 def scan(conn, mosque: dict, extract_video: bool = True, log=print) -> list[dict]:
-    """Imports every run present in the mosque's output folder."""
+    """Imports every run present in the mosque's output folder (and the tarawih nights of every run)."""
     out = db.mosque_dirs(mosque)["output"]
     results = []
+    state = db.mosque_dirs(mosque)["state"]
+    for d in sorted(state.glob("*")) if state.is_dir() else []:
+        if d.is_dir() and runs.RUN_RE.match(d.name):
+            try:
+                import_tarawih(conn, mosque, d.name, extract_video, slate=lambda: _tarawih_slate(conn, mosque), log=log)
+            except Exception as e:  # noqa: BLE001
+                log(_("import {run}: {error}", run=d.name, error=e))
     for d in sorted(out.glob("*")) if out.is_dir() else []:
         if (
             d.is_dir()
@@ -229,3 +341,10 @@ def scan(conn, mosque: dict, extract_video: bool = True, log=print) -> list[dict
             except Exception as e:  # noqa: BLE001
                 log(_("import {run}: {error}", run=d.name, error=e))
     return results
+
+
+def _tarawih_slate(conn, mosque: dict) -> bytes:
+    """The mosque's tarawih slate, as drawn on air (without a reciter's name: several recite)."""
+    from . import screens
+
+    return screens.preview(mosque, screens.saved(conn, mosque["id"]), "tarawih", conn=conn)

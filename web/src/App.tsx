@@ -10,6 +10,7 @@ import SermonDetail from "./pages/SermonDetail";
 import Search from "./pages/Search";
 import Habillage from "./pages/Habillage";
 import Dars from "./pages/Dars";
+import Tarawih, { TarawihNight } from "./pages/Tarawih";
 import Clips from "./pages/Clips";
 import ClipDetail from "./pages/ClipDetail";
 import Publications from "./pages/Publications";
@@ -114,6 +115,8 @@ export default function App() {
           <Route path="/regie" element={<Regie />} />
           <Route path="/khutbas" element={<Sermons />} />
           <Route path="/dars" element={<Dars />} />
+          <Route path="/tarawih" element={<Tarawih />} />
+          <Route path="/tarawih/:id" element={<TarawihNight />} />
           <Route path="/clips" element={<Clips />} />
           <Route path="/khutbas/:id" element={<SermonDetail />} />
           <Route path="/search" element={<Search />} />

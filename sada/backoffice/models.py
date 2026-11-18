@@ -131,6 +131,8 @@ khutbas = sa.Table(
     sa.Column("title", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("series", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("session_no", sa.Integer),
+    # tarawih: {"reciters": [...], "segments": [{"name", "start", "end"}]} (offsets in s)
+    sa.Column("chapters", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("imported_at", sa.Text, nullable=False),
     sa.UniqueConstraint("mosque_id", "run_id", "session_index"),
 )

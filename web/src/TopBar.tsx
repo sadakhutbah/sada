@@ -95,7 +95,7 @@ export default function TopBar({ session, onLogout, onSwitchMosque }: {
   };
 
   const commence = (...prefixes: string[]) => prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-  const actifContenus = commence("/khutbas", "/dars", "/clips", "/sermons");
+  const actifContenus = commence("/khutbas", "/dars", "/tarawih", "/clips", "/sermons");
   const actifReglages = commence("/settings", "/audit", "/users", "/platform", "/demarrage");
 
   const badges = (avecCompte = true) => (
@@ -125,9 +125,12 @@ export default function TopBar({ session, onLogout, onSwitchMosque }: {
     ...(session.user.operator && !session.support ? [{ to: "/platform/settings", cle: "platform" }] : []),
   ];
 
+  // Tarawih replays: only once the mosque has some (outside Ramadan, a dead entry otherwise).
+  const tarawihReplays = (session.counts?.tarawih ?? 0) > 0;
   const contenus = [
     { to: "/khutbas", cle: "sermons" },
     { to: "/dars", cle: "dars" },
+    ...(tarawihReplays ? [{ to: "/tarawih", cle: "tarawih" }] : []),
     { to: "/clips", cle: "clips", badge: true },
   ];
 

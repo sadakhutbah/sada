@@ -221,6 +221,11 @@ def _tarawih(conn: sa.Connection) -> None:
     models.metadata.tables["tarawih"].create(conn, checkfirst=True)
 
 
+def _khutbas_chapitres(conn: sa.Connection) -> None:
+    """Migration 20 : chapitres d'une séance (récitants d'une nuit de tarawih)."""
+    _add_columns(conn, "khutbas", (("chapters", "TEXT NOT NULL DEFAULT ''"),))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -243,6 +248,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     ),
     Migration(18, "recherche : segments de transcription et versets cités", _recherche),
     Migration(19, "tarawih : réglages de diffusion par mosquée", _tarawih),
+    Migration(20, "khutbas : chapitres (récitants des tarawih)", _khutbas_chapitres),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

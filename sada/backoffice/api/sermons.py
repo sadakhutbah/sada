@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -20,17 +21,18 @@ from .common import _ok, _segments
 router = APIRouter()
 
 #: Natures de séance qu'on peut lister séparément : la page Khutbas demande `khutba`, la page Dars `dars`.
-GENRES = ("khutba", "dars", "conference")
+GENRES = ("khutba", "dars", "conference", "tarawih")
 #: Une séance importée avant la colonne `kind` est une khutba.
 GENRE = func.coalesce(func.nullif(Khutba.kind, ""), "khutba")
 
 
 def _filtre_genre(where: list, kind: str) -> list:
     """Restreint à une ou plusieurs natures de séance (`kind=dars` ou `kind=dars,conference`) ;
-    vide = toutes, valeur inconnue refusée."""
+    vide = toutes sauf les tarawih (des replays, demandés seulement par leur nature), valeur inconnue
+    refusée."""
     genres = [g for g in (x.strip().lower() for x in (kind or "").split(",")) if g]
     if not genres:
-        return where
+        return [*where, GENRE != "tarawih"]
     inconnus = [g for g in genres if g not in GENRES]
     if inconnus:
         raise Invalid(_("unknown kind: {kinds}", kinds=", ".join(inconnus)))
@@ -74,7 +76,7 @@ def sermons(
     and the imam), restricted to a month (`mois` in YYYY-MM format, chosen from the list of existing
     months), filtered (`pending`: only those awaiting validation) and paginated.
     The filtered total is returned so that the front knows whether pages remain, without guessing.
-    `kind` (khutba, dars, conference) sépare les listes : un dars ne doit jamais apparaître parmi
+    `kind` (khutba, dars, conference, tarawih) sépare les listes : un dars ne doit jamais apparaître parmi
     les khutbas, ni l'inverse ; le compteur « à valider » suit la même nature."""
     perimetre = _filtre_genre(imam_filter(ctx), kind)
     where = list(perimetre)
@@ -112,6 +114,29 @@ def sermons(
     )
     rows = orm.rows(ctx.conn, stmt)
     return {"items": rows, "count": len(rows), "total": total, "offset": offset, "pending": en_attente}
+
+
+@router.get("/tarawih/nights/{kid}")
+def tarawih_night(ctx: CtxDep, kid: int):
+    """A tarawih night as a replay: the player and the reciters (chapters when the control room
+    switched them). Neither transcript, clips nor translation."""
+    k = khutba_or_404(ctx, kid, tarawih=True)
+    if k["kind"] != "tarawih":
+        raise NotFound()
+    try:
+        chapters = json.loads(k["chapters"] or "{}")
+    except ValueError:
+        chapters = {}
+    return {
+        "night": {
+            key: k[key] for key in ("id", "label", "date", "start_clock", "end_clock", "duration_s", "session_no")
+        },
+        # an audio-only night is replayed over its fixed slate, never with the camera
+        "mode": k["series"] or "audio",
+        "reciters": chapters.get("reciters") or [n for n in (k["speaker"] or "").split(", ") if n],
+        "segments": chapters.get("segments") or [],
+        "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
+    }
 
 
 @router.get("/sermons/{kid}")

@@ -8,7 +8,7 @@ const fr = {
   app: { name: "Sadā" },
   player: { play: "Lire", pause: "Pause", seek: "Position", back: "Reculer de 10 s", forward: "Avancer de 10 s", mute: "Couper le son", unmute: "Remettre le son", volume: "Volume", speed: "Vitesse de lecture", fullscreen: "Plein écran", exitFullscreen: "Quitter le plein écran", subtitles: "Sous-titres", subtitlesKey: "Sous-titres (C)", subtitlesChoose: "Langue des sous-titres", subtitlesOff: "Aucun" },
   nav: {
-    dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", search: "Recherche", clips: "Clips", publications: "Publication", regie: "Régie",
+    dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", tarawih: "Tarawih", search: "Recherche", clips: "Clips", publications: "Publication", regie: "Régie",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu", platform: "Plateforme",
     direct: "Direct", contents: "Contenus", broadcast: "Diffusion", admin: "Réglages et journal", account: "Compte", language: "Langue",
     searchPlaceholder: "Rechercher une khutba, un verset…", searchShort: "Rechercher", searchKey: "Raccourci : / ou Ctrl+K",
@@ -54,6 +54,14 @@ const fr = {
     stuck: "Cela semble bloqué.",
     since: "depuis {{d}}",
     actions: { regenerate: "Régénérer" },
+  },
+  tarawihReplay: {
+    kicker: "Ramadan", title: "Tarawih", night: "Nuit {{n}}",
+    hint: "Chaque nuit diffusée, à réécouter : pour les imams, un retour sur leur récitation. Ni transcription, ni clips, ni traduction. Une nuit en son seul se réécoute sur son écran fixe.",
+    empty: "Aucune nuit enregistrée pour l'instant.", noReciter: "Récitant non renseigné",
+    chapters: "Récitants (chapitres)", reciters: "Récitants de la nuit",
+    noSegments: "La régie n'a pas marqué de changement de récitant cette nuit : pas de chapitres.",
+    mode: { audio: "son seul", video: "vidéo" },
   },
   common: { loading: "Chargement…", empty: "Rien à afficher.", save: "Enregistrer", saving: "Enregistrement…", close: "Fermer", error: "Erreur", browse: "Parcourir…" },
   login: {
@@ -587,7 +595,7 @@ const en: typeof fr = {
   app: { name: "Sadā" },
   player: { play: "Play", pause: "Pause", seek: "Position", back: "Back 10 s", forward: "Forward 10 s", mute: "Mute", unmute: "Unmute", volume: "Volume", speed: "Playback speed", fullscreen: "Full screen", exitFullscreen: "Exit full screen", subtitles: "Subtitles", subtitlesKey: "Subtitles (C)", subtitlesChoose: "Subtitle language", subtitlesOff: "None" },
   nav: {
-    dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", search: "Search", clips: "Clips", publications: "Publishing", regie: "Control room",
+    dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", tarawih: "Tarawih", search: "Search", clips: "Clips", publications: "Publishing", regie: "Control room",
     settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu", platform: "Platform",
     direct: "Live", contents: "Content", broadcast: "Distribution", admin: "Settings and log", account: "Account", language: "Language",
     searchPlaceholder: "Search a sermon, a verse…", searchShort: "Search", searchKey: "Shortcut: / or Ctrl+K",
@@ -633,6 +641,14 @@ const en: typeof fr = {
     stuck: "This looks stuck.",
     since: "for {{d}}",
     actions: { regenerate: "Regenerate" },
+  },
+  tarawihReplay: {
+    kicker: "Ramadan", title: "Tarawih", night: "Night {{n}}",
+    hint: "Every night broadcast, to listen again: feedback for the imams on their recitation. No transcript, clips nor translation. A sound-only night replays over its fixed slate.",
+    empty: "No night recorded yet.", noReciter: "Reciter not set",
+    chapters: "Reciters (chapters)", reciters: "Reciters of the night",
+    noSegments: "The control room marked no change of reciter that night: no chapters.",
+    mode: { audio: "sound only", video: "video" },
   },
   common: { loading: "Loading…", empty: "Nothing to show.", save: "Save", saving: "Saving…", close: "Close", error: "Error", browse: "Browse…" },
   login: {
