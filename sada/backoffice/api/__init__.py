@@ -9,6 +9,8 @@ One router per domain: this module only assembles them and exposes the shared re
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -56,4 +58,4 @@ for _module in (
 
 @router.get("/health")
 def health():
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "version": os.environ.get("SADA_VERSION", "dev")})

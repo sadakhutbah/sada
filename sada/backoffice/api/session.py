@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 
 from fastapi import APIRouter, Request
@@ -92,6 +93,7 @@ def _state(ctx: Ctx) -> dict:
         "mosques": _choices(ctx),
         "support": ctx.support,
         "csrf": (ctx.session or {}).get("csrf", ""),
+        "version": os.environ.get("SADA_VERSION", "dev"),
     }
     return out
 

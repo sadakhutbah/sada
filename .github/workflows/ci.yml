@@ -88,6 +88,7 @@ jobs:
         with:
           context: .
           push: true
+          build-args: SADA_VERSION=main-${{ github.run_number }}-${{ steps.tag.outputs.short }}
           tags: |
             ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
             ghcr.io/${{ github.repository }}:main-${{ github.run_number }}-${{ steps.tag.outputs.short }}
