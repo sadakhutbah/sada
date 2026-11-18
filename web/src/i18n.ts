@@ -439,7 +439,10 @@ const fr = {
     modelProtocol: "Format d'API", modelAuto: "Détection automatique", modelKeyKept: "Une clé d'API est déjà posée côté serveur.",
     modelTest: "Tester la connexion", modelTesting: "Test en cours…", modelTestSave: "Enregistrez d'abord vos modifications pour tester.",
     modelNow: "Méthode appliquée : {{label}}",
-    tarawihHint: "Aucune prière n'est filmée par défaut. Pendant le Ramadan, les tarawih peuvent être diffusées chaque nuit, uniquement entre les deux dates ci-dessous. Rien n'est armé avant la fin de l'isha (iqama Mawaqit, sinon adhan + 10 min, plus la durée de l'isha) : l'isha elle-même n'est jamais diffusée. La fin n'est pas fixe : un silence plus long que les pauses entre deux séries de rak'as, sans personne devant, termine la nuit.",
+    tarawihHint: "Aucune prière n'est filmée par défaut. Pendant le Ramadan, les tarawih peuvent être diffusées chaque nuit, uniquement entre les deux dates ci-dessous.",
+    tarawihTimesHint: "Rien n'est armé avant la fin de l'isha (iqama Mawaqit, sinon adhan + 10 min, plus la durée de l'isha) : l'isha elle-même n'est jamais diffusée. La fin n'est pas fixe : un silence plus long que les pauses entre deux séries de rak'as, sans personne devant, termine la nuit.",
+    tarawihTabs: { broadcast: "Diffusion", times: "Horaires", reciters: "Récitants" },
+    tarawihVideoConfirmMissing: "Image et son : cochez la confirmation de la mosquée avant d'enregistrer.",
     tarawihMode: "Diffusion",
     tarawihModes: { off: "Pas de diffusion", audio: "Son seul", video: "Image et son" },
     tarawihModesHelp: {
@@ -1023,7 +1026,10 @@ const en: typeof fr = {
     modelProtocol: "API format", modelAuto: "Automatic detection", modelKeyKept: "An API key is already set on the server.",
     modelTest: "Test the connection", modelTesting: "Testing…", modelTestSave: "Save your changes first to test.",
     modelNow: "Method in use: {{label}}",
-    tarawihHint: "No prayer is filmed by default. During Ramadan, tarawih can be broadcast every night, only between the two dates below. Nothing is armed before the end of isha (Mawaqit iqama, else adhan + 10 min, plus the length of isha): isha itself is never broadcast. There is no fixed end: a silence longer than the pauses between sets of rak'as, with nobody at the front, ends the night.",
+    tarawihHint: "No prayer is filmed by default. During Ramadan, tarawih can be broadcast every night, only between the two dates below.",
+    tarawihTimesHint: "Nothing is armed before the end of isha (Mawaqit iqama, else adhan + 10 min, plus the length of isha): isha itself is never broadcast. There is no fixed end: a silence longer than the pauses between sets of rak'as, with nobody at the front, ends the night.",
+    tarawihTabs: { broadcast: "Broadcast", times: "Timing", reciters: "Reciters" },
+    tarawihVideoConfirmMissing: "Picture and sound: tick the mosque's confirmation before saving.",
     tarawihMode: "Broadcast",
     tarawihModes: { off: "No broadcast", audio: "Sound only", video: "Picture and sound" },
     tarawihModesHelp: {
