@@ -14,6 +14,9 @@ export default function Search() {
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const [saisie, setSaisie] = useState(q);
+  // A new query from outside (the top bar field) replaces the text; our own debounce does not.
+  const [qVue, setQVue] = useState(q);
+  if (qVue !== q) { setQVue(q); if (saisie.trim() !== q) setSaisie(q); }
   // The answer is kept with the query it answers: a stale answer is never shown for a new query.
   const [reponse, setReponse] = useState<{ q: string; res?: SearchResponse; erreur?: string }>({ q: "" });
   const actuelle = reponse.q === q;

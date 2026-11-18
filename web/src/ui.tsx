@@ -398,3 +398,97 @@ export const toucherEnLigne = "max-md:py-[13px] pointer-coarse:py-[13px]";
 
 export const inputClass =
   "w-full rounded-lg border border-[#cfc6b0] bg-white px-3 py-2.5 text-ink read-only:cursor-default read-only:bg-paper-2 read-only:text-muted disabled:bg-paper-2 disabled:text-muted";
+
+/** Drop-down menu (ARIA « menu button »): the trigger opens a list of links or actions.
+ *  Arrow keys move between items, Escape closes and gives the focus back to the trigger, a click
+ *  outside or on an item closes it. Items carry `role="menuitem"` (or `menuitemradio`). */
+export function Deroulant({ bouton, label, children, aligne = "debut", classeBouton = "", classeMenu = "" }: {
+  bouton: ReactNode; label?: string; children: ReactNode;
+  aligne?: "debut" | "fin"; classeBouton?: string; classeMenu?: string;
+}) {
+  const [ouvert, setOuvert] = useState(false);
+  const racine = useRef<HTMLDivElement>(null);
+  const declencheur = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const items = () =>
+    Array.from(racine.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []);
+
+  useEffect(() => {
+    if (!ouvert) return;
+    const dehors = (e: PointerEvent) => {
+      if (!racine.current?.contains(e.target as Node)) setOuvert(false);
+    };
+    document.addEventListener("pointerdown", dehors);
+    return () => document.removeEventListener("pointerdown", dehors);
+  }, [ouvert]);
+
+  const ouvrir = (premier: boolean) => {
+    setOuvert(true);
+    window.requestAnimationFrame(() => {
+      const liste = items();
+      (premier ? liste[0] : liste[liste.length - 1])?.focus();
+    });
+  };
+
+  const surTouche = (e: ToucheReact<HTMLDivElement>) => {
+    if (e.key === "Escape" && ouvert) {
+      e.preventDefault();
+      setOuvert(false);
+      declencheur.current?.focus();
+      return;
+    }
+    if (e.key === "Tab" && ouvert) { setOuvert(false); return; }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+    if (!ouvert) {
+      if (e.target === declencheur.current && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        ouvrir(e.key === "ArrowDown");
+      }
+      return;
+    }
+    e.preventDefault();
+    const liste = items();
+    const i = liste.indexOf(document.activeElement as HTMLElement);
+    const n = liste.length;
+    const suivant = e.key === "Home" ? 0 : e.key === "End" ? n - 1
+      : e.key === "ArrowDown" ? (i + 1) % n : (i - 1 + n) % n;
+    liste[suivant]?.focus();
+  };
+
+  return (
+    <div ref={racine} className="relative" onKeyDown={surTouche}>
+      <button
+        ref={declencheur}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={ouvert}
+        aria-controls={id}
+        aria-label={label}
+        title={label}
+        onClick={() => setOuvert((o) => !o)}
+        className={`cursor-pointer ${classeBouton}`}
+      >
+        {bouton}
+      </button>
+      <div
+        id={id}
+        role="menu"
+        hidden={!ouvert}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('[role^="menuitem"]')) setOuvert(false);
+        }}
+        className={`absolute top-[calc(100%+8px)] z-50 min-w-[13rem] rounded-xl border border-white/10 bg-deeper p-1.5 text-night-ink shadow-[0_18px_40px_rgba(0,0,0,0.35)] ${
+          aligne === "fin" ? "end-0" : "start-0"
+        } ${classeMenu}`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Classes of one item of a `Deroulant` (link or button): base, then current page or not. */
+export const itemMenuBase =
+  "flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border-0 px-3 py-2 text-start text-[0.95rem] no-underline outline-none transition-colors focus-visible:bg-leaf/20 max-md:min-h-11 pointer-coarse:min-h-11";
+export const itemMenuActif = "bg-leaf/15 text-white";
+export const itemMenuRepos = "bg-transparent text-night-link hover:bg-leaf/15 hover:text-white";

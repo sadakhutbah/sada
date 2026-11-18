@@ -52,3 +52,23 @@ def test_lecture_forcee_apres_une_commande(monkeypatch):
     live.status_cached(MOSQUE)
     live.status_cached(MOSQUE, forcer=True)
     assert len(appels) == 2
+
+
+def test_on_air_only_while_broadcasting():
+    assert live.on_air({"ok": True, "state": "KHUTBA"})
+    assert live.on_air({"ok": True, "state": "IDLE", "stream_on": True})
+    assert not live.on_air({"ok": True, "state": "IDLE"})
+    assert not live.on_air({"ok": True, "state": "ARMED"})
+    assert not live.on_air({"ok": False, "state": "KHUTBA"})
+
+
+def test_indicator_endpoint(env, monkeypatch):
+    from conftest import client
+
+    c = client(env)
+    assert c.get("/api/v1/live/indicator").status_code == 401
+    imam = client(env, "imam")
+    monkeypatch.setattr(live, "status_cached", lambda *a, **k: {"ok": True, "state": "KHUTBA"})
+    assert imam.get("/api/v1/live/indicator").json() == {"on": True}
+    monkeypatch.setattr(live, "status_cached", lambda *a, **k: {"ok": False})
+    assert imam.get("/api/v1/live/indicator").json() == {"on": False}

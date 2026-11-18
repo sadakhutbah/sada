@@ -10,6 +10,10 @@ const fr = {
   nav: {
     dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", search: "Recherche", clips: "Clips", publications: "Publication", regie: "Régie",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu", platform: "Plateforme",
+    direct: "Direct", contents: "Contenus", broadcast: "Diffusion", admin: "Réglages et journal", account: "Compte", language: "Langue",
+    searchPlaceholder: "Rechercher une khutba, un verset…", searchShort: "Rechercher", searchKey: "Raccourci : / ou Ctrl+K",
+    onAir: "En direct", onAirOpen: "En direct : ouvrir la régie", home: "Tableau de bord",
+    onAirShort: "Direct", closeMenu: "Fermer le menu", menuClips_one: "Menu, {{count}} clip à valider", menuClips_other: "Menu, {{count}} clips à valider",
   },
   states: {
     clip: {
@@ -553,6 +557,10 @@ const en: typeof fr = {
   nav: {
     dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", search: "Search", clips: "Clips", publications: "Publishing", regie: "Control room",
     settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu", platform: "Platform",
+    direct: "Live", contents: "Content", broadcast: "Distribution", admin: "Settings and log", account: "Account", language: "Language",
+    searchPlaceholder: "Search a sermon, a verse…", searchShort: "Search", searchKey: "Shortcut: / or Ctrl+K",
+    onAir: "On air", onAirOpen: "On air: open the control room", home: "Dashboard",
+    onAirShort: "Live", closeMenu: "Close menu", menuClips_one: "Menu, {{count}} clip to review", menuClips_other: "Menu, {{count}} clips to review",
   },
   states: {
     clip: {
