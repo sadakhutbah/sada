@@ -8,7 +8,8 @@
 #   ./deploy/up.sh cluster   # ansible: mount the volume, install k3s, fetch the kubeconfig
 #   ./deploy/up.sh deps      # helm: cert-manager + CloudNativePG
 #   ./deploy/up.sh image     # build and push the image by hand (the CI on main normally does it)
-#   ./deploy/up.sh app       # helm upgrade --install sada
+#   ./deploy/up.sh app       # helm upgrade --install sada (fresh cluster / disaster recovery only:
+#                            # production is deployed by Flux from sadakhutbah/sada-gitops)
 #   ./deploy/up.sh status    # pods, services, ingress, certificates
 #
 # Configuration: environment variables, or deploy/deploy.env (git-ignored), e.g.
@@ -132,6 +133,11 @@ image_published() {
 
 cmd_app() {
   need helm; need kubectl
+  # Production is reconciled by Flux: a manual upgrade would be overwritten (or fight it).
+  if kubectl -n "$SADA_NAMESPACE" get helmrelease "$SADA_RELEASE" >/dev/null 2>&1 &&
+    [ "$(kubectl -n "$SADA_NAMESPACE" get helmrelease "$SADA_RELEASE" -o jsonpath='{.spec.suspend}')" != "true" ]; then
+    die "Flux manages this release: run 'flux suspend helmrelease $SADA_RELEASE -n $SADA_NAMESPACE' first (disaster recovery only)"
+  fi
   image_published || die "$SADA_IMAGE_REPO:$SADA_IMAGE_TAG is not on the registry yet: wait for the CI on main to go green"
   local args=(
     --namespace "$SADA_NAMESPACE" --create-namespace
