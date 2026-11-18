@@ -18,6 +18,7 @@ def test_les_sections_sont_annoncees(env):
         "screens",
         "live",
         "processing",
+        "tarawih",
     ]
     assert d["mosque"]["name"] == "Mosquée Exemple" and d["mosque"]["slug"] == "ma-mosquee"
     assert d["imams"]

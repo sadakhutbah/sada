@@ -25,6 +25,7 @@ from .. import (
     mawaqit_store,
     orm,
     storage,
+    tarawih,
 )
 from .. import screens as screens_mod
 from .. import variables_ecran as variables_mod
@@ -126,7 +127,8 @@ def mosque_events(request: Request, conn: ConnDep, port: int = 0):
     mid = _caller(request, conn, port)
     if isinstance(mid, JSONResponse):
         return mid
-    return {"mosque_id": mid, "events": events_store.read(conn, mid)}
+    nightly = tarawih.event(conn, mid)  # built from the Tarawih settings, never kept in the programme
+    return {"mosque_id": mid, "events": events_store.read(conn, mid) + ([nightly] if nightly else [])}
 
 
 @router.get("/internal/times")

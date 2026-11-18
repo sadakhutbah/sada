@@ -215,6 +215,11 @@ def _recherche(conn: sa.Connection) -> None:
     _baseline(conn)
 
 
+def _tarawih(conn: sa.Connection) -> None:
+    """Migration 19 : réglages des tarawih par mosquée (mode, période, décalage après isha)."""
+    models.metadata.tables["tarawih"].create(conn, checkfirst=True)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -236,6 +241,7 @@ MIGRATIONS: tuple[Migration, ...] = (
         17, "mosques : titre des clips retiré (l'en-tête vient du type d'enregistrement)", _mosques_titre_des_clips
     ),
     Migration(18, "recherche : segments de transcription et versets cités", _recherche),
+    Migration(19, "tarawih : réglages de diffusion par mosquée", _tarawih),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

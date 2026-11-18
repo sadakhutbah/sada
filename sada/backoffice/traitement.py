@@ -202,7 +202,18 @@ def tour(conn, mosque: dict, log=print) -> int:
 # Computing embeddings takes a CPU core for seconds per sermon: never while an orchestrator is on
 # the air (the encoder and the VAD need the machine). The step waits: it does nothing while any
 # mosque is live, and stops between two batches as soon as one starts.
-LIVE_STATES = {"ARMED", "BEFORE", "KHUTBA", "PRAYER", "INTERMISSION", "ENDED", "JANAZA", "DARS", "DARS_END"}
+LIVE_STATES = {
+    "ARMED",
+    "BEFORE",
+    "KHUTBA",
+    "PRAYER",
+    "INTERMISSION",
+    "ENDED",
+    "JANAZA",
+    "DARS",
+    "DARS_END",
+    "TARAWIH",
+}
 _download_failed_at = 0.0
 
 

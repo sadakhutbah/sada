@@ -196,5 +196,15 @@
   "semantic index: {n} segment(s) embedded in {s} s": "الفهرس الدلالي: {n} مقطع(ًا) تمت معالجته في {s} ث",
   "sermon {id}: {n} segment(s) indexed": "الخطبة {id}: {n} مقطع(ًا) مفهرس",
   "{run} {session}: search index failed: {error}": "{run} {session}: فشلت فهرسة البحث: {error}",
-  "{n} sermon(s) indexed, {up} already up to date, {pending} segment(s) without semantic vector": "{n} خطبة مفهرسة، {up} محدّثة مسبقًا، {pending} مقطع(ًا) بلا متجه دلالي"
+  "{n} sermon(s) indexed, {up} already up to date, {pending} segment(s) without semantic vector": "{n} خطبة مفهرسة، {up} محدّثة مسبقًا، {pending} مقطع(ًا) بلا متجه دلالي",
+  "Delay after isha: from {min} to {max} minutes.": "بداية بعد العشاء: من {min} إلى {max} دقيقة.",
+  "Filming the prayer needs an explicit confirmation: tick the box, the mosque is responsible for it.": "تصوير الصلاة يتطلب تأكيدا صريحا: ضع علامة في الخانة، والمسجد يتحمل المسؤولية.",
+  "Give both the first and the last night of the period.": "حدد الليلة الأولى والأخيرة من الفترة.",
+  "Imam name too long ({max} characters at most).": "اسم الإمام طويل جدا ({max} حرفا على الأكثر).",
+  "Invalid date: {date}.": "تاريخ غير صالح: {date}.",
+  "Maximum duration: from {min} to {max} minutes.": "المدة القصوى: من {min} إلى {max} دقيقة.",
+  "Tarawih saved: the engine applies it from the next night.": "تم حفظ التراويح: يطبقها المحرك ابتداء من الليلة التالية.",
+  "The period cannot exceed {days} nights.": "لا يمكن أن تتجاوز الفترة {days} ليلة.",
+  "The period ends before it starts.": "تنتهي الفترة قبل أن تبدأ.",
+  "Unknown tarawih mode: {mode}.": "وضع تراويح غير معروف: {mode}."
 }

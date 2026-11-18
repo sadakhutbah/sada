@@ -308,6 +308,29 @@ storage = sa.Table(
     sa.Column("updated_at", sa.Text),
 )
 
+# Tarawih of a mosque: one row, read by the engine only between the two dates (Ramadan).
+tarawih = sa.Table(
+    "tarawih",
+    metadata,
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), primary_key=True),
+    sa.Column(
+        "mode",
+        sa.Text,
+        sa.CheckConstraint("mode IN ('off', 'audio', 'video')"),
+        nullable=False,
+        server_default=_d("'audio'"),
+    ),
+    sa.Column("start_date", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("end_date", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("offset_min", sa.Integer, nullable=False, server_default=_d("20")),
+    sa.Column("max_min", sa.Integer, nullable=False, server_default=_d("90")),
+    sa.Column("imam", sa.Text, nullable=False, server_default=_d("''")),
+    # who confirmed filming the prayer, and when (video mode only)
+    sa.Column("video_confirmed_by", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("video_confirmed_at", sa.Text),
+    sa.Column("updated_at", sa.Text),
+)
+
 screen_texts = sa.Table(
     "screen_texts",
     metadata,
@@ -550,6 +573,10 @@ class LiveInput(Base):
 
 class Storage(Base):
     __table__ = storage
+
+
+class Tarawih(Base):
+    __table__ = tarawih
 
 
 class ScreenText(Base):

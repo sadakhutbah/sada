@@ -196,5 +196,15 @@
   "semantic index: {n} segment(s) embedded in {s} s": "index sémantique : {n} segment(s) vectorisé(s) en {s} s",
   "sermon {id}: {n} segment(s) indexed": "sermon {id} : {n} segment(s) indexé(s)",
   "{run} {session}: search index failed: {error}": "{run} {session} : échec de l'index de recherche : {error}",
-  "{n} sermon(s) indexed, {up} already up to date, {pending} segment(s) without semantic vector": "{n} sermon(s) indexé(s), {up} déjà à jour, {pending} segment(s) sans vecteur sémantique"
+  "{n} sermon(s) indexed, {up} already up to date, {pending} segment(s) without semantic vector": "{n} sermon(s) indexé(s), {up} déjà à jour, {pending} segment(s) sans vecteur sémantique",
+  "Delay after isha: from {min} to {max} minutes.": "Début après l'isha : de {min} à {max} minutes.",
+  "Filming the prayer needs an explicit confirmation: tick the box, the mosque is responsible for it.": "Filmer la prière demande une confirmation explicite : cochez la case, la mosquée en porte la responsabilité.",
+  "Give both the first and the last night of the period.": "Indiquez la première et la dernière nuit de la période.",
+  "Imam name too long ({max} characters at most).": "Nom de l'imam trop long ({max} caractères au plus).",
+  "Invalid date: {date}.": "Date invalide : {date}.",
+  "Maximum duration: from {min} to {max} minutes.": "Durée maximale : de {min} à {max} minutes.",
+  "Tarawih saved: the engine applies it from the next night.": "Tarawih enregistrées : le moteur les applique dès la nuit suivante.",
+  "The period cannot exceed {days} nights.": "La période ne peut dépasser {days} nuits.",
+  "The period ends before it starts.": "La période finit avant de commencer.",
+  "Unknown tarawih mode: {mode}.": "Mode de tarawih inconnu : {mode}."
 }

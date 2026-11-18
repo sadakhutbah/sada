@@ -26,6 +26,7 @@ from .. import (
     live_input,
     orm,
     publish,
+    tarawih,
     tenant_config,
     variables_ecran,
 )
@@ -43,6 +44,7 @@ SECTIONS = (
     "screens",
     "live",
     "processing",
+    "tarawih",
 )
 
 #: Fields the mosque's own form carries: nothing else is written through it.
@@ -118,6 +120,7 @@ def settings(ctx: CtxDep):
         "screens_variables": variables_ecran.lire(ctx.conn, ctx.mosque["id"]),
         "gabarit": gabarit_mod.view(ctx.mosque),
         "processing": _processing_view(ctx.mosque),
+        "tarawih": tarawih.view(ctx.conn, ctx.mosque["id"]),
     }
 
 
@@ -189,6 +192,18 @@ async def processing_save(ctx: CtxDep):
         actif=garde["enabled"],
     )
     return _ok(_("Processing saved: the pipeline applies it at the next run."), **garde)
+
+
+@router.put("/settings/tarawih")
+async def tarawih_save(ctx: CtxDep):
+    """Tarawih broadcast: off, audio (default) or video, the latter only with an explicit confirmation."""
+    f = await ctx.body()
+    ctx.require("admin")
+    try:
+        vue = tarawih.save(ctx.conn, ctx.mosque, f, ctx.user, ip=ctx.ip)
+    except tarawih.InvalidTarawih as e:
+        raise Invalid(str(e)) from e
+    return _ok(_("Tarawih saved: the engine applies it from the next night."), tarawih=vue)
 
 
 @router.put("/settings/live")

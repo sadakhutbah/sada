@@ -177,5 +177,10 @@
   "New day: {count} session(s) planned": "Nouveau jour : {count} session(s) prévue(s)",
   "Back office ready": "Back-office prêt",
   "Back office still unreachable after {limit:g} s: start on the caches": "Back-office toujours injoignable après {limit:g} s : démarrage sur les caches",
-  "Waiting for the back office (at most {limit:g} s)": "Attente du back-office ({limit:g} s au plus)"
+  "Waiting for the back office (at most {limit:g} s)": "Attente du back-office ({limit:g} s au plus)",
+  "{where}: a tarawih needs a period (from, until)": "{where} : des tarawih demandent une période (from, until)",
+  "{where}: a tarawih starts after isha (positive offset)": "{where} : les tarawih commencent après l'isha (décalage positif)",
+  "{where}: invalid tarawih mode {mode}": "{where} : mode de tarawih invalide {mode}",
+  "{where}: the period ends before it starts": "{where} : la période finit avant de commencer",
+  "the tarawih": "les tarawih"
 }

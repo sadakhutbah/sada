@@ -35,6 +35,8 @@ const CHAMPS_ECRAN = [
 ] as const;
 
 const CHAMPS_MOSQUEE = ["name", "timezone", "mawaqit_url"] as const;
+const CHAMPS_TARAWIH = ["tw_mode", "tw_start", "tw_end", "tw_offset", "tw_max", "tw_imam", "tw_confirm"] as const;
+const MODES_TARAWIH = ["off", "audio", "video"] as const;
 
 /** Form values from the server response (all as text, as the API expects). */
 function depuisServeur(d: any): Record<string, string> {
@@ -42,6 +44,14 @@ function depuisServeur(d: any): Record<string, string> {
   for (const k of CHAMPS_MOSQUEE) f[k] = d.mosque[k] ?? "";
   f.clips = String(d.processing?.clips ?? 3);
   f.clips_enabled = d.processing?.enabled === false ? "0" : "1";
+  const tw = d.tarawih ?? {};
+  f.tw_mode = tw.mode ?? "audio";
+  f.tw_start = tw.start ?? "";
+  f.tw_end = tw.end ?? "";
+  f.tw_offset = String(tw.offset_min ?? 20);
+  f.tw_max = String(tw.max_min ?? 90);
+  f.tw_imam = tw.imam ?? "";
+  f.tw_confirm = tw.mode === "video" ? "1" : "0";
   return f;
 }
 
@@ -142,6 +152,10 @@ export default function Settings() {
       await api.reglagesMosquee(mosquee);
       if (f.clips !== avant.clips || f.clips_enabled !== avant.clips_enabled) {
         await api.traitement(f.clips, f.clips_enabled === "1");
+      }
+      if (CHAMPS_TARAWIH.some((k) => f[k] !== avant[k])) {
+        await api.tarawih({ mode: f.tw_mode, start: f.tw_start, end: f.tw_end, offset_min: f.tw_offset,
+          max_min: f.tw_max, imam: f.tw_imam, confirm_video: f.tw_confirm });
       }
       if (JSON.stringify(cibles) !== ciblesInitiales) await api.destinations(cibles);
       if (entreeModifiee) await api.saveInput(entree.mode, entree.url);
@@ -366,6 +380,53 @@ export default function Settings() {
           {t(f.clips_enabled === "1" ? "settings.clipsNow" : "settings.clipsOff", {
             n: d.processing?.effective ?? d.processing?.clips ?? 3 })}
         </p>
+      </div>
+    ),
+    tarawih: (
+      <div className="grid gap-3">
+        <p className="m-0 max-w-[90ch] text-[0.9rem] text-muted">{t("settings.tarawihHint")}</p>
+        <fieldset className="m-0 grid min-w-0 gap-2 border-0 p-0 sm:grid-cols-3">
+          <legend className="mb-1.5 p-0 text-[0.9rem] font-semibold">{t("settings.tarawihMode")}</legend>
+          {MODES_TARAWIH.map((m) => (
+            <label key={m} className={`flex items-start gap-2 rounded-md border p-2.5 text-[0.9rem] ${f.tw_mode === m ? "border-deep bg-white" : "border-line"}`}>
+              <input type="radio" name="tw_mode" value={m} checked={f.tw_mode === m} className="mt-1"
+                onChange={() => { setF((x) => ({ ...x, tw_mode: m, tw_confirm: "0" })); setMsg(null); }} />
+              <span><strong>{t(`settings.tarawihModes.${m}`)}</strong>
+                <span className="block text-[0.82rem] leading-snug text-muted">{t(`settings.tarawihModesHelp.${m}`)}</span></span>
+            </label>
+          ))}
+        </fieldset>
+        {f.tw_mode === "video" && (
+          <div role="alert" className="grid gap-1.5 rounded-md border border-[#c99a2e] bg-[#fbf3df] p-2.5 text-[0.9rem] text-[#5a3d00]">
+            <p className="m-0 font-semibold">{t("settings.tarawihVideoWarning")}</p>
+            <label className="flex items-start gap-2">
+              <input type="checkbox" required checked={f.tw_confirm === "1"} className="mt-1"
+                onChange={(e) => { setF((x) => ({ ...x, tw_confirm: e.target.checked ? "1" : "0" })); setMsg(null); }} />
+              {t("settings.tarawihVideoConfirm")}
+            </label>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label={t("settings.tarawihStart")}>
+            <input className={inputClass} type="date" value={f.tw_start} onChange={maj("tw_start")} />
+          </Field>
+          <Field label={t("settings.tarawihEnd")}>
+            <input className={inputClass} type="date" value={f.tw_end} min={f.tw_start || undefined} onChange={maj("tw_end")} />
+          </Field>
+          <Field label={t("settings.tarawihImam")}>
+            <input className={inputClass} maxLength={80} value={f.tw_imam} onChange={maj("tw_imam")} />
+          </Field>
+          <Field label={t("settings.tarawihOffset")}>
+            <input className={inputClass} type="number" inputMode="numeric"
+              min={d.tarawih?.bounds?.offset_min?.[0] ?? 5} max={d.tarawih?.bounds?.offset_min?.[1] ?? 120}
+              value={f.tw_offset} onChange={maj("tw_offset")} />
+          </Field>
+          <Field label={t("settings.tarawihMax")}>
+            <input className={inputClass} type="number" inputMode="numeric"
+              min={d.tarawih?.bounds?.max_min?.[0] ?? 15} max={d.tarawih?.bounds?.max_min?.[1] ?? 240}
+              value={f.tw_max} onChange={maj("tw_max")} />
+          </Field>
+        </div>
       </div>
     ),
     screens: (
