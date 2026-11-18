@@ -323,8 +323,15 @@ tarawih = sa.Table(
     sa.Column("start_date", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("end_date", sa.Text, nullable=False, server_default=_d("''")),
     sa.Column("offset_min", sa.Integer, nullable=False, server_default=_d("20")),
-    sa.Column("max_min", sa.Integer, nullable=False, server_default=_d("90")),
-    sa.Column("imam", sa.Text, nullable=False, server_default=_d("''")),
+    # safety cap only: a night ends on a long silence with nobody at the front
+    sa.Column("max_min", sa.Integer, nullable=False, server_default=_d("180")),
+    # broadcast the time right after isha (announcements, appeals for donations)
+    sa.Column("after_isha", sa.Integer, nullable=False, server_default=_d("0")),
+    sa.Column("isha_min", sa.Integer, nullable=False, server_default=_d("10")),
+    sa.Column("silence_end_min", sa.Integer, nullable=False, server_default=_d("6")),
+    # ordered roster of reciters (JSON list) and per-night overrides (JSON {"YYYY-MM-DD": [names]})
+    sa.Column("reciters", sa.Text, nullable=False, server_default=_d("'[]'")),
+    sa.Column("nights", sa.Text, nullable=False, server_default=_d("'{}'")),
     # who confirmed filming the prayer, and when (video mode only)
     sa.Column("video_confirmed_by", sa.Integer, sa.ForeignKey("users.id")),
     sa.Column("video_confirmed_at", sa.Text),

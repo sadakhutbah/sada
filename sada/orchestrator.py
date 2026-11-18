@@ -358,6 +358,7 @@ class Orchestrator:
                 m.janaza_name,
                 m.janaza_info,
                 (ev or {}).get("title"),
+                (ev or {}).get("reciter"),
                 getattr(nxt, "starts", None),
                 now.strftime("%H:%M:%S") if spec.ticking else None,
             )

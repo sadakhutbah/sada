@@ -590,16 +590,16 @@ class SceneRenderer:
 
     def _tarawih(self, m: Moment) -> Image.Image:
         """Tarawih heard, not seen: the camera is masked by a full screen (mosque branding, the
-        night prayer, the imam if named), the mic stays open, as for the janaza."""
-        imam = (m.event or {}).get("speaker") or ""
+        night prayer, the current reciter only when the control room said who), the mic stays open."""
+        imam = (m.event or {}).get("reciter") or ""
         t = self.txt("tarawih", m, imam=imam)
         sub = t["sub_imam"] or t["sub"]
         return self._full_content(t["title"], sub, "", t["foot"], eyebrow=t["eyebrow"], arabic=AR_TARAWIH)
 
     def _tarawih_video(self, m: Moment) -> Image.Image:
-        """Banner of a tarawih the mosque chose to film: title, mosque and imam."""
+        """Banner of a tarawih the mosque chose to film: title, mosque and current reciter (if known)."""
         ev = m.event or {}
-        bits = [b for b in (self.cfg.mosque_name, ev.get("speaker")) if b]
+        bits = [b for b in (self.cfg.mosque_name, ev.get("reciter")) if b]
         return self._banner(ev.get("title") or "Tarawih", "  ·  ".join(bits), AR_TARAWIH)
 
     def content(self, scene: str, m: Moment) -> Image.Image:

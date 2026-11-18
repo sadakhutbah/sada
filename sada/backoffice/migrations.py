@@ -216,7 +216,8 @@ def _recherche(conn: sa.Connection) -> None:
 
 
 def _tarawih(conn: sa.Connection) -> None:
-    """Migration 19 : réglages des tarawih par mosquée (mode, période, décalage après isha)."""
+    """Migration 19 : réglages des tarawih par mosquée (mode, période, après-isha, fin sur silence,
+    récitants)."""
     models.metadata.tables["tarawih"].create(conn, checkfirst=True)
 
 

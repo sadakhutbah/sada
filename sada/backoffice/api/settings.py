@@ -196,8 +196,9 @@ async def processing_save(ctx: CtxDep):
 
 @router.put("/settings/tarawih")
 async def tarawih_save(ctx: CtxDep):
-    """Tarawih broadcast: off, audio (default) or video, the latter only with an explicit confirmation."""
-    f = await ctx.body()
+    """Tarawih broadcast: off, audio (default) or video, the latter only with an explicit confirmation.
+    Raw body: the roster of reciters and the per-night overrides are lists."""
+    f = await ctx.raw_body()
     ctx.require("admin")
     try:
         vue = tarawih.save(ctx.conn, ctx.mosque, f, ctx.user, ip=ctx.ip)

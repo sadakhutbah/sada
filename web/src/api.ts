@@ -242,7 +242,7 @@ export const api = {
   /** Orchestrator of one mosque: sending the mask back keeps the stored token. */
   orchestrateur: (mid: number, url: string, token: string) =>
     ecrire<{ ok: boolean; message: string; mosque: PlatformMosque }>("PUT", `/platform/mosques/${mid}/orchestrator`, { url, token }),
-  tarawih: (corps: Record<string, string>) => ecrire<any>("PUT", "/settings/tarawih", corps),
+  tarawih: (corps: Record<string, unknown>) => ecrire<any>("PUT", "/settings/tarawih", corps),
   traitement: (clips: string, enabled: boolean) =>
     ecrire<any>("PUT", "/settings/processing", { clips, enabled: enabled ? "1" : "0" }),
   testerModele: () => ecrire<any>("POST", "/platform/model/test"),

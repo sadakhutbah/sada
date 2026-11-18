@@ -4,6 +4,7 @@ import { api } from "../api";
 import { liste } from "../format";
 import { Btn, Card, Field, Tabs, Title, inputClass, toucher } from "../ui";
 import { idOnglet, idPanneau } from "../onglets";
+import { RecitersEditor } from "../RecitersEditor";
 
 type Message = { ok: boolean; texte: string } | null;
 
@@ -35,7 +36,10 @@ const CHAMPS_ECRAN = [
 ] as const;
 
 const CHAMPS_MOSQUEE = ["name", "timezone", "mawaqit_url"] as const;
-const CHAMPS_TARAWIH = ["tw_mode", "tw_start", "tw_end", "tw_offset", "tw_max", "tw_imam", "tw_confirm"] as const;
+const CHAMPS_TARAWIH = [
+  "tw_mode", "tw_start", "tw_end", "tw_offset", "tw_max", "tw_confirm",
+  "tw_after_isha", "tw_isha", "tw_silence", "tw_reciters", "tw_nights",
+] as const;
 const MODES_TARAWIH = ["off", "audio", "video"] as const;
 
 /** Form values from the server response (all as text, as the API expects). */
@@ -49,8 +53,12 @@ function depuisServeur(d: any): Record<string, string> {
   f.tw_start = tw.start ?? "";
   f.tw_end = tw.end ?? "";
   f.tw_offset = String(tw.offset_min ?? 20);
-  f.tw_max = String(tw.max_min ?? 90);
-  f.tw_imam = tw.imam ?? "";
+  f.tw_max = String(tw.max_min ?? 180);
+  f.tw_after_isha = tw.after_isha ? "1" : "0";
+  f.tw_isha = String(tw.isha_min ?? 10);
+  f.tw_silence = String(tw.silence_end_min ?? 6);
+  f.tw_reciters = JSON.stringify(tw.reciters ?? []);
+  f.tw_nights = JSON.stringify(tw.nights ?? {});
   f.tw_confirm = tw.mode === "video" ? "1" : "0";
   return f;
 }
@@ -155,7 +163,9 @@ export default function Settings() {
       }
       if (CHAMPS_TARAWIH.some((k) => f[k] !== avant[k])) {
         await api.tarawih({ mode: f.tw_mode, start: f.tw_start, end: f.tw_end, offset_min: f.tw_offset,
-          max_min: f.tw_max, imam: f.tw_imam, confirm_video: f.tw_confirm });
+          max_min: f.tw_max, confirm_video: f.tw_confirm, after_isha: f.tw_after_isha === "1",
+          isha_min: f.tw_isha, silence_end_min: f.tw_silence,
+          reciters: JSON.parse(f.tw_reciters || "[]"), nights: JSON.parse(f.tw_nights || "{}") });
       }
       if (JSON.stringify(cibles) !== ciblesInitiales) await api.destinations(cibles);
       if (entreeModifiee) await api.saveInput(entree.mode, entree.url);
@@ -406,27 +416,48 @@ export default function Settings() {
             </label>
           </div>
         )}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <label className="flex items-start gap-2 text-[0.9rem]">
+          <input type="checkbox" className="mt-1" checked={f.tw_after_isha === "1"}
+            onChange={(e) => { setF((x) => ({ ...x, tw_after_isha: e.target.checked ? "1" : "0" })); setMsg(null); }} />
+          <span><strong>{t("settings.tarawihAfterIsha")}</strong>
+            <span className="block text-[0.82rem] leading-snug text-muted">{t("settings.tarawihAfterIshaHelp")}</span></span>
+        </label>
+        <div className="grid gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
           <Field label={t("settings.tarawihStart")}>
             <input className={inputClass} type="date" value={f.tw_start} onChange={maj("tw_start")} />
           </Field>
           <Field label={t("settings.tarawihEnd")}>
             <input className={inputClass} type="date" value={f.tw_end} min={f.tw_start || undefined} onChange={maj("tw_end")} />
           </Field>
-          <Field label={t("settings.tarawihImam")}>
-            <input className={inputClass} maxLength={80} value={f.tw_imam} onChange={maj("tw_imam")} />
+          <Field label={t("settings.tarawihIsha")}>
+            <input className={inputClass} type="number" inputMode="numeric"
+              min={d.tarawih?.bounds?.isha_min?.[0] ?? 5} max={d.tarawih?.bounds?.isha_min?.[1] ?? 30}
+              value={f.tw_isha} onChange={maj("tw_isha")} />
           </Field>
           <Field label={t("settings.tarawihOffset")}>
             <input className={inputClass} type="number" inputMode="numeric"
               min={d.tarawih?.bounds?.offset_min?.[0] ?? 5} max={d.tarawih?.bounds?.offset_min?.[1] ?? 120}
               value={f.tw_offset} onChange={maj("tw_offset")} />
           </Field>
+          <Field label={t("settings.tarawihSilence")}>
+            <input className={inputClass} type="number" inputMode="numeric"
+              min={d.tarawih?.bounds?.silence_end_min?.[0] ?? 3} max={d.tarawih?.bounds?.silence_end_min?.[1] ?? 30}
+              value={f.tw_silence} onChange={maj("tw_silence")} />
+          </Field>
           <Field label={t("settings.tarawihMax")}>
             <input className={inputClass} type="number" inputMode="numeric"
-              min={d.tarawih?.bounds?.max_min?.[0] ?? 15} max={d.tarawih?.bounds?.max_min?.[1] ?? 240}
+              min={d.tarawih?.bounds?.max_min?.[0] ?? 30} max={d.tarawih?.bounds?.max_min?.[1] ?? 300}
               value={f.tw_max} onChange={maj("tw_max")} />
           </Field>
         </div>
+        <RecitersEditor
+          roster={JSON.parse(f.tw_reciters || "[]")}
+          nights={JSON.parse(f.tw_nights || "{}")}
+          max={d.tarawih?.bounds?.reciters ?? 8}
+          start={f.tw_start}
+          end={f.tw_end}
+          onChange={(r, n) => { setF((x) => ({ ...x, tw_reciters: JSON.stringify(r), tw_nights: JSON.stringify(n) })); setMsg(null); }}
+        />
       </div>
     ),
     screens: (

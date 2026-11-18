@@ -33,8 +33,45 @@ def fetch_live(url: str, timeout: float = 15.0) -> dict:
         "jumua2": conf.get("jumua2"),
         "jumua3": conf.get("jumua3"),
         "times": conf.get("times"),
+        "iqama": iqama_times(conf, time.localtime()),
         "timezone": conf.get("timezone"),
     }
+
+
+def _shift(hhmm: str, minutes: int) -> str:
+    h, m = (int(x) for x in hhmm.split(":")[:2])
+    total = (h * 60 + m + minutes) % (24 * 60)
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def iqama_times(conf: dict, day) -> list[str] | None:
+    """Iqama of each prayer of `day` (a time.struct_time or a date), as "HH:MM", from the Mawaqit
+    configuration: a fixed iqama wins, otherwise the day's calendar entry (a delay "+10" after the
+    adhan, or a time). None when the mosque publishes no iqama: nothing is invented."""
+    if conf.get("iqamaEnabled") is False:
+        return None
+    month, mday = (day.tm_mon, day.tm_mday) if hasattr(day, "tm_mon") else (day.month, day.day)
+    times = conf.get("times") or []
+    fixed = conf.get("fixedIqama") or []
+    cal = conf.get("iqamaCalendar") or []
+    try:
+        entry = (cal[month - 1] or {}).get(str(mday)) or []
+    except (IndexError, AttributeError, TypeError):
+        entry = []
+    out = []
+    for i in range(5):
+        value = fixed[i] if i < len(fixed) and fixed[i] else (entry[i] if i < len(entry) else "")
+        value = str(value or "").strip()
+        try:
+            if value.startswith("+") and i < len(times) and times[i]:
+                out.append(_shift(times[i], int(value[1:])))
+            elif re.fullmatch(r"\d{1,2}:\d{2}", value):
+                out.append(_shift(value, 0))
+            else:
+                out.append("")
+        except ValueError:
+            out.append("")
+    return out if any(out) else None
 
 
 def resolve(
@@ -123,14 +160,19 @@ def from_backoffice(backoffice_url: str, api_port: int, fetch=None, log=None) ->
 
 
 def prayer_times(d: dict) -> dict:
-    """Times of the day from Mawaqit: {"fajr","dhuhr","asr","maghrib","isha"} ("HH:MM" strings).
+    """Times of the day from Mawaqit: {"fajr","dhuhr","asr","maghrib","isha"} ("HH:MM" strings),
+    plus "isha_iqama" when the mosque publishes its iqama.
 
     Mawaqit publishes `times` = [fajr, dhuhr, asr, maghrib, isha]; a shorter array gives
     only what is present, without inventing anything.
     """
     names = ("fajr", "dhuhr", "asr", "maghrib", "isha")
     raw = d.get("times") or []
-    return {n: t for n, t in zip(names, raw, strict=False) if t}
+    out = {n: t for n, t in zip(names, raw, strict=False) if t}
+    iqama = d.get("iqama") or []
+    if len(iqama) >= 5 and iqama[4]:
+        out["isha_iqama"] = iqama[4]  # start of the isha prayer itself (tarawih arm after its end)
+    return out
 
 
 def _finish(d: dict) -> dict:
