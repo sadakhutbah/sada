@@ -10,6 +10,8 @@ export type Session = {
   /** The operator is inside a mosque as support: every action is audited. */
   support?: boolean;
   csrf: string;
+  /** Deployed image tag (main-<run>-<sha>), "dev" outside CI builds. */
+  version?: string;
   counts?: { pending: number; failed?: number; tarawih?: number };
 };
 

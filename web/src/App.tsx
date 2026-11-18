@@ -135,7 +135,7 @@ export default function App() {
         </Routes>
       </main>
       <footer className="p-6 text-center text-[0.8rem] text-muted">
-        {t("app.name")} · {mosque.name}
+        {t("app.name")} · {mosque.name}{session.version && <> · <span dir="ltr">{session.version}</span></>}
       </footer>
     </div>
   );

@@ -21,6 +21,9 @@ COPY web/dist web/dist
 RUN uv sync --frozen --no-dev \
     && python -c "from sada.backoffice import template_render as t; t.fetch_engine()"
 
+ARG SADA_VERSION=dev
+ENV SADA_VERSION=$SADA_VERSION
+
 # data/ (database, recordings, outputs) lives on a volume
 VOLUME /app/data
 EXPOSE 8090 8088
