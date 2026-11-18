@@ -28,6 +28,13 @@ export function mmss(secondes?: number | null): string {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Duration as the player shows it: h:mm:ss beyond an hour (a tarawih night lasts more than 60 min). */
+export function hms(secondes?: number | null): string {
+  const v = Math.max(0, Math.floor(Number(secondes) || 0));
+  const h = Math.floor(v / 3600), m = Math.floor((v % 3600) / 60), r = v % 60;
+  return `${h > 0 ? `${h}:` : ""}${String(m).padStart(h > 0 ? 2 : 1, "0")}:${String(r).padStart(2, "0")}`;
+}
+
 /** Live clock: null when out of service, otherwise the orchestrator's time. */
 export function horloge(valeur?: string | null): string {
   return valeur || "--:--:--";

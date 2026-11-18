@@ -80,10 +80,10 @@ export function RecitersEditor({ roster, nights, max, start, end, onChange }: {
                  onClick={() => retirerNuit(jour)}>✕</Btn>
           </div>
         ))}
-        <div className="flex gap-1.5">
-          <input className={`${inputClass} w-[9.5rem]`} type="date" value={nuit} min={start || undefined} max={end || undefined}
+        <div className="grid grid-cols-[10rem_minmax(0,1fr)_auto] gap-1.5">
+          <input className={inputClass} type="date" value={nuit} min={start || undefined} max={end || undefined}
                  aria-label={t("settings.tarawihNightDate")} disabled={!start || !end} onChange={(e) => setNuit(e.target.value)} />
-          <input className={`${inputClass} min-w-0 flex-1`} value={noms} placeholder={t("settings.tarawihNightNames")}
+          <input className={inputClass} value={noms} placeholder={t("settings.tarawihNightNames")}
                  aria-label={t("settings.tarawihNightNames")} disabled={!start || !end} onChange={(e) => setNoms(e.target.value)} />
           <Btn variante="ghost" disabled={!nuit || !noms.trim()} onClick={ajouterNuit}>{t("settings.tarawihAdd")}</Btn>
         </div>

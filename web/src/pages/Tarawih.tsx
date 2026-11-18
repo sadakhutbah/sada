@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import { dateFr, mmss } from "../format";
+import { dateFr, hms } from "../format";
 import Player from "../Player";
 import { Card, Kicker, Title } from "../ui";
 
@@ -51,7 +51,7 @@ export default function Tarawih() {
                     <span className="text-[0.85rem] text-muted"> · {dateFr(k.date, i18n.language)}</span>
                     <span className="block truncate text-[0.9rem] text-ink/85">{k.speaker || t("tarawihReplay.noReciter")}</span>
                   </span>
-                  <span className="text-[0.85rem] tabular-nums text-muted">{mmss(k.duration_s)}</span>
+                  <span className="text-[0.85rem] tabular-nums text-muted">{hms(k.duration_s)}</span>
                 </Link>
               </li>
             ))}
@@ -92,7 +92,7 @@ export function TarawihNight() {
           {dateFr(n.date, i18n.language)}
         </h1>
         <p className="m-0 text-[0.9rem] text-muted">
-          <span className="tabular-nums">{n.start_clock ?? "?"}–{n.end_clock ?? "?"} · {mmss(n.duration_s)}</span>
+          <span className="tabular-nums">{n.start_clock ?? "?"}–{n.end_clock ?? "?"} · {hms(n.duration_s)}</span>
           {" · "}{t(`tarawihReplay.mode.${d.mode === "video" ? "video" : "audio"}`)}
         </p>
       </header>
@@ -120,9 +120,9 @@ export function TarawihNight() {
                     aria-current={i === courant ? "true" : undefined}
                     className={`flex w-full items-baseline gap-3 rounded-md border px-3 py-2 text-left ${
                       i === courant ? "border-leaf bg-leaf/15" : "border-line bg-white hover:bg-paper-2"} cursor-pointer disabled:cursor-default`}>
-                    <span className="tabular-nums text-[0.85rem] text-muted">{mmss(s.start)}</span>
+                    <span className="tabular-nums text-[0.85rem] text-muted">{hms(s.start)}</span>
                     <span className="min-w-0 flex-1 truncate font-semibold">{s.name}</span>
-                    {s.end !== null && <span className="tabular-nums text-[0.8rem] text-muted">{mmss(s.end - s.start)}</span>}
+                    {s.end !== null && <span className="tabular-nums text-[0.8rem] text-muted">{hms(s.end - s.start)}</span>}
                   </button>
                 </li>
               ))}
