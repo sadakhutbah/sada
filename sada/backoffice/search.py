@@ -262,9 +262,10 @@ def index_sermon(conn, k: dict, o: SessionOutput | None = None, force: bool = Fa
     return len(rows)
 
 
-def index_all(conn, force: bool = False, log=print) -> int:
-    """Backfill: every imported sermon whose output is still on disk."""
-    n = 0
+def index_all(conn, force: bool = False, log=print) -> tuple[int, int]:
+    """Backfill: every imported sermon whose output is still on disk.
+    Returns (sermons written, sermons already up to date)."""
+    n = up_to_date = 0
     for k in conn.execute(sa.select(Khutba.__table__).order_by(Khutba.id)).mappings():
         o = SessionOutput(k["output_dir"] or "")
         if not k["output_dir"] or not o.is_transcribed():
@@ -274,7 +275,9 @@ def index_all(conn, force: bool = False, log=print) -> int:
         if w:
             log(_("sermon {id}: {n} segment(s) indexed", id=k["id"], n=w))
             n += 1
-    return n
+        else:
+            up_to_date += 1
+    return n, up_to_date
 
 
 def pending_embeddings(conn) -> int:

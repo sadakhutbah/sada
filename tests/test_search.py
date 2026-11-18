@@ -63,7 +63,8 @@ def test_backfill_rebuilds_a_missing_index(env):
     conn.execute(search.TS.delete())
     conn.execute(search.VC.delete())
     conn.commit()
-    assert search.index_all(conn, log=lambda *a: None) == 1
+    assert search.index_all(conn, log=lambda *a: None) == (1, 0)
+    assert search.index_all(conn, log=lambda *a: None) == (0, 1)
     assert count(conn, models.TranscriptSegment, sermon_id=env["kid"]) == 4
 
 

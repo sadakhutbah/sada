@@ -196,5 +196,5 @@
   "semantic index: {n} segment(s) embedded in {s} s": "الفهرس الدلالي: {n} مقطع(ًا) تمت معالجته في {s} ث",
   "sermon {id}: {n} segment(s) indexed": "الخطبة {id}: {n} مقطع(ًا) مفهرس",
   "{run} {session}: search index failed: {error}": "{run} {session}: فشلت فهرسة البحث: {error}",
-  "{n} sermon(s) indexed, {pending} segment(s) without semantic vector": "{n} خطبة مفهرسة، {pending} مقطع(ًا) بلا متجه دلالي"
+  "{n} sermon(s) indexed, {up} already up to date, {pending} segment(s) without semantic vector": "{n} خطبة مفهرسة، {up} محدّثة مسبقًا، {pending} مقطع(ًا) بلا متجه دلالي"
 }

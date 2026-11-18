@@ -196,5 +196,5 @@
   "semantic index: {n} segment(s) embedded in {s} s": "index sémantique : {n} segment(s) vectorisé(s) en {s} s",
   "sermon {id}: {n} segment(s) indexed": "sermon {id} : {n} segment(s) indexé(s)",
   "{run} {session}: search index failed: {error}": "{run} {session} : échec de l'index de recherche : {error}",
-  "{n} sermon(s) indexed, {pending} segment(s) without semantic vector": "{n} sermon(s) indexé(s), {pending} segment(s) sans vecteur sémantique"
+  "{n} sermon(s) indexed, {up} already up to date, {pending} segment(s) without semantic vector": "{n} sermon(s) indexé(s), {up} déjà à jour, {pending} segment(s) sans vecteur sémantique"
 }

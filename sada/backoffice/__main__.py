@@ -209,14 +209,15 @@ def main(argv=None) -> int:
         elif args.cmd == "search-index":
             from . import search, traitement
 
-            n = search.index_all(conn, force=args.force)
+            n, up_to_date = search.index_all(conn, force=args.force)
             if args.embed:
                 while traitement.embed_pending(conn, budget_s=3600):
                     pass
             print(
                 _(
-                    "{n} sermon(s) indexed, {pending} segment(s) without semantic vector",
+                    "{n} sermon(s) indexed, {up} already up to date, {pending} segment(s) without semantic vector",
                     n=n,
+                    up=up_to_date,
                     pending=search.pending_embeddings(conn),
                 )
             )
