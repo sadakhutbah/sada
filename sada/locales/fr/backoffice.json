@@ -206,5 +206,11 @@
   "Tarawih saved: the engine applies it from the next night.": "Tarawih enregistrées : le moteur les applique dès la nuit suivante.",
   "The period cannot exceed {days} nights.": "La période ne peut dépasser {days} nuits.",
   "The period ends before it starts.": "La période finit avant de commencer.",
-  "Unknown tarawih mode: {mode}.": "Mode de tarawih inconnu : {mode}."
+  "Unknown tarawih mode: {mode}.": "Mode de tarawih inconnu : {mode}.",
+  "Length of isha: from {min} to {max} minutes.": "Durée de l'isha : de {min} à {max} minutes.",
+  "Night {date} is outside the period.": "La nuit du {date} est hors de la période.",
+  "Safety cap: from {min} to {max} minutes.": "Plafond de sécurité : de {min} à {max} minutes.",
+  "Silence that ends the night: from {min} to {max} minutes.": "Silence qui termine la nuit : de {min} à {max} minutes.",
+  "{max} reciters at most.": "{max} récitants au plus.",
+  "night {n}": "nuit {n}"
 }

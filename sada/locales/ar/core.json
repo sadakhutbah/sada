@@ -182,5 +182,11 @@
   "{where}: a tarawih starts after isha (positive offset)": "{where}: تبدأ التراويح بعد العشاء (إزاحة موجبة)",
   "{where}: invalid tarawih mode {mode}": "{where}: وضع تراويح غير صالح {mode}",
   "{where}: the period ends before it starts": "{where}: تنتهي الفترة قبل أن تبدأ",
+  "current reciter: {name}": "القارئ الحالي: {name}",
+  "no reciter listed for tonight": "لا يوجد قارئ محدد لهذه الليلة",
+  "no tarawih on air": "لا تراويح على الهواء",
+  "no tarawih tonight: outside the period or broadcast off": "لا تراويح الليلة: خارج الفترة أو البث معطل",
+  "tarawih started by hand, scene {scene}": "بدأت التراويح يدويا، المشهد {scene}",
+  "the tarawih is already on air": "التراويح على الهواء بالفعل",
   "the tarawih": "التراويح"
 }

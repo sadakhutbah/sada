@@ -206,5 +206,11 @@
   "Tarawih saved: the engine applies it from the next night.": "تم حفظ التراويح: يطبقها المحرك ابتداء من الليلة التالية.",
   "The period cannot exceed {days} nights.": "لا يمكن أن تتجاوز الفترة {days} ليلة.",
   "The period ends before it starts.": "تنتهي الفترة قبل أن تبدأ.",
-  "Unknown tarawih mode: {mode}.": "وضع تراويح غير معروف: {mode}."
+  "Unknown tarawih mode: {mode}.": "وضع تراويح غير معروف: {mode}.",
+  "Length of isha: from {min} to {max} minutes.": "مدة صلاة العشاء: من {min} إلى {max} دقيقة.",
+  "Night {date} is outside the period.": "ليلة {date} خارج الفترة.",
+  "Safety cap: from {min} to {max} minutes.": "الحد الأقصى للأمان: من {min} إلى {max} دقيقة.",
+  "Silence that ends the night: from {min} to {max} minutes.": "الصمت الذي ينهي الليلة: من {min} إلى {max} دقيقة.",
+  "{max} reciters at most.": "{max} قراء على الأكثر.",
+  "night {n}": "الليلة {n}"
 }

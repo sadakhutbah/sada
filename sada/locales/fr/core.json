@@ -182,5 +182,11 @@
   "{where}: a tarawih starts after isha (positive offset)": "{where} : les tarawih commencent après l'isha (décalage positif)",
   "{where}: invalid tarawih mode {mode}": "{where} : mode de tarawih invalide {mode}",
   "{where}: the period ends before it starts": "{where} : la période finit avant de commencer",
+  "current reciter: {name}": "récitant actuel : {name}",
+  "no reciter listed for tonight": "aucun récitant indiqué pour ce soir",
+  "no tarawih on air": "pas de tarawih à l'antenne",
+  "no tarawih tonight: outside the period or broadcast off": "pas de tarawih ce soir : hors période ou diffusion désactivée",
+  "tarawih started by hand, scene {scene}": "tarawih démarrées à la main, scène {scene}",
+  "the tarawih is already on air": "les tarawih sont déjà à l'antenne",
   "the tarawih": "les tarawih"
 }
