@@ -25,13 +25,16 @@ export default function SermonDetail() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [onglet, setOnglet] = useState("transcription");
   const [message, setMessage] = useState<Message>(null);
-  const [tps, setTps] = useState(0); // playback position, to highlight the current passage
   const nav = useNavigate();
   // ?clip=<id>: arriving from a clip sheet to move its bounds on the khutba video
   const [params, setParams] = useSearchParams();
   const ajuste = Number(params.get("clip")) || null;
   useEffect(() => { if (ajuste) setOnglet("clip"); }, [ajuste]);
   const video = useRef<HTMLVideoElement | null>(null);
+  // ?t=<seconds>: arriving from a search result, the player opens on the passage (once).
+  const depart = params.has("t") ? Math.max(0, Number(params.get("t")) || 0) : null;
+  const departFait = useRef(false);
+  const [tps, setTps] = useState(depart ?? 0); // playback position, to highlight the current passage
   // Dressed video ready: shown by default; the raw recording stays reachable as history.
   const [brute, setBrute] = useState(false);
   const habillee = Boolean(d?.dressed) && !brute;
@@ -181,6 +184,12 @@ export default function SermonDetail() {
                 preload="metadata"
                 pistes={pistes}
                 onTimeUpdate={(e) => setTps(Math.max(0, e.currentTarget.currentTime - decalage))}
+                onLoadedMetadata={(e) => {
+                  if (depart === null || departFait.current) return;
+                  departFait.current = true;
+                  e.currentTarget.currentTime = depart + decalage;
+                  setTps(depart);
+                }}
                 className="block max-h-[50vh] w-full bg-night object-contain"
                 src={habillee ? `/api/v1/sermons/${k.id}/habillage/video.mp4?v=${d.dressed.v}` : `/media/sermon/${k.id}.mp4`}
               />
@@ -275,6 +284,7 @@ export default function SermonDetail() {
               <Transcription
                 lignes={d.transcript}
                 tps={tps}
+                cible={depart}
                 video={avecVideo}
                 peutCorriger={peutCorriger}
                 aller={aller}
@@ -383,27 +393,36 @@ function Vide({ children }: { children: ReactNode }) {
 /** Transcript: one line = one passage. Clicking the line brings and plays the video;
  *  the line currently playing is highlighted. The correction is a separate block, under the line:
  *  opening it or typing in it never moves the video. */
-function Transcription({ lignes, tps, video, peutCorriger, aller, corriger }: {
+function Transcription({ lignes, tps, cible, video, peutCorriger, aller, corriger }: {
   lignes: any[];
   tps: number;
+  cible: number | null; // ?t= of a search result: the passage is scrolled into view on arrival
+
   video: boolean;
   peutCorriger: boolean;
   aller: (s: number) => void;
   corriger: (r: any, valeur: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const liste = useRef<HTMLOListElement | null>(null);
+  const avecLignes = lignes.length > 0;
+  useEffect(() => {
+    if (cible === null || !avecLignes) return;
+    liste.current?.querySelector("[data-actif]")?.scrollIntoView({ block: "center" });
+  }, [cible, avecLignes]);
   if (!lignes.length) return <Vide>{t("common.empty")}</Vide>;
 
   return (
     <div className="grid gap-2">
       {video && <p className="m-0 text-[0.8rem] text-muted">{t("sermons.detail.seekHelp")}</p>}
-      <ol className="m-0 grid list-none gap-1 p-0">
+      <ol ref={liste} className="m-0 grid list-none gap-1 p-0">
         {lignes.map((r: any) => {
           const actif = tps >= r.start && tps < r.end;
           const coran = Boolean(r.verse || r.coran);
           return (
             <li
               key={r.i}
+              data-actif={actif || undefined}
               className={`rounded-[8px] transition-colors ${actif ? "bg-leaf/12 shadow-[inset_3px_0_0_var(--color-green)]" : "hover:bg-paper-2/70"}`}
             >
               <button

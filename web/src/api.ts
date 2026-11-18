@@ -130,6 +130,20 @@ export type Habillage = {
   colors: { green: string; gold: string };
 };
 
+/** Search across sessions: one entry per session, its matching passages (word, verse or meaning). */
+export type SearchHit = {
+  type: "word" | "verse" | "semantic";
+  start: number;
+  lang: string;
+  score: number;
+  snippet: { text: string; hit: boolean }[];
+  verse?: { surah: number; ayah: number; name_ar: string; name: string; name_en: string; name_fr: string };
+};
+export type SearchResult = {
+  id: number; label: string; title: string; speaker: string; date: string | null; kind: string; hits: SearchHit[];
+};
+export type SearchResponse = { q: string; results: SearchResult[]; semantic: boolean };
+
 export const api = {
   session: () => demande<Session>("/session"),
   logout: () => ecrire<{ ok: boolean }>("POST", "/logout"),
@@ -159,6 +173,7 @@ export const api = {
   /** The months that contain khutbas: the period picker is based on them. */
   sermonsMois: (kind = "") => demande<{ items: { mois: string; n: number }[] }>(`/sermons/mois${kind ? `?kind=${kind}` : ""}`),
   sermon: (id: number) => demande<any>(`/sermons/${id}`),
+  search: (q: string, limit = 20) => demande<SearchResponse>(`/search?${new URLSearchParams({ q, limit: String(limit) })}`),
   clips: (status = "", limit = 20, offset = 0) => {
     const p = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (status) p.set("status", status);

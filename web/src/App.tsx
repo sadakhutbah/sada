@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Regie from "./pages/Regie";
 import Sermons from "./pages/Sermons";
 import SermonDetail from "./pages/SermonDetail";
+import Search from "./pages/Search";
 import Habillage from "./pages/Habillage";
 import Dars from "./pages/Dars";
 import Clips from "./pages/Clips";
@@ -179,6 +180,7 @@ export default function App() {
             {lien("/regie", "regie", "live")}
             {lien("/khutbas", "sermons")}
             {lien("/dars", "dars")}
+            {lien("/search", "search")}
             {lien("/clips", "clips", undefined, session.counts?.pending ?? 0, session.counts?.failed ?? 0)}
             {lien("/publications", "publications", "publish")}
             {lien("/audit", "audit", "journal")}
@@ -239,6 +241,7 @@ export default function App() {
           <Route path="/dars" element={<Dars />} />
           <Route path="/clips" element={<Clips />} />
           <Route path="/khutbas/:id" element={<SermonDetail />} />
+          <Route path="/search" element={<Search />} />
           <Route path="/khutbas/:id/habillage" element={<Habillage />} />
           {/* Old address: already-shared links keep leading to the list. */}
           <Route path="/sermons" element={<Navigate to="/khutbas" replace />} />

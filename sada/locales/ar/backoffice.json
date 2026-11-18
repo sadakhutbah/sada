@@ -186,5 +186,15 @@
   "Publish clips": "نشر المقاطع",
   "Assign sessions, import, dress videos": "إسناد الجلسات والاستيراد وتغليف الفيديوهات",
   "Read the log": "الاطلاع على السجل",
-  "Administration (accounts, settings, connectors)": "الإدارة (الحسابات، الإعدادات، الموصلات)"
+  "Administration (accounts, settings, connectors)": "الإدارة (الحسابات، الإعدادات، الموصلات)",
+  "also compute the semantic vectors (never during a live)": "احسب أيضًا المتجهات الدلالية (لا يحدث أبدًا أثناء البث المباشر)",
+  "embedding model failed to load: {error}": "تعذّر تحميل نموذج التضمين: {error}",
+  "embedding model unavailable: {error}": "نموذج التضمين غير متاح: {error}",
+  "index the imported sermons for the search (backfill)": "فهرسة الخطب المستوردة للبحث (استدراك)",
+  "rebuild the index of every sermon, even unchanged": "إعادة بناء فهرس كل خطبة، حتى غير المعدَّلة",
+  "semantic index: paused, a live is on": "الفهرس الدلالي: متوقف مؤقتًا، يوجد بث مباشر",
+  "semantic index: {n} segment(s) embedded in {s} s": "الفهرس الدلالي: {n} مقطع(ًا) تمت معالجته في {s} ث",
+  "sermon {id}: {n} segment(s) indexed": "الخطبة {id}: {n} مقطع(ًا) مفهرس",
+  "{run} {session}: search index failed: {error}": "{run} {session}: فشلت فهرسة البحث: {error}",
+  "{n} sermon(s) indexed, {pending} segment(s) without semantic vector": "{n} خطبة مفهرسة، {pending} مقطع(ًا) بلا متجه دلالي"
 }

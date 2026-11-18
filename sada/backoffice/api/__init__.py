@@ -23,6 +23,7 @@ from . import (
     platform,
     publications,
     regie,
+    search,
     sermons,
     session,
     settings,
@@ -37,6 +38,7 @@ router = APIRouter(prefix="/api/v1", tags=["api"], include_in_schema=False)
 for _module in (
     session,
     sermons,
+    search,
     habillage,
     clips,
     dashboard,

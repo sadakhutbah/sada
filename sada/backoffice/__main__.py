@@ -101,6 +101,10 @@ def main(argv=None) -> int:
     i.add_argument("--run", help=_("one precise run (e.g. 20261106_220224); default: all"))
     i.add_argument("--no-video", action="store_true", help=_("do not extract the video of the session"))
 
+    x = sub.add_parser("search-index", help=_("index the imported sermons for the search (backfill)"))
+    x.add_argument("--force", action="store_true", help=_("rebuild the index of every sermon, even unchanged"))
+    x.add_argument("--embed", action="store_true", help=_("also compute the semantic vectors (never during a live)"))
+
     e = sub.add_parser("fetch-engine", help=_("download the browser that renders the screens"))
     e.add_argument("--version", help=_("Chrome for Testing version (default: the stable one)"))
 
@@ -202,6 +206,20 @@ def main(argv=None) -> int:
                 )
             if not res:
                 print(_("No run found."))
+        elif args.cmd == "search-index":
+            from . import search, traitement
+
+            n = search.index_all(conn, force=args.force)
+            if args.embed:
+                while traitement.embed_pending(conn, budget_s=3600):
+                    pass
+            print(
+                _(
+                    "{n} sermon(s) indexed, {pending} segment(s) without semantic vector",
+                    n=n,
+                    pending=search.pending_embeddings(conn),
+                )
+            )
         elif args.cmd == "fetch-engine":
             from .template_render import RenderUnavailable, fetch_engine
 

@@ -11,6 +11,7 @@ Toute table métier porte `mosque_id` : c'est la clé de cloisonnement (locatair
 from __future__ import annotations
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 metadata = sa.MetaData()
 
@@ -347,10 +348,116 @@ audit = sa.Table(
     sa.Column("created_at", sa.Text, nullable=False),
 )
 
+# Search index (migration 18): one row per transcript segment and per translation of it, in its own
+# language. Filled at import from the pipeline output; `search.py` reads and writes it.
+# `norm` is the normalised text (Arabic folded, lower case) the full-text index is built on;
+# `tsv` is its PostgreSQL tsvector (NULL on SQLite, where an FTS5 table mirrors `norm`);
+# `embedding` is the float32 vector of the semantic search, filled after the live by `traitement`.
+transcript_segments = sa.Table(
+    "transcript_segments",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("sermon_id", sa.Integer, sa.ForeignKey("khutbas.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("seg_index", sa.Integer, nullable=False),
+    sa.Column("source", sa.Text, nullable=False, server_default=_d("'transcript'")),
+    sa.Column("start", sa.Float, nullable=False),
+    sa.Column("end", sa.Float, nullable=False),
+    sa.Column("lang", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("text", sa.Text, nullable=False),
+    sa.Column("norm", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("tsv", sa.Text().with_variant(postgresql.TSVECTOR(), "postgresql")),
+    sa.Column("embedding", sa.LargeBinary),
+)
+
+# Quran verses recited or quoted in a session, language independent (verse search).
+verse_citations = sa.Table(
+    "verse_citations",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("sermon_id", sa.Integer, sa.ForeignKey("khutbas.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("surah", sa.Integer, nullable=False),
+    sa.Column("ayah", sa.Integer, nullable=False),
+    sa.Column("t", sa.Float, nullable=False),
+)
+
+# Full-text side of the search index, specific to each engine. SQLite: an FTS5 table mirroring `norm`
+# (kept in step by triggers). PostgreSQL: a GIN index on `tsv`, the `unaccent` extension and, when
+# the server ships pgvector, a `segment_vectors` table with an HNSW index. An extension the database
+# user may not create is skipped: the search falls back (accents folded in Python, brute-force cosine).
+_SQLITE_SEARCH_DDL = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS transcript_segments_fts USING fts5(norm, content='transcript_segments',"
+    " content_rowid='id', tokenize='unicode61 remove_diacritics 2')",
+    "CREATE TRIGGER IF NOT EXISTS transcript_segments_ai AFTER INSERT ON transcript_segments BEGIN"
+    " INSERT INTO transcript_segments_fts(rowid, norm) VALUES (new.id, new.norm); END",
+    "CREATE TRIGGER IF NOT EXISTS transcript_segments_ad AFTER DELETE ON transcript_segments BEGIN"
+    " INSERT INTO transcript_segments_fts(transcript_segments_fts, rowid, norm) VALUES ('delete', old.id, old.norm);"
+    " END",
+    "CREATE TRIGGER IF NOT EXISTS transcript_segments_au AFTER UPDATE OF norm ON transcript_segments BEGIN"
+    " INSERT INTO transcript_segments_fts(transcript_segments_fts, rowid, norm) VALUES ('delete', old.id, old.norm);"
+    " INSERT INTO transcript_segments_fts(rowid, norm) VALUES (new.id, new.norm); END",
+)
+EMBEDDING_DIM = 384
+
+
+def pg_extension(conn, name: str, create: bool = False) -> str | None:
+    """Schema of the PostgreSQL extension `name`, created in `public` if allowed; None if absent."""
+    ext = sa.table("pg_extension", sa.column("extname"), sa.column("extnamespace"), schema="pg_catalog")
+    ns = sa.table("pg_namespace", sa.column("oid"), sa.column("nspname"), schema="pg_catalog")
+    q = sa.select(ns.c.nspname).select_from(ext.join(ns, ns.c.oid == ext.c.extnamespace)).where(ext.c.extname == name)
+    schema = conn.execute(q).scalar()
+    if schema or not create:
+        return schema
+    try:
+        with conn.begin_nested():
+            conn.execute(sa.text(f"CREATE EXTENSION IF NOT EXISTS {name} SCHEMA public"))
+    except sa.exc.DBAPIError:
+        return None  # not shipped by the server, or the database user may not create it
+    return conn.execute(q).scalar()
+
+
+def create_vector_table(conn) -> bool:
+    """`segment_vectors` (pgvector + HNSW), when the extension exists. True if the table is usable."""
+    schema = pg_extension(conn, "vector", create=True)
+    if not schema:
+        return False
+    conn.execute(
+        sa.text(
+            "CREATE TABLE IF NOT EXISTS segment_vectors (segment_id INTEGER PRIMARY KEY"
+            f' REFERENCES transcript_segments(id) ON DELETE CASCADE, embedding "{schema}".vector({EMBEDDING_DIM}))'
+        )
+    )
+    conn.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS segment_vectors_hnsw ON segment_vectors"
+            f' USING hnsw (embedding "{schema}".vector_cosine_ops)'
+        )
+    )
+    return True
+
+
+@sa.event.listens_for(transcript_segments, "after_create")
+def _search_extras(target, conn, **kw) -> None:
+    if conn.dialect.name == "sqlite":
+        for ddl in _SQLITE_SEARCH_DDL:
+            conn.exec_driver_sql(ddl)
+    elif conn.dialect.name == "postgresql":
+        conn.execute(
+            sa.text("CREATE INDEX IF NOT EXISTS transcript_segments_tsv ON transcript_segments USING gin (tsv)")
+        )
+        pg_extension(conn, "unaccent", create=True)
+        create_vector_table(conn)
+
+
 sa.Index("audit_mosque", audit.c.mosque_id, audit.c.id)
 sa.Index("clips_mosque", clips.c.mosque_id, clips.c.status)
 sa.Index("khutbas_mosque", khutbas.c.mosque_id, khutbas.c.date)
 sa.Index("live_targets_mosque", live_targets.c.mosque_id)
+sa.Index("transcript_segments_sermon", transcript_segments.c.sermon_id, transcript_segments.c.seg_index)
+sa.Index("transcript_segments_mosque", transcript_segments.c.mosque_id)
+sa.Index("verse_citations_ref", verse_citations.c.mosque_id, verse_citations.c.surah, verse_citations.c.ayah)
+sa.Index("verse_citations_sermon", verse_citations.c.sermon_id)
 
 # tables métier, dans l'ordre de création (dépendances : FK)
 TABLES = (
@@ -371,6 +478,8 @@ TABLES = (
     screen_texts,
     publications,
     audit,
+    transcript_segments,
+    verse_citations,
 )
 
 
@@ -453,3 +562,11 @@ class Publication(Base):
 
 class Audit(Base):
     __table__ = audit
+
+
+class TranscriptSegment(Base):
+    __table__ = transcript_segments
+
+
+class VerseCitation(Base):
+    __table__ = verse_citations

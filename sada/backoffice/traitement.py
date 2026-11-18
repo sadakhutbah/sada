@@ -197,6 +197,64 @@ def tour(conn, mosque: dict, log=print) -> int:
     return n
 
 
+# --- Semantic index: embeddings of the transcripts, after the live
+#
+# Computing embeddings takes a CPU core for seconds per sermon: never while an orchestrator is on
+# the air (the encoder and the VAD need the machine). The step waits: it does nothing while any
+# mosque is live, and stops between two batches as soon as one starts.
+LIVE_STATES = {"ARMED", "BEFORE", "KHUTBA", "PRAYER", "INTERMISSION", "ENDED", "JANAZA", "DARS", "DARS_END"}
+_download_failed_at = 0.0
+
+
+def any_live(conn) -> bool:
+    from sqlalchemy import select
+
+    from . import live, orm
+    from .models import Mosque
+
+    for m in orm.rows(conn, select(Mosque).where(Mosque.orchestrator_url != "")):
+        st = live.status_cached(dict(m))
+        if st.get("ok") and (st.get("state") in LIVE_STATES or st.get("stream_on")):
+            return True
+    return False
+
+
+def embed_pending(conn, log=print, is_live=None, budget_s: float = 600.0) -> int:
+    """Embeds the transcript segments still without a vector. Returns how many were embedded."""
+    import time
+
+    from . import embeddings, search
+
+    global _download_failed_at
+    is_live = is_live or (lambda: any_live(conn))
+    if not embeddings.enabled() or not search.pending_embeddings(conn):
+        return 0
+    if is_live():
+        return 0
+    if not embeddings.installed():
+        if time.monotonic() - _download_failed_at < 3600 and _download_failed_at:
+            return 0
+        if not embeddings.download(log=log):
+            _download_failed_at = time.monotonic()
+            return 0
+    model = embeddings.get()
+    if model is None:
+        return 0
+    search.ensure_vectors(conn)
+    n, t0 = 0, time.monotonic()
+    while time.monotonic() - t0 < budget_s:
+        if is_live():
+            log(_("semantic index: paused, a live is on"))
+            break
+        done = search.embed_batch(conn, model)
+        if not done:
+            break
+        n += done
+    if n:
+        log(_("semantic index: {n} segment(s) embedded in {s} s", n=n, s=f"{time.monotonic() - t0:.1f}"))
+    return n
+
+
 def mettre_en_file(run_dir: Path, idx: int) -> None:
     _maj(run_dir, idx, etat="attente", erreur=None, fin=None)
 

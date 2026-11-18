@@ -8,7 +8,7 @@ const fr = {
   app: { name: "Sadā" },
   player: { play: "Lire", pause: "Pause", seek: "Position", back: "Reculer de 10 s", forward: "Avancer de 10 s", mute: "Couper le son", unmute: "Remettre le son", volume: "Volume", speed: "Vitesse de lecture", fullscreen: "Plein écran", exitFullscreen: "Quitter le plein écran", subtitles: "Sous-titres", subtitlesKey: "Sous-titres (C)", subtitlesChoose: "Langue des sous-titres", subtitlesOff: "Aucun" },
   nav: {
-    dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", clips: "Clips", publications: "Publication", regie: "Régie",
+    dashboard: "Tableau de bord", sermons: "Khutbas", dars: "Dars", search: "Recherche", clips: "Clips", publications: "Publication", regie: "Régie",
     settings: "Réglages", users: "Comptes", audit: "Journal", logout: "Déconnexion", onboarding: "Mise en route", menu: "Menu", platform: "Plateforme",
   },
   states: {
@@ -128,6 +128,20 @@ const fr = {
     transport: "Commandes", skip: "Passer", autoOn: "Auto actif", autoResume: "Reprendre l'auto",
     janazaShown: "À l'écran :",
     janazaHint: "Le nom et la mention s'affichent sur l'écran de janaza, avec l'accord de la famille.",
+  },
+  search: {
+    title: "Recherche",
+    help: "Dans tout ce qui a été dit, quelle que soit la langue : mots, versets, idées.",
+    placeholder: "Un mot, une idée, un verset (2:153, Al-Baqara, البقرة)…",
+    explain: "Cherchez un mot dans les transcriptions et leurs traductions, un verset par sa référence ou le nom de sa sourate, ou une idée : « patience » trouve aussi « الصبر ». Chaque résultat ouvre la vidéo au bon moment.",
+    exampleSurah: "sourate Al-Kahf",
+    summary_one: "{{count}} séance, {{passages}} passage(s) pour « {{q}} »",
+    summary_other: "{{count}} séances, {{passages}} passages pour « {{q}} »",
+    empty: "Rien trouvé pour « {{q}} ». Essayez un autre mot, une autre langue ou une référence de verset (2:153).",
+    noSemantic: "Recherche par le sens indisponible pour l’instant : résultats par mots et versets seulement.",
+    verse: "Verset {{surah}}:{{ayah}} · {{name}}",
+    type: { word: "Mot", verse: "Verset", semantic: "Sens" },
+    kind: { khutba: "Khutba", dars: "Dars" },
   },
   sermons: {
     title: "Khutbas", date: "Date", label: "Passage", imam: "Imam", clips: "Clips", pending: "À valider",
@@ -537,7 +551,7 @@ const en: typeof fr = {
   app: { name: "Sadā" },
   player: { play: "Play", pause: "Pause", seek: "Position", back: "Back 10 s", forward: "Forward 10 s", mute: "Mute", unmute: "Unmute", volume: "Volume", speed: "Playback speed", fullscreen: "Full screen", exitFullscreen: "Exit full screen", subtitles: "Subtitles", subtitlesKey: "Subtitles (C)", subtitlesChoose: "Subtitle language", subtitlesOff: "None" },
   nav: {
-    dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", clips: "Clips", publications: "Publishing", regie: "Control room",
+    dashboard: "Dashboard", sermons: "Sermons", dars: "Lessons", search: "Search", clips: "Clips", publications: "Publishing", regie: "Control room",
     settings: "Settings", users: "Accounts", audit: "Log", logout: "Sign out", onboarding: "Get started", menu: "Menu", platform: "Platform",
   },
   states: {
@@ -654,6 +668,20 @@ const en: typeof fr = {
     transport: "Controls", skip: "Skip", autoOn: "Auto on", autoResume: "Resume auto",
     janazaShown: "On screen:",
     janazaHint: "The name and note appear on the janaza screen, with the family's consent.",
+  },
+  search: {
+    title: "Search",
+    help: "Across everything that was said, in any language: words, verses, ideas.",
+    placeholder: "A word, an idea, a verse (2:153, Al-Baqara, البقرة)…",
+    explain: "Search a word in the transcripts and their translations, a verse by reference or surah name, or an idea: “patience” also finds “الصبر”. Each result opens the video at the right moment.",
+    exampleSurah: "surah Al-Kahf",
+    summary_one: "{{count}} session, {{passages}} passage(s) for “{{q}}”",
+    summary_other: "{{count}} sessions, {{passages}} passages for “{{q}}”",
+    empty: "Nothing found for “{{q}}”. Try another word, another language or a verse reference (2:153).",
+    noSemantic: "Search by meaning is unavailable for now: word and verse results only.",
+    verse: "Verse {{surah}}:{{ayah}} · {{name}}",
+    type: { word: "Word", verse: "Verse", semantic: "Meaning" },
+    kind: { khutba: "Khutba", dars: "Dars" },
   },
   sermons: {
     title: "Sermons", date: "Date", label: "Slot", imam: "Imam", clips: "Clips", pending: "To review",

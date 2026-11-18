@@ -89,6 +89,8 @@ spec:
               value: receiver
             - name: SADA_IMPORT_EVERY
               value: {{ .Values.backoffice.importEvery | quote }}
+            - name: SADA_SEMANTIC_SEARCH
+              value: {{ ternary "1" "0" (ne .Values.backoffice.semanticSearch false) | quote }}
             {{- if eq (include "sada.secureCookies" .) "true" }}
             - name: SADA_SECURE_COOKIES
               value: "1"

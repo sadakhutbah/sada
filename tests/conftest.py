@@ -26,6 +26,9 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# never the real embedding model in tests (it may be downloaded on the dev machine): tests fake it
+os.environ.setdefault("SADA_SEMANTIC_SEARCH", "0")
+
 from sada.backoffice import auth, db, importer, migrations, models, orm  # noqa: E402
 from sada.backoffice.app import create_app  # noqa: E402
 

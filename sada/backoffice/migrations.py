@@ -207,6 +207,14 @@ def _mosques_titre_des_clips(conn: sa.Connection) -> None:
     _drop_columns(conn, "mosques", ("clip_title",))
 
 
+def _recherche(conn: sa.Connection) -> None:
+    """Migration 18 : index de recherche (segments de transcription, versets cités), plein texte
+    propre au moteur (FTS5 / tsvector + GIN) et vecteurs sémantiques (pgvector quand disponible).
+
+    Les séances déjà importées s'indexent par `python -m sada.backoffice search-index`."""
+    _baseline(conn)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -227,6 +235,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(
         17, "mosques : titre des clips retiré (l'en-tête vient du type d'enregistrement)", _mosques_titre_des_clips
     ),
+    Migration(18, "recherche : segments de transcription et versets cités", _recherche),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.
