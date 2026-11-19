@@ -11,7 +11,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-import threading
 import traceback
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from ..pipeline import clips as clipmod
 from ..pipeline import habillage as rendu
 from ..pipeline import subtitles as sous_titres
 from . import db, orm, states, traduction
+from .jobs import DbRowStore, Job, JobStatus
 from .models import Habillage, Khutba, Mosque, User
 
 #: réglages qui décrivent la mosquée et pas une vidéo : retenus pour la prochaine fois
@@ -319,14 +319,23 @@ def sous_titres_vtt(conn, k: dict, langue: str, brut: bool = False, passages: di
     ).encode("utf-8")
 
 
+class _HabillageStore(DbRowStore):
+    def ensure_row(self, conn, ref: dict) -> None:
+        if ligne(conn, ref["id"]) is None:
+            conn.add(Habillage(mosque_id=ref["mosque_id"], khutba_id=ref["id"], options="{}", updated_at=db.now_iso()))
+            conn.flush()
+
+
+JOB = Job(
+    _HabillageStore(Habillage, "khutba_id", "status", "error"),
+    busy_message=lambda: _("a render is already running for this video"),
+    thread_name="habillage",
+)
+
+
 def recover_interrupted(conn) -> None:
     """Rendus en cours quand le serveur s'est arrêté : ils ne finiront jamais."""
-    conn.execute(
-        update(Habillage)
-        .where(Habillage.status == "en_cours")
-        .values(status="echec", error=_("interrupted (server stopped)"), updated_at=db.now_iso())
-    )
-    orm.done(conn)
+    JOB.recover_interrupted(conn)
 
 
 # ------------------------------------------------------------------ actions
@@ -384,7 +393,7 @@ def a_jour(conn, k: dict, m: dict, o: dict) -> bool:
     """La vidéo habillée en place a déjà été rendue avec ces options, cette source et cette marque."""
     h = ligne(conn, k["id"])
     rendues = fichier_options_rendues(k)
-    if not (h and h["status"] == "pret" and fichier_video(k).exists() and rendues.exists()):
+    if not (h and h["status"] == JobStatus.READY and fichier_video(k).exists() and rendues.exists()):
         return False
     try:
         d = json.loads(rendues.read_text(encoding="utf-8"))
@@ -398,25 +407,33 @@ def lancer(conn, db_path: str, k: dict, m: dict, brut: dict, user: dict, ip=None
     """Lance le rendu ; renvoie les options. Rien n'est relancé si la vidéo en place est déjà à jour
     (options, source et marque identiques au dernier rendu réussi) : la clé "_a_jour" le signale."""
     o = _options(conn, k, brut)
-    h = ligne(conn, k["id"])
-    if h and h["status"] == "en_cours":
-        raise ValueError(_("a render is already running for this video"))
+    JOB.ensure_idle(conn, k)
     if not source(k):
         raise ValueError(_("source video not found: nothing to dress"))
     if a_jour(conn, k, m, o):
         retenir(conn, m, o)
         return {**o, "_a_jour": True}
-    _enregistrer(
+    JOB.start(
         conn,
         k,
-        o,
-        status="en_cours",
-        progress=0.0,
-        error="",
-        started_at=db.now_iso(),
-        finished_at="",
-        user_id=user["id"],
+        _rendre,
+        (db_path, k["id"]),
+        fields={
+            "options": json.dumps(o, ensure_ascii=False),
+            "progress": 0.0,
+            "error": "",
+            "started_at": db.now_iso(),
+            "finished_at": "",
+            "user_id": user["id"],
+        },
+        # `retenir` and the audit come right after the running state is recorded, before the render starts.
+        before_spawn=lambda: _after_start(conn, k, m, o, user, ip),
+        background=background,
     )
+    return o
+
+
+def _after_start(conn, k: dict, m: dict, o: dict, user: dict, ip) -> None:
     retenir(conn, m, o)
     db.audit(
         conn,
@@ -428,11 +445,6 @@ def lancer(conn, db_path: str, k: dict, m: dict, brut: dict, user: dict, ip=None
         ip=ip,
         elements=",".join(e for e in rendu.BOOLEENS if o[e]),
     )
-    if background:
-        threading.Thread(target=_rendre, args=(db_path, k["id"]), daemon=True, name=f"habillage-{k['id']}").start()
-    else:
-        _rendre(db_path, k["id"])
-    return o
 
 
 def _rendre(db_path: str, kid: int, log=print) -> None:
@@ -480,30 +492,12 @@ def _rendre(db_path: str, kid: int, log=print) -> None:
         Path(out).replace(final)
         fichier_options_rendues(k).write_text(json.dumps({**o, "_rendu": vu}, ensure_ascii=False), encoding="utf-8")
         out = str(final)
-        conn.execute(
-            update(Habillage)
-            .where(Habillage.khutba_id == kid)
-            .values(
-                status="pret",
-                progress=1,
-                error="",
-                file_path=out,
-                duration_s=round(duree, 1),
-                finished_at=db.now_iso(),
-                updated_at=db.now_iso(),
-            )
-        )
-        orm.done(conn)
+        JOB.mark_ready(conn, k, progress=1, file_path=out, duration_s=round(duree, 1), finished_at=db.now_iso())
         db.audit(conn, m["id"], None, "habillage.pret", "khutba", kid, duree=round(duree))
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         if k:
             fichier_rendu_en_cours(k).unlink(missing_ok=True)
-        conn.execute(
-            update(Habillage)
-            .where(Habillage.khutba_id == kid)
-            .values(status="echec", error=sans_chemin(str(e))[:400], finished_at=db.now_iso(), updated_at=db.now_iso())
-        )
-        orm.done(conn)
+        JOB.mark_failed(conn, {"id": kid}, sans_chemin(str(e))[:400], finished_at=db.now_iso())
     finally:
         conn.close()

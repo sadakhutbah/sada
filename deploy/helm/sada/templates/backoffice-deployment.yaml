@@ -24,8 +24,11 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if eq .Values.database.mode "cnpg" }}
+      securityContext:
+        {{- include "sada.podSecurityContext" . | nindent 8 }}
       initContainers:
+        {{- include "sada.dataPermsInit" . | nindent 8 }}
+      {{- if eq .Values.database.mode "cnpg" }}
         # The migrations run at start-up: wait for PostgreSQL instead of crash-looping.
         - name: wait-for-postgres
           image: {{ include "sada.image" . | quote }}
