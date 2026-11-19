@@ -18,6 +18,7 @@ import sys
 
 from sqlalchemy import select, update
 
+from .. import telemetry
 from ..i18n import _
 from . import auth, db, importer, internal, orm
 from .models import Mosque, User
@@ -240,6 +241,7 @@ def main(argv=None) -> int:
                 )
             conn.close()
             app = create_app(args.db, secure_cookies=args.secure_cookies, auto_import_s=args.import_every)
+            telemetry.start("sada-backoffice").instrument_app(app)
             print(
                 _("Back office: http://{host}:{port}/  (database {db})", host=args.host, port=args.port, db=args.db),
                 flush=True,

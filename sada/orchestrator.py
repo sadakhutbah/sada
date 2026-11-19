@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import destinations, gabarit_antenne, mawaqit, notify, runs, screens, source, upload
+from . import destinations, gabarit_antenne, mawaqit, notify, runs, screens, source, telemetry, upload
 from . import events as events_mod
 from .api import make_server
 from .clock import SimClock, parse_hhmm
@@ -175,6 +175,9 @@ class Orchestrator:
                 )
             )
         self.lock = threading.RLock()
+        self._stream_since: float | None = None  # monotonic time the stream started, None while it is off
+        self.telemetry = telemetry.start("sada-orchestrator", cfg.mosque_slug)
+        self.telemetry.watch_orchestrator(self.telemetry_snapshot)
         self._shown_key = None
         self._saved = None
         self._stop = threading.Event()
@@ -370,13 +373,17 @@ class Orchestrator:
             if spec.mic != enc.mic_on:
                 enc.mic(spec.mic)
         if m.state != self._notified_state:
+            if self._notified_state is not None:
+                self.telemetry.state_changed(self._notified_state.value, m.state.value)
             self._notified_state = m.state
             if notify.should_send(m.state, m, self.clock.now()):
                 self.notifier.notify_state(m.state, m)
         if m.stream_on and not enc.wanted:
             enc.start()
+            self._stream_since = time.monotonic()
         elif not m.stream_on and enc.wanted:
             enc.stop()
+            self._stream_since = None
             log.info(_("Stream stopped. Recordings: {files}", files=[r for r, _x in enc.recordings]))
             self._envoyer_rediffusions()
         self._save_sessions()
@@ -439,6 +446,18 @@ class Orchestrator:
         face_run = self.faces.absence_run() if self.faces else None
         return Signals(
             now=self.clock.now(), t=time.monotonic(), voice_run=v, silence_run=s, presence=pres, face_run=face_run
+        )
+
+    def telemetry_snapshot(self) -> telemetry.OrchestratorSnapshot:
+        """Numbers only (no title, name or address), read without the lock: a stale value is harmless."""
+        since = self._stream_since
+        return telemetry.OrchestratorSnapshot(
+            state=self.machine.state.value,
+            stream_on=self.encoder.wanted,
+            stream_live_s=time.monotonic() - since if since is not None else 0.0,
+            encoder_alive=self.encoder.alive(),
+            encoder_restarts=self.encoder.restarts,
+            ingest_connected=self.vad.connected,
         )
 
     def manual(self, cmd: str, arg=None) -> dict:
@@ -548,6 +567,7 @@ class Orchestrator:
         if self.api:
             self.api.shutdown()
         self._save_sessions()
+        self.telemetry.shutdown()
 
 
 # Command-line aliases: the flag keeps the field name, unless a shorter name is in use.

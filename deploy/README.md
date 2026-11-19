@@ -192,6 +192,32 @@ helm template sada deploy/helm/sada -n sada -f deploy/helm/sada/ci/test-values.y
 
 `terraform plan` reads the token (read-only API calls: image lookup) but creates nothing.
 
+## Telemetry (optional)
+
+The back office (`sada-backoffice`) and each orchestrator (`sada-orchestrator`, resource attribute
+`sada.mosque`) can export **metrics and traces** over OTLP/HTTP to a collector (OpenTelemetry Collector →
+Prometheus / Tempo / Grafana, ideally on a private network such as Tailscale). It is **off by default**:
+no exporter, no connection, no change of behaviour until one of these is set (add them to
+`backoffice.extraEnv` and `orchestrator.extraEnv`):
+
+| Variable | Effect |
+|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | switches the export on (also `..._METRICS_ENDPOINT` / `..._TRACES_ENDPOINT`) |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_RESOURCE_ATTRIBUTES` | standard SDK settings |
+| `SADA_TELEMETRY=1` / `0` | force on (default local endpoint) / off, whatever the endpoint |
+| `OTEL_SDK_DISABLED=true` | force off |
+
+Metrics: `sada.orchestrator.state{state}`, `sada.state.transitions{from_state,to_state}`, `sada.stream.on`,
+`sada.stream.live.duration`, `sada.encoder.up`, `sada.encoder.restarts`, `sada.ingest.connected`,
+`sada.job.runs` / `sada.job.duration{kind,status}`, `sada.llm.calls` / `.duration{protocol,status}`,
+`sada.transcription.calls` / `.duration{engine,stage,status}`, `sada.notification.sent` /
+`.duration{channel,status}`, plus the HTTP server metrics of the back office. Traces: back-office requests
+(route template only), jobs, LLM and transcription calls.
+
+Nothing sensitive is exported: only an allowlist of low-cardinality labels (`sada/telemetry.py`) leaves
+the process. No prompt, transcript, LLM answer, name, e-mail, IP address, header, request body, URL path
+or query string, stream key or secret; no exception message; no logs. `/health` is not traced.
+
 ## Limits, by design
 
 - **One node**: the PVC is `ReadWriteOnce` and shared by the back office and the orchestrators.

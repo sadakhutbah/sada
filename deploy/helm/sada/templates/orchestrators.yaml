@@ -65,6 +65,9 @@ spec:
               value: "rtmp://receiver:{{ $.Values.receiver.rtmpPort }}/live/{{ .slug }}-prog"
             - name: SADA_FPS
               value: {{ $.Values.orchestrator.fps | quote }}
+            # Labels this orchestrator's telemetry (only used when OTLP export is switched on).
+            - name: SADA_MOSQUE_SLUG
+              value: {{ .slug | quote }}
             - name: SADA_API_HOST
               value: 0.0.0.0
             - name: SADA_API_PORT

@@ -27,6 +27,7 @@ from typing import Any
 
 from sqlalchemy import update
 
+from .. import telemetry
 from ..i18n import _
 from . import db, orm
 
@@ -195,6 +196,7 @@ class Job:
         self.store, self.busy_message, self.thread_name, self._key = store, busy_message, thread_name, key
         self._lock = threading.Lock()
         self._active: set[Hashable] = set()  # one run per entity in this process
+        self._outcomes: dict[Hashable, str] = {}  # how each running job ended (`mark_ready` / `mark_failed`)
 
     # -- state
 
@@ -255,8 +257,12 @@ class Job:
 
     def _guarded(self, key: Hashable, target: Callable[..., None], args: tuple) -> None:
         try:
-            target(*args)
+            with telemetry.get().track("job", kind=self.thread_name) as run:
+                target(*args)
+                if self._outcomes.get(key) == telemetry.ERROR:
+                    run.fail()  # the job recorded its own failure instead of raising
         finally:
+            self._outcomes.pop(key, None)
             self._release(key)
 
     def _release(self, key: Hashable) -> None:
@@ -264,9 +270,11 @@ class Job:
             self._active.discard(key)
 
     def mark_ready(self, conn, ref: dict, **extra: Any) -> None:
+        self._outcomes[self._key(ref)] = telemetry.OK
         self.store.write(conn, ref, JobStatus.READY, "", extra)
 
     def mark_failed(self, conn, ref: dict, error: str, **extra: Any) -> None:
+        self._outcomes[self._key(ref)] = telemetry.ERROR
         self.store.write(conn, ref, JobStatus.FAILED, error, extra)
 
     def update(self, conn, ref: dict, **extra: Any) -> None:
