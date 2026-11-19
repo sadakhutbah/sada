@@ -14,8 +14,6 @@ Les adresses .srt/.vtt ne lancent JAMAIS la tâche : elles servent ce qui existe
 from __future__ import annotations
 
 import json
-import os
-import threading
 import traceback
 
 from ..i18n import _
@@ -23,50 +21,22 @@ from ..pipeline import llm, translate, verses
 from ..pipeline import subtitles as tracks
 from ..pipeline.output import SessionOutput
 from . import db, orm
+from .jobs import Job, JobStatus, JsonFileStore
 from .models import Khutba
 
-STATUSES = ("", "en_cours", "pret", "echec")
-
-#: une seule tâche à la fois par session dans ce processus (le fichier d'état couvre les autres)
-_VERROU = threading.Lock()
-_EN_COURS: set[int] = set()
+STATUSES = ("", *(s.value for s in (JobStatus.RUNNING, JobStatus.READY, JobStatus.FAILED)))
 
 
 def fichier(k: dict):
     return SessionOutput(k["output_dir"]).translation_job
 
 
-def _lire(k: dict) -> dict:
-    try:
-        data = json.loads(fichier(k).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _ecrire(k: dict, **champs) -> dict:
-    """État de la tâche, écrit d'un bloc (un lecteur ne voit jamais un fichier à moitié écrit)."""
-    etat = _lire(k)
-    etat.update(champs)
-    p = fichier(k)
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(etat, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(p)
-    except OSError:
-        pass
-    return etat
-
-
-def _vivant(pid) -> bool:
-    try:
-        os.kill(int(pid), 0)
-    except (TypeError, ValueError, ProcessLookupError):
-        return False
-    except PermissionError:
-        return True
-    return True
+#: one run per session in this process (the state file covers other processes)
+JOB = Job(
+    JsonFileStore(fichier),
+    busy_message=lambda: _("subtitles are already being translated for this video"),
+    thread_name="soustitres",
+)
 
 
 def etat(k: dict) -> dict:
@@ -75,15 +45,12 @@ def etat(k: dict) -> dict:
     Un « en cours » dont le processus a disparu (serveur arrêté) est un échec, pas une attente
     éternelle : l'écran peut alors proposer de relancer.
     """
-    e = _lire(k)
+    e = JOB.read(None, k)
     status = str(e.get("status") or "")
-    error = str(e.get("error") or "")
-    if status == "en_cours" and not _vivant(e.get("pid")):
-        status, error = "echec", _("interrupted (server stopped)")
     return {
         "status": status if status in STATUSES else "",
         "progress": round(float(e.get("progress") or 0.0), 3),
-        "error": error,
+        "error": str(e.get("error") or ""),
         "started_at": str(e.get("started_at") or ""),
         "finished_at": str(e.get("finished_at") or ""),
     }
@@ -105,27 +72,17 @@ def plan(conn, k: dict, data: dict | None = None) -> dict:
 
 def lancer(conn, db_path: str, k: dict, user: dict, ip=None, background: bool = True) -> dict:
     """Démarre la traduction des passages manquants ; rend l'état aussitôt."""
-    etat_avant = etat(k)
-    if etat_avant["status"] == "en_cours":
-        raise ValueError(_("subtitles are already being translated for this video"))
-    with _VERROU:
-        if k["id"] in _EN_COURS:
-            raise ValueError(_("subtitles are already being translated for this video"))
-        _EN_COURS.add(k["id"])
-    _ecrire(
+    JOB.start(
+        None,
         k,
-        status="en_cours",
-        progress=0.0,
-        error="",
-        started_at=db.now_iso(),
-        finished_at="",
-        pid=os.getpid(),
+        _traduire,
+        (db_path, k["id"]),
+        fields={"progress": 0.0, "error": "", "started_at": db.now_iso(), "finished_at": ""},
+        before_spawn=lambda: db.audit(
+            conn, k["mosque_id"], user["id"], "soustitres.traduire", "khutba", k["id"], ip=ip
+        ),
+        background=background,
     )
-    db.audit(conn, k["mosque_id"], user["id"], "soustitres.traduire", "khutba", k["id"], ip=ip)
-    if background:
-        threading.Thread(target=_traduire, args=(db_path, k["id"]), daemon=True, name=f"soustitres-{k['id']}").start()
-    else:
-        _traduire(db_path, k["id"])
     return etat(k)
 
 
@@ -145,7 +102,7 @@ def _traduire(db_path: str, kid: int, log=print) -> None:
         def progres(f: float) -> None:
             if f - dernier[0] >= 0.02 or f >= 1.0:
                 dernier[0] = f
-                _ecrire(k, progress=round(f, 3))
+                JOB.update(None, k, progress=round(f, 3))
 
         translate.translate_tracks(
             data["segments"],
@@ -170,16 +127,14 @@ def _traduire(db_path: str, kid: int, log=print) -> None:
                 if llm.enabled()
                 else _("translation incomplete: the language model is not available")
             )
-            _ecrire(k, status="echec", progress=1.0, error=why, finished_at=db.now_iso())
+            JOB.mark_failed(None, k, why, progress=1.0, finished_at=db.now_iso())
             log("[sous-titres]", why)
         else:
-            _ecrire(k, status="pret", progress=1.0, error="", finished_at=db.now_iso())
+            JOB.mark_ready(None, k, progress=1.0, finished_at=db.now_iso())
             db.audit(conn, k["mosque_id"], None, "soustitres.pret", "khutba", kid)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         if k:
-            _ecrire(k, status="echec", error=str(e)[:400], finished_at=db.now_iso())
+            JOB.mark_failed(None, k, str(e)[:400], finished_at=db.now_iso())
     finally:
-        with _VERROU:
-            _EN_COURS.discard(kid)
         conn.close()
