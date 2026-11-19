@@ -27,9 +27,9 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import paths
 from ..config import pick
 from ..i18n import _
+from .filesettings import FileSettings
 
 DEFAULT_URL = "http://127.0.0.1:11434/v1"
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
@@ -40,17 +40,16 @@ CONFIG_KEYS = ("enabled", "url", "model", "protocol", "key")
 _OVERRIDE: dict = {}
 
 
+_FILE = FileSettings("SADA_LLM_CONFIG", "llm.json", CONFIG_KEYS, private=True)
+
+
 def config_path() -> Path:
-    return Path(os.environ.get("SADA_LLM_CONFIG") or paths.DATA / "llm.json")
+    return _FILE.path()
 
 
 def config() -> dict:
     """Settings saved from the back-office (Settings → Mosque). File missing or unreadable: {}."""
-    try:
-        d = json.loads(config_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return {k: d[k] for k in CONFIG_KEYS if k in d} if isinstance(d, dict) else {}
+    return _FILE.read()
 
 
 def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "") -> None:
@@ -59,15 +58,10 @@ def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "
     The API key is never written here: absent from the web form, it is only kept if it was
     set by hand in the file (permissions 600).
     """
-    p = config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
     data = {"enabled": bool(enabled), "url": url.strip(), "model": model.strip(), "protocol": protocol.strip()}
     if old_key := config().get("key"):
         data["key"] = old_key
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    tmp.chmod(0o600)
-    os.replace(tmp, p)
+    _FILE.write(data)
 
 
 def use(**kw) -> None:
@@ -109,13 +103,17 @@ def settings(
     """Effective settings: argument, process setting, environment, back-office file, default."""
     cfg = config()
     # same precedence as the orchestrator configuration (config.pick): argument > process > env > file > default
-    url = pick(url, _OVERRIDE.get("url"), os.environ.get("SADA_LLM_URL"), cfg.get("url"), DEFAULT_URL).rstrip("/")
-    model = pick(model, _OVERRIDE.get("model"), os.environ.get("SADA_LLM_MODEL"), cfg.get("model"), DEFAULT_MODEL)
+    value = FileSettings.value
+    url = value(cli=url, override=_OVERRIDE.get("url"), env="SADA_LLM_URL", cfg=cfg.get("url"), default=DEFAULT_URL)
+    url = url.rstrip("/")
+    model = value(
+        cli=model, override=_OVERRIDE.get("model"), env="SADA_LLM_MODEL", cfg=cfg.get("model"), default=DEFAULT_MODEL
+    )
     # The saved protocol only holds for the saved address: if the address changes (back-office
     # setting, environment variable, argument), the protocol is deduced again from the address.
     cfg_proto = (cfg.get("protocol") or "").strip().lower() if (cfg.get("url") or "").rstrip("/") == url else ""
-    proto = pick(
-        protocol, _OVERRIDE.get("protocol"), os.environ.get("SADA_LLM_PROTOCOL"), cfg_proto, ""
+    proto = value(
+        cli=protocol, override=_OVERRIDE.get("protocol"), env="SADA_LLM_PROTOCOL", cfg=cfg_proto, default=""
     ).strip().lower() or _guess_protocol(url)
     if key is None:  # an empty key given explicitly stays empty
         key = pick(os.environ.get("SADA_LLM_API_KEY"), cfg.get("key"), "")
