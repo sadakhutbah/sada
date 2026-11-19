@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0-alpha.5](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.4...sada-v0.1.0-alpha.5) (2026-11-19)
+
+
+### Features
+
+* **infra:** optional private monitoring VM (Tailscale only) ([#51](https://github.com/sadakhutbah/sada/issues/51)) ([613dc80](https://github.com/sadakhutbah/sada/commit/613dc80932f1e25f1f31665e70ad9d9047661dda))
+* OpenTelemetry metrics and traces (opt-in) ([#52](https://github.com/sadakhutbah/sada/issues/52)) ([50e1000](https://github.com/sadakhutbah/sada/commit/50e10002f115c48b4e0ec571d5f58f2560a14c55))
+
 ## [0.1.0-alpha.4](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.3...sada-v0.1.0-alpha.4) (2026-11-19)
 
 
