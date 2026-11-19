@@ -1,6 +1,6 @@
 {
   "uid": "sada-overview",
-  "title": "Sadā overview (placeholder)",
+  "title": "Sadā overview",
   "tags": [
     "sada"
   ],
@@ -22,182 +22,644 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "query": "label_values(sada_orchestrator_state,mosque)",
+        "query": {
+          "query": "label_values(sada_orchestrator_state, mosque)",
+          "refId": "v"
+        },
         "includeAll": true,
         "multi": true,
         "current": {
           "text": "All",
           "value": "$__all"
         },
-        "refresh": 2
+        "refresh": 2,
+        "definition": "label_values(sada_orchestrator_state, mosque)",
+        "allValue": ".*"
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "title": "Orchestrator state per mosque",
       "type": "stat",
+      "title": "Orchestrator state",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 12,
-        "h": 6
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sada_orchestrator_state{mosque=~\"$mosque\"}",
-          "legendFormat": "{{mosque}} {{state}}"
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "title": "Live on",
-      "type": "stat",
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 12,
-        "h": 6
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sada_live_on{mosque=~\"$mosque\"}",
-          "legendFormat": "{{mosque}}"
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "title": "Jobs by status",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 0,
-        "y": 6,
-        "w": 12,
+        "w": 8,
         "h": 8
       },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status) (sada_jobs{mosque=~\"$mosque\"})",
-          "legendFormat": "{{status}}"
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "title": "LLM errors (rate 5m)",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 12,
-        "y": 6,
-        "w": 6,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (mosque) (rate(sada_llm_errors_total{mosque=~\"$mosque\"}[5m]))",
-          "legendFormat": "{{mosque}}"
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "title": "Transcription errors (rate 5m)",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 18,
-        "y": 6,
-        "w": 6,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (mosque) (rate(sada_transcription_errors_total{mosque=~\"$mosque\"}[5m]))",
-          "legendFormat": "{{mosque}}"
-        }
-      ]
-    },
-    {
-      "id": 6,
-      "title": "Pod CPU (cores)",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 0,
-        "y": 14,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"sada\",container!=\"\"}[5m]))",
-          "legendFormat": "{{pod}}"
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (mosque, state) (sada_orchestrator_state{mosque=~\"$mosque\"}) == 1",
+          "legendFormat": "{{mosque}}: {{state}}"
         }
       ],
       "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
+        "defaults": {},
         "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "name",
+        "colorMode": "none"
       }
     },
     {
-      "id": 7,
-      "title": "Pod memory (working set)",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 12,
-        "y": 14,
-        "w": 12,
-        "h": 8
-      },
+      "id": 2,
+      "type": "stat",
+      "title": "Live on",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"sada\",container!=\"\"})",
-          "legendFormat": "{{pod}}"
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (mosque) (sada_stream_on_ratio{mosque=~\"$mosque\"})",
+          "legendFormat": "{{mosque}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes"
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "off"
+                },
+                "1": {
+                  "text": "LIVE"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
+      },
+      "options": {},
+      "description": "1 while the stream is on"
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Live duration",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (mosque) (sada_stream_live_duration_seconds{mosque=~\"$mosque\"})",
+          "legendFormat": "{{mosque}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Encoder up",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (mosque) (sada_encoder_up_ratio{mosque=~\"$mosque\"})",
+          "legendFormat": "{{mosque}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Encoder restarts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (mosque) (sada_encoder_restarts_ratio{mosque=~\"$mosque\"})",
+          "legendFormat": "{{mosque}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Ingest connected",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (mosque) (sada_ingest_connected_ratio{mosque=~\"$mosque\"})",
+          "legendFormat": "{{mosque}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Orchestrator state transitions (5m)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (mosque, from_state, to_state) (increase(sada_state_transitions_total{mosque=~\"$mosque\"}[5m]))",
+          "legendFormat": "{{mosque}} {{from_state}}>{{to_state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Empty until a transition happens"
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Job runs by kind and status (rate 5m)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (kind, status) (rate(sada_job_runs_total[5m]))",
+          "legendFormat": "{{kind}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Back-office jobs (no mosque label: single back-office). Empty until a job runs"
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Job duration p95 by kind",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(sada_job_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{kind}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "LLM calls by protocol and status (rate 5m)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (protocol, status) (rate(sada_llm_calls_total[5m]))",
+          "legendFormat": "{{protocol}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "LLM latency p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 24,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, protocol) (rate(sada_llm_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{protocol}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "LLM errors (rate 5m)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 24,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (protocol) (rate(sada_llm_calls_total{status=\"error\"}[5m]))",
+          "legendFormat": "{{protocol}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Transcription calls by engine and status (rate 5m)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (engine, stage, status) (rate(sada_transcription_calls_total[5m]))",
+          "legendFormat": "{{engine}} {{stage}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Transcription latency p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 32,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, engine, stage) (rate(sada_transcription_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{engine}} {{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Transcription errors (rate 5m)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 32,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (engine) (rate(sada_transcription_calls_total{status=\"error\"}[5m]))",
+          "legendFormat": "{{engine}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Notifications sent (rate 5m)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (mosque, status) (rate(sada_notification_sent_total{mosque=~\"$mosque\"}[5m]))",
+          "legendFormat": "{{mosque}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Empty until a notification is sent"
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "HTTP request rate by route",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (service_name, http_route, http_response_status_code) (rate(http_server_duration_milliseconds_count{mosque=~\"$mosque\"}[5m]))",
+          "legendFormat": "{{service_name}} {{http_route}} {{http_response_status_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "HTTP latency p95 by route",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, service_name, http_route) (rate(http_server_duration_milliseconds_bucket{mosque=~\"$mosque\"}[5m])))",
+          "legendFormat": "{{service_name}} {{http_route}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 19,
+      "type": "text",
+      "title": "Pod CPU / memory",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Pod CPU and memory are not shown: no source scrapes kubelet/cAdvisor (monitoring_kubelet_targets is empty). Add the panels back once targets are enabled."
       }
     }
   ]
