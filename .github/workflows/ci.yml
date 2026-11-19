@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release-please opens its PR with GITHUB_TOKEN, which triggers no workflow:
+  # the release job dispatches this workflow on the PR branch so the PR gets real checks
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -105,6 +108,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     outputs:
       created: ${{ steps.rp.outputs.release_created }}
       version: ${{ steps.rp.outputs.version }}
@@ -114,6 +118,12 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      - name: Run CI on the release PR
+        if: steps.rp.outputs.pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
 
   image:
     name: Docker image (ghcr)
