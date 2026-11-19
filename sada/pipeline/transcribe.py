@@ -130,7 +130,7 @@ def pick_model(prefer: str | None, log=print) -> tuple[str, str, str]:
     return ("large-v3-turbo" if prefer in (None, "large-v3-turbo", "large-v3") else prefer, "cpu", "int8")
 
 
-class LocalEngine:
+class LocalEngine(repair.Engine):
     """Moteur local des passes de reprise : faster-whisper sur le tableau numpy du WAV 16 kHz."""
 
     def __init__(self, model, audio, *, sr: int = 16000):
@@ -236,11 +236,27 @@ def transcribe(
 ) -> dict:
     # Réglage « Local / Distant » (Réglages → Transcription) : le distant rend exactement la même
     # forme de résultat, l'aval ne sait pas d'où il vient. Aucun repli silencieux vers le local.
+    return BACKENDS[backend_name()](
+        wav, out_json, prefer=prefer, log=log, arabic_retry=arabic_retry, hotwords=hotwords, source=source
+    )
+
+
+def backend_name() -> str:
+    """Backend chosen in Settings → Transcription: "distant" if remote transcription is on, else "local"."""
     from . import remote
 
-    if remote.enabled():
-        return remote.transcribe(wav, out_json, log=log, arabic_retry=arabic_retry, hotwords=hotwords, source=source)
+    return "distant" if remote.enabled() else "local"
 
+
+def _transcribe_remote(wav, out_json, *, prefer, log, arabic_retry, hotwords, source) -> dict:
+    """Remote backend (`remote.RemoteEngine` for the repair passes). `prefer` is a local model name: ignored."""
+    from . import remote
+
+    return remote.transcribe(wav, out_json, log=log, arabic_retry=arabic_retry, hotwords=hotwords, source=source)
+
+
+def _transcribe_local(wav, out_json, *, prefer, log, arabic_retry, hotwords, source) -> dict:
+    """Local backend: faster-whisper (`LocalEngine` for the repair passes)."""
     from faster_whisper import WhisperModel
 
     name, device, ctype = pick_model(prefer, log)
@@ -328,3 +344,7 @@ def transcribe(
     Path(out_json).write_text(json.dumps(res, ensure_ascii=False, indent=1))
     log(_("Transcription: {count} segments in {seconds} s", count=len(segs), seconds=res["elapsed_s"]))
     return res
+
+
+#: Transcription backends by mode name (`remote.MODES`).
+BACKENDS = {"local": _transcribe_local, "distant": _transcribe_remote}

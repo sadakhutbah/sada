@@ -24,8 +24,9 @@ RUN uv sync --frozen --no-dev \
 ARG SADA_VERSION=dev
 ENV SADA_VERSION=$SADA_VERSION
 
-# Non-root runtime user. /app stays root-owned (read-only for the app: code, venv, CUDA wheels,
-# rendering engine); only data/ (database, recordings, outputs) and the home (model caches) are writable.
+# Non-root runtime user. /app stays root-owned (read-only for the app: code, venv, rendering engine);
+# only data/ (database, recordings, outputs) and the home (model caches) are writable.
+# The image ships no CUDA libraries: transcription runs on CPU (or remote) in containers; GPU is local-only.
 # Existing volumes created by a root container must be chown'ed to 10001 once (or use fsGroup: 10001).
 RUN useradd --system --uid 10001 --user-group --create-home --home-dir /home/sada sada \
     && mkdir -p /app/data && chown sada:sada /app/data

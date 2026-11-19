@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from ..i18n import _
 from ..text import arabic_ratio
@@ -51,6 +51,7 @@ COMPRESSION_MIN_CHARS = 20  # en dessous, le taux de compression ne veut rien di
 SILENT_DB = -50.0  # seuil de niveau : en dessous, `silencedetect` ne trouve pas de voix
 
 
+@runtime_checkable
 class Engine(Protocol):
     """Ce qu'une passe de reprise demande au moteur de transcription."""
 

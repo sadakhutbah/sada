@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from ...i18n import _
 from .. import content, orm, publish, states
 from ..context import Ctx, CtxDep, clip_or_404, imam_filter, khutba_or_404
+from ..jobs import JobStatus
 from ..models import Audit, Clip, Khutba, Publication, User
 from .common import _a_table, _ok
 
@@ -73,7 +74,7 @@ def _clip_detail(ctx: Ctx, cid: int) -> dict:
         "regenerate_reason": regen_why,
         "can_validate": content.can_validate(c)[0],
         # Bounds: moved on the khutba video (session time), not on the rendered clip.
-        "can_adjust": c["status"] != "publie" and c["regen_state"] != "en_cours" and regen_ok,
+        "can_adjust": c["status"] != "publie" and c["regen_state"] != JobStatus.RUNNING and regen_ok,
         "sermon_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
         "clip_limits": {
             "min": content.MIN_CLIP,
@@ -156,7 +157,9 @@ async def clip_regenerate(cid: int, ctx: CtxDep):
     content.start_regeneration(
         ctx.conn, ctx.request.app.state.db_path, c, ctx.user, ctx.ip, background=ctx.request.app.state.regen_background
     )
-    return _ok(_("Regeneration started (about a minute): the sheet updates by itself."), regen_state="en_cours")
+    return _ok(
+        _("Regeneration started (about a minute): the sheet updates by itself."), regen_state=JobStatus.RUNNING.value
+    )
 
 
 @router.post("/clips/{cid}/publish")
@@ -214,5 +217,6 @@ async def clip_bounds(cid: int, ctx: CtxDep):
         background=ctx.request.app.state.regen_background,
     )
     return _ok(
-        _("Bounds saved: the clip is rendered again, then it goes back through validation."), regen_state="en_cours"
+        _("Bounds saved: the clip is rendered again, then it goes back through validation."),
+        regen_state=JobStatus.RUNNING.value,
     )
