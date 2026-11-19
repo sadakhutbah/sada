@@ -1,5 +1,5 @@
 # One image, two roles: back office (`serve`) and orchestrator (one container per mosque live).
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 # ffmpeg (Debian build: zmq, srt, rtmp) + the libraries chrome-headless-shell needs
 RUN apt-get update && apt-get install -y --no-install-recommends \
