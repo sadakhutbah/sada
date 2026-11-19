@@ -54,3 +54,13 @@ output "kubeconfig_path" {
   description = "Kubeconfig written locally by the Ansible playbook."
   value       = local.kubeconfig_path
 }
+
+output "monitoring_server" {
+  description = "Monitoring VM (null when enable_monitoring = false). Reach Grafana over Tailscale, never on this address."
+  value = var.enable_monitoring ? {
+    name = hcloud_server.monitoring[0].name
+    type = "${hcloud_server.monitoring[0].server_type} in ${hcloud_server.monitoring[0].location}"
+    ipv4 = hcloud_server.monitoring[0].ipv4_address
+    ipv6 = hcloud_server.monitoring[0].ipv6_address
+  } : null
+}

@@ -1,0 +1,13 @@
+---
+- name: Restart docker
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+    daemon_reload: true
+
+# The stack task right after the config tasks runs `docker compose up -d`, which recreates what
+# changed; this handler only exists so that a changed secret/config forces a clean recreation.
+- name: Recreate the stack
+  ansible.builtin.command: docker compose up -d --force-recreate --remove-orphans
+  args:
+    chdir: "{{ monitoring_dir }}"

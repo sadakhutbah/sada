@@ -1,0 +1,191 @@
+---
+- name: Wait for cloud-init to finish
+  ansible.builtin.command: cloud-init status --wait
+  register: cloud_init
+  changed_when: false
+  failed_when: cloud_init.rc not in [0, 2]
+
+- name: Packages from the Ubuntu archive (Docker and compose)
+  ansible.builtin.apt:
+    name: [curl, ca-certificates, gnupg, docker.io, docker-compose-v2]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# --- Tailscale ---------------------------------------------------------
+- name: Tailscale apt key
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+
+- name: Tailscale apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/tailscale.list
+    mode: "0644"
+    content: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main\n"
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+
+- name: Start tailscaled
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: started
+    enabled: true
+
+- name: Is the VM already on the tailnet?
+  ansible.builtin.command: tailscale ip -4
+  register: ts_ip_check
+  changed_when: false
+  failed_when: false
+
+- name: Join the tailnet (auth key read locally, never written to the VM)
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - up
+      - --auth-key={{ lookup('ansible.builtin.env', 'SADA_TS_AUTHKEY') | default(lookup('ansible.builtin.file', monitoring_tailscale_authkey_file | expanduser), true) | trim }}
+      - --hostname={{ monitoring_tailscale_hostname }}
+      - --ssh=false
+      - --accept-routes=false
+      - --accept-dns=false
+  no_log: true
+  when: ts_ip_check.rc != 0
+
+- name: Read the Tailscale IPv4
+  ansible.builtin.command: tailscale ip -4
+  register: ts_ip_cmd
+  changed_when: false
+  retries: 10
+  delay: 3
+  until: ts_ip_cmd.rc == 0
+
+- name: Keep the address for the templates
+  ansible.builtin.set_fact:
+    monitoring_ts_ip: "{{ ts_ip_cmd.stdout | trim }}"
+
+# Containers publish their ports on the Tailscale address: Docker must start after it exists.
+- name: Create the docker drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    mode: "0755"
+
+- name: Docker waits for the Tailscale address
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/docker.service.d/tailscale.conf
+    mode: "0644"
+    content: |
+      [Unit]
+      After=tailscaled.service
+      Wants=tailscaled.service
+      [Service]
+      ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1'
+  notify: Restart docker
+
+- name: Flush handlers (docker restart)
+  ansible.builtin.meta: flush_handlers
+
+# --- Stack -------------------------------------------------------------
+- name: Directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.owner | default('root') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ monitoring_dir }}" }
+    - { path: "{{ monitoring_dir }}/secrets", mode: "0700" }
+    - { path: "{{ monitoring_dir }}/grafana/provisioning/datasources" }
+    - { path: "{{ monitoring_dir }}/grafana/provisioning/dashboards" }
+    - { path: "{{ monitoring_dir }}/grafana/dashboards" }
+    - { path: "{{ monitoring_dir }}/data/prometheus", owner: "65534" }
+    - { path: "{{ monitoring_dir }}/data/tempo", owner: "10001" }
+    - { path: "{{ monitoring_dir }}/data/grafana", owner: "472" }
+
+- name: Kubelet token placeholder (empty unless kubelet targets are configured)
+  ansible.builtin.copy:
+    dest: "{{ monitoring_dir }}/secrets/kubelet_token"
+    content: ""
+    mode: "0444"
+    force: false
+
+# Generated on the operator's machine on the first run, kept there (0600), copied to the VM.
+- name: Generate the Grafana admin password locally when missing
+  ansible.builtin.copy:
+    dest: "{{ monitoring_grafana_password_file | expanduser }}"
+    content: "{{ lookup('ansible.builtin.password', '/dev/null length=32 chars=ascii_letters,digits') }}\n"
+    mode: "0600"
+    force: false
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Grafana admin password on the VM (readable by the grafana uid only)
+  ansible.builtin.copy:
+    dest: "{{ monitoring_dir }}/secrets/grafana_admin_password"
+    content: "{{ lookup('ansible.builtin.file', monitoring_grafana_password_file | expanduser) | trim }}"
+    owner: "472"
+    group: "472"
+    mode: "0400"
+  no_log: true
+  notify: Recreate the stack
+
+- name: Configuration files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ monitoring_dir }}/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: compose.yaml.j2, dest: compose.yaml }
+    - { src: otelcol.yaml.j2, dest: otelcol.yaml }
+    - { src: prometheus.yml.j2, dest: prometheus.yml }
+    - { src: tempo.yaml.j2, dest: tempo.yaml }
+    - { src: datasources.yaml.j2, dest: grafana/provisioning/datasources/datasources.yaml }
+    - { src: dashboards-provider.yaml.j2, dest: grafana/provisioning/dashboards/sada.yaml }
+  notify: Recreate the stack
+
+- name: Dashboards (versioned in the repository)
+  ansible.builtin.copy:
+    src: dashboards/
+    dest: "{{ monitoring_dir }}/grafana/dashboards/"
+    mode: "0644"
+  notify: Recreate the stack
+
+- name: Start the stack (recreates containers whose config changed)
+  ansible.builtin.command: docker compose up -d --remove-orphans --pull missing
+  args:
+    chdir: "{{ monitoring_dir }}"
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr or 'Recreated' in compose_up.stderr"
+
+- name: Grafana answers on the Tailscale address
+  ansible.builtin.uri:
+    url: "http://{{ monitoring_ts_ip }}:3000/api/health"
+  register: grafana_health
+  retries: 20
+  delay: 3
+  until: grafana_health.status == 200
+
+- name: Anonymous access is refused
+  ansible.builtin.uri:
+    url: "http://{{ monitoring_ts_ip }}:3000/api/datasources"
+    status_code: 401
+  changed_when: false
+
+- name: Listening sockets (nothing may be bound to 0.0.0.0 or the public address)
+  ansible.builtin.shell: ss -Htlnp | awk '{print $4}' | sort -u
+  register: listeners
+  changed_when: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg:
+      - "Grafana: http://{{ monitoring_ts_ip }}:3000 (user admin, password in {{ monitoring_grafana_password_file }})"
+      - "OTLP gRPC {{ monitoring_ts_ip }}:4317, OTLP HTTP {{ monitoring_ts_ip }}:4318 (tailnet only)"
+      - "Listening: {{ listeners.stdout_lines }}"

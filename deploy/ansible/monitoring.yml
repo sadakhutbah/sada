@@ -1,0 +1,14 @@
+---
+# Private monitoring VM: Tailscale + Docker + OTel Collector, Prometheus, Tempo, Grafana.
+#
+#   ansible-playbook -i inventory-monitoring.ini monitoring.yml
+#   ansible-playbook -i inventory-monitoring.example.ini --syntax-check monitoring.yml
+#
+# Secrets stay on the operator's machine (~/.config/sada-deploy/, never in git):
+#   tailscale_authkey          one-off, pre-approved, tagged auth key (or env SADA_TS_AUTHKEY)
+#   grafana_admin_password     generated on the first run if missing (0600)
+- name: Sadā monitoring (Tailscale-only)
+  hosts: monitoring
+  gather_facts: true
+  roles:
+    - monitoring

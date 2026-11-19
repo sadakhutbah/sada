@@ -1,0 +1,23 @@
+---
+# Pinned images (no "latest").
+monitoring_image_otelcol: otel/opentelemetry-collector-contrib:0.165.0
+monitoring_image_prometheus: prom/prometheus:v3.16.0
+monitoring_image_tempo: grafana/tempo:2.10.10
+monitoring_image_grafana: grafana/grafana:13.2.6
+
+monitoring_dir: /opt/sada-monitoring
+monitoring_tailscale_hostname: sada-monitoring
+# Local secret files (operator's machine).
+monitoring_tailscale_authkey_file: ~/.config/sada-deploy/tailscale_authkey
+monitoring_grafana_password_file: ~/.config/sada-deploy/grafana_admin_password
+
+# Retention (bounded).
+monitoring_prometheus_retention_time: 30d
+monitoring_prometheus_retention_size: 10GB
+monitoring_tempo_retention: 336h   # 14 days
+
+# Extra Prometheus scrape targets reachable over the tailnet, e.g. ["sada-app:10250"].
+# Empty until the k3s node joins the tailnet (see README). Kubelet/cAdvisor needs a token:
+# put a bearer token file at monitoring_kubelet_token_file on the VM if you use it.
+monitoring_kubelet_targets: []
+monitoring_kubelet_token_file: /opt/sada-monitoring/secrets/kubelet_token

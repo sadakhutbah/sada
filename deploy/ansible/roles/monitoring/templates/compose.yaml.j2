@@ -1,0 +1,92 @@
+# Managed by Ansible (deploy/ansible/roles/monitoring). Published ports are bound to the Tailscale
+# address only; Prometheus and Tempo publish nothing.
+name: sada-monitoring
+
+networks:
+  back:
+    internal: true   # Tempo: no route out
+  front: {}          # Collector, Prometheus (tailnet scrapes), Grafana
+
+services:
+  otelcol:
+    image: {{ monitoring_image_otelcol }}
+    command: ["--config=/etc/otelcol/config.yaml"]
+    restart: unless-stopped
+    volumes:
+      - ./otelcol.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "{{ monitoring_ts_ip }}:4317:4317"
+      - "{{ monitoring_ts_ip }}:4318:4318"
+    networks: [back, front]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  prometheus:
+    image: {{ monitoring_image_prometheus }}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time={{ monitoring_prometheus_retention_time }}
+      - --storage.tsdb.retention.size={{ monitoring_prometheus_retention_size }}
+      - --web.listen-address=:9090
+    restart: unless-stopped
+    user: "65534:65534"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./secrets/kubelet_token:/etc/prometheus/kubelet_token:ro
+      - ./data/prometheus:/prometheus
+    networks: [back, front]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  tempo:
+    image: {{ monitoring_image_tempo }}
+    command: ["-config.file=/etc/tempo/tempo.yaml", "-target=all"]
+    restart: unless-stopped
+    user: "10001:10001"
+    volumes:
+      - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - ./data/tempo:/var/tempo
+    networks: [back]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  grafana:
+    image: {{ monitoring_image_grafana }}
+    restart: unless-stopped
+    user: "472:472"
+    environment:
+      GF_SERVER_HTTP_ADDR: "0.0.0.0"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      # No phone-home.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: "true"
+      GF_PLUGINS_ENABLE_ALPHA: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_EXPLORE_ENABLED: "true"
+      GF_LIVE_ALLOWED_ORIGINS: "http://{{ monitoring_ts_ip }}:3000"
+    volumes:
+      - ./secrets/grafana_admin_password:/run/secrets/grafana_admin_password:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana-dashboards:ro
+      - ./data/grafana:/var/lib/grafana
+    ports:
+      - "{{ monitoring_ts_ip }}:3000:3000"
+    networks: [back, front]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
