@@ -28,6 +28,7 @@ from .. import (
     transcript_export,
 )
 from ..context import CtxDep, Invalid, NotFound, imam_filter, khutba_or_404
+from ..jobs import JobStatus
 from ..models import Clip, Khutba, User
 from .common import _ok, _segments
 
@@ -270,7 +271,7 @@ async def do_import(ctx: CtxDep):
 @router.get("/traitements")
 async def traitements(ctx: CtxDep):
     items = await run_in_threadpool(traitement.liste, ctx.mosque)
-    return {"items": items, "actif": any(i["etat"] in ("attente", "en_cours") for i in items)}
+    return {"items": items, "actif": any(i["etat"] in (JobStatus.PENDING, JobStatus.RUNNING) for i in items)}
 
 
 @router.post("/traitements/relancer")
