@@ -2,7 +2,7 @@
 
 import datetime as dt
 
-from sada.notify import Notifier, message_for, should_send
+from sada.notify import CHANNELS, Notifier, message_for, should_send
 from sada.state import Machine, MachineParams, State
 
 D = dt.date(2026, 11, 10)
@@ -82,7 +82,7 @@ def test_rappel_seulement_pour_une_session_a_venir():
 
 
 def test_channel_registry_keys_and_order():
-    from sada.notify import CHANNELS, TelegramChannel, WebhookChannel
+    from sada.notify import TelegramChannel, WebhookChannel
 
     assert list(CHANNELS) == ["webhook", "telegram"]
     assert isinstance(CHANNELS["webhook"], WebhookChannel)
@@ -91,8 +91,6 @@ def test_channel_registry_keys_and_order():
 
 
 def test_channel_requirements_and_requests():
-    from sada.notify import CHANNELS
-
     web, tg = CHANNELS["webhook"], CHANNELS["telegram"]
     assert web.is_configured({"webhook": "https://x.test"}) and not web.is_configured({})
     assert tg.is_configured({"telegram_token": "t", "telegram_chat": "c"})
@@ -106,15 +104,9 @@ def test_channel_requirements_and_requests():
 
 def test_notifier_delegates_to_channel_and_webhook_wins():
     n = Notifier(webhook="https://x.test", telegram_token="t", telegram_chat="c")
-    assert n.channel is CHANNELS_WEBHOOK()
+    assert n.channel is CHANNELS["webhook"]
     assert n.destination == "webhook"
     assert Notifier().channel is None and Notifier().destination == "à blanc"
-
-
-def CHANNELS_WEBHOOK():
-    from sada.notify import CHANNELS
-
-    return CHANNELS["webhook"]
 
 
 def test_from_settings_unknown_mode_is_noop():
