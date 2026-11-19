@@ -27,9 +27,9 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import paths
 from ..config import pick
 from ..i18n import _
+from .filesettings import FileSettings
 
 DEFAULT_URL = "http://127.0.0.1:11434/v1"
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
@@ -40,17 +40,16 @@ CONFIG_KEYS = ("enabled", "url", "model", "protocol", "key")
 _OVERRIDE: dict = {}
 
 
+_FILE = FileSettings("SADA_LLM_CONFIG", "llm.json", CONFIG_KEYS, private=True)
+
+
 def config_path() -> Path:
-    return Path(os.environ.get("SADA_LLM_CONFIG") or paths.DATA / "llm.json")
+    return _FILE.path()
 
 
 def config() -> dict:
     """Settings saved from the back-office (Settings → Mosque). File missing or unreadable: {}."""
-    try:
-        d = json.loads(config_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return {k: d[k] for k in CONFIG_KEYS if k in d} if isinstance(d, dict) else {}
+    return _FILE.read()
 
 
 def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "") -> None:
@@ -59,15 +58,10 @@ def save_config(enabled: bool, url: str = "", model: str = "", protocol: str = "
     The API key is never written here: absent from the web form, it is only kept if it was
     set by hand in the file (permissions 600).
     """
-    p = config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
     data = {"enabled": bool(enabled), "url": url.strip(), "model": model.strip(), "protocol": protocol.strip()}
     if old_key := config().get("key"):
         data["key"] = old_key
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    tmp.chmod(0o600)
-    os.replace(tmp, p)
+    _FILE.write(data)
 
 
 def use(**kw) -> None:
@@ -100,9 +94,7 @@ class Settings:
 
     def label(self) -> str:
         """Short name of the method, written into the notes and the translation cache."""
-        if self.protocol == "claude-cli":
-            return "claude -p"
-        return f"{self.protocol} · {self.model}"
+        return protocol_for(self.protocol).label(self)
 
 
 def settings(
@@ -111,13 +103,17 @@ def settings(
     """Effective settings: argument, process setting, environment, back-office file, default."""
     cfg = config()
     # same precedence as the orchestrator configuration (config.pick): argument > process > env > file > default
-    url = pick(url, _OVERRIDE.get("url"), os.environ.get("SADA_LLM_URL"), cfg.get("url"), DEFAULT_URL).rstrip("/")
-    model = pick(model, _OVERRIDE.get("model"), os.environ.get("SADA_LLM_MODEL"), cfg.get("model"), DEFAULT_MODEL)
+    value = FileSettings.value
+    url = value(cli=url, override=_OVERRIDE.get("url"), env="SADA_LLM_URL", cfg=cfg.get("url"), default=DEFAULT_URL)
+    url = url.rstrip("/")
+    model = value(
+        cli=model, override=_OVERRIDE.get("model"), env="SADA_LLM_MODEL", cfg=cfg.get("model"), default=DEFAULT_MODEL
+    )
     # The saved protocol only holds for the saved address: if the address changes (back-office
     # setting, environment variable, argument), the protocol is deduced again from the address.
     cfg_proto = (cfg.get("protocol") or "").strip().lower() if (cfg.get("url") or "").rstrip("/") == url else ""
-    proto = pick(
-        protocol, _OVERRIDE.get("protocol"), os.environ.get("SADA_LLM_PROTOCOL"), cfg_proto, ""
+    proto = value(
+        cli=protocol, override=_OVERRIDE.get("protocol"), env="SADA_LLM_PROTOCOL", cfg=cfg_proto, default=""
     ).strip().lower() or _guess_protocol(url)
     if key is None:  # an empty key given explicitly stays empty
         key = pick(os.environ.get("SADA_LLM_API_KEY"), cfg.get("key"), "")
@@ -137,7 +133,7 @@ def ask_json(prompt: str, timeout: int, log=print, *, url=None, model=None, key=
         return None
     s = settings(url, model, key, protocol)
     try:
-        text = _ask_cli(prompt, timeout, log) if s.protocol == "claude-cli" else _ask_http(s, prompt, timeout, log)
+        text = protocol_for(s.protocol).ask(s, prompt, timeout, log)
     except Exception as e:  # noqa: BLE001 — a missing or slow model must not break the pipeline
         log(_("LLM unavailable ({model}): {error}", model=s.label(), error=e))
         return None
@@ -195,9 +191,37 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
     raise AssertionError("unreachable")
 
 
-def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
-    """One HTTP round trip, in the format of the chosen protocol."""
-    if s.protocol == "anthropic":
+class Protocol:
+    """One way of talking to a model: how it is named and how a prompt is sent."""
+
+    def label(self, s: Settings) -> str:
+        """Short name of the method, written into the notes and the translation cache."""
+        return f"{s.protocol} · {s.model}"
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
+        raise NotImplementedError
+
+
+class OpenAIProtocol(Protocol):
+    """OpenAI-compatible `chat/completions` (Ollama, llama.cpp, LM Studio, vLLM, Groq...). Default."""
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
+        url = s.url if s.url.endswith("/chat/completions") else f"{s.url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        if s.key:
+            headers["Authorization"] = f"Bearer {s.key}"
+        body = {"model": s.model, "temperature": 0, "stream": False, "messages": [{"role": "user", "content": prompt}]}
+        d = _post(url, body, headers, timeout)
+        choices = d.get("choices") or []
+        if not choices:
+            raise RuntimeError(_("response without “choices”: {body}", body=json.dumps(d)[:200]))
+        return (choices[0].get("message") or {}).get("content") or ""
+
+
+class AnthropicProtocol(Protocol):
+    """Anthropic `messages` API."""
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
         url = s.url if s.url.endswith("/messages") else f"{s.url}/messages"
         headers = {"Content-Type": "application/json", "anthropic-version": ANTHROPIC_VERSION}
         if s.key:
@@ -210,16 +234,44 @@ def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
         }
         d = _post(url, body, headers, timeout)
         return "".join(b.get("text", "") for b in d.get("content") or [] if b.get("type") == "text")
-    url = s.url if s.url.endswith("/chat/completions") else f"{s.url}/chat/completions"
-    headers = {"Content-Type": "application/json"}
-    if s.key:
-        headers["Authorization"] = f"Bearer {s.key}"
-    body = {"model": s.model, "temperature": 0, "stream": False, "messages": [{"role": "user", "content": prompt}]}
-    d = _post(url, body, headers, timeout)
-    choices = d.get("choices") or []
-    if not choices:
-        raise RuntimeError(_("response without “choices”: {body}", body=json.dumps(d)[:200]))
-    return (choices[0].get("message") or {}).get("content") or ""
+
+
+class ClaudeCliProtocol(Protocol):
+    """Old behaviour: `claude` binary as a subprocess (disabled by default)."""
+
+    def label(self, s: Settings) -> str:
+        return "claude -p"
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
+        exe = shutil.which("claude")
+        if not exe:
+            raise RuntimeError(_("“claude” binary not found."))
+        r = subprocess.run(
+            [exe, "-p", "--output-format", "text"], input=prompt, capture_output=True, text=True, timeout=timeout
+        )
+        if r.returncode != 0:
+            raise RuntimeError(_("claude -p failed ({code}) {error}", code=r.returncode, error=r.stderr[:300]))
+        return r.stdout
+
+
+#: Protocols by name (`SADA_LLM_PROTOCOL`). An unknown name behaves like the OpenAI format, as before.
+PROTOCOLS: dict[str, Protocol] = {
+    "openai": OpenAIProtocol(),
+    "anthropic": AnthropicProtocol(),
+    "claude-cli": ClaudeCliProtocol(),
+}
+
+
+def protocol_for(name: str) -> Protocol:
+    return PROTOCOLS.get(name) or PROTOCOLS["openai"]
+
+
+def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
+    """One HTTP round trip, in the format of the chosen protocol (claude-cli has none: OpenAI format)."""
+    proto = protocol_for(s.protocol)
+    if isinstance(proto, ClaudeCliProtocol):
+        proto = PROTOCOLS["openai"]
+    return proto.ask(s, prompt, timeout, log)
 
 
 def probe(timeout: int = 8) -> tuple[bool, str]:
@@ -230,16 +282,3 @@ def probe(timeout: int = 8) -> tuple[bool, str]:
     except Exception as e:  # noqa: BLE001 — the message is shown as is to the administrator
         return False, _("{model} unreachable: {error}", model=s.label(), error=e)
     return True, _("{model} answers.", model=s.label())
-
-
-def _ask_cli(prompt: str, timeout: int, log) -> str:
-    """Old behaviour: `claude` binary as a subprocess (disabled by default)."""
-    exe = shutil.which("claude")
-    if not exe:
-        raise RuntimeError(_("“claude” binary not found."))
-    r = subprocess.run(
-        [exe, "-p", "--output-format", "text"], input=prompt, capture_output=True, text=True, timeout=timeout
-    )
-    if r.returncode != 0:
-        raise RuntimeError(_("claude -p failed ({code}) {error}", code=r.returncode, error=r.stderr[:300]))
-    return r.stdout

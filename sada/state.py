@@ -111,6 +111,65 @@ TARAWIH_TIMING = SessionParams(
 )
 
 
+class SessionPolicy:
+    """Rules that depend on the kind of the planned session: entry state, timing, window.
+
+    Chosen once per session from its kind (`POLICIES`), so the machine never branches on
+    `kind == "..."`. This base is the dars / conference policy, also used for any unknown kind.
+    """
+
+    entry = State.DARS  # state a session of this kind starts in
+
+    def base(self, p: MachineParams) -> SessionParams:
+        """Configured timing of the kind (replan reads it for sessions that have no record yet)."""
+        return p.dars
+
+    def timing(self, p: MachineParams, rec: SessionRec | None) -> SessionParams:
+        return self.base(p)
+
+    def window_after_min(self, p: MachineParams, rec: SessionRec | None) -> float:
+        return self.timing(p, rec).window_after_min
+
+    def wait(self, m: Machine, sig: Signals, s: dt.datetime) -> None:
+        """One tick in a waiting state (IDLE, ARMED, BEFORE, INTERMISSION) before session `s`."""
+        m._WAIT_TICK[m.state](m, sig, s)
+
+
+class KhutbaPolicy(SessionPolicy):
+    entry = State.KHUTBA
+
+    def base(self, p: MachineParams) -> SessionParams:
+        return p.khutba
+
+
+class TarawihPolicy(SessionPolicy):
+    entry = State.TARAWIH
+
+    def base(self, p: MachineParams) -> SessionParams:
+        return p.tarawih
+
+    def timing(self, p: MachineParams, rec: SessionRec | None) -> SessionParams:
+        """A tarawih ends at its mosque's maximum."""
+        t = self.base(p)
+        if rec is not None and rec.max_min:
+            t = replace(t, max_s=float(rec.max_min) * 60)
+        return t
+
+    def window_after_min(self, p: MachineParams, rec: SessionRec | None) -> float:
+        late = super().window_after_min(p, rec)
+        if rec is not None:
+            late += rec.offset_min  # counted from the tarawih proper, not from the end of isha
+        return late
+
+    def wait(self, m: Machine, sig: Signals, s: dt.datetime) -> None:
+        m._wait_tarawih(sig, s)
+
+
+#: Policy of each session kind; any other kind (dars, conference...) follows `DEFAULT_POLICY`.
+DEFAULT_POLICY = SessionPolicy()
+POLICIES: dict[str, SessionPolicy] = {"khutba": KhutbaPolicy(), "tarawih": TarawihPolicy()}
+
+
 @dataclass
 class MachineParams:
     # mosque-clock minutes, counted from the session time (T)
@@ -360,26 +419,25 @@ class Machine:
         """Type of the planned session in progress (khutba, dars, conference)."""
         return self.rec.kind if self.rec else "khutba"
 
+    @property
+    def policy(self) -> SessionPolicy:
+        """Rules of the planned session in progress (or of the next one), from its kind."""
+        return POLICIES.get(self.kind, DEFAULT_POLICY)
+
     def _entry_state(self) -> State:
         """Entry state of a session: KHUTBA, TARAWIH, or DARS for a dars / a conference."""
-        return {"khutba": State.KHUTBA, "tarawih": State.TARAWIH}.get(self.kind, State.DARS)
+        return self.policy.entry
 
     def _timing_of(self, kind: str) -> SessionParams:
-        return {"khutba": self.p.khutba, "tarawih": self.p.tarawih}.get(kind, self.p.dars)
+        return POLICIES.get(kind, DEFAULT_POLICY).base(self.p)
 
     def timing(self) -> SessionParams:
         """Timing of the session in progress (or of the next one); a tarawih ends at its mosque's maximum."""
-        t = self._timing_of(self.kind)
-        if self.kind == "tarawih" and self.rec is not None and self.rec.max_min:
-            t = replace(t, max_s=float(self.rec.max_min) * 60)
-        return t
+        return self.policy.timing(self.p, self.rec)
 
     def _window_end(self) -> dt.datetime:
         assert self.session is not None
-        late = self.timing().window_after_min
-        if self.kind == "tarawih" and self.rec is not None:
-            late += self.rec.offset_min  # counted from the tarawih proper, not from the end of isha
-        return self.session + dt.timedelta(minutes=late)
+        return self.session + dt.timedelta(minutes=self.policy.window_after_min(self.p, self.rec))
 
     def _next_session(self, sig: Signals) -> State:
         """Move on to the next planned session (skipping those whose window is closed) -> waiting state.
@@ -634,119 +692,124 @@ class Machine:
 
     # --------------------------------------------------------------------- tick
     def tick(self, sig: Signals) -> None:
-        st = self.state
-
-        # Terminé -> end: always active (even in override, this is the exit)
-        if st == State.ENDED:
-            if sig.t - self.entered_t >= self.p.khutba.ended_hold_s:
-                self._go(State.STOPPED, sig, "écran Terminé affiché, arrêt du stream")
+        handler = self._TICK.get(self.state)
+        if handler is None:
+            return  # JANAZA (manual only) and STOPPED: nothing moves by itself
+        if self.override and self.state not in self._TICK_IN_OVERRIDE:
             return
-        if st == State.DARS_END:
-            if sig.t - self.entered_t >= self.p.dars.ended_hold_s:
-                self._go(State.STOPPED, sig, "écran de fin du dars affiché, arrêt du stream")
-            return
-        if st == State.JANAZA or self.override:
-            return  # Janaza: manual only
+        handler(self, sig)
 
+    def _tick_ended(self, sig: Signals) -> None:
+        if sig.t - self.entered_t >= self.p.khutba.ended_hold_s:
+            self._go(State.STOPPED, sig, "écran Terminé affiché, arrêt du stream")
+
+    def _tick_dars_end(self, sig: Signals) -> None:
+        if sig.t - self.entered_t >= self.p.dars.ended_hold_s:
+            self._go(State.STOPPED, sig, "écran de fin du dars affiché, arrêt du stream")
+
+    def _tick_waiting(self, sig: Signals) -> None:
+        """IDLE, ARMED, BEFORE, INTERMISSION: the kind's policy drives the wait for the session."""
         s = self.session
-        if st in WAITING and s is None:
+        if s is None:
             self._go(self._end_state(), sig, "plus aucune session")
             return
-        if st in WAITING and self.kind == "tarawih":
-            self._wait_tarawih(sig, s)
-            return
+        self.policy.wait(self, sig, s)
 
-        if st == State.IDLE:
-            if sig.now >= s - dt.timedelta(minutes=self.p.arm_before_min):
-                self._go(State.ARMED, sig, f"fenêtre armée pour {s:%H:%M}")
-            return
+    def _wait_idle(self, sig: Signals, s: dt.datetime) -> None:
+        if sig.now >= s - dt.timedelta(minutes=self.p.arm_before_min):
+            self._go(State.ARMED, sig, f"fenêtre armée pour {s:%H:%M}")
 
-        if st in (State.ARMED, State.BEFORE, State.INTERMISSION):
-            if sig.now > self._window_end():
-                self._skip("aucun signal dans la fenêtre")
-                nxt = self._next_session(sig)
-                self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
-                return
-            entry = self._entry_state()
-            if st == State.INTERMISSION:
-                if sig.now >= s and self._voice_ok(sig):
-                    self._go(entry, sig, "voix (2e session)")
-                return
-            if self._voice_ok(sig) and sig.now >= s:
-                if st == State.ARMED:
-                    self._go(State.BEFORE, sig, "démarrage anticipé : voix détectée")
-                self._go(entry, sig, f"voix {sig.voice_run:.0f}s (horaire)")
-                return
-            if st == State.ARMED and self._voice_ok(sig):
-                self._go(State.BEFORE, sig, "démarrage anticipé : voix détectée")
-                return
-            if st == State.ARMED and sig.now >= s - dt.timedelta(minutes=self.p.avant_before_min):
-                self._go(State.BEFORE, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
-            return
+    def _window_closed(self, sig: Signals) -> bool:
+        """Past the window of the session without any signal: skip it and move on."""
+        if sig.now <= self._window_end():
+            return False
+        self._skip("aucun signal dans la fenêtre")
+        nxt = self._next_session(sig)
+        self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
+        return True
 
-        if st == State.TARAWIH:
-            self._tick_tarawih(sig)
+    def _wait_armed(self, sig: Signals, s: dt.datetime) -> None:
+        if self._window_closed(sig):
             return
+        if self._voice_ok(sig) and sig.now >= s:
+            self._go(State.BEFORE, sig, "démarrage anticipé : voix détectée")
+            self._go(self._entry_state(), sig, f"voix {sig.voice_run:.0f}s (horaire)")
+        elif self._voice_ok(sig):
+            self._go(State.BEFORE, sig, "démarrage anticipé : voix détectée")
+        elif sig.now >= s - dt.timedelta(minutes=self.p.avant_before_min):
+            self._go(State.BEFORE, sig, f"T-{self.p.avant_before_min:g} min : stream lancé")
 
-        if st in SESSION_STATES:
-            # a dars or a tarawih is not ended by the face: the imam turns his back in prayer
-            dars = st != State.KHUTBA
-            timing = self.timing()
-            max_s, silence_s, grace_s = timing.max_s, timing.silence_stop_s, timing.grace_s
-            # tarawih: no end screen, the stream stops (or the next session waits), decided on leaving
-            end = {State.KHUTBA: State.PRAYER, State.DARS: State.DARS_END}.get(st)
-            elapsed = sig.t - self.entered_t
-            if elapsed >= max_s and sig.t >= self.extend_until_t:
-                self._go(end or self._after_tarawih(sig), sig, "durée maximale")
-                return
-            if sig.t < self.extend_until_t:
+    def _wait_before(self, sig: Signals, s: dt.datetime) -> None:
+        if self._window_closed(sig):
+            return
+        if self._voice_ok(sig) and sig.now >= s:
+            self._go(self._entry_state(), sig, f"voix {sig.voice_run:.0f}s (horaire)")
+
+    def _wait_intermission(self, sig: Signals, s: dt.datetime) -> None:
+        if self._window_closed(sig):
+            return
+        if sig.now >= s and self._voice_ok(sig):
+            self._go(self._entry_state(), sig, "voix (2e session)")
+
+    def _tick_khutba(self, sig: Signals) -> None:
+        self._tick_session(sig, end=State.PRAYER, face_ends=True)
+
+    def _tick_dars(self, sig: Signals) -> None:
+        # a dars is not ended by the face: the imam turns his back in prayer
+        self._tick_session(sig, end=State.DARS_END, face_ends=False)
+
+    def _tick_session(self, sig: Signals, end: State, face_ends: bool) -> None:
+        """KHUTBA / DARS: end on the maximum duration, or on silence (and, for a khutba, an empty
+        minbar) followed by a grace delay. `end` is the screen shown on leaving."""
+        timing = self.timing()
+        max_s, silence_s, grace_s = timing.max_s, timing.silence_stop_s, timing.grace_s
+        elapsed = sig.t - self.entered_t
+        if elapsed >= max_s and sig.t >= self.extend_until_t:
+            self._go(end, sig, "durée maximale")
+            return
+        if sig.t < self.extend_until_t:
+            self.grace_until = None
+            return
+        # silence alone concludes nothing (a full room is never silent):
+        # we need silence AND a minbar empty of any frontal face
+        face_gone = (
+            face_ends
+            and sig.face_run is not None
+            and self.p.face_absence_s > 0
+            and sig.face_run >= self.p.face_absence_s
+            and sig.silence_run >= self.p.face_silence_ref_s * self.p.face_silence_ratio
+        )
+        if self.grace_until is None:
+            if sig.silence_run >= silence_s and elapsed >= self.p.min_session_s:
+                self.grace_until = sig.t + grace_s
+                self.grace_reason = "silence prolongé"
+                self.log(_("silence {silence:.0f}s: grace delay {grace:.0f}s", silence=sig.silence_run, grace=grace_s))
+            elif face_gone and elapsed >= self.p.min_session_s:
+                self.grace_until = sig.t + grace_s
+                self.grace_reason = "minbar sans visage de face"
+                self.log(
+                    _(
+                        "no frontal face for {absent:.0f}s: grace delay {grace:.0f}s",
+                        absent=sig.face_run,
+                        grace=grace_s,
+                    )
+                )
+        else:
+            face_back = face_ends and sig.face_run is not None and sig.face_run <= self.p.face_return_s
+            if sig.voice_run >= 2.0 or face_back:
                 self.grace_until = None
-                return
-            # silence alone concludes nothing (a full room is never silent):
-            # we need silence AND a minbar empty of any frontal face
-            face_gone = (
-                not dars
-                and sig.face_run is not None
-                and self.p.face_absence_s > 0
-                and sig.face_run >= self.p.face_absence_s
-                and sig.silence_run >= self.p.face_silence_ref_s * self.p.face_silence_ratio
-            )
-            if self.grace_until is None:
-                if sig.silence_run >= silence_s and elapsed >= self.p.min_session_s:
-                    self.grace_until = sig.t + grace_s
-                    self.grace_reason = "silence prolongé"
-                    self.log(
-                        _("silence {silence:.0f}s: grace delay {grace:.0f}s", silence=sig.silence_run, grace=grace_s)
-                    )
-                elif face_gone and elapsed >= self.p.min_session_s:
-                    self.grace_until = sig.t + grace_s
-                    self.grace_reason = "minbar sans visage de face"
-                    self.log(
-                        _(
-                            "no frontal face for {absent:.0f}s: grace delay {grace:.0f}s",
-                            absent=sig.face_run,
-                            grace=grace_s,
-                        )
-                    )
-            else:
-                face_back = not dars and sig.face_run is not None and sig.face_run <= self.p.face_return_s
-                if sig.voice_run >= 2.0 or face_back:
-                    self.grace_until = None
-                    self.log(_("voice or face back during the grace period: carrying on"))
-                elif sig.t >= self.grace_until:
-                    self._go(
-                        end or self._after_tarawih(sig), sig, getattr(self, "grace_reason", None) or "silence prolongé"
-                    )
-            return
+                self.log(_("voice or face back during the grace period: carrying on"))
+            elif sig.t >= self.grace_until:
+                self._go(end, sig, self.grace_reason or "silence prolongé")
 
-        if st == State.PRAYER:
-            if self.paused_from is not None:
-                return
-            if self._resume_cut_session(sig):
-                return
-            if sig.now >= self.entered_now + dt.timedelta(minutes=self.p.prayer_min):
-                self.cut = (None, None)
-                self._go(self._next_session(sig), sig, "fin de la prière (durée prévue)")
+    def _tick_prayer(self, sig: Signals) -> None:
+        if self.paused_from is not None:
+            return
+        if self._resume_cut_session(sig):
+            return
+        if sig.now >= self.entered_now + dt.timedelta(minutes=self.p.prayer_min):
+            self.cut = (None, None)
+            self._go(self._next_session(sig), sig, "fin de la prière (durée prévue)")
 
     def _wait_tarawih(self, sig: Signals, s: dt.datetime) -> None:
         """Before a tarawih night. `s` is the estimated end of isha: nothing is armed earlier, so
@@ -755,10 +818,7 @@ class Machine:
         from the tarawih proper (`offset_min` later), on sustained voice."""
         r = self.rec
         assert r is not None
-        if sig.now > self._window_end():
-            self._skip("aucun signal dans la fenêtre")
-            nxt = self._next_session(sig)
-            self._go(nxt, sig, "session suivante" if self.session else "plus aucune session")
+        if self._window_closed(sig):
             return
         if sig.now < s:
             return  # isha in progress: never armed, never broadcast
@@ -824,6 +884,29 @@ class Machine:
         )
         self._go(from_state, sig, "voix reprise : la khutba continue")
         return True
+
+    # State -> handler of one tick, in the style of COMMANDS. States absent from the table (JANAZA,
+    # STOPPED) never move by themselves; all but the end screens stand still under a manual override.
+    _TICK = {
+        State.IDLE: _tick_waiting,
+        State.ARMED: _tick_waiting,
+        State.BEFORE: _tick_waiting,
+        State.INTERMISSION: _tick_waiting,
+        State.KHUTBA: _tick_khutba,
+        State.DARS: _tick_dars,
+        State.TARAWIH: _tick_tarawih,
+        State.PRAYER: _tick_prayer,
+        State.ENDED: _tick_ended,
+        State.DARS_END: _tick_dars_end,
+    }
+    _TICK_IN_OVERRIDE = (State.ENDED, State.DARS_END)  # the exit from the end screen is always active
+    # Waiting states: what each one does before session `s` (see SessionPolicy.wait).
+    _WAIT_TICK = {
+        State.IDLE: _wait_idle,
+        State.ARMED: _wait_armed,
+        State.BEFORE: _wait_before,
+        State.INTERMISSION: _wait_intermission,
+    }
 
     # ------------------------------------------------------------------- statut
     def status(self) -> dict:

@@ -2,7 +2,7 @@
 
 import datetime as dt
 
-from sada.notify import Notifier, message_for, should_send
+from sada.notify import CHANNELS, Notifier, message_for, should_send
 from sada.state import Machine, MachineParams, State
 
 D = dt.date(2026, 11, 10)
@@ -79,3 +79,38 @@ def test_rappel_seulement_pour_une_session_a_venir():
     assert should_send(State.ARMED, m, dt.datetime(2026, 11, 10, 19, 5)) is False  # already past: no reminder
     assert should_send(State.BEFORE, m, dt.datetime(2026, 11, 10, 18, 50)) is False
     assert should_send(State.DARS, m, dt.datetime(2026, 11, 10, 19, 5)) is True
+
+
+def test_channel_registry_keys_and_order():
+    from sada.notify import TelegramChannel, WebhookChannel
+
+    assert list(CHANNELS) == ["webhook", "telegram"]
+    assert isinstance(CHANNELS["webhook"], WebhookChannel)
+    assert isinstance(CHANNELS["telegram"], TelegramChannel)
+    assert all(key == ch.key for key, ch in CHANNELS.items())
+
+
+def test_channel_requirements_and_requests():
+    web, tg = CHANNELS["webhook"], CHANNELS["telegram"]
+    assert web.is_configured({"webhook": "https://x.test"}) and not web.is_configured({})
+    assert tg.is_configured({"telegram_token": "t", "telegram_chat": "c"})
+    assert not tg.is_configured({"telegram_token": "t"})
+    assert web.request({"webhook": "https://x.test"}, "hi") == ("https://x.test", {"text": "hi"})
+    url, payload = tg.request({"telegram_token": "t", "telegram_chat": "c"}, "hi")
+    assert url == "https://api.telegram.org/bott/sendMessage"
+    assert payload == {"chat_id": "c", "text": "hi", "disable_notification": False}
+    assert web.missing_message() and tg.missing_message()
+
+
+def test_notifier_delegates_to_channel_and_webhook_wins():
+    n = Notifier(webhook="https://x.test", telegram_token="t", telegram_chat="c")
+    assert n.channel is CHANNELS["webhook"]
+    assert n.destination == "webhook"
+    assert Notifier().channel is None and Notifier().destination == "à blanc"
+
+
+def test_from_settings_unknown_mode_is_noop():
+    from sada.notify import from_settings
+
+    assert from_settings({"mode": "sms", "webhook": "https://x.test"}).enabled is False
+    assert from_settings({"mode": "telegram", "webhook": "https://x.test"}).enabled is False

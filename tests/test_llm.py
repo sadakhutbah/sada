@@ -174,3 +174,22 @@ def test_modele_absent_ne_casse_pas_le_pipeline():
     logs = []
     assert llm.ask_json("résume", 2, logs.append, url="http://127.0.0.1:9/v1") is None
     assert logs and "LLM unavailable" in logs[0]
+
+
+def test_protocol_registry_names():
+    assert set(llm.PROTOCOLS) == {"openai", "anthropic", "claude-cli"}
+    assert isinstance(llm.protocol_for("anthropic"), llm.AnthropicProtocol)
+    assert isinstance(llm.protocol_for("claude-cli"), llm.ClaudeCliProtocol)
+
+
+def test_unknown_protocol_falls_back_to_openai():
+    assert isinstance(llm.protocol_for("something-else"), llm.OpenAIProtocol)
+    s = llm.Settings(url="http://x/v1", model="m", key="", protocol="something-else")
+    assert s.label() == "something-else · m"
+
+
+def test_protocol_labels():
+    mk = lambda proto: llm.Settings(url="http://x", model="m", key="", protocol=proto)  # noqa: E731
+    assert mk("openai").label() == "openai · m"
+    assert mk("anthropic").label() == "anthropic · m"
+    assert mk("claude-cli").label() == "claude -p"
