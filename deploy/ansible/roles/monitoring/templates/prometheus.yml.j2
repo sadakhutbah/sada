@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+  - job_name: otelcol
+    static_configs:
+      - targets: ["otelcol:8889"]
+{% if monitoring_kubelet_targets | length > 0 %}
+  - job_name: kubelet
+    scheme: https
+    tls_config:
+      ca_file: /etc/prometheus/kubelet_ca.crt
+{% if monitoring_kubelet_server_name | length > 0 %}
+      server_name: {{ monitoring_kubelet_server_name }}
+{% endif %}
+    authorization:
+      credentials_file: /etc/prometheus/kubelet_token
+    static_configs:
+      - targets: {{ monitoring_kubelet_targets | to_json }}
+  - job_name: cadvisor
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    tls_config:
+      ca_file: /etc/prometheus/kubelet_ca.crt
+{% if monitoring_kubelet_server_name | length > 0 %}
+      server_name: {{ monitoring_kubelet_server_name }}
+{% endif %}
+    authorization:
+      credentials_file: /etc/prometheus/kubelet_token
+    static_configs:
+      - targets: {{ monitoring_kubelet_targets | to_json }}
+{% endif %}

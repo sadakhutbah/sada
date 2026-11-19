@@ -19,6 +19,7 @@ mosques' OBS  ──────────────────────
 | Piece | Where |
 |---|---|
 | `deploy/terraform/` | server, firewall, SSH key, data volume, Ansible inventory |
+| `deploy/terraform-monitoring/` | optional private monitoring VM, SEPARATE Terraform root with its own state (never touches production), see `ansible/roles/monitoring/README.md` |
 | `deploy/ansible/` | volume formatted/mounted, k3s installed, kubeconfig fetched locally |
 | `deploy/helm/sada/` | back office, MediaMTX receiver, one orchestrator per mosque, PostgreSQL |
 | `deploy/up.sh` | runs the four steps above in order |
