@@ -78,7 +78,7 @@ in the Helm values (`sada-gitops`), for `backoffice.extraEnv` and `orchestrator.
 - {name: OTEL_RESOURCE_ATTRIBUTES, value: "k8s.namespace.name=sada"}
 ```
 Use the 100.x address (pod DNS does not resolve MagicDNS names). The app is not instrumented yet:
-the dashboard queries are placeholders for the expected metric names. The kubelet/cAdvisor CPU and
+the dashboard uses the exported metric names; the collector adds a `mosque` label from the `sada.mosque` resource attribute. The kubelet/cAdvisor CPU and
 memory panels need the node on the tailnet and `monitoring_kubelet_targets` + a token.
 
 ## Residual points

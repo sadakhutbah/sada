@@ -29,12 +29,17 @@ processors:
         statements:
           - keep_matching_keys(attributes, "^({{ monitoring_otel_signal_keys | join('|') }})$")
     metric_statements:
-      - context: resource
-        statements:
-          - keep_matching_keys(attributes, "^({{ monitoring_otel_resource_keys | join('|') }})$")
+      # Order matters. The mosque slug (resource attribute sada.mosque, one orchestrator per mosque) is
+      # copied to the data point label `mosque` first, then the resource keys are filtered: sada.mosque is
+      # not in the resource allowlist, so resource_to_telemetry_conversion does not add a duplicate
+      # `sada_mosque` label. Cardinality is bounded by the number of mosques.
       - context: datapoint
         statements:
           - keep_matching_keys(attributes, "^({{ monitoring_otel_signal_keys | join('|') }})$")
+          - set(attributes["mosque"], resource.attributes["sada.mosque"]) where resource.attributes["sada.mosque"] != nil
+      - context: resource
+        statements:
+          - keep_matching_keys(attributes, "^({{ monitoring_otel_resource_keys | join('|') }})$")
   batch: {}
 
 exporters:
