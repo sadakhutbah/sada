@@ -100,9 +100,7 @@ class Settings:
 
     def label(self) -> str:
         """Short name of the method, written into the notes and the translation cache."""
-        if self.protocol == "claude-cli":
-            return "claude -p"
-        return f"{self.protocol} · {self.model}"
+        return protocol_for(self.protocol).label(self)
 
 
 def settings(
@@ -137,7 +135,7 @@ def ask_json(prompt: str, timeout: int, log=print, *, url=None, model=None, key=
         return None
     s = settings(url, model, key, protocol)
     try:
-        text = _ask_cli(prompt, timeout, log) if s.protocol == "claude-cli" else _ask_http(s, prompt, timeout, log)
+        text = protocol_for(s.protocol).ask(s, prompt, timeout, log)
     except Exception as e:  # noqa: BLE001 — a missing or slow model must not break the pipeline
         log(_("LLM unavailable ({model}): {error}", model=s.label(), error=e))
         return None
@@ -195,9 +193,37 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
     raise AssertionError("unreachable")
 
 
-def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
-    """One HTTP round trip, in the format of the chosen protocol."""
-    if s.protocol == "anthropic":
+class Protocol:
+    """One way of talking to a model: how it is named and how a prompt is sent."""
+
+    def label(self, s: Settings) -> str:
+        """Short name of the method, written into the notes and the translation cache."""
+        return f"{s.protocol} · {s.model}"
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
+        raise NotImplementedError
+
+
+class OpenAIProtocol(Protocol):
+    """OpenAI-compatible `chat/completions` (Ollama, llama.cpp, LM Studio, vLLM, Groq...). Default."""
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
+        url = s.url if s.url.endswith("/chat/completions") else f"{s.url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        if s.key:
+            headers["Authorization"] = f"Bearer {s.key}"
+        body = {"model": s.model, "temperature": 0, "stream": False, "messages": [{"role": "user", "content": prompt}]}
+        d = _post(url, body, headers, timeout)
+        choices = d.get("choices") or []
+        if not choices:
+            raise RuntimeError(_("response without “choices”: {body}", body=json.dumps(d)[:200]))
+        return (choices[0].get("message") or {}).get("content") or ""
+
+
+class AnthropicProtocol(Protocol):
+    """Anthropic `messages` API."""
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
         url = s.url if s.url.endswith("/messages") else f"{s.url}/messages"
         headers = {"Content-Type": "application/json", "anthropic-version": ANTHROPIC_VERSION}
         if s.key:
@@ -210,16 +236,44 @@ def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
         }
         d = _post(url, body, headers, timeout)
         return "".join(b.get("text", "") for b in d.get("content") or [] if b.get("type") == "text")
-    url = s.url if s.url.endswith("/chat/completions") else f"{s.url}/chat/completions"
-    headers = {"Content-Type": "application/json"}
-    if s.key:
-        headers["Authorization"] = f"Bearer {s.key}"
-    body = {"model": s.model, "temperature": 0, "stream": False, "messages": [{"role": "user", "content": prompt}]}
-    d = _post(url, body, headers, timeout)
-    choices = d.get("choices") or []
-    if not choices:
-        raise RuntimeError(_("response without “choices”: {body}", body=json.dumps(d)[:200]))
-    return (choices[0].get("message") or {}).get("content") or ""
+
+
+class ClaudeCliProtocol(Protocol):
+    """Old behaviour: `claude` binary as a subprocess (disabled by default)."""
+
+    def label(self, s: Settings) -> str:
+        return "claude -p"
+
+    def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
+        exe = shutil.which("claude")
+        if not exe:
+            raise RuntimeError(_("“claude” binary not found."))
+        r = subprocess.run(
+            [exe, "-p", "--output-format", "text"], input=prompt, capture_output=True, text=True, timeout=timeout
+        )
+        if r.returncode != 0:
+            raise RuntimeError(_("claude -p failed ({code}) {error}", code=r.returncode, error=r.stderr[:300]))
+        return r.stdout
+
+
+#: Protocols by name (`SADA_LLM_PROTOCOL`). An unknown name behaves like the OpenAI format, as before.
+PROTOCOLS: dict[str, Protocol] = {
+    "openai": OpenAIProtocol(),
+    "anthropic": AnthropicProtocol(),
+    "claude-cli": ClaudeCliProtocol(),
+}
+
+
+def protocol_for(name: str) -> Protocol:
+    return PROTOCOLS.get(name) or PROTOCOLS["openai"]
+
+
+def _ask_http(s: Settings, prompt: str, timeout: int, log) -> str:
+    """One HTTP round trip, in the format of the chosen protocol (claude-cli has none: OpenAI format)."""
+    proto = protocol_for(s.protocol)
+    if isinstance(proto, ClaudeCliProtocol):
+        proto = PROTOCOLS["openai"]
+    return proto.ask(s, prompt, timeout, log)
 
 
 def probe(timeout: int = 8) -> tuple[bool, str]:
@@ -230,16 +284,3 @@ def probe(timeout: int = 8) -> tuple[bool, str]:
     except Exception as e:  # noqa: BLE001 — the message is shown as is to the administrator
         return False, _("{model} unreachable: {error}", model=s.label(), error=e)
     return True, _("{model} answers.", model=s.label())
-
-
-def _ask_cli(prompt: str, timeout: int, log) -> str:
-    """Old behaviour: `claude` binary as a subprocess (disabled by default)."""
-    exe = shutil.which("claude")
-    if not exe:
-        raise RuntimeError(_("“claude” binary not found."))
-    r = subprocess.run(
-        [exe, "-p", "--output-format", "text"], input=prompt, capture_output=True, text=True, timeout=timeout
-    )
-    if r.returncode != 0:
-        raise RuntimeError(_("claude -p failed ({code}) {error}", code=r.returncode, error=r.stderr[:300]))
-    return r.stdout
