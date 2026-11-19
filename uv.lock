@@ -3785,7 +3785,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
     { name = "pillow" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
     { name = "python-bidi" },
     { name = "python-multipart" },
     { name = "pyzmq" },
