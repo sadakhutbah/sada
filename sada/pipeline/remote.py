@@ -45,10 +45,10 @@ from pathlib import Path
 
 import httpx
 
-from .. import paths
 from ..i18n import _
 from ..text import is_arabic_char
 from . import glossary, repair
+from .filesettings import FileSettings
 from .language import code_of
 from .language import measure as measure_language
 from .settings import arabic_retry_enabled
@@ -101,17 +101,16 @@ DEFAULT_PROVIDER = "groq"
 # --------------------------------------------------------------------------- réglage
 
 
+_FILE = FileSettings("SADA_TRANSCRIPTION_CONFIG", "transcription.json", CONFIG_KEYS, private=True)
+
+
 def config_path() -> Path:
-    return Path(os.environ.get("SADA_TRANSCRIPTION_CONFIG") or paths.DATA / "transcription.json")
+    return _FILE.path()
 
 
 def config() -> dict:
     """Réglage enregistré depuis le back-office. Fichier absent ou illisible : {}."""
-    try:
-        d = json.loads(config_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return {k: d[k] for k in CONFIG_KEYS if k in d} if isinstance(d, dict) else {}
+    return _FILE.read()
 
 
 @dataclass(frozen=True)
@@ -166,8 +165,6 @@ def save_config(*, mode: str, provider: str, url: str = "", model: str = "", key
     `key=None` (ou vide) garde la clé déjà enregistrée : le back-office ne la reçoit jamais en
     clair, il renvoie le masque tel quel. Une clé fournie remplace l'ancienne.
     """
-    p = config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
     data = {
         **config(),
         "mode": mode if mode in MODES else "local",
@@ -180,10 +177,7 @@ def save_config(*, mode: str, provider: str, url: str = "", model: str = "", key
         data["key"] = nouvelle
     elif "key" not in data:
         data["key"] = ""
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps({k: data[k] for k in CONFIG_KEYS if k in data}, indent=1), encoding="utf-8")
-    tmp.chmod(0o600)  # la clé y est : lisible par le service seul
-    os.replace(tmp, p)
+    _FILE.write({k: data[k] for k in CONFIG_KEYS if k in data})  # la clé y est : fichier en 600
     return view()
 
 
@@ -611,7 +605,7 @@ def prompt_text(text: str, *, max_tokens: int = PROMPT_MAX_TOKENS) -> str:
 # --------------------------------------------------------------------------- reprise des passages arabes
 
 
-class RemoteEngine:
+class RemoteEngine(repair.Engine):
     """Moteur distant des passes de reprise : ffmpeg pour la plage, API pour le texte.
 
     Même contrat que `transcribe.LocalEngine` : la politique de reprise (`repair`) ne sait pas
