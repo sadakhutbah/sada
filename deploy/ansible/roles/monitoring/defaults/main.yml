@@ -56,6 +56,15 @@ monitoring_otel_signal_keys:
   - rpc[.]grpc[.]status_code
   - messaging[.]system
   - sada[.].*
+  # Low-cardinality metric labels set by sada/telemetry.py (state-set, transitions, operation outcomes).
+  - state
+  - from_state
+  - to_state
+  - status
+  - kind
+  - protocol
+  - engine
+  - stage
 
 # Container resource limits (VM: 4 GB RAM, 2 vCPU).
 monitoring_limits:
