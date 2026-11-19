@@ -17,3 +17,10 @@ auto.crt
 *.key
 *.egg-info/
 .DS_Store
+
+# contenu hors code (conservé hors dépôt, cf. ~/dev/sada-hors-code)
+/promo/
+/promo2/
+/promo3/
+/pitch/
+/Minbar-Live-pitch.pptx

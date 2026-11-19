@@ -3754,7 +3754,6 @@ dependencies = [
     { name = "pillow", version = "12.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pillow", version = "13.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "psycopg", extra = ["binary"] },
-    { name = "pytest" },
     { name = "python-bidi" },
     { name = "python-multipart", version = "0.0.32", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "python-multipart", version = "0.0.33", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -3770,6 +3769,11 @@ dependencies = [
     { name = "wordfreq" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "arabic-reshaper" },
@@ -3782,7 +3786,6 @@ requires-dist = [
     { name = "opencv-python-headless" },
     { name = "pillow" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
-    { name = "pytest" },
     { name = "python-bidi" },
     { name = "python-multipart" },
     { name = "pyzmq" },
@@ -3794,6 +3797,9 @@ requires-dist = [
     { name = "webrtcvad-wheels" },
     { name = "wordfreq", specifier = ">=3.1.1" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest" }]
 
 [[package]]
 name = "sentry-sdk"

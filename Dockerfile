@@ -24,7 +24,16 @@ RUN uv sync --frozen --no-dev \
 ARG SADA_VERSION=dev
 ENV SADA_VERSION=$SADA_VERSION
 
+# Non-root runtime user. /app stays root-owned (read-only for the app: code, venv, CUDA wheels,
+# rendering engine); only data/ (database, recordings, outputs) and the home (model caches) are writable.
+# Existing volumes created by a root container must be chown'ed to 10001 once (or use fsGroup: 10001).
+RUN useradd --system --uid 10001 --user-group --create-home --home-dir /home/sada sada \
+    && mkdir -p /app/data && chown sada:sada /app/data
+USER sada
+
 # data/ (database, recordings, outputs) lives on a volume
 VOLUME /app/data
 EXPOSE 8090 8088
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=4).status == 200 else 1)"]
 CMD ["python", "-m", "sada.backoffice", "serve", "--host", "0.0.0.0", "--port", "8090"]
