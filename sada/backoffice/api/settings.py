@@ -366,7 +366,7 @@ async def notifications_save(ctx: CtxDep):
     f = await ctx.body()
     ctx.require("admin")
     mode = (f.get("mode") or "").strip()
-    if mode not in ("", "webhook", "telegram"):
+    if mode and mode not in notify.CHANNELS:
         raise Invalid(_("Unknown notification channel."))
     old = orm.first(ctx.conn, Notification, mosque_id=ctx.mosque["id"]) or {}
 
@@ -377,10 +377,9 @@ async def notifications_save(ctx: CtxDep):
     webhook, token, chat = val("webhook", True), val("telegram_token", True), val("telegram_chat", False)
     if webhook and not re.match(r"^https?://", webhook):
         raise Invalid(_("The webhook address must start with http:// or https://."))
-    if mode == "webhook" and not webhook:
-        raise Invalid(_("Enter the webhook address."))
-    if mode == "telegram" and not (token and chat):
-        raise Invalid(_("Telegram requires the bot token and the chat identifier."))
+    channel = notify.CHANNELS.get(mode)
+    if channel and not channel.is_configured({"webhook": webhook, "telegram_token": token, "telegram_chat": chat}):
+        raise Invalid(channel.missing_message())
     orm.upsert(
         ctx.conn,
         Notification,
