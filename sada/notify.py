@@ -50,6 +50,57 @@ def _http_post(url: str, payload: dict) -> None:  # pragma: no cover (network)
         r.read(1)
 
 
+class Channel:
+    """A notification destination. Subclasses declare their settings and how to post a message."""
+
+    key: str = ""
+    fields: tuple[str, ...] = ()  # Notifier/settings attribute names this channel reads
+
+    def is_configured(self, values: dict) -> bool:
+        raise NotImplementedError
+
+    def missing_message(self) -> str:
+        """Translated error shown when the channel is chosen but its required fields are empty."""
+        raise NotImplementedError
+
+    def request(self, values: dict, text: str) -> tuple[str, dict]:
+        """(url, JSON payload) to post for this message."""
+        raise NotImplementedError
+
+
+class WebhookChannel(Channel):
+    key = "webhook"
+    fields = ("webhook",)
+
+    def is_configured(self, values: dict) -> bool:
+        return bool(values.get("webhook"))
+
+    def missing_message(self) -> str:
+        return _("Enter the webhook address.")
+
+    def request(self, values: dict, text: str) -> tuple[str, dict]:
+        return values["webhook"], {"text": text}
+
+
+class TelegramChannel(Channel):
+    key = "telegram"
+    fields = ("telegram_token", "telegram_chat")
+
+    def is_configured(self, values: dict) -> bool:
+        return bool(values.get("telegram_token") and values.get("telegram_chat"))
+
+    def missing_message(self) -> str:
+        return _("Telegram requires the bot token and the chat identifier.")
+
+    def request(self, values: dict, text: str) -> tuple[str, dict]:
+        url = f"https://api.telegram.org/bot{values['telegram_token']}/sendMessage"
+        return url, {"chat_id": values["telegram_chat"], "text": text, "disable_notification": False}
+
+
+# registry by key; order is the precedence when several channels are configured (webhook first)
+CHANNELS: dict[str, Channel] = {c.key: c for c in (WebhookChannel(), TelegramChannel())}
+
+
 class Notifier:
     """Sends a short message to a private destination. `post` is injectable for tests."""
 
@@ -69,29 +120,34 @@ class Notifier:
         self.sent: list[str] = []
 
     @property
+    def values(self) -> dict:
+        return {"webhook": self.webhook, "telegram_token": self.telegram_token, "telegram_chat": self.telegram_chat}
+
+    @property
+    def channel(self) -> Channel | None:
+        """The channel in use: the first configured one in registry order."""
+        values = self.values
+        return next((c for c in CHANNELS.values() if c.is_configured(values)), None)
+
+    @property
     def enabled(self) -> bool:
-        return bool(self.webhook or (self.telegram_token and self.telegram_chat))
+        return self.channel is not None
 
     @property
     def destination(self) -> str:
-        if self.webhook:
-            return "webhook"
-        if self.telegram_token and self.telegram_chat:
-            return "telegram"
-        return "à blanc"
+        ch = self.channel
+        return ch.key if ch else "à blanc"
 
     def send(self, text: str) -> bool:
         """Sends the message; returns False if sending failed (never raises into the live)."""
         self.sent.append(text)
-        if not self.enabled:
+        ch = self.channel
+        if ch is None:
             self.log(_("notification (dry run): {message}", message=text))
             return False
         try:
-            if self.webhook:
-                self.post(self.webhook, {"text": text})
-            else:
-                url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-                self.post(url, {"chat_id": self.telegram_chat, "text": text, "disable_notification": False})
+            url, payload = ch.request(self.values, text)
+            self.post(url, payload)
             return True
         except Exception as exc:  # network, DNS, quota: we block nothing
             self.log(_("notification not sent ({destination}): {error}", destination=self.destination, error=exc))
@@ -148,10 +204,7 @@ def from_settings(row: dict | None, log: Callable[[str], None] = print) -> Notif
     Only the chosen channel (`mode`) is used; with no settings the notifier is a no-op ("à blanc").
     """
     row = row or {}
-    if row.get("mode") == "webhook":
-        return Notifier(webhook=row.get("webhook", ""), log=log)
-    if row.get("mode") == "telegram":
-        return Notifier(
-            telegram_token=row.get("telegram_token", ""), telegram_chat=row.get("telegram_chat", ""), log=log
-        )
-    return Notifier(log=log)
+    ch = CHANNELS.get(row.get("mode"))
+    if ch is None:
+        return Notifier(log=log)
+    return Notifier(**{f: row.get(f, "") for f in ch.fields}, log=log)

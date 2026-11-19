@@ -96,3 +96,31 @@ Empty when the mode is sqlite: the app then keeps its SQLite file under /app/dat
   emptyDir: {}
 {{- end }}
 {{- end }}
+
+{{/* Pod-level security: the image runs as uid/gid 10001 (user sada). fsGroup is honoured by CSI
+     volumes only; on local-path (hostPath) it does nothing, hence the chown init container below. */}}
+{{- define "sada.podSecurityContext" -}}
+fsGroup: {{ .Values.securityContext.fsGroup }}
+{{- end }}
+
+{{/* Hands the data volume (created as root) to the application user before it starts. */}}
+{{- define "sada.dataPermsInit" -}}
+- name: fix-data-permissions
+  image: {{ include "sada.image" . | quote }}
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
+  securityContext:
+    runAsUser: 0
+    runAsNonRoot: false
+  command:
+    - chown
+    - -R
+    - "{{ .Values.securityContext.fsGroup }}:{{ .Values.securityContext.fsGroup }}"
+    - {{ .Values.persistence.mountPath | quote }}
+  volumeMounts:
+    - name: data
+      mountPath: {{ .Values.persistence.mountPath }}
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+{{- end }}
