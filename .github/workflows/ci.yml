@@ -49,7 +49,7 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
       - name: Install
-        run: uv venv .venv && uv pip install -p .venv/bin/python -e .
+        run: uv venv .venv && uv pip install -p .venv/bin/python -e . --group dev
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -79,6 +79,23 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  audit:
+    name: Dependency audit (pip-audit + npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - name: pip-audit (locked dependencies)
+        run: |
+          uv export --frozen --no-dev --no-emit-project --no-hashes -o "$RUNNER_TEMP/requirements.txt"
+          uvx pip-audit --disable-pip --no-deps -r "$RUNNER_TEMP/requirements.txt"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: npm audit (production dependencies)
+        run: npm --prefix web audit --omit=dev --audit-level=high
 
   release:
     name: Release (release-please)

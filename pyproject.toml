@@ -17,7 +17,6 @@ dependencies = [
   "arabic-reshaper",
   "python-bidi",
   "tzdata; platform_system == 'Windows'",
-  "pytest",
   # back-office
   "fastapi[standard]",
   "uvicorn",
@@ -28,6 +27,9 @@ dependencies = [
   "wordfreq>=3.1.1",
   "psycopg[binary]>=3.2",
 ]
+[dependency-groups]
+dev = ["pytest"]
+
 [tool.setuptools]
 packages = ["sada", "sada.pipeline", "sada.backoffice"]
 [tool.setuptools.package-data]
@@ -42,7 +44,7 @@ entrypoint = "sada.backoffice.asgi:app"
 
 [tool.ruff]
 line-length = 120
-extend-exclude = ["web", "site", "promo", "promo3", "pitch"]
+extend-exclude = ["web", "site", "promo", "promo2", "promo3", "pitch"]
 
 [tool.ruff.lint]
 # Ruff defaults (pyflakes + core pycodestyle), sorted imports, bugbear, pyupgrade.
