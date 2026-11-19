@@ -1,5 +1,7 @@
-# Optional private monitoring VM (OTel Collector, Prometheus, Tempo, Grafana), reachable over
-# Tailscale only. Off by default: `enable_monitoring = true` creates billable resources.
+# Private monitoring VM (OTel Collector, Prometheus, Tempo, Grafana), reachable over Tailscale
+# only. SEPARATE root module with its OWN state: it never manages (or can recreate) production
+# resources. The production SSH key is only READ through a data source. Applying creates
+# billable resources.
 #
 # Exposure: the firewall has NO inbound rule (the optional bootstrap SSH rule is empty by
 # default and, when used, limited to the operator's CIDRs). No DNS record is created.
@@ -8,8 +10,12 @@ locals {
   monitoring_name = "${var.name_prefix}-monitoring"
 }
 
+# Read-only lookup of the SSH key created by the production module (never created nor modified here).
+data "hcloud_ssh_key" "deploy" {
+  name = var.ssh_key_name
+}
+
 resource "hcloud_firewall" "monitoring" {
-  count  = var.enable_monitoring ? 1 : 0
   name   = "${local.monitoring_name}-fw"
   labels = var.labels
 
@@ -17,12 +23,12 @@ resource "hcloud_firewall" "monitoring" {
   # so replies are handled by connection tracking. The only possible rule is the temporary SSH
   # used by the first Ansible run, before the VM has joined the tailnet.
   dynamic "rule" {
-    for_each = length(var.monitoring_bootstrap_ssh_cidrs) > 0 ? [1] : []
+    for_each = length(var.bootstrap_ssh_cidrs) > 0 ? [1] : []
     content {
       direction   = "in"
       protocol    = "tcp"
       port        = "22"
-      source_ips  = var.monitoring_bootstrap_ssh_cidrs
+      source_ips  = var.bootstrap_ssh_cidrs
       description = "SSH (bootstrap only, remove after the VM joined the tailnet)"
     }
   }
@@ -93,19 +99,18 @@ resource "hcloud_firewall" "monitoring" {
 }
 
 resource "hcloud_server" "monitoring" {
-  count        = var.enable_monitoring ? 1 : 0
   name         = local.monitoring_name
-  server_type  = var.monitoring_server_type
+  server_type  = var.server_type
   image        = var.image
   location     = var.location
-  ssh_keys     = [hcloud_ssh_key.deploy.id]
-  firewall_ids = [hcloud_firewall.monitoring[0].id]
+  ssh_keys     = [data.hcloud_ssh_key.deploy.id]
+  firewall_ids = [hcloud_firewall.monitoring.id]
   labels       = merge(var.labels, { role = "monitoring" })
 
   # A primary IPv4 costs 0.50 EUR/month. Docker Hub (Grafana, Prometheus, Tempo images) has no
   # IPv6, so keep it unless the images are mirrored somewhere IPv6-reachable.
   public_net {
-    ipv4_enabled = var.monitoring_ipv4_enabled
+    ipv4_enabled = var.ipv4_enabled
     ipv6_enabled = true
   }
 
@@ -116,12 +121,11 @@ resource "hcloud_server" "monitoring" {
 
 # Hand-off to Ansible (git-ignored, like the production inventory).
 resource "local_file" "ansible_inventory_monitoring" {
-  count           = var.enable_monitoring ? 1 : 0
   filename        = "${path.module}/../ansible/inventory-monitoring.ini"
   file_permission = "0600"
-  content = templatefile("${path.module}/inventory-monitoring.ini.tftpl", {
+  content = templatefile("${path.module}/inventory.ini.tftpl", {
     server_name  = local.monitoring_name
-    server_addr  = var.monitoring_ipv4_enabled ? hcloud_server.monitoring[0].ipv4_address : hcloud_server.monitoring[0].ipv6_address
-    ssh_key_path = trimsuffix(pathexpand(var.ssh_public_key_path), ".pub")
+    server_addr  = var.ipv4_enabled ? hcloud_server.monitoring.ipv4_address : hcloud_server.monitoring.ipv6_address
+    ssh_key_path = pathexpand(var.ssh_private_key_path)
   })
 }

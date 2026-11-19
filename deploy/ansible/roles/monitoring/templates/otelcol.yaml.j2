@@ -11,6 +11,30 @@ processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 400
+  # Defense in depth with the application side: only allowlisted attribute keys survive (resource,
+  # span, span event, data point); free-text status messages are blanked. Exemplars are not
+  # exposed: the Prometheus exporter below does not enable OpenMetrics and Prometheus runs without
+  # exemplar storage, so no trace/span id leaks into metrics.
+  transform/allowlist:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+        statements:
+          - keep_matching_keys(attributes, "^({{ monitoring_otel_resource_keys | join('|') }})$")
+      - context: span
+        statements:
+          - keep_matching_keys(attributes, "^({{ monitoring_otel_signal_keys | join('|') }})$")
+          - set(status.message, "")
+      - context: spanevent
+        statements:
+          - keep_matching_keys(attributes, "^({{ monitoring_otel_signal_keys | join('|') }})$")
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_matching_keys(attributes, "^({{ monitoring_otel_resource_keys | join('|') }})$")
+      - context: datapoint
+        statements:
+          - keep_matching_keys(attributes, "^({{ monitoring_otel_signal_keys | join('|') }})$")
   batch: {}
 
 exporters:
@@ -20,6 +44,7 @@ exporters:
       insecure: true   # container-to-container on an internal network
   prometheus:
     endpoint: 0.0.0.0:8889
+    enable_open_metrics: false   # no exemplars
     resource_to_telemetry_conversion:
       enabled: true
 
@@ -30,9 +55,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/allowlist, batch]
       exporters: [otlp/tempo]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/allowlist, batch]
       exporters: [prometheus]

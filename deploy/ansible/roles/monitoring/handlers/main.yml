@@ -1,4 +1,9 @@
 ---
+- name: Reload sshd
+  ansible.builtin.systemd:
+    name: ssh
+    state: reloaded
+
 - name: Restart docker
   ansible.builtin.systemd:
     name: docker

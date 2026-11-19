@@ -21,6 +21,10 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    mem_limit: {{ monitoring_limits.otelcol.mem }}
+    memswap_limit: {{ monitoring_limits.otelcol.mem }}
+    cpus: {{ monitoring_limits.otelcol.cpus }}
+    pids_limit: {{ monitoring_limits.otelcol.pids }}
 
   prometheus:
     image: {{ monitoring_image_prometheus }}
@@ -35,10 +39,17 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./secrets/kubelet_token:/etc/prometheus/kubelet_token:ro
+{% if monitoring_kubelet_ca_file | length > 0 %}
+      - ./secrets/kubelet_ca.crt:/etc/prometheus/kubelet_ca.crt:ro
+{% endif %}
       - ./data/prometheus:/prometheus
     networks: [back, front]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    mem_limit: {{ monitoring_limits.prometheus.mem }}
+    memswap_limit: {{ monitoring_limits.prometheus.mem }}
+    cpus: {{ monitoring_limits.prometheus.cpus }}
+    pids_limit: {{ monitoring_limits.prometheus.pids }}
 
   tempo:
     image: {{ monitoring_image_tempo }}
@@ -51,6 +62,10 @@ services:
     networks: [back]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    mem_limit: {{ monitoring_limits.tempo.mem }}
+    memswap_limit: {{ monitoring_limits.tempo.mem }}
+    cpus: {{ monitoring_limits.tempo.cpus }}
+    pids_limit: {{ monitoring_limits.tempo.pids }}
 
   grafana:
     image: {{ monitoring_image_grafana }}
@@ -78,6 +93,7 @@ services:
       GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: "true"
       GF_PLUGINS_ENABLE_ALPHA: "false"
       GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_PUBLIC_DASHBOARDS_ENABLED: "false"
       GF_EXPLORE_ENABLED: "true"
       GF_LIVE_ALLOWED_ORIGINS: "http://{{ monitoring_ts_ip }}:3000"
     volumes:
@@ -90,3 +106,7 @@ services:
     networks: [back, front]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    mem_limit: {{ monitoring_limits.grafana.mem }}
+    memswap_limit: {{ monitoring_limits.grafana.mem }}
+    cpus: {{ monitoring_limits.grafana.cpus }}
+    pids_limit: {{ monitoring_limits.grafana.pids }}

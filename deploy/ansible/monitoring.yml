@@ -5,7 +5,8 @@
 #   ansible-playbook -i inventory-monitoring.example.ini --syntax-check monitoring.yml
 #
 # Secrets stay on the operator's machine (~/.config/sada-deploy/, never in git):
-#   tailscale_authkey          one-off, pre-approved, tagged auth key (or env SADA_TS_AUTHKEY)
+#   tailscale_authkey          single-use, pre-approved, tagged auth key (or env SADA_TS_AUTHKEY); sent to the VM as a
+#                              0600 file, never on a command line, removed right after `tailscale up`
 #   grafana_admin_password     generated on the first run if missing (0600)
 - name: Sadā monitoring (Tailscale-only)
   hosts: monitoring

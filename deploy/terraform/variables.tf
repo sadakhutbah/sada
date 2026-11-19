@@ -110,27 +110,3 @@ variable "labels" {
     managedby = "terraform"
   }
 }
-
-variable "enable_monitoring" {
-  description = "Create the private monitoring VM (OTel Collector, Prometheus, Tempo, Grafana). Billable."
-  type        = bool
-  default     = false
-}
-
-variable "monitoring_server_type" {
-  description = "Server type of the monitoring VM. cx23 = 2 vCPU (shared), 4 GB RAM, 40 GB disk, 0.0088 EUR/h, 5.49 EUR/month excl. VAT and IPv4 (available in fsn1, not in nbg1)."
-  type        = string
-  default     = "cx23"
-}
-
-variable "monitoring_ipv4_enabled" {
-  description = "Give the monitoring VM a primary IPv4 (0.50 EUR/month). Needed to pull images from Docker Hub, which has no IPv6."
-  type        = bool
-  default     = true
-}
-
-variable "monitoring_bootstrap_ssh_cidrs" {
-  description = "CIDRs allowed on 22/tcp of the monitoring VM, ONLY for the first Ansible run (before it joins the tailnet). Leave empty afterwards and apply again."
-  type        = list(string)
-  default     = []
-}
