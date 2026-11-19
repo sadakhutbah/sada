@@ -5,6 +5,7 @@
   "Processing queued again: it starts within a minute.": "Traitement remis en file : il démarre dans la minute.",
   "Video received: processing starts, follow it on the dashboard.": "Vidéo reçue : le traitement démarre, suivez-le au tableau de bord.",
   "Khutba updated.": "Khutba mise à jour.",
+  "unknown format: {format}": "format inconnu : {format}",
   "unknown kind: {kinds}": "kind inconnu : {kinds}",
   "Correction saved; {n} clip(s) to regenerate then validate again.": "Correction enregistrée ; {n} clip(s) à régénérer puis revalider.",
   "Correction saved.": "Correction enregistrée.",

@@ -9,11 +9,24 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from sqlalchemy import and_, distinct, func, or_, outerjoin, select, update
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
 
 from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
-from .. import auth, content, db, habillage, import_video, importer, orm, states, traduction, traitement
+from .. import (
+    auth,
+    content,
+    db,
+    habillage,
+    import_video,
+    importer,
+    orm,
+    states,
+    traduction,
+    traitement,
+    transcript_export,
+)
 from ..context import CtxDep, Invalid, NotFound, imam_filter, khutba_or_404
 from ..models import Clip, Khutba, User
 from .common import _ok, _segments
@@ -137,6 +150,25 @@ def tarawih_night(ctx: CtxDep, kid: int):
         "segments": chapters.get("segments") or [],
         "has_video": bool(k["video_path"]) and Path(k["video_path"]).exists(),
     }
+
+
+@router.get("/sermons/{kid}/transcript")
+def sermon_transcript(kid: int, ctx: CtxDep, format: str = "txt"):
+    """Timestamped transcript (original text + translation) as a download: `format=txt` or `srt`.
+
+    Read-only, same visibility as the khutba itself. Times are those of the session recording."""
+    fmt = format.strip().lower()
+    if fmt not in transcript_export.FORMATS:
+        raise Invalid(_("unknown format: {format}", format=format))
+    k = khutba_or_404(ctx, kid)
+    rows = content.transcript_rows(content.load(ctx.conn, k))
+    media, ext = transcript_export.FORMATS[fmt]
+    name = transcript_export.filename(k["label"], kid, ext)
+    return Response(
+        transcript_export.render(rows, fmt),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "private, no-cache"},
+    )
 
 
 @router.get("/sermons/{kid}")
