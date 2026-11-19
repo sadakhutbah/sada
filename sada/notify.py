@@ -12,6 +12,7 @@ import json
 import urllib.request
 from collections.abc import Callable
 
+from . import telemetry
 from .i18n import _, translate
 from .state import Machine, State
 
@@ -145,13 +146,15 @@ class Notifier:
         if ch is None:
             self.log(_("notification (dry run): {message}", message=text))
             return False
-        try:
-            url, payload = ch.request(self.values, text)
-            self.post(url, payload)
-            return True
-        except Exception as exc:  # network, DNS, quota: we block nothing
-            self.log(_("notification not sent ({destination}): {error}", destination=self.destination, error=exc))
-            return False
+        with telemetry.get().track("notification", channel=ch.key) as run:
+            try:
+                url, payload = ch.request(self.values, text)
+                self.post(url, payload)
+                return True
+            except Exception as exc:  # network, DNS, quota: we block nothing
+                run.fail()
+                self.log(_("notification not sent ({destination}): {error}", destination=self.destination, error=exc))
+                return False
 
     def notify_state(self, state: State, m: Machine) -> bool:
         text = message_for(state, m)

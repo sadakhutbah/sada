@@ -55,6 +55,13 @@ backoffice:
     limits:
       memory: 5Gi
       cpu: 4 # plafond : un habillage ne doit pas affamer les directs (les orchestrateurs réservent 1,5 cœur chacun)
+  # Telemetry (metrics + traces over OTLP/HTTP) is off unless an endpoint is set. Example, towards a
+  # collector reachable on a private network only:
+  #   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+  #     value: http://otel-collector.tailnet.example:4318
+  #   - name: OTEL_EXPORTER_OTLP_HEADERS   # if the collector needs it; keep it in a Secret
+  #     valueFrom: {secretKeyRef: {name: otel-auth, key: headers}}
+  # See deploy/README.md, "Telemetry".
   extraEnv: []
 
 # Stream reception (MediaMTX): mosques push RTMP or SRT, orchestrators read RTSP inside
@@ -101,6 +108,13 @@ orchestrator:
       memory: 1Gi
     limits:
       memory: 3Gi
+  # Telemetry (metrics + traces over OTLP/HTTP) is off unless an endpoint is set. Example, towards a
+  # collector reachable on a private network only:
+  #   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+  #     value: http://otel-collector.tailnet.example:4318
+  #   - name: OTEL_EXPORTER_OTLP_HEADERS   # if the collector needs it; keep it in a Secret
+  #     valueFrom: {secretKeyRef: {name: otel-auth, key: headers}}
+  # See deploy/README.md, "Telemetry".
   extraEnv: []
 
 # Each mosque gets an orchestrator and an API service `orchestrator-<slug>:8088`.

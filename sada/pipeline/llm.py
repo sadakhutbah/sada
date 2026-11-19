@@ -16,6 +16,7 @@ it is no longer the default, it must be requested explicitly.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -27,6 +28,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import telemetry
 from ..config import pick
 from ..i18n import _
 from .filesettings import FileSettings
@@ -191,8 +193,30 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
     raise AssertionError("unreachable")
 
 
+def _observed(ask):
+    """`Protocol.ask` wrapped in a telemetry operation labelled by the protocol."""
+
+    @functools.wraps(ask)
+    def wrapper(self, *args, **kwargs):
+        with telemetry.get().track("llm", protocol=self.key):
+            return ask(self, *args, **kwargs)
+
+    return wrapper
+
+
 class Protocol:
-    """One way of talking to a model: how it is named and how a prompt is sent."""
+    """One way of talking to a model: how it is named and how a prompt is sent.
+
+    The `ask` of every subclass is observed (calls, errors, latency, span) under the protocol's `key`,
+    with no prompt, answer, model name or address in the telemetry.
+    """
+
+    key = "custom"  # label of the protocol in the metrics
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        if "ask" in cls.__dict__:
+            cls.ask = _observed(cls.__dict__["ask"])
 
     def label(self, s: Settings) -> str:
         """Short name of the method, written into the notes and the translation cache."""
@@ -204,6 +228,8 @@ class Protocol:
 
 class OpenAIProtocol(Protocol):
     """OpenAI-compatible `chat/completions` (Ollama, llama.cpp, LM Studio, vLLM, Groq...). Default."""
+
+    key = "openai"
 
     def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
         url = s.url if s.url.endswith("/chat/completions") else f"{s.url}/chat/completions"
@@ -220,6 +246,8 @@ class OpenAIProtocol(Protocol):
 
 class AnthropicProtocol(Protocol):
     """Anthropic `messages` API."""
+
+    key = "anthropic"
 
     def ask(self, s: Settings, prompt: str, timeout: int, log) -> str:
         url = s.url if s.url.endswith("/messages") else f"{s.url}/messages"
@@ -238,6 +266,8 @@ class AnthropicProtocol(Protocol):
 
 class ClaudeCliProtocol(Protocol):
     """Old behaviour: `claude` binary as a subprocess (disabled by default)."""
+
+    key = "claude-cli"
 
     def label(self, s: Settings) -> str:
         return "claude -p"

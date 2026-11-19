@@ -8,6 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from .. import telemetry
 from ..i18n import _
 from . import glossary, repair, settings
 from .language import measure as measure_language
@@ -140,6 +141,7 @@ class LocalEngine(repair.Engine):
         piece = self.audio[int(start * self.sr) : int(end * self.sr)]
         return piece if len(piece) >= self.sr * 0.5 else None
 
+    @telemetry.tracked("transcription", engine="local", stage="pass")
     def transcribe(
         self,
         chunk,
@@ -236,9 +238,11 @@ def transcribe(
 ) -> dict:
     # Réglage « Local / Distant » (Réglages → Transcription) : le distant rend exactement la même
     # forme de résultat, l'aval ne sait pas d'où il vient. Aucun repli silencieux vers le local.
-    return BACKENDS[backend_name()](
-        wav, out_json, prefer=prefer, log=log, arabic_retry=arabic_retry, hotwords=hotwords, source=source
-    )
+    name = backend_name()
+    with telemetry.get().track("transcription", engine=ENGINE_LABELS[name], stage="full"):
+        return BACKENDS[name](
+            wav, out_json, prefer=prefer, log=log, arabic_retry=arabic_retry, hotwords=hotwords, source=source
+        )
 
 
 def backend_name() -> str:
@@ -348,3 +352,5 @@ def _transcribe_local(wav, out_json, *, prefer, log, arabic_retry, hotwords, sou
 
 #: Transcription backends by mode name (`remote.MODES`).
 BACKENDS = {"local": _transcribe_local, "distant": _transcribe_remote}
+#: Name of each backend in the telemetry (the keys above are the stored settings, in French for the remote one).
+ENGINE_LABELS = {"local": "local", "distant": "remote"}

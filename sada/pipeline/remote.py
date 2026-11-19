@@ -45,6 +45,7 @@ from pathlib import Path
 
 import httpx
 
+from .. import telemetry
 from ..i18n import _
 from ..text import is_arabic_char
 from . import glossary, repair
@@ -636,6 +637,7 @@ class RemoteEngine(repair.Engine):
         self.sent += 1
         return cut(self.wav, self.work / f"pass{self.sent:03d}.mp3", start, end - start)
 
+    @telemetry.tracked("transcription", engine="remote", stage="pass")
     def transcribe(
         self,
         chunk,

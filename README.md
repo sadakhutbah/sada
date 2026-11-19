@@ -96,6 +96,11 @@ Layout: `sada/` (orchestrator, encoder, signals), `sada/pipeline/` (post-live AI
 
 Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Telemetry
+
+Opt-in OpenTelemetry metrics and traces (OTLP), off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set; no
+content, name, address or secret is ever exported. See [`deploy/README.md`](deploy/README.md#telemetry-optional).
+
 ## License
 
 [GNU AGPL-3.0](LICENSE). You may use, modify and host Sadā; if you make a modified version available,

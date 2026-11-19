@@ -80,6 +80,8 @@ class Config(MachineParams):
     # --- Signals ------------------------------------------------------------
     vad_aggressiveness: int = 3
     vad_ratio: float = 0.5  # share of voiced frames over 1 s to call it "voice"
+    # Slug of the mosque this orchestrator serves: only used to label its telemetry (SADA_MOSQUE_SLUG).
+    mosque_slug: str = ""
     # --- Overlay (mosque identity, to be defined for each mosque) ------------
     mosque_name: str = ""  # e.g. "Mosquée Assalam" (footer, khutba banner, API)
     mosque_name_ar: str = ""  # e.g. "مسجد السلام" (empty: only the Latin name is shown)

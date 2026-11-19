@@ -5,6 +5,7 @@ The application is built from the environment (see `[tool.fastapi]` in pyproject
     SADA_DB              SQLite database (default: data/backoffice/sada.db)
     SADA_SECURE_COOKIES  "1" for Secure cookies (behind HTTPS)
     SADA_IMPORT_EVERY    automatic import of runs every N seconds (0 = disabled)
+    OTEL_EXPORTER_OTLP_ENDPOINT  metrics and traces export (off unless set, see sada/telemetry.py)
 
 The in-house command line (`python -m sada.backoffice serve`) remains available for the
 --host / --port options; it builds the same application.
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import os
 
+from .. import telemetry
 from . import db
 from .app import create_app
 
@@ -26,3 +28,4 @@ app = create_app(
     secure_cookies=os.environ.get("SADA_SECURE_COOKIES", "").lower() in ("1", "true", "yes"),
     auto_import_s=float(os.environ.get("SADA_IMPORT_EVERY", "60") or 60),
 )
+telemetry.start("sada-backoffice").instrument_app(app)
