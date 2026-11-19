@@ -66,3 +66,48 @@ def test_api_transcript_errors_and_auth(env):
     c = client(env, "imam")
     assert c.get(base + "?format=pdf").status_code == 422
     assert c.get("/api/v1/sermons/999999/transcript?format=srt").status_code == 404
+
+
+def test_entries_shift_trims_and_drops_before_video():
+    rows = [
+        {"start": 1.0, "end": 3.0, "text": "avant", "fr": None, "verse": None},
+        {"start": 8.0, "end": 12.0, "text": "à cheval", "fr": None, "verse": None},
+        {"start": 20.0, "end": 22.0, "text": "après", "fr": None, "verse": None},
+    ]
+    items = te.entries(rows, shift=-10.0)  # the video starts 10 s into the session
+    assert [(e["text"], e["start"], e["end"]) for e in items] == [("à cheval", 0.0, 2.0), ("après", 10.0, 12.0)]
+    assert [e["start"] for e in te.entries(rows, shift=5.0)] == [6.0, 13.0, 25.0]
+
+
+def test_api_transcript_raw_without_dressed_video(env):
+    c = client(env, "imam")
+    base = f"/api/v1/sermons/{env['kid']}/transcript"
+    brut = c.get(base + "?format=srt")
+    assert brut.headers["x-sada-timing"] == "raw"
+    assert c.get(base + "?format=srt&timing=video").content == brut.content  # nothing to align on
+    assert c.get(base + "?format=srt&timing=lent").status_code == 422
+
+
+def test_api_transcript_aligned_on_dressed_video(env):
+    from test_subtitles import habille
+
+    c = client(env, "imam")
+    base = f"/api/v1/sermons/{env['kid']}/transcript"
+    brut = c.get(base + "?format=srt&timing=raw")
+    habille(env, intro_s=5.0)
+    video = c.get(base + "?format=srt")
+    assert video.headers["x-sada-timing"] == "video"
+    assert c.get(base + "?format=srt&timing=raw").content == brut.content
+
+    def debuts(r):
+        return [
+            int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+            for h, m, s, ms in re.findall(r"^(\d\d):(\d\d):(\d\d),(\d{3}) -->", r.content.decode(), re.M)
+        ]
+
+    assert [round(a - b, 3) for a, b in zip(debuts(video), debuts(brut), strict=True)] == [5.0] * len(debuts(brut))
+    # same shift as the dressed video's own subtitle track
+    piste = c.get(f"/api/v1/sermons/{env['kid']}/habillage/sous-titres/fr.srt").content.decode()
+    assert piste.startswith("1\n00:00:05,000 -->") and video.content.decode().startswith("1\n00:00:05,000 -->")
+    txt = c.get(base + "?format=txt")
+    assert txt.text.startswith("[00:00:05]")

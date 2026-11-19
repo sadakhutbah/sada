@@ -153,21 +153,32 @@ def tarawih_night(ctx: CtxDep, kid: int):
 
 
 @router.get("/sermons/{kid}/transcript")
-def sermon_transcript(kid: int, ctx: CtxDep, format: str = "txt"):
+def sermon_transcript(kid: int, ctx: CtxDep, format: str = "txt", timing: str | None = None):
     """Timestamped transcript (original text + translation) as a download: `format=txt` or `srt`.
 
-    Read-only, same visibility as the khutba itself. Times are those of the session recording."""
+    Read-only, same visibility as the khutba itself. `timing=video` (default when a branded video exists)
+    aligns the times on that video, with the same shift as its subtitle tracks (opening card and cut);
+    `timing=raw`, or no branded video, keeps the session recording's times."""
+    mode = (timing or "").strip().lower()
+    if mode and mode not in transcript_export.TIMINGS:
+        raise Invalid(_("unknown timing: {timing}", timing=timing))
     fmt = format.strip().lower()
     if fmt not in transcript_export.FORMATS:
         raise Invalid(_("unknown format: {format}", format=format))
     k = khutba_or_404(ctx, kid)
     rows = content.transcript_rows(content.load(ctx.conn, k))
+    aligned = mode != "raw" and habillage.version_habillee(ctx.conn, k) is not None
+    shift = habillage.alignements(ctx.conn, k)["habille"] if aligned else 0.0
     media, ext = transcript_export.FORMATS[fmt]
     name = transcript_export.filename(k["label"], kid, ext)
     return Response(
-        transcript_export.render(rows, fmt),
+        transcript_export.render(rows, fmt, shift),
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "private, no-cache"},
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "private, no-cache",
+            "X-Sada-Timing": "video" if aligned else "raw",
+        },
     )
 
 

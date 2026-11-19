@@ -12,11 +12,17 @@ FORMATS = {
 }
 
 
-def entries(rows: list[dict]) -> list[dict]:
+TIMINGS = ("video", "raw")
+
+
+def entries(rows: list[dict], shift: float = 0.0) -> list[dict]:
     """Rows of `content.transcript_rows` reduced to (start, end, original, translation), in time order.
 
     The translation is the French subtitle, or the verse translation for a recitation; it is dropped
-    when empty or identical to the original text."""
+    when empty or identical to the original text.
+
+    `shift` (seconds) moves session time to the video's time (see `habillage.alignements`). A segment
+    that ends before the video starts is dropped; one that starts before it is trimmed to 0."""
     out = []
     for r in rows:
         original = " ".join((r.get("text") or "").split())
@@ -24,8 +30,11 @@ def entries(rows: list[dict]) -> list[dict]:
             continue
         tr = r.get("fr") or (r.get("verse") or {}).get("fr") or ""
         tr = " ".join(tr.split())
+        start, end = r["start"] + shift, r["end"] + shift
+        if end <= 0:
+            continue
         out.append(
-            {"start": r["start"], "end": r["end"], "text": original, "translation": "" if tr == original else tr}
+            {"start": max(0.0, start), "end": end, "text": original, "translation": "" if tr == original else tr}
         )
     out.sort(key=lambda e: (e["start"], e["end"]))
     return out
@@ -56,8 +65,8 @@ def to_txt(items: list[dict]) -> str:
     return "\n".join(blocks) + ("\n" if blocks else "")
 
 
-def render(rows: list[dict], fmt: str) -> bytes:
-    items = entries(rows)
+def render(rows: list[dict], fmt: str, shift: float = 0.0) -> bytes:
+    items = entries(rows, shift)
     return (to_srt(items) if fmt == "srt" else to_txt(items)).encode("utf-8")
 
 
