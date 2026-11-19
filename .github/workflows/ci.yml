@@ -14,6 +14,7 @@ jobs:
   lint:
     name: Python lint + format (ruff)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
@@ -23,6 +24,7 @@ jobs:
   python:
     name: Tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -30,7 +32,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install ffmpeg
-        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg
+        timeout-minutes: 8
+        run: |
+          # bounded retries: a stalled mirror must fail fast instead of hanging the job
+          for attempt in 1 2 3; do
+            if sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update -q \
+              && sudo timeout 240 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -yq --no-install-recommends ffmpeg; then
+              break
+            fi
+            [ "$attempt" = 3 ] && { echo "ffmpeg install failed after 3 attempts" >&2; exit 1; }
+            echo "apt attempt $attempt failed, retrying in 10s" >&2; sleep 10
+          done
+          ffmpeg -version | head -1
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: ${{ matrix.python }}
@@ -52,6 +65,7 @@ jobs:
   web:
     name: Front end (lint + build)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -70,6 +84,7 @@ jobs:
     name: Release (release-please)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -88,6 +103,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [lint, python, web, release]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
