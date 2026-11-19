@@ -1,0 +1,65 @@
+---
+# Pinned images (no "latest").
+monitoring_image_otelcol: otel/opentelemetry-collector-contrib:0.165.0
+monitoring_image_prometheus: prom/prometheus:v3.16.0
+monitoring_image_tempo: grafana/tempo:2.10.10
+monitoring_image_grafana: grafana/grafana:13.2.6
+
+monitoring_dir: /opt/sada-monitoring
+# Docker bridges may only reach other bridges and the tailnet (CGNAT range), nothing else.
+monitoring_egress_allowed_cidr: 100.64.0.0/10
+monitoring_tailscale_hostname: sada-monitoring
+# Local secret files (operator's machine).
+# Env SADA_TS_AUTHKEY wins, else this file (looked up only when needed). Single-use key.
+monitoring_tailscale_authkey_file: ~/.config/sada-deploy/tailscale_authkey
+monitoring_grafana_password_file: ~/.config/sada-deploy/grafana_admin_password
+
+# Retention (bounded).
+monitoring_prometheus_retention_time: 30d
+monitoring_prometheus_retention_size: 10GB
+monitoring_tempo_retention: 336h   # 14 days
+
+# Extra Prometheus scrape targets reachable over the tailnet, e.g. ["sada-app:10250"].
+# DISABLED by default (empty). Kubelet/cAdvisor is scraped over HTTPS with certificate
+# verification: when targets are set, monitoring_kubelet_ca_file (path on the operator's machine,
+# the kubelet serving CA, e.g. k3s server-ca.crt) is mandatory. There is no insecure_skip_verify
+# option. monitoring_kubelet_server_name must match a SAN of the kubelet certificate when you
+# scrape by tailnet address.
+monitoring_kubelet_targets: []
+monitoring_kubelet_ca_file: ""
+monitoring_kubelet_server_name: ""
+# Bearer token file on the VM (the role creates an empty placeholder).
+monitoring_kubelet_token_file: /opt/sada-monitoring/secrets/kubelet_token
+
+# Collector allowlists (regular expressions on attribute KEYS; everything else is deleted before
+# storage, in addition to the application-side filtering). Written with [.] instead of \. .
+monitoring_otel_resource_keys:
+  - service[.]name
+  - service[.]version
+  - service[.]namespace
+  - service[.]instance[.]id
+  - deployment[.]environment[.]name
+  - k8s[.]namespace[.]name
+  - k8s[.]pod[.]name
+  - k8s[.]node[.]name
+  - telemetry[.]sdk[.].*
+monitoring_otel_signal_keys:
+  - http[.]request[.]method
+  - http[.]response[.]status_code
+  - http[.]route
+  - error[.]type
+  - db[.]system
+  - db[.]operation[.]name
+  - rpc[.]system
+  - rpc[.]service
+  - rpc[.]method
+  - rpc[.]grpc[.]status_code
+  - messaging[.]system
+  - sada[.].*
+
+# Container resource limits (VM: 4 GB RAM, 2 vCPU).
+monitoring_limits:
+  otelcol:    { mem: 640m,  cpus: "0.5", pids: 256 }
+  prometheus: { mem: 1024m, cpus: "1.0", pids: 256 }
+  tempo:      { mem: 1024m, cpus: "1.0", pids: 512 }
+  grafana:    { mem: 512m,  cpus: "0.5", pids: 256 }

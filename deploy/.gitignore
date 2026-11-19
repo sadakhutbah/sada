@@ -2,3 +2,4 @@
 deploy.env
 values.local.yaml
 ansible/inventory.ini
+ansible/inventory-monitoring.ini

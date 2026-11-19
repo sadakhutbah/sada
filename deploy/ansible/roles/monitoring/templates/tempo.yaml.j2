@@ -1,0 +1,25 @@
+stream_over_http_enabled: true
+usage_report:
+  reporting_enabled: false   # no phone-home
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+compactor:
+  compaction:
+    block_retention: {{ monitoring_tempo_retention }}
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks

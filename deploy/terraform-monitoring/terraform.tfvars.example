@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars (git-ignored). Token: export TF_VAR_hcloud_token from
+# ~/.config/sada-deploy/hcloud_token, never write it here.
+# location            = "fsn1"
+# ssh_key_name        = "sada-deploy"   # existing key of the production module
+# bootstrap_ssh_cidrs = ["203.0.113.10/32"]   # first Ansible run only, then []
