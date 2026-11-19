@@ -28,6 +28,11 @@ persistence:
   storageClass: "" # "" = cluster default StorageClass (local-path on k3s)
   mountPath: /app/data
 
+# The image runs as uid/gid 10001. fsGroup goes on every pod that mounts the data volume, and a
+# root init container chowns the volume (local-path ignores fsGroup).
+securityContext:
+  fsGroup: 10001
+
 # Échantillonneur de consommation (CPU/mémoire par pod, CSV du jour dans <data>/metrics) : sert à dimensionner.
 metrics:
   enabled: false

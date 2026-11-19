@@ -25,7 +25,7 @@ dependencies = [
   "httpx",
   "sqlalchemy>=2.0",
   "wordfreq>=3.1.1",
-  "psycopg[binary]>=3.2",
+  "psycopg[binary]>=3.3.9",
 ]
 [dependency-groups]
 dev = ["pytest"]

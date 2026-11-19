@@ -41,6 +41,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        {{- include "sada.podSecurityContext" $ | nindent 8 }}
+      initContainers:
+        {{- include "sada.dataPermsInit" $ | nindent 8 }}
       containers:
         - name: orchestrator
           image: {{ include "sada.image" $ | quote }}

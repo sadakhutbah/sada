@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.0-alpha.3](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.2...sada-v0.1.0-alpha.3) (2026-11-19)
+
+
+### Miscellaneous Chores
+
+* release 0.1.0-alpha.3 ([8a84f39](https://github.com/sadakhutbah/sada/commit/8a84f3915ef647c1208b66798341292b3aaf399c))
+
+## [0.1.0-alpha.2](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.1...sada-v0.1.0-alpha.2) (2026-11-19)
+
+
+### Features
+
+* align transcript export on the dressed video (timing=video|raw) ([#35](https://github.com/sadakhutbah/sada/issues/35)) ([8698713](https://github.com/sadakhutbah/sada/commit/869871307ebb34029d40b3f39bcf4d43121a286e))
+* export khutba transcript as .txt and .srt ([#33](https://github.com/sadakhutbah/sada/issues/33)) ([8d15d79](https://github.com/sadakhutbah/sada/commit/8d15d79bd8be1b67f7c96052bf9bd0e72493d8cb))
+
 ## [0.1.0-alpha.1](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.0...sada-v0.1.0-alpha.1) (2026-11-18)
 
 

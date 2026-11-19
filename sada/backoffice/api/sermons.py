@@ -9,12 +9,26 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from sqlalchemy import and_, distinct, func, or_, outerjoin, select, update
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
 
 from ...i18n import _
 from ...pipeline import verses as verses_mod
 from ...pipeline.output import SessionOutput
-from .. import auth, content, db, habillage, import_video, importer, orm, states, traduction, traitement
+from .. import (
+    auth,
+    content,
+    db,
+    habillage,
+    import_video,
+    importer,
+    orm,
+    states,
+    traduction,
+    traitement,
+    transcript_export,
+)
 from ..context import CtxDep, Invalid, NotFound, imam_filter, khutba_or_404
+from ..jobs import JobStatus
 from ..models import Clip, Khutba, User
 from .common import _ok, _segments
 
@@ -139,6 +153,36 @@ def tarawih_night(ctx: CtxDep, kid: int):
     }
 
 
+@router.get("/sermons/{kid}/transcript")
+def sermon_transcript(kid: int, ctx: CtxDep, format: str = "txt", timing: str | None = None):
+    """Timestamped transcript (original text + translation) as a download: `format=txt` or `srt`.
+
+    Read-only, same visibility as the khutba itself. `timing=video` (default when a branded video exists)
+    aligns the times on that video, with the same shift as its subtitle tracks (opening card and cut);
+    `timing=raw`, or no branded video, keeps the session recording's times."""
+    mode = (timing or "").strip().lower()
+    if mode and mode not in transcript_export.TIMINGS:
+        raise Invalid(_("unknown timing: {timing}", timing=timing))
+    fmt = format.strip().lower()
+    if fmt not in transcript_export.FORMATS:
+        raise Invalid(_("unknown format: {format}", format=format))
+    k = khutba_or_404(ctx, kid)
+    rows = content.transcript_rows(content.load(ctx.conn, k))
+    aligned = mode != "raw" and habillage.version_habillee(ctx.conn, k) is not None
+    shift = habillage.alignements(ctx.conn, k)["habille"] if aligned else 0.0
+    media, ext = transcript_export.FORMATS[fmt]
+    name = transcript_export.filename(k["label"], kid, ext)
+    return Response(
+        transcript_export.render(rows, fmt, shift),
+        media_type=media,
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "private, no-cache",
+            "X-Sada-Timing": "video" if aligned else "raw",
+        },
+    )
+
+
 @router.get("/sermons/{kid}")
 def sermon(ctx: CtxDep, kid: int):
     k = khutba_or_404(ctx, kid)
@@ -227,7 +271,7 @@ async def do_import(ctx: CtxDep):
 @router.get("/traitements")
 async def traitements(ctx: CtxDep):
     items = await run_in_threadpool(traitement.liste, ctx.mosque)
-    return {"items": items, "actif": any(i["etat"] in ("attente", "en_cours") for i in items)}
+    return {"items": items, "actif": any(i["etat"] in (JobStatus.PENDING, JobStatus.RUNNING) for i in items)}
 
 
 @router.post("/traitements/relancer")

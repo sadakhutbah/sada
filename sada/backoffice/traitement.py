@@ -24,6 +24,7 @@ from .. import paths, runs
 from ..i18n import _
 from ..pipeline.output import SessionOutput
 from . import db, importer
+from .jobs import JobStatus
 
 FICHIER = "traitement.json"
 FENETRE_H = 48  # runs plus anciens : historique, jamais traités d'office
@@ -89,7 +90,7 @@ def a_traiter(mosque: dict, now: dt.datetime | None = None) -> list[tuple[Path, 
             if idx is None or not runs.is_done(s) or not runs.produces_content(s):
                 continue
             e = etat.get(str(idx), {}).get("etat")
-            if e == "attente":
+            if e == JobStatus.PENDING:
                 todo.append((rd, idx))
             elif (
                 e is None
@@ -102,7 +103,7 @@ def a_traiter(mosque: dict, now: dt.datetime | None = None) -> list[tuple[Path, 
 
 def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
     out = db.mosque_dirs(mosque)["output"]
-    _maj(run_dir, idx, etat="en_cours", debut=_now(), fin=None, erreur=None, step=None, step_at=None)
+    _maj(run_dir, idx, etat=JobStatus.RUNNING.value, debut=_now(), fin=None, erreur=None, step=None, step_at=None)
     log(_("{run} session {session}: processing started", run=run_dir.name, session=runs.session_number(idx)))
     cmd = [
         sys.executable,
@@ -133,10 +134,10 @@ def traiter(conn, mosque: dict, run_dir: Path, idx: int, log=print) -> bool:
             raise RuntimeError(_resume_erreur(sortie, code))
         importer.import_run(conn, mosque, run_dir.name, log=log)
     except Exception as e:  # noqa: BLE001 — l'échec est montré dans le back-office
-        _maj(run_dir, idx, etat="echec", fin=_now(), erreur=str(e)[:300])
+        _maj(run_dir, idx, etat=JobStatus.FAILED.value, fin=_now(), erreur=str(e)[:300])
         log(_("{run} session {session}: failed: {error}", run=run_dir.name, session=runs.session_number(idx), error=e))
         return False
-    _maj(run_dir, idx, etat="termine", fin=_now(), erreur=None, step=None, step_at=None)
+    _maj(run_dir, idx, etat=JobStatus.DONE.value, fin=_now(), erreur=None, step=None, step_at=None)
     log(_("{run} session {session}: clips ready", run=run_dir.name, session=runs.session_number(idx)))
     return True
 
@@ -184,8 +185,8 @@ def reprendre(mosque: dict) -> None:
     """Au démarrage : un traitement resté « en cours » a été interrompu, il repart en attente."""
     for rd in _runs(mosque):
         for k, v in lire(rd).items():
-            if v.get("etat") == "en_cours":
-                _maj(rd, int(k), etat="attente")
+            if v.get("etat") == JobStatus.RUNNING:
+                _maj(rd, int(k), etat=JobStatus.PENDING.value)
 
 
 def tour(conn, mosque: dict, log=print) -> int:
@@ -267,7 +268,7 @@ def embed_pending(conn, log=print, is_live=None, budget_s: float = 600.0) -> int
 
 
 def mettre_en_file(run_dir: Path, idx: int) -> None:
-    _maj(run_dir, idx, etat="attente", erreur=None, fin=None)
+    _maj(run_dir, idx, etat=JobStatus.PENDING.value, erreur=None, fin=None)
 
 
 def relancer(mosque: dict, run_id: str, idx: int) -> None:
@@ -278,9 +279,9 @@ def relancer(mosque: dict, run_id: str, idx: int) -> None:
     s = next((s for s in data.get("sessions", []) if s.get("index") == idx), None)
     if s is None or not runs.is_done(s) or not runs.produces_content(s):
         raise ValueError(_("this session is not processed"))
-    if lire(rd).get(str(idx), {}).get("etat") == "en_cours":
+    if lire(rd).get(str(idx), {}).get("etat") == JobStatus.RUNNING:
         raise ValueError(_("processing already in progress"))
-    _maj(rd, idx, etat="attente", erreur=None, fin=None)
+    _maj(rd, idx, etat=JobStatus.PENDING.value, erreur=None, fin=None)
 
 
 def liste(mosque: dict, limite: int = 10) -> list[dict]:

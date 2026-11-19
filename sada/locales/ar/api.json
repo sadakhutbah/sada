@@ -5,6 +5,8 @@
   "Processing queued again: it starts within a minute.": "أُعيدت المعالجة إلى قائمة الانتظار: ستبدأ خلال دقيقة.",
   "Video received: processing starts, follow it on the dashboard.": "تمّ استلام الفيديو: بدأت المعالجة، تابِعها في لوحة التحكّم.",
   "Khutba updated.": "تمّ تحديث الخطبة.",
+  "unknown format: {format}": "صيغة غير معروفة: {format}",
+  "unknown timing: {timing}": "توقيت غير معروف: {timing}",
   "unknown kind: {kinds}": "نوع غير معروف: {kinds}",
   "Correction saved; {n} clip(s) to regenerate then validate again.": "حُفظ التصحيح؛ يجب إعادة توليد {n} مقطع ثم التحقّق منه مجدّدًا.",
   "Correction saved.": "حُفظ التصحيح.",

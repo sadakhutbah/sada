@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import datetime as dt
 
+from .jobs import JobStatus
+
 # A rendering is about a minute: past this, the user is told it looks stuck.
 REGEN_STUCK_AFTER = dt.timedelta(minutes=10)
 # Post-live processing (transcription, verses, clips) takes tens of minutes.
@@ -81,10 +83,10 @@ def clip_state(
     """
     regen = clip.get("regen_state") or ""
     action = [{"key": "regenerate", "url": f"/api/v1/clips/{clip['id']}/regenerate"}] if can_regenerate else []
-    if regen == "en_cours":
+    if regen == JobStatus.RUNNING:
         since = clip.get("updated_at")
         return _state(RUNNING, "clip.regenerating", since=since, stuck=_older_than(since, REGEN_STUCK_AFTER, now))
-    if regen == "erreur":
+    if regen == JobStatus.ERROR:
         return _state(
             FAILED,
             "clip.regen_failed",
@@ -107,12 +109,12 @@ def habillage_state(row: dict | None, video_ready: bool = False) -> dict:
     """State of a khutba's branded video (title card, subtitles burned in)."""
     row = row or {}
     status = row.get("status") or ""
-    if status == "en_cours":
+    if status == JobStatus.RUNNING:
         pct = round(float(row.get("progress") or 0) * 100)
         return _state(RUNNING, "habillage.rendering", since=row.get("started_at"), params={"percent": pct})
-    if status == "echec":
+    if status == JobStatus.FAILED:
         return _state(FAILED, "habillage.failed", since=row.get("updated_at"), detail=row.get("error") or "")
-    if status == "pret" and video_ready:
+    if status == JobStatus.READY and video_ready:
         return _state(OK, "habillage.ready", since=row.get("finished_at"))
     return _state(OK, "habillage.none")
 
@@ -130,9 +132,9 @@ def sermon_state(
     children = {"clips": clips_summary(clip_states)}
     phase = processing.get("etat")
     since = processing.get("debut")
-    if phase == "attente":
+    if phase == JobStatus.PENDING:
         return _state(RUNNING, "sermon.queued", since=since, children=children)
-    if phase == "en_cours":
+    if phase == JobStatus.RUNNING:
         # A stage that has not changed for a long time is the real sign of a stuck run, not the total time.
         stage = processing.get("step")
         stage_since = processing.get("step_at") or since
@@ -147,7 +149,7 @@ def sermon_state(
             params=params,
             children=children,
         )
-    if phase == "echec":
+    if phase == JobStatus.FAILED:
         return _state(
             FAILED, "sermon.processing_failed", since=since, detail=processing.get("erreur") or "", children=children
         )
