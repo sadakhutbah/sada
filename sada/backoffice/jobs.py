@@ -259,22 +259,29 @@ class Job:
         try:
             with telemetry.get().track("job", kind=self.thread_name) as run:
                 target(*args)
-                if self._outcomes.get(key) == telemetry.ERROR:
+                with self._lock:
+                    failed = self._outcomes.get(key) == telemetry.ERROR
+                if failed:
                     run.fail()  # the job recorded its own failure instead of raising
         finally:
-            self._outcomes.pop(key, None)
+            with self._lock:
+                self._outcomes.pop(key, None)
             self._release(key)
 
     def _release(self, key: Hashable) -> None:
         with self._lock:
             self._active.discard(key)
 
+    def _set_outcome(self, ref: dict, outcome: str) -> None:
+        with self._lock:
+            self._outcomes[self._key(ref)] = outcome
+
     def mark_ready(self, conn, ref: dict, **extra: Any) -> None:
-        self._outcomes[self._key(ref)] = telemetry.OK
+        self._set_outcome(ref, telemetry.OK)
         self.store.write(conn, ref, JobStatus.READY, "", extra)
 
     def mark_failed(self, conn, ref: dict, error: str, **extra: Any) -> None:
-        self._outcomes[self._key(ref)] = telemetry.ERROR
+        self._set_outcome(ref, telemetry.ERROR)
         self.store.write(conn, ref, JobStatus.FAILED, error, extra)
 
     def update(self, conn, ref: dict, **extra: Any) -> None:

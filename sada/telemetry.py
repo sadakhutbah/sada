@@ -3,7 +3,7 @@
 Off by default: nothing is imported from the SDK, no exporter is created, no socket is opened and the
 instrumented code paths run against `DisabledTelemetry` (a null object). It is switched on by the standard
 OTLP variables, read by the SDK itself (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`,
-`OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_RESOURCE_ATTRIBUTES`, ...), or by `SADA_TELEMETRY=1` (default local
+`OTEL_METRIC_EXPORT_INTERVAL`, ...), or by `SADA_TELEMETRY=1` (default local
 endpoint). `SADA_TELEMETRY=0` / `OTEL_SDK_DISABLED=true` force it off.
 
 Each process calls `start()` once at boot with its service name (`sada-backoffice`, `sada-orchestrator`);
@@ -16,18 +16,25 @@ Nothing sensitive leaves the process. Only metrics and traces are exported (neve
 datum goes through an allowlist (`ALLOWED_ATTRIBUTES`): spans are rebuilt without events, links, exception
 messages or status descriptions, metric attributes are filtered by an SDK `View`. Request and response
 bodies and headers are never captured, only the route template of a request is kept (no path, no query
-string, no client address) and `/health` is not traced. Attribute values are low-cardinality labels.
+string, no client address) and `/health` is not traced. The resource is built explicitly (service name and
+mosque only: `OTEL_RESOURCE_ATTRIBUTES` / `OTEL_SERVICE_NAME` are ignored), exemplars are off and an inbound
+`traceparent` / `tracestate` is never trusted: every request starts a fresh trace. Attribute values are low-cardinality labels.
 """
 
 from __future__ import annotations
 
 import functools
+import ipaddress
+import logging
 import os
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
+
+log = logging.getLogger("sada.telemetry")
 
 # Any of these switches the export on (the SDK exporters read them again for the actual address).
 ENDPOINT_ENVS = (
@@ -216,6 +223,12 @@ class Telemetry(DisabledTelemetry):
             excluded_urls=",".join(EXCLUDED_URLS),
             exclude_spans=["send", "receive"],  # internal ASGI spans: noise
         )
+        # The instrumentation sits outside every `add_middleware` layer, so wrap the whole stack instead: the
+        # caller's trace context is removed before the instrumentation can read it.
+        build_stack = app.build_middleware_stack
+        app.build_middleware_stack = lambda: DropInboundTraceContext(build_stack())
+        if app.middleware_stack is not None:  # already built (app started): rebuild with the wrapper
+            app.middleware_stack = app.build_middleware_stack()
 
     def shutdown(self) -> None:
         self.tracer_provider.shutdown()
@@ -223,6 +236,22 @@ class Telemetry(DisabledTelemetry):
 
 
 # --------------------------------------------------------------------------- privacy filter
+
+#: Request headers that would let a caller choose the trace id or inject vendor data in our traces.
+INBOUND_CONTEXT_HEADERS = frozenset({b"traceparent", b"tracestate", b"baggage"})
+
+
+class DropInboundTraceContext:
+    """Pure ASGI middleware: removes the W3C trace context headers before the instrumentation reads them."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = [(k, v) for k, v in scope.get("headers", ()) if k.lower() not in INBOUND_CONTEXT_HEADERS]
+            scope = {**scope, "headers": headers}
+        await self.app(scope, receive, send)
 
 
 class AllowlistSpanExporter:
@@ -244,8 +273,8 @@ class AllowlistSpanExporter:
 
         return ReadableSpan(
             name=span.name,
-            context=span.context,
-            parent=span.parent,
+            context=self._without_trace_state(span.context),
+            parent=self._without_trace_state(span.parent),
             resource=span.resource,
             attributes={k: v for k, v in (span.attributes or {}).items() if k in self.allowed},
             events=(),
@@ -255,6 +284,21 @@ class AllowlistSpanExporter:
             start_time=span.start_time,
             end_time=span.end_time,
             instrumentation_scope=span.instrumentation_scope,
+        )
+
+    @staticmethod
+    def _without_trace_state(context):
+        """Same span context minus `tracestate` (vendor data that came from the caller)."""
+        if context is None or not context.trace_state:
+            return context
+        from opentelemetry.trace import SpanContext, TraceState
+
+        return SpanContext(
+            context.trace_id,
+            context.span_id,
+            context.is_remote,
+            context.trace_flags,
+            TraceState(),
         )
 
     def shutdown(self) -> None:
@@ -278,9 +322,42 @@ def enabled(environ: Mapping[str, str] | None = None) -> bool:
     return flag in TRUE or any(env.get(name, "").strip() for name in ENDPOINT_ENVS)
 
 
+def _is_private_host(host: str) -> bool:
+    """Loopback, private (RFC 1918 / ULA), link-local, CGNAT 100.64/10 (Tailscale) or a `.ts.net` name."""
+    host = host.lower().rstrip(".")
+    if host == "localhost" or host.endswith(".ts.net"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address in ipaddress.ip_network("100.64.0.0/10")
+
+
+def warn_unsafe_endpoints(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Log a warning for each OTLP endpoint that is public or not https; only the host is logged."""
+    env = os.environ if environ is None else environ
+    warned = []
+    for name in ENDPOINT_ENVS:
+        value = env.get(name, "").strip()
+        if not value:
+            continue
+        parts = urlsplit(value if "://" in value else f"//{value}")
+        host = parts.hostname or ""
+        problems = []
+        if not _is_private_host(host):
+            problems.append("not a private address (loopback, RFC 1918, 100.64/10, *.ts.net)")
+        if parts.scheme != "https":
+            problems.append("not https")
+        if problems:
+            log.warning("telemetry: %s host %r is %s", name, host, " and ".join(problems))
+            warned.append(name)
+    return warned
+
+
 def build(service_name: str, mosque: str = "", *, span_exporter=None, metric_reader=None) -> Telemetry:
     """Providers wired to OTLP/HTTP (or to the given exporter / reader, for tests)."""
-    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics import AlwaysOffExemplarFilter, MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk.metrics.view import View
     from opentelemetry.sdk.resources import Resource
@@ -290,15 +367,21 @@ def build(service_name: str, mosque: str = "", *, span_exporter=None, metric_rea
     attributes = {"service.name": service_name}
     if mosque:
         attributes[MOSQUE_ATTRIBUTE] = mosque
-    resource = Resource.create(attributes)
+    # Built explicitly, not `Resource.create`: that one merges OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME, so
+    # any secret placed there would ride on every span and metric.
+    resource = Resource(attributes)
 
     if metric_reader is None:
         from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 
+        warn_unsafe_endpoints()
+
         metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
     # One view for every instrument (ours and the HTTP ones): only allowed attribute keys are aggregated.
     views = [View(instrument_name="*", attribute_keys=set(METRIC_ATTRIBUTES))]
-    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader], views=views)
+    meter_provider = MeterProvider(
+        resource=resource, metric_readers=[metric_reader], views=views, exemplar_filter=AlwaysOffExemplarFilter()
+    )
 
     tracer_provider = TracerProvider(resource=resource)
     if span_exporter is None:

@@ -203,7 +203,7 @@ no exporter, no connection, no change of behaviour until one of these is set (ad
 | Variable | Effect |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | switches the export on (also `..._METRICS_ENDPOINT` / `..._TRACES_ENDPOINT`) |
-| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_RESOURCE_ATTRIBUTES` | standard SDK settings |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_METRIC_EXPORT_INTERVAL` | standard SDK settings |
 | `SADA_TELEMETRY=1` / `0` | force on (default local endpoint) / off, whatever the endpoint |
 | `OTEL_SDK_DISABLED=true` | force off |
 
@@ -213,6 +213,11 @@ Metrics: `sada.orchestrator.state{state}`, `sada.state.transitions{from_state,to
 `sada.transcription.calls` / `.duration{engine,stage,status}`, `sada.notification.sent` /
 `.duration{channel,status}`, plus the HTTP server metrics of the back office. Traces: back-office requests
 (route template only), jobs, LLM and transcription calls.
+
+The resource carries only `service.name` and `sada.mosque`: `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME`
+are deliberately ignored, exemplars are disabled, and an incoming `traceparent` / `tracestate` is never
+trusted. A warning is logged (host only) if the endpoint is not private (loopback, RFC 1918, 100.64/10,
+`*.ts.net`) or not https.
 
 Nothing sensitive is exported: only an allowlist of low-cardinality labels (`sada/telemetry.py`) leaves
 the process. No prompt, transcript, LLM answer, name, e-mail, IP address, header, request body, URL path

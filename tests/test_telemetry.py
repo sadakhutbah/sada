@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 
 import pytest
 from fastapi import FastAPI
@@ -315,3 +316,85 @@ def test_http_spans_and_metrics_keep_the_route_only(exported):
     dump = exported.dump()
     for secret in (PROMPT, QUERY_SECRET, HEADER_SECRET, CLIENT_IP, "/health", "testserver"):
         assert secret not in dump, secret
+
+
+def otlp_bytes(out: Exported) -> bytes:
+    """What the OTLP exporters would put on the wire (protobuf), resource and exemplars included."""
+    from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metrics
+    from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
+
+    spans = encode_spans(out.spans.get_finished_spans()).SerializeToString()
+    return spans + encode_metrics(out.reader.get_metrics_data()).SerializeToString()
+
+
+def test_nothing_leaks_through_the_resource_exemplars_or_inbound_context(exported, monkeypatch):
+    secret_pw, host_secret, forwarded = "SECRETPW", "internal-host-SECRET.example", "198.51.100.99"
+    monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", f"db.password={secret_pw}")
+    monkeypatch.setenv("OTEL_SERVICE_NAME", "SECRET-SERVICE")
+    out = Exported()  # started after the environment is set
+    app = make_app()
+    out.telemetry.instrument_app(app)
+    client = TestClient(app, client=(CLIENT_IP, 50000))
+    trace_id = "0af7651916cd43dd8448eb211c80319c"
+    headers = {
+        "Host": host_secret,
+        "Authorization": f"Bearer {HEADER_SECRET}",
+        "X-Forwarded-For": forwarded,
+        "traceparent": f"00-{trace_id}-b7ad6b7169203331-01",
+        "tracestate": "vendor=TRACESTATE-SECRET",
+        "baggage": "user=BAGGAGE-SECRET",
+    }
+    for path in (f"/items/{PROMPT}?token={QUERY_SECRET}", f"/unknown/{PROMPT}?token={QUERY_SECRET}"):
+        client.get(path, headers=headers)
+    with out.telemetry.track("job", kind="x"):
+        pass
+
+    spans = out.spans.get_finished_spans()
+    assert sorted(s.name for s in spans) == ["GET", "GET /items/{item}", "sada.job"]
+    for span in spans:
+        assert format(span.context.trace_id, "032x") != trace_id  # fresh root, caller's id not adopted
+        assert span.parent is None
+        assert not span.context.trace_state
+    assert {k for s in spans for k in s.resource.attributes} == {"service.name", telemetry.MOSQUE_ATTRIBUTE}
+
+    wire = otlp_bytes(out) + out.dump().encode()
+    forbidden = (
+        secret_pw, "db.password", "SECRET-SERVICE", PROMPT, QUERY_SECRET, HEADER_SECRET, CLIENT_IP, host_secret,
+        forwarded, trace_id, "TRACESTATE-SECRET", "BAGGAGE-SECRET", "vendor=", "/health",
+    )  # fmt: skip
+    for secret in forbidden:
+        assert secret.encode() not in wire, secret
+    telemetry.stop()
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "warns"),
+    [
+        ("https://collector.tail1234.ts.net:4318", False),
+        ("https://100.101.102.103:4318", False),
+        ("https://10.0.0.5:4318", False),
+        ("https://localhost:4318", False),
+        ("http://127.0.0.1:4318", True),  # not https
+        ("https://otel.example.com:4318", True),  # public
+        ("http://8.8.8.8:4318", True),
+    ],
+)
+def test_warns_on_public_or_clear_text_endpoint_without_logging_secrets(endpoint, warns, caplog):
+    caplog.set_level("WARNING", logger="sada.telemetry")
+    secret_url = endpoint.replace("://", "://user:URLSECRET@") + "/v1/traces?key=URLSECRET"
+    result = telemetry.warn_unsafe_endpoints({"OTEL_EXPORTER_OTLP_ENDPOINT": secret_url})
+    assert bool(result) is warns
+    assert bool(caplog.records) is warns
+    assert "URLSECRET" not in caplog.text
+
+
+def test_job_outcomes_are_guarded_by_the_lock():
+    job = Job(MemoryStore(), busy_message=lambda: "busy")
+    job._lock.acquire()
+    try:
+        done = threading.Event()
+        threading.Thread(target=lambda: (job.mark_ready(None, {"id": 1}), done.set()), daemon=True).start()
+        assert not done.wait(0.2)  # blocked on the lock
+    finally:
+        job._lock.release()
+    assert done.wait(2)
