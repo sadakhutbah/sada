@@ -605,7 +605,7 @@ def prompt_text(text: str, *, max_tokens: int = PROMPT_MAX_TOKENS) -> str:
 # --------------------------------------------------------------------------- reprise des passages arabes
 
 
-class RemoteEngine:
+class RemoteEngine(repair.Engine):
     """Moteur distant des passes de reprise : ffmpeg pour la plage, API pour le texte.
 
     Même contrat que `transcribe.LocalEngine` : la politique de reprise (`repair`) ne sait pas
