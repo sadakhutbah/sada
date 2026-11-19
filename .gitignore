@@ -8,7 +8,8 @@ tools/bin/
 .pytest_cache/
 promo/node_modules/
 web/node_modules/
-# web/dist est versionné : le back-office sert le front tel quel, sans build à l'installation.
+# front build output: produced by `make front` (CI and Docker build it too)
+web/dist/
 
 # certificat local HTTPS
 auto.key

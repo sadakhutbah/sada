@@ -37,6 +37,13 @@ jobs:
           enable-cache: true
       - name: Install
         run: uv venv .venv && uv pip install -p .venv/bin/python -e .
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build the front end (served by the back office, checked by the route tests)
+        run: npm --prefix web ci && npm --prefix web run build
       - name: Download the rendering engine
         run: .venv/bin/python -c "from sada.backoffice.template_render import fetch_engine; fetch_engine()"
       - name: Test
