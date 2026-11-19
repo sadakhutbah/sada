@@ -65,6 +65,10 @@ spec:
         checksum/sampler: {{ .Files.Get "files/sampler.py" | sha256sum }}
     spec:
       serviceAccountName: metrics-sampler
+      securityContext:
+        {{- include "sada.podSecurityContext" . | nindent 8 }}
+      initContainers:
+        {{- include "sada.dataPermsInit" . | nindent 8 }}
       containers:
         - name: sampler
           image: {{ include "sada.image" . | quote }}

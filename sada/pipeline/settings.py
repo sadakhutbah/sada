@@ -7,20 +7,22 @@ l'environnement reste prioritaire : c'est la règle unique de `sada.config.pick`
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
-from .. import paths
 from ..config import pick
+from .filesettings import FileSettings
 
 DEFAULT_CLIPS = 3  # extraits par khutba quand rien n'est réglé
 MIN_CLIPS = 1
 MAX_CLIPS = 10
 
 
+_FILE = FileSettings("SADA_PIPELINE_CONFIG", "pipeline.json")
+
+
 def config_path() -> Path:
-    return Path(os.environ.get("SADA_PIPELINE_CONFIG") or paths.DATA / "pipeline.json")
+    return _FILE.path()
 
 
 def config(path: Path | None = None) -> dict:
@@ -28,11 +30,7 @@ def config(path: Path | None = None) -> dict:
 
     `path` : fichier d'une mosquée (back-office multi-mosquée) ; sinon le fichier du processus.
     """
-    try:
-        d = json.loads((path or config_path()).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return d if isinstance(d, dict) else {}
+    return _FILE.read(path)
 
 
 def borne(valeur) -> int:
@@ -94,9 +92,5 @@ def save_config(clips, enabled=True, path: Path | None = None) -> dict:
     n = borne(clips)
     garde = bool(enabled)
     p = path or config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    data = {**config(p), "clips": n, "clips_enabled": garde}
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    os.replace(tmp, p)
+    _FILE.write({**config(p), "clips": n, "clips_enabled": garde}, p)
     return {"clips": n, "enabled": garde}
