@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.3](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.2...sada-v0.1.0-alpha.3) (2026-11-19)
+
+
+### Miscellaneous Chores
+
+* release 0.1.0-alpha.3 ([8a84f39](https://github.com/sadakhutbah/sada/commit/8a84f3915ef647c1208b66798341292b3aaf399c))
+
 ## [0.1.0-alpha.2](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.1...sada-v0.1.0-alpha.2) (2026-11-19)
 
 
