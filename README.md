@@ -55,12 +55,13 @@ Nobody needs to stay behind the camera.
 
 ## Quick start
 
-Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), `ffmpeg`, and the
+Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), Node.js 22+ (to build the front end), `ffmpeg`, and the
 [mediamtx](https://github.com/bluenviron/mediamtx) relay for live streaming
 (both can be dropped in `tools/bin/`).
 
 ```bash
 make setup                 # virtualenv + dependencies
+make front                 # build the React front end into web/dist
 python -m sada.installer   # checks the machine and says what is missing
 
 # create the mosque and its first administrator (password asked interactively)

@@ -12,9 +12,33 @@ from ..i18n import _
 from . import glossary, repair, settings
 from .language import measure as measure_language
 
-CUDA_LIBS = [
-    str(Path.home() / ".local/share/raphael/cuda12/nvidia" / p / "lib") for p in ("cublas", "cudnn", "cuda_nvrtc")
-] + ["/usr/lib/wsl/lib"]
+
+def _cuda_libs() -> list[str]:
+    """Directories holding the CUDA 12 libraries ctranslate2 needs (cuBLAS, cuDNN, NVRTC).
+
+    `SADA_CUDA_LIBS` (os.pathsep-separated) wins; otherwise the `nvidia-*-cu12` wheels installed in
+    the environment, plus the WSL driver directory when it exists.
+    """
+    forced = os.environ.get("SADA_CUDA_LIBS")
+    if forced:
+        return [p for p in forced.split(os.pathsep) if p]
+    found = []
+    try:
+        import nvidia  # namespace package of the nvidia-*-cu12 wheels
+
+        for root in nvidia.__path__:
+            for pkg in ("cublas", "cudnn", "cuda_nvrtc"):
+                lib = Path(root) / pkg / "lib"
+                if lib.is_dir():
+                    found.append(str(lib))
+    except ImportError:
+        pass
+    if Path("/usr/lib/wsl/lib").is_dir():
+        found.append("/usr/lib/wsl/lib")
+    return found
+
+
+CUDA_LIBS = _cuda_libs()
 # Order of preference. large-v3 (~3 GB in int8) is only used if free VRAM allows it AND it is cached/downloadable.
 MODELS = [("large-v3", 3400), ("large-v3-turbo", 2000), ("medium", 1800), ("small", 900)]
 
