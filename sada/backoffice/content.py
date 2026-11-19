@@ -12,7 +12,6 @@ import json
 import math
 import os
 import shutil
-import threading
 import traceback
 from pathlib import Path
 
@@ -24,6 +23,7 @@ from ..pipeline import clips as clipmod
 from ..pipeline import translate, verses
 from ..pipeline.output import SessionOutput
 from . import db, importer, orm
+from .jobs import DbRowStore, Job, JobStatus
 from .models import AddedSubtitle, Clip, Correction, Khutba, Mosque
 
 # Clip statuses, in the order of the filter tabs. Protocol keys only: the front end translates them.
@@ -303,14 +303,17 @@ def can_regenerate(clip: dict) -> tuple[bool, str]:
     return True, ""
 
 
+# A clip's regeneration lives in `clips.regen_state` ("" when idle or done, "erreur" on failure).
+REGEN_JOB = Job(
+    DbRowStore(Clip, "id", "regen_state", "regen_error", ready="", failed=JobStatus.ERROR),
+    busy_message=lambda: _("regeneration already in progress"),
+    thread_name="regen",
+)
+
+
 def recover_interrupted(conn) -> None:
     """Regenerations in progress when the server stopped: they will never finish."""
-    conn.execute(
-        update(Clip)
-        .where(Clip.regen_state == "en_cours")
-        .values(regen_state="erreur", regen_error=_("interrupted (server stopped)"), updated_at=db.now_iso())
-    )
-    conn.commit()
+    REGEN_JOB.recover_interrupted(conn)
 
 
 def _render(db_path: str, clip_id: int, log=print) -> None:
@@ -349,61 +352,46 @@ def _render(db_path: str, clip_id: int, log=print) -> None:
             # bornes choisies par un humain : rendues telles quelles
             trim_tail=not (c.get("origin") == "manuel" or c.get("bounds_by")),
         )
-        conn.execute(
-            update(Clip)
-            .where(Clip.id == clip_id)
-            .values(
-                file_path=str(out),
-                version=ver,
-                needs_regen=0,
-                regen_state="",
-                regen_error="",
-                updated_at=db.now_iso(),
-                **REQUEUE,
-            )
-        )
-        conn.commit()
+        REGEN_JOB.mark_ready(conn, c, file_path=str(out), version=ver, needs_regen=0, **REQUEUE)
         db.audit(conn, c["mosque_id"], None, "clip.regenere", "clip", clip_id, version=ver, fichier=out.name)
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
-        conn.execute(
-            update(Clip)
-            .where(Clip.id == clip_id)
-            .values(regen_state="erreur", regen_error=str(e)[:500], updated_at=db.now_iso())
-        )
-        conn.commit()
+        REGEN_JOB.mark_failed(conn, {"id": clip_id}, str(e)[:500])
     finally:
         conn.close()
 
 
 def start_regeneration(conn, db_path: str, clip: dict, user: dict, ip=None, background: bool = True) -> None:
-    if not (clip["needs_regen"] or clip["regen_state"] == "erreur"):
+    if not (clip["needs_regen"] or clip["regen_state"] == JobStatus.ERROR):
         raise ValueError(_("no correction to apply: the clip is already approved"))
     ok, why = can_regenerate(clip)
     if not ok:
         raise ValueError(_("regeneration impossible: {why}", why=why))
-    if clip["regen_state"] == "en_cours":
-        raise ValueError(_("regeneration already in progress"))
-    conn.execute(
-        update(Clip)
-        .where(Clip.id == clip["id"])
-        .values(regen_state="en_cours", regen_error="", updated_at=db.now_iso())
+    REGEN_JOB.start(
+        conn,
+        clip,
+        _render,
+        (db_path, clip["id"]),
+        fields={"regen_error": ""},
+        before_spawn=lambda: db.audit(
+            conn,
+            clip["mosque_id"],
+            user["id"],
+            "clip.regeneration",
+            "clip",
+            clip["id"],
+            ip=ip,
+            version=clip["version"] + 1,
+        ),
+        background=background,
     )
-    conn.commit()
-    db.audit(
-        conn, clip["mosque_id"], user["id"], "clip.regeneration", "clip", clip["id"], ip=ip, version=clip["version"] + 1
-    )
-    if background:
-        threading.Thread(target=_render, args=(db_path, clip["id"]), daemon=True, name=f"regen-{clip['id']}").start()
-    else:
-        _render(db_path, clip["id"])
 
 
 # ------------------------------------------------------------------ decision
 
 
 def can_validate(clip: dict) -> tuple[bool, str]:
-    if clip["needs_regen"] or clip["regen_state"] == "en_cours":
+    if clip["needs_regen"] or clip["regen_state"] == JobStatus.RUNNING:
         return False, _("corrections are not in the video yet: regenerate the clip before approving it")
     if not Path(clip["file_path"]).exists():
         return False, _("clip file not found")
@@ -581,7 +569,7 @@ def adjust_clip(
     and is rendered again (version n+1). A published clip is frozen: create a new clip instead."""
     if clip["status"] == "publie":
         raise ValueError(_("clip already published: its bounds are frozen, create a new clip instead"))
-    if clip["regen_state"] == "en_cours":
+    if clip["regen_state"] == JobStatus.RUNNING:
         raise ValueError(_("regeneration already in progress"))
     start, end = clip_bounds(k, start, end, load(conn, k).get("duration"))
     title = clip["title"] if title is None else _clean_title(title)

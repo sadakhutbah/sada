@@ -280,6 +280,16 @@ export default function SermonDetail() {
 
           <div className="relative mt-1 max-h-[70vh] min-h-0 flex-1 overflow-y-auto pr-1 min-[1000px]:max-h-none"
             role="tabpanel" id={idPanneau("khutba", ongletActif)} aria-labelledby={idOnglet("khutba", ongletActif)}>
+            {ongletActif === "transcription" && d.transcript.length > 0 && (
+              <div role="group" aria-label={t("sermons.detail.exportLabel")} className="mb-2 flex flex-wrap justify-end gap-3 text-[0.82rem]">
+                {(["txt", "srt"] as const).map((f) => (
+                  <a key={f} href={`/api/v1/sermons/${kid}/transcript?format=${f}`} download
+                    className="inline-flex min-h-9 items-center font-semibold text-leaf no-underline hover:underline">
+                    {t(f === "txt" ? "sermons.detail.exportTxt" : "sermons.detail.exportSrt")}
+                  </a>
+                ))}
+              </div>
+            )}
             {ongletActif === "transcription" && (
               <Transcription
                 lignes={d.transcript}
