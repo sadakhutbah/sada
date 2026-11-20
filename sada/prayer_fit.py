@@ -201,7 +201,11 @@ def deduce(calendar: list, lat: float, lon: float, timezone: str, year: int) -> 
         "bounds": {k: list(v) for k, v in bounds.items()},
     }
     for key, (fa, ia, delay) in calc.METHODS.items():
-        if key != "custom" and (fa, ia, delay) == (params["fajr_angle"], params["isha_angle"], params["isha_delay_min"]):
+        if key != "custom" and (fa, ia, delay) == (
+            params["fajr_angle"],
+            params["isha_angle"],
+            params["isha_delay_min"],
+        ):
             params["method"] = key  # the mosque sees "UOIF", not 12/12
             break
 

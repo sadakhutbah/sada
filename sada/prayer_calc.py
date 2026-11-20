@@ -11,10 +11,14 @@ from __future__ import annotations
 import datetime as dt
 import math
 import threading
+import warnings
 from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
 from praytimes import PrayTimes
+
+# `praytimes` passes `maxsplit` positionally (a DeprecationWarning on every call since Python 3.13)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"praytimes\.praytimes")
 
 #: Prayers of the day in order, `sunrise` included (shown, never armed on).
 OUTPUT = ("fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha")
@@ -90,9 +94,13 @@ def check(p: Params) -> Params:
     if not (ANGLE_RANGE[0] <= fajr <= ANGLE_RANGE[1]) or (
         isha is not None and not (ANGLE_RANGE[0] <= isha <= ANGLE_RANGE[1])
     ):
-        raise InvalidParams(_("Angles must be between {low} and {high} degrees.", low=ANGLE_RANGE[0], high=ANGLE_RANGE[1]))
+        raise InvalidParams(
+            _("Angles must be between {low} and {high} degrees.", low=ANGLE_RANGE[0], high=ANGLE_RANGE[1])
+        )
     if delay is not None and not (DELAY_RANGE[0] <= delay <= DELAY_RANGE[1]):
-        raise InvalidParams(_("The Isha delay must be between {low} and {high} minutes.", low=DELAY_RANGE[0], high=DELAY_RANGE[1]))
+        raise InvalidParams(
+            _("The Isha delay must be between {low} and {high} minutes.", low=DELAY_RANGE[0], high=DELAY_RANGE[1])
+        )
     for k, v in p.offsets.items():
         if k not in OUTPUT or abs(v) > MAX_OFFSET_MIN:
             raise InvalidParams(_("Offsets are whole minutes between -{n} and {n}.", n=MAX_OFFSET_MIN))
@@ -145,7 +153,9 @@ def day_times(day: dt.date, p: Params) -> dict[str, str]:
     fajr, isha_angle, isha_delay = p.angles()
     settings = {
         "fajr": fajr,
-        "isha": f"{isha_delay:g} min" if isha_delay else isha_angle,
+        # a delay is added here: the PyPI port of PrayTimes subtracts a "N min" Isha from maghrib (a sign
+        # error against the original), so the library only ever sees an angle
+        "isha": isha_angle if isha_angle is not None else 17,
         "maghrib": "0 min",
         "dhuhr": "0 min",
         "imsak": "10 min",
@@ -157,6 +167,8 @@ def day_times(day: dt.date, p: Params) -> dict[str, str]:
         pt = PrayTimes("MWL")
         pt.adjust(settings)
         raw = pt.getTimes((day.year, day.month, day.day), (p.lat, p.lon), utc_offset_hours(day, p.timezone), 0, "Float")
+    if isha_delay and isinstance(raw["maghrib"], int | float):
+        raw["isha"] = raw["maghrib"] + isha_delay / 60.0
     out = {k: _hhmm(raw[k], int(p.offsets.get(k, 0))) for k in OUTPUT}
     return {k: (_clamp(v, k, p.bounds[k]) if v and k in p.bounds else v) for k, v in out.items()}
 

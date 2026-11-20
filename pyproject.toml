@@ -41,6 +41,7 @@ packages = ["sada", "sada.pipeline", "sada.backoffice"]
 "sada" = ["models/*.onnx", "locales/*/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore:.*maxsplit.*:DeprecationWarning:praytimes.*"]
 
 [tool.fastapi]
 entrypoint = "sada.backoffice.asgi:app"

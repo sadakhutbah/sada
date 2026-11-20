@@ -28,7 +28,7 @@ from sqlalchemy import delete, insert, select
 from .. import prayer_calc as calc
 from .. import prayers
 from ..i18n import _
-from . import db, mawaqit_store, orm
+from . import db, mawaqit_store, orm, throttle
 from .models import PrayerDay, PrayerSettings
 
 SOURCES = ("mawaqit", "computed", "manual")
@@ -53,7 +53,7 @@ class NoTimes(ValueError):
 
 
 def norm_time(value) -> str:
-    """"7:05", "07h05", "07.05" -> "07:05"; '' stays ''; anything else is refused."""
+    """ "7:05", "07h05", "07.05" -> "07:05"; '' stays ''; anything else is refused."""
     v = str(value or "").strip()
     if not v:
         return ""
@@ -178,6 +178,7 @@ def save(conn, mosque: dict, *, source: str, public: bool, jumua: list, cfg: dic
         calc=json.dumps(cfg, ensure_ascii=False),
         updated_at=db.now_iso(),
     )
+    throttle.PUBLIC_CACHE.clear()
     return read(conn, mosque)
 
 
@@ -220,12 +221,18 @@ def stored(conn, mosque_id: int, start: str, end: str) -> dict[str, dict]:
 def save_days(conn, mosque_id: int, days: dict[str, dict], *, replace_range: tuple[str, str] | None = None) -> int:
     """Store rows (already cleaned). Empty rows delete the day. With `replace_range`, every day of that
     range is replaced by `days` (one transaction: never half written). Returns the days stored."""
-    rows = [{"mosque_id": mosque_id, "day": d, **{k: v.get(k, "") for k in (*FIELDS, *IQAMA_FIELDS)}} for d, v in days.items() if v]
+    rows = [
+        {"mosque_id": mosque_id, "day": d, **{k: v.get(k, "") for k in (*FIELDS, *IQAMA_FIELDS)}}
+        for d, v in days.items()
+        if v
+    ]
     with orm.transaction(conn):
         if replace_range:
             conn.execute(
                 delete(PrayerDay).where(
-                    PrayerDay.mosque_id == mosque_id, PrayerDay.day >= replace_range[0], PrayerDay.day <= replace_range[1]
+                    PrayerDay.mosque_id == mosque_id,
+                    PrayerDay.day >= replace_range[0],
+                    PrayerDay.day <= replace_range[1],
                 )
             )
         else:
@@ -235,6 +242,7 @@ def save_days(conn, mosque_id: int, days: dict[str, dict], *, replace_range: tup
                 conn.execute(delete(PrayerDay).where(PrayerDay.mosque_id == mosque_id, PrayerDay.day.in_(doomed)))
         if rows:
             conn.execute(insert(PrayerDay), rows)
+    throttle.PUBLIC_CACHE.clear()
     return len(rows)
 
 
@@ -421,7 +429,10 @@ def state(conn, mosque: dict, now: float | None = None) -> dict:
     if not src:
         return _state(ATTENTION, "prayer.unset")
     if src == "mawaqit":
-        return _state(OK if mosque.get("mawaqit_url") else ATTENTION, "prayer.mawaqit" if mosque.get("mawaqit_url") else "prayer.mawaqit_no_url")
+        return _state(
+            OK if mosque.get("mawaqit_url") else ATTENTION,
+            "prayer.mawaqit" if mosque.get("mawaqit_url") else "prayer.mawaqit_no_url",
+        )
     today = local_today(mosque, now)
     if src == "computed":
         try:

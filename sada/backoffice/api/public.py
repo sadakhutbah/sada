@@ -19,16 +19,15 @@ from ...i18n import _
 from .. import orm, prayer_times
 from ..context import ConnDep
 from ..models import Mosque
-from ..throttle import SlidingWindow, TtlCache
+from ..throttle import PUBLIC_CACHE, SlidingWindow
 
 router = APIRouter()
 
 RATE_PER_MINUTE = 60
-CACHE_TTL_S = 60.0
 MAX_AGE_S = 60
 
 _limiter = SlidingWindow(RATE_PER_MINUTE, 60.0)
-_cache = TtlCache(CACHE_TTL_S)
+_cache = PUBLIC_CACHE
 
 
 def reset() -> None:
@@ -69,7 +68,11 @@ def _build(conn, slug: str, date: str, month: str) -> tuple[int, dict]:
     st = prayer_times.read(conn, mosque)
     if st["source"] == "mawaqit":
         # Not hosted here: send the reader to the mosque's own page.
-        return 404, {"error": _("not published here"), "source": "mawaqit", "mawaqit_url": mosque.get("mawaqit_url") or ""}
+        return 404, {
+            "error": _("not published here"),
+            "source": "mawaqit",
+            "mawaqit_url": mosque.get("mawaqit_url") or "",
+        }
     if st["source"] not in ("computed", "manual") or not st["public"]:
         return 404, {"error": _("not found")}
     try:

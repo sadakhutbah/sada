@@ -58,7 +58,16 @@ async def prayer_save(ctx: CtxDep):
         )
     except (ValueError, calc.InvalidParams) as e:
         raise _invalid(e) from e
-    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "horaires.source", "mosque", ctx.mosque["id"], ip=ctx.ip, source=source)
+    db.audit(
+        ctx.conn,
+        ctx.mosque["id"],
+        ctx.user["id"],
+        "horaires.source",
+        "mosque",
+        ctx.mosque["id"],
+        ip=ctx.ip,
+        source=source,
+    )
     return _ok(_("Prayer times saved."), prayer=prayer_times.view(ctx.conn, ctx.mosque), source=saved["source"])
 
 
@@ -139,8 +148,22 @@ async def prayer_days_save(ctx: CtxDep):
     if errors:
         raise Invalid(" ".join(errors[: prayer_times.MAX_ERRORS_SHOWN]))
     n = prayer_times.save_days(ctx.conn, ctx.mosque["id"], days, replace_range=(first, last))
-    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "horaires.mois", "mosque", ctx.mosque["id"], ip=ctx.ip, mois=month, jours=n)
-    return _ok(_("Timetable of {month} saved: {n} day(s).", month=month, n=n), month=month, days=prayer_times.month_view(ctx.conn, ctx.mosque, month))
+    db.audit(
+        ctx.conn,
+        ctx.mosque["id"],
+        ctx.user["id"],
+        "horaires.mois",
+        "mosque",
+        ctx.mosque["id"],
+        ip=ctx.ip,
+        mois=month,
+        jours=n,
+    )
+    return _ok(
+        _("Timetable of {month} saved: {n} day(s).", month=month, n=n),
+        month=month,
+        days=prayer_times.month_view(ctx.conn, ctx.mosque, month),
+    )
 
 
 @router.post("/settings/prayer/import")
@@ -154,7 +177,9 @@ async def prayer_import(ctx: CtxDep):
         shown = errors[: prayer_times.MAX_ERRORS_SHOWN]
         raise Invalid(" ".join(_("Line {line}: {message}", line=e["line"], message=e["message"]) for e in shown))
     n = prayer_times.save_days(ctx.conn, ctx.mosque["id"], days)
-    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "horaires.import", "mosque", ctx.mosque["id"], ip=ctx.ip, jours=n)
+    db.audit(
+        ctx.conn, ctx.mosque["id"], ctx.user["id"], "horaires.import", "mosque", ctx.mosque["id"], ip=ctx.ip, jours=n
+    )
     return _ok(_("{n} day(s) imported.", n=n), imported=n, first=min(days, default=""), last=max(days, default=""))
 
 
@@ -167,4 +192,8 @@ def prayer_export(ctx: CtxDep, year: int = 0):
     if not 2000 <= year <= 2100:
         raise Invalid(_("A year looks like 2027."))
     body = prayer_times.export_csv(ctx.conn, ctx.mosque, year)
-    return Response(body, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="prayer-times-{year}.csv"'})
+    return Response(
+        body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="prayer-times-{year}.csv"'},
+    )

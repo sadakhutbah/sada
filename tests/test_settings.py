@@ -14,6 +14,7 @@ def test_les_sections_sont_annoncees(env):
     d = client(env, "admin").get("/api/v1/settings").json()
     assert list(d["sections"]) == [
         "mosque",
+        "prayer",
         "logo",
         "screens",
         "live",

@@ -63,3 +63,8 @@ class TtlCache:
     def clear(self) -> None:
         with self._lock:
             self._items.clear()
+
+
+#: Answers of the public prayer-times endpoint, kept a minute. Every write of a mosque's settings or
+#: timetable empties it, so a change shows at once instead of a minute later.
+PUBLIC_CACHE = TtlCache(60.0)
