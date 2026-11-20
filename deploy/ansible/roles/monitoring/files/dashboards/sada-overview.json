@@ -303,8 +303,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kind, status) (rate(sada_job_runs_total[5m]))",
-          "legendFormat": "{{kind}} {{status}}"
+          "expr": "sum by (mosque, kind, status) (rate(sada_job_runs_total{mosque=~\"$mosque\"}[5m]))",
+          "legendFormat": "{{mosque}} {{kind}} {{status}}"
         }
       ],
       "fieldConfig": {
@@ -314,7 +314,7 @@
         "overrides": []
       },
       "options": {},
-      "description": "Back-office jobs (no mosque label: single back-office). Empty until a job runs"
+      "description": "Back-office jobs, by mosque (runs with no known mosque have no label). Empty until a job runs"
     },
     {
       "id": 9,
@@ -337,8 +337,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(sada_job_duration_seconds_bucket[5m])))",
-          "legendFormat": "{{kind}}"
+          "expr": "histogram_quantile(0.95, sum by (le, mosque, kind) (rate(sada_job_duration_seconds_bucket{mosque=~\"$mosque\"}[5m])))",
+          "legendFormat": "{{mosque}} {{kind}}"
         }
       ],
       "fieldConfig": {
@@ -370,8 +370,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (protocol, status) (rate(sada_llm_calls_total[5m]))",
-          "legendFormat": "{{protocol}} {{status}}"
+          "expr": "sum by (mosque, protocol, status) (rate(sada_llm_calls_total{mosque=~\"$mosque\"}[5m]))",
+          "legendFormat": "{{mosque}} {{protocol}} {{status}}"
         }
       ],
       "fieldConfig": {
@@ -403,8 +403,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, protocol) (rate(sada_llm_duration_seconds_bucket[5m])))",
-          "legendFormat": "{{protocol}}"
+          "expr": "histogram_quantile(0.95, sum by (le, mosque, protocol) (rate(sada_llm_duration_seconds_bucket{mosque=~\"$mosque\"}[5m])))",
+          "legendFormat": "{{mosque}} {{protocol}}"
         }
       ],
       "fieldConfig": {
@@ -436,8 +436,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (protocol) (rate(sada_llm_calls_total{status=\"error\"}[5m]))",
-          "legendFormat": "{{protocol}}"
+          "expr": "sum by (mosque, protocol) (rate(sada_llm_calls_total{mosque=~\"$mosque\",status=\"error\"}[5m]))",
+          "legendFormat": "{{mosque}} {{protocol}}"
         }
       ],
       "fieldConfig": {
@@ -469,8 +469,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (engine, stage, status) (rate(sada_transcription_calls_total[5m]))",
-          "legendFormat": "{{engine}} {{stage}} {{status}}"
+          "expr": "sum by (engine, stage, status) (rate(sada_transcription_calls_total{mosque=~\"$mosque\"}[5m]))",
+          "legendFormat": "{{mosque}} {{engine}} {{stage}} {{status}}"
         }
       ],
       "fieldConfig": {
@@ -502,8 +502,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, engine, stage) (rate(sada_transcription_duration_seconds_bucket[5m])))",
-          "legendFormat": "{{engine}} {{stage}}"
+          "expr": "histogram_quantile(0.95, sum by (le, engine, stage) (rate(sada_transcription_duration_seconds_bucket{mosque=~\"$mosque\"}[5m])))",
+          "legendFormat": "{{mosque}} {{engine}} {{stage}}"
         }
       ],
       "fieldConfig": {
@@ -535,8 +535,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (engine) (rate(sada_transcription_calls_total{status=\"error\"}[5m]))",
-          "legendFormat": "{{engine}}"
+          "expr": "sum by (engine) (rate(sada_transcription_calls_total{mosque=~\"$mosque\",status=\"error\"}[5m]))",
+          "legendFormat": "{{mosque}} {{engine}}"
         }
       ],
       "fieldConfig": {

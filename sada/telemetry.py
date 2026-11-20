@@ -23,6 +23,7 @@ mosque only: `OTEL_RESOURCE_ATTRIBUTES` / `OTEL_SERVICE_NAME` are ignored), exem
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import ipaddress
 import logging
@@ -51,6 +52,21 @@ OK, ERROR = "ok", "error"
 #: Resource attribute carrying the mosque slug (one orchestrator per mosque).
 MOSQUE_ATTRIBUTE = "sada.mosque"
 
+#: Mosque the current operation runs for, in a process serving several mosques (the back-office): `track`
+#: adds it as the `mosque` label. The orchestrator serves one mosque and carries it on its resource instead.
+_mosque: contextvars.ContextVar[str] = contextvars.ContextVar("sada_mosque", default="")
+
+
+@contextmanager
+def mosque_scope(slug: str) -> Iterator[None]:
+    """Label the operations tracked inside the block with the mosque `slug` (no-op when empty)."""
+    token = _mosque.set(slug or _mosque.get())
+    try:
+        yield
+    finally:
+        _mosque.reset(token)
+
+
 #: The only attribute keys allowed to leave the process, on spans and (with `METRIC_ATTRIBUTES`) on metrics. Anything
 #: else added by an instrumentation (URL, path, query, client address, user agent, headers, exception
 #: text...) is dropped before export.
@@ -73,6 +89,7 @@ ALLOWED_ATTRIBUTES = frozenset(
         "engine",
         "stage",
         "channel",
+        "mosque",  # slug of the mosque an operation runs for (`mosque_scope`, multi-mosque back-office)
     }
 )
 
@@ -163,6 +180,8 @@ class Telemetry(DisabledTelemetry):
     def track(self, operation: str, **attributes: str) -> Iterator[Tracked]:
         """Count, time and trace one operation; `status` is `ok` or `error` (the block raised)."""
         run, started = Tracked(), time.perf_counter()
+        if (slug := _mosque.get()) and "mosque" not in attributes:
+            attributes = {**attributes, "mosque": slug}
         # Exceptions are not recorded on the span: their message may quote what was being processed.
         with self._tracer.start_as_current_span(
             f"sada.{operation}", attributes=attributes, record_exception=False, set_status_on_exception=False
