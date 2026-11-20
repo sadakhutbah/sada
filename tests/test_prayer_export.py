@@ -2,6 +2,7 @@
 
 import datetime as dt
 import io
+import re
 
 import pytest
 
@@ -90,8 +91,13 @@ def test_a_month_is_one_a4_portrait_page_with_the_mosque_the_days_and_the_jumua(
     assert (round(float(box.width)), round(float(box.height))) == (595, 842)  # A4 portrait
     text = _pages(r)[0]
     assert "Mosquée Exemple" in text and "March 2027" in text and "Ramadan - Shawwal 1448" in text
-    assert text.count("Fri") == 4 and text.count("Jumu'a") == 4  # the four Fridays of March 2027, highlighted
+    assert len(re.findall(r"Fri \d+", text)) == 4 and text.count("Jumu'a") == 4  # the four Fridays of March 2027
     assert text.count("13:00 / 14:15") == 4  # the jumu'a times stand in the Dhuhr column
+    assert "sadakhutbah.org" in text and "Times online" in text  # the Sada footer and the QR code's caption
+    assert (
+        "Ramadan 1448" not in text
+    )  # March 2027 is not titled Ramadan, but its first days are still its last odd nights
+    assert "Night 27" in text and "Odd nights" in text
     for day in ("Mon 1", "Wed 31"):
         assert day in text
     times = prayer_times.computed_day(
@@ -105,14 +111,43 @@ def _mosque(env):
     return one(env["conn"], models.Mosque, id=env["mid"])
 
 
-def test_a_period_gets_one_page_per_calendar_month_and_ramadan_is_two(env):
+def test_a_period_gets_one_page_per_calendar_month(env):
     c = _choose(env)
-    pages = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-08&end=2027-03-08"))
+    pages = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-01&end=2027-03-31"))
     assert len(pages) == 2
     assert "February 2027" in pages[0] and "March 2027" in pages[1]
-    assert "Ramadan 1448" in pages[0] and "Ramadan" in pages[1]
-    assert "1 Ramadan" in pages[0] and "29 Ramadan" in pages[1]
     assert len(_pages(c.get(CONSOLE + "?format=pdf&year=2027"))) == 12
+
+
+def test_ramadan_is_one_page_titled_ramadan_1448_with_its_odd_nights(env):
+    c = _choose(env)
+    pages = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-08&end=2027-03-08"))
+    assert len(pages) == 1  # a whole Hijri month fills one page
+    text = pages[0]
+    assert "Ramadan 1448" in text and "8 February - 8 March 2027" in text
+    assert "1 Ramadan" in text and "29 Ramadan" in text
+    assert "Night 27" in text and text.count("Night ") == 5  # the odd nights 21 to 29
+    assert "Laylat al-Qadr, night 27" in text and "Odd nights" in text  # the legend
+    assert len(re.findall(r"Fri \d+", text)) == 4 and text.count("Jumu'a") == 4
+    fr = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-08&end=2027-03-08", headers={"X-Sada-Lang": "fr"}))[0]
+    assert "Nuit 27" in fr and "HORAIRES DE PRIÈRE" in fr
+
+
+def test_the_footer_has_a_qr_code_only_for_a_published_timetable(env):
+    c = _choose(env)
+    shown = c.get(CONSOLE + "?format=pdf&month=2027-03").content
+    c.ecrire("/settings/prayer", {"source": "computed", "calc": CALC, "public": "0"}, methode="PUT")
+    hidden = c.get(CONSOLE + "?format=pdf&month=2027-03").content
+    assert len(shown) > len(hidden)  # the QR code is drawn in the first one only
+    assert "Times online" not in _pages(c.get(CONSOLE + "?format=pdf&month=2027-03"))[0]
+    url = prayer_export.public_page_url("https://sada.example/", "ma-mosquee")
+    assert url == "https://sada.example/api/v1/public/mosques/ma-mosquee/prayer-times/page"
+
+
+def test_the_wordmark_is_the_one_of_the_charter():
+    path, width, height = prayer_export._logo_path()
+    assert (width, height) == (1000, 383)
+    assert len(path.getCode()) > 1000  # the whole outline, not an empty path
 
 
 def test_ramadan_asks_for_the_hijri_period_itself(env):

@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from ... import prayer_calc as calc
 from ...i18n import _
-from .. import orm, prayer_times, public_page
+from .. import instance, orm, prayer_times, public_page
 from .. import prayer_export as export
 from ..context import ConnDep
 from ..models import Mosque
@@ -105,7 +105,7 @@ def prayer_times_export(
             start=start, end=end, ramadan_=ramadan,
         )  # fmt: skip
         body = (
-            export.pdf_bytes(conn, mosque, first, last)
+            export.pdf_bytes(conn, mosque, first, last, instance.base(str(request.base_url)))
             if format == "pdf"
             else export.csv_text(conn, mosque, first, last)
         )
