@@ -7,8 +7,6 @@ or *manual* (its own timetable, by month or as a CSV); the public page is then p
 
 from __future__ import annotations
 
-import datetime as dt
-
 from fastapi import APIRouter, Response
 
 from ... import mawaqit
@@ -16,6 +14,7 @@ from ... import prayer_calc as calc
 from ... import prayer_fit as fit
 from ...i18n import _
 from .. import db, prayer_times
+from .. import prayer_export as export
 from ..context import CtxDep, Invalid
 from .common import _ok
 
@@ -184,16 +183,34 @@ async def prayer_import(ctx: CtxDep):
 
 
 @router.get("/settings/prayer/export")
-def prayer_export(ctx: CtxDep, year: int = 0):
-    """The year's effective times as CSV (a calculated year becomes a timetable that can be edited)."""
+def prayer_export(
+    ctx: CtxDep,
+    format: str = "csv",  # noqa: A002 — the query parameter is named `format`
+    year: int = 0,
+    month: str = "",
+    start: str = "",
+    end: str = "",
+    ramadan: bool = False,
+):
+    """The effective times of a period as a CSV (a calculated period becomes a timetable that can be
+    edited) or as a printable PDF calendar. The period: `start`/`end`, `ramadan`, `month` or `year`."""
     ctx.require("admin")
     _need_own_timetable(ctx)
-    year = year or dt.date.today().year
-    if not 2000 <= year <= 2100:
-        raise Invalid(_("A year looks like 2027."))
-    body = prayer_times.export_csv(ctx.conn, ctx.mosque, year)
+    if format not in export.FORMATS:
+        raise Invalid(_("The format is pdf or csv."))
+    try:
+        first, last = export.period(
+            prayer_times.local_today(ctx.mosque), year=year, month=month, start=start, end=end, ramadan_=ramadan
+        )
+        body = (
+            export.pdf_bytes(ctx.conn, ctx.mosque, first, last)
+            if format == "pdf"
+            else export.csv_text(ctx.conn, ctx.mosque, first, last)
+        )
+    except (ValueError, calc.InvalidParams) as e:  # NoTimes is a ValueError
+        raise _invalid(e) from e
     return Response(
         body,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="prayer-times-{year}.csv"'},
+        media_type="application/pdf" if format == "pdf" else "text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{export.file_name(first, last, format)}"'},
     )

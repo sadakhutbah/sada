@@ -7,7 +7,7 @@ import { METHODES, PRIERES, calcVersServeur, moisCourant, type Calc } from "./pr
 /** Shared by Settings › Prayer times and the first-run wizard: the same fields, the same preview. */
 
 // A select is "read-only" for CSS: without this its background went beige, like a disabled field.
-const selectClass = `${inputClass} h-11 cursor-pointer select-chevron read-only:bg-white! read-only:text-ink! read-only:cursor-pointer!`;
+export const selectClass = `${inputClass} h-11 cursor-pointer select-chevron read-only:bg-white! read-only:text-ink! read-only:cursor-pointer!`;
 const ECOLES = ["standard", "hanafi"] as const;
 const LATITUDES = ["nightmiddle", "oneseventh", "anglebased", "none"] as const;
 

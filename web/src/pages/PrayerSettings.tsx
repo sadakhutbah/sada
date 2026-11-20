@@ -4,7 +4,7 @@ import { api } from "../api";
 import { State } from "../State";
 import { Btn, Field, Tabs, inputClass } from "../ui";
 import { idOnglet, idPanneau } from "../onglets";
-import { Apercu, CalcFields } from "../PrayerFields";
+import { Apercu, CalcFields, selectClass } from "../PrayerFields";
 import { ADHANS, PRIERES, calcDepuis, calcVersServeur, moisCourant, type Calc } from "../prayerForm";
 
 /** Settings › Prayer times. With Mawaqit there is nothing to enter; without, the mosque calculates
@@ -61,11 +61,13 @@ export default function PrayerSettings({ d, onSaved }: { d: any; onSaved: () => 
     const base = [{ cle: "source", label: t("prayer.tabs.source") }];
     if (source === "computed") {
       return [...base, { cle: "calc", label: t("prayer.tabs.calc") }, { cle: "adjust", label: t("prayer.tabs.adjust") },
-              { cle: "times", label: t("prayer.tabs.times"), eteint: !enregistre }];
+              { cle: "times", label: t("prayer.tabs.times"), eteint: !enregistre },
+              { cle: "export", label: t("prayer.tabs.export"), eteint: !enregistre }];
     }
     if (source === "manual") {
       return [...base, { cle: "times", label: t("prayer.tabs.times"), eteint: !enregistre },
-              { cle: "import", label: t("prayer.tabs.import"), eteint: !enregistre }];
+              { cle: "import", label: t("prayer.tabs.import"), eteint: !enregistre },
+              { cle: "export", label: t("prayer.tabs.export"), eteint: !enregistre }];
     }
     return base;
   }, [source, enregistre, t]);
@@ -95,6 +97,7 @@ export default function PrayerSettings({ d, onSaved }: { d: any; onSaved: () => 
   };
 
   const adresse = `${window.location.origin}/api/v1/public/mosques/${d.slug}/prayer-times`;
+  const pageAdresse = `${adresse}/page`;
   const copier = async () => {
     try { await navigator.clipboard.writeText(adresse); setCopie(true); setTimeout(() => setCopie(false), 2000); } catch { /* copie refusée */ }
   };
@@ -147,6 +150,9 @@ export default function PrayerSettings({ d, onSaved }: { d: any; onSaved: () => 
               <input className={`${inputClass} font-mono text-[0.82rem]`} value={adresse} readOnly aria-label={t("prayer.publicUrl")} />
               <Btn variante="ghost" onClick={copier}>{copie ? t("prayer.copied") : t("prayer.copy")}</Btn>
             </div>
+          )}
+          {publie && enregistre && (
+            <a href={pageAdresse} target="_blank" rel="noopener" className="text-[0.9rem] text-deep underline underline-offset-4">{t("prayer.openPage")}</a>
           )}
         </div>
       ) : null}
@@ -226,6 +232,7 @@ export default function PrayerSettings({ d, onSaved }: { d: any; onSaved: () => 
           <Grille key={`${source}-${i18n.language}`} source={source} />
         )}
         {actif === "import" && enregistre && <Import />}
+        {actif === "export" && enregistre && <Exporter pageUrl={d.public ? pageAdresse : ""} />}
       </div>
       {(actif === "source" || actif === "calc" || actif === "adjust") && (
         <div className="flex flex-wrap items-center gap-3">
@@ -409,6 +416,71 @@ function Import() {
         <Btn variante="ghost" onClick={() => fichier.current?.click()}>{t("prayer.chooseFile")}</Btn>
         <Btn onClick={importer} disabled={enCours || csv.trim() === ""}>{enCours ? t("prayer.importing") : t("prayer.importBtn")}</Btn>
         <a href={api.prayerExportUrl(annee)} download className="text-[0.9rem] text-deep underline underline-offset-4">{t("prayer.exportYear")}</a>
+      </div>
+      {msg && <p role={msg.ok ? "status" : "alert"} className={`m-0 text-[0.9rem] ${msg.ok ? "text-deep" : "text-[#7a1f20]"}`}>{msg.texte}</p>}
+    </div>
+  );
+}
+
+/** PDF calendar or CSV of a month, a period, Ramadan or the year. */
+function Exporter({ pageUrl }: { pageUrl: string }) {
+  const { t } = useTranslation();
+  const [periode, setPeriode] = useState<"month" | "range" | "ramadan" | "year">("month");
+  const [mois, setMois] = useState(moisCourant);
+  const [debut, setDebut] = useState(() => `${moisCourant()}-01`);
+  const [fin, setFin] = useState(() => `${moisCourant()}-01`);
+  const [enCours, setEnCours] = useState("");
+  const [msg, setMsg] = useState<Message>(null);
+  const requete = (format: "pdf" | "csv"): Record<string, string> => {
+    if (periode === "month") return { format, month: mois };
+    if (periode === "range") return { format, start: debut, end: fin };
+    if (periode === "ramadan") return { format, ramadan: "true" };
+    return { format, year: String(new Date().getFullYear()) };
+  };
+  const telecharger = async (format: "pdf" | "csv") => {
+    setEnCours(format); setMsg(null);
+    try {
+      const { blob, nom } = await api.prayerExport(requete(format));
+      const lien = document.createElement("a");
+      lien.href = URL.createObjectURL(blob);
+      lien.download = nom;
+      document.body.appendChild(lien);
+      lien.click();
+      lien.remove();
+      setTimeout(() => URL.revokeObjectURL(lien.href), 10000);
+      setMsg({ ok: true, texte: t("prayer.exported", { nom }) });
+    } catch (e: any) { setMsg({ ok: false, texte: e.message }); } finally { setEnCours(""); }
+  };
+  const incomplet = (periode === "month" && !mois) || (periode === "range" && (!debut || !fin));
+  return (
+    <div className="grid gap-3">
+      <p className="m-0 max-w-[90ch] text-[0.88rem] text-muted">{t("prayer.exportHelp")}</p>
+      <div className="grid max-w-[34rem] gap-2.5 sm:grid-cols-2">
+        <Field label={t("prayer.exportPeriod")}>
+          <select className={selectClass} value={periode} onChange={(e) => { setPeriode(e.target.value as typeof periode); setMsg(null); }}>
+            {(["month", "range", "ramadan", "year"] as const).map((p) => <option key={p} value={p}>{t(`prayer.periods.${p}`)}</option>)}
+          </select>
+        </Field>
+        {periode === "month" && (
+          <Field label={t("prayer.periods.month")}>
+            <input type="month" className={inputClass} value={mois} onChange={(e) => { setMois(e.target.value); setMsg(null); }} />
+          </Field>
+        )}
+        {periode === "range" && (
+          <>
+            <Field label={t("prayer.exportFrom")}>
+              <input type="date" className={inputClass} value={debut} onChange={(e) => { setDebut(e.target.value); setMsg(null); }} />
+            </Field>
+            <Field label={t("prayer.exportTo")}>
+              <input type="date" className={inputClass} value={fin} onChange={(e) => { setFin(e.target.value); setMsg(null); }} />
+            </Field>
+          </>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Btn onClick={() => telecharger("pdf")} disabled={enCours !== "" || incomplet}>{enCours === "pdf" ? t("prayer.exporting") : t("prayer.exportPdf")}</Btn>
+        <Btn variante="ghost" onClick={() => telecharger("csv")} disabled={enCours !== "" || incomplet}>{enCours === "csv" ? t("prayer.exporting") : t("prayer.exportCsv")}</Btn>
+        {pageUrl && <a href={pageUrl} target="_blank" rel="noopener" className="text-[0.9rem] text-deep underline underline-offset-4">{t("prayer.openPage")}</a>}
       </div>
       {msg && <p role={msg.ok ? "status" : "alert"} className={`m-0 text-[0.9rem] ${msg.ok ? "text-deep" : "text-[#7a1f20]"}`}>{msg.texte}</p>}
     </div>

@@ -1127,6 +1127,15 @@ wheels = [
 ]
 
 [[package]]
+name = "hijridate"
+version = "2.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/8a/ddbaee418c78d067832e6d684e52640e19aa04d81d8eee42870b98728205/hijridate-2.6.0.tar.gz", hash = "sha256:afe4644c4d1fe3cfd2aa3c28bfa660405c12e5ba53249ba942ec68c7bb216e00", size = 35791, upload-time = "2026-01-06T19:10:51.073Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/8f/189391314015883f2a1a308d5692fc269ea0675dfcd61fa12be4024b2080/hijridate-2.6.0-py3-none-any.whl", hash = "sha256:290db60c7780acc2a7e2112fada70847e3c11c0030b998606db77ecf126c305b", size = 14456, upload-time = "2026-01-06T19:10:49.77Z" },
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -2795,6 +2804,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pypdf"
+version = "7.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/96/5f/f41984a8150ec37c6ee50fa6fa1868d065337b65ba510a155848b2ce0b62/pypdf-7.1.1.tar.gz", hash = "sha256:2eff4e2fc5fb22a6d6711e6f1166cdc9ab5765d90cd0d77dfea3f4aa91a27b1d", size = 7221452, upload-time = "2026-11-18T11:51:08.608Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/ef/11ed995bd10a1632f7fea3da38ae8d42bc3ccc5b9969fe04d8620c844408/pypdf-7.1.1-py3-none-any.whl", hash = "sha256:04c5680d4b4cfa04ab505b09393fc949860c34a4dad6565284d11a2f5c3ce8b1", size = 421026, upload-time = "2026-11-18T11:51:06.563Z" },
+]
+
+[[package]]
 name = "pyreadline3"
 version = "3.5.6"
 source = { registry = "https://pypi.org/simple" }
@@ -3628,6 +3649,20 @@ wheels = [
 ]
 
 [[package]]
+name = "reportlab"
+version = "5.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "pillow", version = "12.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pillow", version = "13.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/89/22/c18474be40b9bbb52fdb7051177d4d25f1ea59fada17eb181026411e93b1/reportlab-5.1.0.tar.gz", hash = "sha256:6878200464527e87672d19e9f7cfc6bb890e3a6931e74ac6a1a8d1754aa55671", size = 4109612, upload-time = "2026-10-22T07:26:43.307Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/3c/bf68d44f160b44685fc714f746a954c71d0091b3dc4fd3c8670154b44841/reportlab-5.1.0-py3-none-any.whl", hash = "sha256:59fdbaec5efe437095ad1d7292ec9a271c8ca2d3ec75e889c6e61400929b90df", size = 2018647, upload-time = "2026-10-22T07:26:40.754Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3839,6 +3874,7 @@ dependencies = [
     { name = "boto3" },
     { name = "fastapi", extra = ["standard"] },
     { name = "faster-whisper" },
+    { name = "hijridate" },
     { name = "httpx" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
@@ -3857,6 +3893,7 @@ dependencies = [
     { name = "pyzmq" },
     { name = "rapidfuzz", version = "3.14.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "rapidfuzz", version = "3.14.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "reportlab" },
     { name = "requests" },
     { name = "sqlalchemy" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
@@ -3867,6 +3904,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pypdf" },
     { name = "pytest" },
 ]
 
@@ -3877,6 +3915,7 @@ requires-dist = [
     { name = "boto3" },
     { name = "fastapi", extras = ["standard"] },
     { name = "faster-whisper" },
+    { name = "hijridate", specifier = ">=2.6" },
     { name = "httpx" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
@@ -3890,6 +3929,7 @@ requires-dist = [
     { name = "python-multipart" },
     { name = "pyzmq" },
     { name = "rapidfuzz" },
+    { name = "reportlab", specifier = ">=4" },
     { name = "requests" },
     { name = "sqlalchemy", specifier = ">=2.0.58" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
@@ -3899,7 +3939,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest" }]
+dev = [
+    { name = "pypdf" },
+    { name = "pytest" },
+]
 
 [[package]]
 name = "sentry-sdk"

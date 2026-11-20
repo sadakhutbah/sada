@@ -32,6 +32,17 @@ Many mosques' Mawaqit calendars are themselves calculated (Fajr, sunrise, Dhuhr 
 - **Month grid**: one line per day. Enter and the arrow keys change line; pasting cells from a spreadsheet fills the grid. "Show iqama" adds the iqama columns; "Fill the iqama" sets adhan + N minutes.
 - **CSV** (Import tab): columns `date, fajr, sunrise, dhuhr, asr, maghrib, isha`, then `fajr_iqama`… (`+10` = adhan + 10 min). Comma, semicolon or tab separator; dates `YYYY-MM-DD` or `DD/MM/YYYY`. Everything is checked before writing: one error and nothing is imported. "Export the year" gives a CSV the import reads back: a calculated year thus becomes a timetable to edit.
 
+## Export: PDF calendar and CSV
+
+**Export** tab (calculated or typed mosque): a month, a "from … to …" period, Ramadan (the current one, else the next, from the Umm al-Qura calendar) or the year.
+
+- **PDF**: a printable calendar, one A4 portrait page per calendar month. Header with the mosque's name, the month in the Gregorian and Hijri calendars; one line per day (date, Hijri date, Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha); the Friday line is highlighted with the jumu'a times in place of Dhuhr. A period spanning two months (Ramadan, usually) gives two pages. Labels follow the interface language; the PDF uses a Latin font: in Arabic the labels stay in English, and non-Latin characters of a mosque's name are replaced by "?".
+- **CSV**: the same columns as the import (`date, fajr, sunrise, …, isha_iqama`), read back as it is by "Import". A typed mosque exports only the days it typed.
+- No `ics` file.
+- A **Mawaqit** mosque has no export: Sada keeps only today's Mawaqit times (internal cache), never a calendar, and does not copy them.
+
+Through the API (administrator session): `GET /api/v1/settings/prayer/export?format=pdf|csv` with `month=2027-03`, or `start=…&end=…`, or `ramadan=true`, or `year=2027`; at most 366 days.
+
 ## Public page (read-only)
 
 For a **calculated** or **manual** mosque (box "Public timetable page"):
@@ -40,6 +51,8 @@ For a **calculated** or **manual** mosque (box "Public timetable page"):
 GET /api/v1/public/mosques/<slug>/prayer-times               # today
 GET /api/v1/public/mosques/<slug>/prayer-times?date=2027-03-21
 GET /api/v1/public/mosques/<slug>/prayer-times?month=2027-03
+GET /api/v1/public/mosques/<slug>/prayer-times/page?month=2027-03     # the page: a month, with PDF and CSV buttons
+GET /api/v1/public/mosques/<slug>/prayer-times/export?format=pdf&month=2027-03   # or format=csv, start=…&end=…, ramadan=1
 ```
 
 No sign-in, only the times (never an address or a setting). Readable from any web page (CORS), cached for a minute, limited to 60 requests a minute per client (429 with `Retry-After`). A Mawaqit mosque answers 404 with the address of its Mawaqit page.

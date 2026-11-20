@@ -381,22 +381,32 @@ def parse_csv(text: str) -> tuple[dict[str, dict], list[dict]]:
     return days, errors
 
 
-def export_csv(conn, mosque: dict, year: int) -> str:
-    """The year's effective times as a CSV the import reads back (a computed year turns into a manual one)."""
-    st = read(conn, mosque)
-    typed = stored(conn, mosque["id"], f"{year}-01-01", f"{year}-12-31")
+def effective_days(conn, mosque: dict, start: dt.date, end: dt.date, st: dict | None = None):
+    """(day, fields) for each day of the range (inclusive) that has something to show, in order."""
+    st = st or read(conn, mosque)
+    typed = stored(conn, mosque["id"], start.isoformat(), end.isoformat())
+    day = start
+    while day <= end:
+        f = day_fields(conn, mosque, st, day, typed.get(day.isoformat()) or {})
+        if f or st["source"] == "computed":
+            yield day, f
+        day += dt.timedelta(days=1)
+
+
+def export_csv_range(conn, mosque: dict, start: dt.date, end: dt.date) -> str:
+    """The effective times of a range as a CSV the import reads back (a computed range turns into a
+    manual one). A manual timetable exports only the days it has."""
     out = io.StringIO()
     w = csv.writer(out, lineterminator="\n")
     w.writerow(["date", *FIELDS, *IQAMA_FIELDS])
-    day = dt.date(year, 1, 1)
-    while day.year == year:
-        f = day_fields(conn, mosque, st, day, typed.get(day.isoformat()) or {})
-        if st["source"] == "manual" and not f:
-            day += dt.timedelta(days=1)
-            continue
+    for day, f in effective_days(conn, mosque, start, end):
         w.writerow([day.isoformat(), *(f.get(k, "") for k in (*FIELDS, *IQAMA_FIELDS))])
-        day += dt.timedelta(days=1)
     return out.getvalue()
+
+
+def export_csv(conn, mosque: dict, year: int) -> str:
+    """The year's effective times as a CSV the import reads back (a computed year turns into a manual one)."""
+    return export_csv_range(conn, mosque, dt.date(year, 1, 1), dt.date(year, 12, 31))
 
 
 # ------------------------------------------------------------------ month view, state, public payload

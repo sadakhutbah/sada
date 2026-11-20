@@ -32,6 +32,17 @@ Les calendriers Mawaqit de beaucoup de mosquées sont eux-mêmes calculés (Fajr
 - **Grille du mois** : une ligne par jour. Entrée et flèches changent de ligne ; coller des cellules d'un tableur remplit la grille. « Afficher l'iqama » ajoute les colonnes d'iqama ; « Remplir l'iqama » met adhan + N minutes.
 - **CSV** (onglet Importer) : colonnes `date, fajr, sunrise, dhuhr, asr, maghrib, isha`, puis `fajr_iqama`… (`+10` = adhan + 10 min). Séparateur virgule, point-virgule ou tabulation ; dates `AAAA-MM-JJ` ou `JJ/MM/AAAA`. Tout est vérifié avant d'écrire : une erreur, et rien n'est importé. « Exporter l'année » donne un CSV que l'import relit : une année calculée devient ainsi un tableau à retoucher.
 
+## Exporter : calendrier PDF et CSV
+
+Onglet **Exporter** (mosquée calculée ou saisie) : un mois, une période « du … au … », le Ramadan (en cours, sinon le prochain, d'après le calendrier Umm al-Qura) ou l'année.
+
+- **PDF** : un calendrier à imprimer, une page A4 portrait par mois civil. En-tête au nom de la mosquée, mois grégorien et mois de l'hégire ; une ligne par jour (date, date de l'hégire, Fajr, Chourouk, Dhuhr, Asr, Maghrib, Isha) ; la ligne du vendredi est en évidence avec les horaires de Jumu'a à la place du Dhuhr. Une période à cheval sur deux mois (le Ramadan, le plus souvent) donne deux pages. Les libellés suivent la langue de l'interface ; le PDF utilise une police latine : en arabe les libellés restent en anglais, et les caractères non latins d'un nom de mosquée sont remplacés par « ? ».
+- **CSV** : les mêmes colonnes que l'import (`date, fajr, sunrise, …, isha_iqama`), relu tel quel par « Importer ». Une mosquée saisie n'exporte que les jours qu'elle a saisis.
+- Pas de fichier `ics`.
+- Une mosquée **Mawaqit** n'a pas d'export : Sada ne garde de Mawaqit que les horaires du jour (cache interne), jamais un calendrier, et ne les copie pas.
+
+Par l'API (session administrateur) : `GET /api/v1/settings/prayer/export?format=pdf|csv` avec `month=2027-03`, ou `start=…&end=…`, ou `ramadan=true`, ou `year=2027` ; au plus 366 jours.
+
 ## Page publique (lecture seule)
 
 Pour une mosquée **calculée** ou **manuelle** (case « Page publique des horaires ») :
@@ -40,6 +51,8 @@ Pour une mosquée **calculée** ou **manuelle** (case « Page publique des horai
 GET /api/v1/public/mosques/<slug>/prayer-times               # aujourd'hui
 GET /api/v1/public/mosques/<slug>/prayer-times?date=2027-03-21
 GET /api/v1/public/mosques/<slug>/prayer-times?month=2027-03
+GET /api/v1/public/mosques/<slug>/prayer-times/page?month=2027-03     # la page : un mois, avec les boutons PDF et CSV
+GET /api/v1/public/mosques/<slug>/prayer-times/export?format=pdf&month=2027-03   # ou format=csv, start=…&end=…, ramadan=1
 ```
 
 Sans connexion, uniquement les horaires (jamais une adresse ni un réglage). Lisible depuis n'importe quelle page web (CORS), mise en cache une minute, limitée à 60 requêtes par minute et par client (réponse 429 avec `Retry-After`). Une mosquée Mawaqit répond 404 avec l'adresse de sa page Mawaqit.
