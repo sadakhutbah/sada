@@ -38,6 +38,11 @@ metrics:
   enabled: false
   every: 15
 
+# Identité en lecture seule (nodes/metrics) pour que Prometheus (VM de supervision, via Tailscale)
+# scrape kubelet/cAdvisor : CPU et mémoire par pod. Jeton longue durée dans le Secret kubelet-scrape-token.
+kubeletScrape:
+  enabled: false
+
 backoffice:
   replicas: 1
   port: 8090
