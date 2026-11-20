@@ -180,13 +180,26 @@ ingress:
     enabled: true
     secretName: "" # "" = <fullname>-tls, filled by cert-manager
     issuer: letsencrypt-prod
+    # issuer: "" = no cert-manager annotation: bring your own certificate in secretName (e.g. a
+    # Cloudflare Origin CA certificate, see deploy/cloudflare/PLAN.md). secretName is then required.
 
-# ClusterIssuer (HTTP-01 through Traefik). Cluster-scoped: create it once per cluster.
+# ClusterIssuer. Cluster-scoped: create it once per cluster. solver: http01 (default, through
+# Traefik: needs 80 reachable from the Internet, so NOT compatible with the Cloudflare proxy) or
+# dns01 (Cloudflare API: survives the proxy). See deploy/cloudflare/PLAN.md.
 #   --set certManager.createIssuer=true --set certManager.email=you@example.org
 certManager:
   createIssuer: false
   email: ""
   server: https://acme-v02.api.letsencrypt.org/directory
+  solver: http01
+  dns01:
+    cloudflare:
+      # Secret in the cert-manager namespace (cluster resource namespace), created by hand:
+      # never in git. Token scoped to Zone:DNS:Edit on the sadakhutbah.org zone only.
+      apiTokenSecretName: ""
+      apiTokenSecretKey: api-token
+    # Optional: limit the solver to these zones, e.g. ["sadakhutbah.org"]
+    dnsZones: []
 
 # Clock of the containers (sessions, dars, logs)
 timezone: Europe/Paris

@@ -1,0 +1,14 @@
+# Cloudflare Origin CA variant: no cert-manager, the certificate is a Secret created by hand.
+image:
+  repository: ghcr.io/example/sada
+  tag: "0123abc"
+
+mosques:
+  - slug: exemple
+    tokenSecret: sada-exemple
+
+ingress:
+  host: console.sadakhutbah.org
+  tls:
+    issuer: ""
+    secretName: console-origin-cert

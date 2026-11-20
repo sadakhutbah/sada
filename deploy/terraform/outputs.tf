@@ -4,14 +4,14 @@ output "server_ipv4" {
 }
 
 output "dns_a_record" {
-  description = "A record created in Cloudflare for the back-office console (not proxied, TTL 300)."
+  description = "A record created in Cloudflare for the back-office console (proxied only if console_proxied)."
   value = {
     name    = var.console_host
     zone    = var.cloudflare_zone
     type    = "A"
     content = hcloud_server.sada.ipv4_address
-    ttl     = 300
-    proxied = false
+    ttl     = var.console_proxied ? 1 : 300
+    proxied = var.console_proxied
   }
 }
 
@@ -53,4 +53,24 @@ output "ansible_inventory" {
 output "kubeconfig_path" {
   description = "Kubeconfig written locally by the Ansible playbook."
   value       = local.kubeconfig_path
+}
+
+output "dns_ingest_record" {
+  description = "Single ingest name for RTMP (1935/tcp) and SRT (8890/udp): never proxied. Empty when create_ingest_record = false."
+  value = var.create_ingest_record ? {
+    name    = var.ingest_host
+    zone    = var.cloudflare_zone
+    type    = "A"
+    content = hcloud_server.sada.ipv4_address
+    ttl     = 300
+    proxied = false
+  } : null
+}
+
+output "ingest_urls" {
+  description = "Templates of the ingest URLs given to the mosques (replace <slug> and <key>)."
+  value = {
+    rtmp = "rtmp://${var.ingest_host}:1935/live/<slug>?user=<slug>&pass=<key>"
+    srt  = "srt://${var.ingest_host}:8890?streamid=publish:live/<slug>:<slug>:<key>"
+  }
 }

@@ -56,8 +56,8 @@ If an A record for `console.sadakhutbah.org` already exists, delete it (or
 you end up with two records answering for the same name.
 
 The console record (`console.sadakhutbah.org`, zone `sadakhutbah.org`) is created in Cloudflare
-by Terraform, **not proxied**: Let's Encrypt validates over HTTP-01 on the server itself, and the
-mosques push straight to it.
+by Terraform, **not proxied by default** (`console_proxied = false`): Let's Encrypt validates over HTTP-01 on the server itself, and the
+mosques push straight to it. The stream ingest has its own name, `ingest.sadakhutbah.org` (RTMP 1935/tcp and SRT 8890/udp, never proxied). Putting the console behind the Cloudflare proxy is a staged operation: see [`cloudflare/PLAN.md`](cloudflare/PLAN.md).
 
 `admin_cidrs` is **required**: SSH (22) and the k3s API (6443) are closed to everything else.
 80/443 (Traefik, ACME) and 1935/tcp + 8890/udp (stream ingest) stay public; narrow them with
