@@ -244,10 +244,19 @@ def _khutbas_chapitres(conn: sa.Connection) -> None:
 
 def _horaires_propres(conn: sa.Connection) -> None:
     """Migration 21 : horaires de prière saisis par la mosquée (`prayer_times`) et choix de la source
-    (`prayer_settings`). Une mosquée qui avait une adresse Mawaqit garde Mawaqit : aucune ligne
-    n'est créée, la source par défaut est lue d'après l'adresse."""
+    (`prayer_settings`). Une mosquée qui avait une adresse Mawaqit garde Mawaqit : on l'écrit en toutes
+    lettres (une ligne `mawaqit`, non publique) plutôt que de compter sur la valeur par défaut, pour
+    que son choix ne change pas si cette valeur évolue. Aucun horaire n'est copié (`prayer_times`
+    reste vide) et la page publique ne répond pas pour elle. Rejouable : une ligne existante, déjà
+    choisie par la mosquée, n'est jamais touchée, et il n'y a jamais deux lignes par mosquée."""
     for name in ("prayer_settings", "prayer_times"):
         models.metadata.tables[name].create(conn, checkfirst=True)
+    m, ps = models.mosques, models.prayer_settings
+    pending = sa.select(m.c.id, sa.literal("mawaqit"), sa.literal(0)).where(
+        sa.func.trim(m.c.mawaqit_url) != "",
+        ~sa.exists().where(ps.c.mosque_id == m.c.id),
+    )
+    conn.execute(sa.insert(ps).from_select(["mosque_id", "source", "public"], pending))
 
 
 MIGRATIONS: tuple[Migration, ...] = (

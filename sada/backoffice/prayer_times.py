@@ -143,7 +143,7 @@ def read(conn, mosque: dict) -> dict:
         jumua = [t for t in json.loads((row or {}).get("jumua") or "[]") if isinstance(t, str)]
     except ValueError:
         jumua = []
-    source = row["source"] if row else ("mawaqit" if mosque.get("mawaqit_url") else "")
+    source = row["source"] if row else ("mawaqit" if (mosque.get("mawaqit_url") or "").strip() else "")
     return {
         "source": source,
         "public": bool(row["public"]) if row else True,

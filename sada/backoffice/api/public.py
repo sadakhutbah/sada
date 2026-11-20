@@ -20,7 +20,7 @@ from .. import instance, orm, prayer_times, public_page
 from .. import prayer_export as export
 from ..context import ConnDep
 from ..models import Mosque
-from ..throttle import PUBLIC_CACHE, SlidingWindow
+from ..throttle import PUBLIC_CACHE, SlidingWindow, client_ip
 
 router = APIRouter()
 
@@ -49,7 +49,7 @@ def _json(body: dict, status: int = 200, cache: bool = False, **headers) -> JSON
 
 @router.get("/public/mosques/{slug}/prayer-times")
 def prayer_times_public(slug: str, request: Request, conn: ConnDep, date: str = "", month: str = ""):
-    client = request.client.host if request.client else "?"
+    client = client_ip(request)
     wait = _limiter.hit(client)
     if wait:
         return _json({"error": _("too many requests")}, 429, Retry_After=int(wait) + 1)
@@ -90,7 +90,7 @@ def prayer_times_export(
     ramadan: bool = False,
 ):
     """A printable calendar (PDF) or a CSV of a month or a period (`start`/`end`, `ramadan`), at most a year."""
-    client = request.client.host if request.client else "?"
+    client = client_ip(request)
     wait = _limiter.hit(client)
     if wait:
         return _json({"error": _("too many requests")}, 429, Retry_After=int(wait) + 1)
@@ -129,7 +129,7 @@ def _this_month(mosque: dict) -> str:
 @router.get("/public/mosques/{slug}/prayer-times/page")
 def prayer_times_page(slug: str, request: Request, conn: ConnDep, month: str = ""):
     """The public page of the timetable: a month in a table, with the PDF and CSV downloads."""
-    client = request.client.host if request.client else "?"
+    client = client_ip(request)
     wait = _limiter.hit(client)
     if wait:
         return _json({"error": _("too many requests")}, 429, Retry_After=int(wait) + 1)

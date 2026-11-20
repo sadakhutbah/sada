@@ -12,10 +12,12 @@ from conftest import (  # noqa: E402
     insert,
     legacy_metadata,
     one,
+    rows,
     table_names,
 )
 
-from sada.backoffice import db, migrations, models  # noqa: E402
+from sada.backoffice import db, migrations, models, prayer_times  # noqa: E402
+from sada.backoffice.orm import engine  # noqa: E402
 
 # colonnes ajoutées après le schéma initial (migrations 2, 3 et 5)
 ADDED = {
@@ -221,3 +223,89 @@ def test_tarawih_de_la_premiere_version_mis_a_jour(tmp_path):
         assert row == ('["Imam A"]', 6, 0)
     finally:
         conn.close()
+
+
+# --- migration 21 on a database that looks like production -----------------------------------------
+
+PONTOISE_URL = "https://mawaqit.net/fr/mosquee-de-pontoise"
+
+
+def _prod_like_v20(path):
+    """A base as production has it before the prayer-times feature: schema at version 20, the real
+    Pontoise mosque on Mawaqit, a mosque without Mawaqit, one whose address is only blanks."""
+    db.init(path)
+    with engine(path, db.DEFAULT_DB).connect() as conn, conn.begin():
+        conn.execute(sa.delete(models.prayer_settings))
+        models.prayer_times.drop(conn)
+        models.prayer_settings.drop(conn)
+        conn.execute(sa.delete(migrations.schema_migrations).where(migrations.schema_migrations.c.version >= 21))
+        for i, (name, slug, url) in enumerate(
+            [("Mosquée de Pontoise", "pontoise", PONTOISE_URL), ("Sans Mawaqit", "sans", ""), ("Blanc", "blanc", "  ")],
+            start=1,
+        ):
+            conn.execute(
+                sa.insert(models.mosques).values(
+                    id=i, name=name, slug=slug, mawaqit_url=url, created_at="2026-01-01T00:00:00+00:00"
+                )
+            )
+
+
+def test_migration_21_pontoise_reste_sur_mawaqit(tmp_path):
+    path = tmp_path / "prod.db"
+    _prod_like_v20(path)
+    assert "prayer_settings" not in sa.inspect(engine(path, db.DEFAULT_DB)).get_table_names()
+
+    db.init(path)
+
+    conn = db.connect(path)
+    try:
+        assert applied_versions(conn)[-1] == migrations.LATEST >= 21
+        mosques = {m["slug"]: m for m in rows(conn, models.Mosque)}
+        pontoise = mosques["pontoise"]
+        settings = rows(conn, models.PrayerSettings)
+        # one explicit Mawaqit row, not public, for Pontoise only: no duplicate, nothing for the others
+        assert [(s["mosque_id"], s["source"], s["public"]) for s in settings] == [(pontoise["id"], "mawaqit", 0)]
+        assert pontoise["mawaqit_url"] == PONTOISE_URL  # the identifier is untouched
+        assert rows(conn, models.PrayerDay) == []  # no timetable copied, none hosted by Sada
+        assert prayer_times.read(conn, pontoise)["source"] == "mawaqit"
+        assert prayer_times.read(conn, mosques["sans"])["source"] == ""
+        assert prayer_times.read(conn, mosques["blanc"])["source"] == ""
+    finally:
+        conn.close()
+
+    db.init(path)  # replaying changes nothing
+    conn = db.connect(path)
+    try:
+        assert len(rows(conn, models.PrayerSettings)) == 1
+    finally:
+        conn.close()
+
+
+def test_migration_21_ne_touche_pas_un_choix_deja_fait(tmp_path):
+    path = tmp_path / "choix.db"
+    _prod_like_v20(path)
+    with engine(path, db.DEFAULT_DB).connect() as conn, conn.begin():
+        models.prayer_settings.create(conn)
+        conn.execute(sa.insert(models.prayer_settings).values(mosque_id=1, source="computed", public=1))
+    db.init(path)
+    conn = db.connect(path)
+    try:
+        assert [(s["source"], s["public"]) for s in rows(conn, models.PrayerSettings)] == [("computed", 1)]
+    finally:
+        conn.close()
+
+
+def test_migration_21_pontoise_sans_page_publique_chez_nous(tmp_path):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from sada.backoffice.app import create_app
+
+    path = tmp_path / "web.db"
+    _prod_like_v20(path)
+    db.init(path)
+    c = TestClient(create_app(path, regen_background=False))
+    for suffix in ("prayer-times", "prayer-times/export?format=csv&month=2026-11"):
+        r = c.get(f"/api/v1/public/mosques/pontoise/{suffix}")
+        assert r.status_code == 404, r.text
+        assert r.json()["source"] == "mawaqit" and r.json()["mawaqit_url"] == PONTOISE_URL

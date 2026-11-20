@@ -3,9 +3,54 @@ client and a short-lived response cache. Both are per process (one back office),
 
 from __future__ import annotations
 
+import ipaddress
+import os
 import threading
 import time
 from collections import OrderedDict, deque
+
+#: Where the proxy that fronts the back office (Traefik in the cluster) connects from: loopback, private
+#: and carrier-grade NAT ranges (pod and node networks). SADA_TRUSTED_PROXIES replaces the list
+#: (comma-separated addresses or CIDRs; "none" trusts no proxy, so forwarded headers are ignored).
+DEFAULT_TRUSTED_PROXIES = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7"
+
+
+def _networks(spec: str) -> tuple:
+    out = []
+    for part in spec.split(","):
+        part = part.strip()
+        if part and part.lower() != "none":
+            out.append(ipaddress.ip_network(part, strict=False))
+    return tuple(out)
+
+
+def _ip(text: str):
+    try:
+        return ipaddress.ip_address(text.strip())
+    except ValueError:
+        return None
+
+
+def client_ip(request) -> str:
+    """The visitor's address. Behind the proxy the socket peer is the proxy itself, so its
+    X-Forwarded-For (then X-Real-IP) is read, but only when the peer is a trusted proxy: from anyone
+    else the headers are forged and ignored. X-Forwarded-For is walked from the right, skipping the
+    trusted proxies, so a value the visitor prepends cannot pick the address that is counted."""
+    peer = request.client.host if request.client else "?"
+    peer_ip = _ip(peer)
+    if peer_ip is None:
+        return peer
+    trusted = _networks(os.environ.get("SADA_TRUSTED_PROXIES") or DEFAULT_TRUSTED_PROXIES)
+    if not any(peer_ip in net for net in trusted):
+        return peer
+    for hop in reversed((request.headers.get("x-forwarded-for") or "").split(",")):
+        ip = _ip(hop)
+        if ip is None:
+            break  # garbage: stop trusting what is to its left
+        if not any(ip in net for net in trusted):
+            return str(ip)
+    real = _ip(request.headers.get("x-real-ip") or "")
+    return str(real) if real is not None else peer
 
 
 class SlidingWindow:

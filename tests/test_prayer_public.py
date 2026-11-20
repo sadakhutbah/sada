@@ -130,3 +130,51 @@ def test_answers_are_cached_for_a_minute(env, monkeypatch):
     for _n in range(5):
         assert c.get(URL).status_code == 200
     assert len(calls) == 1
+
+
+# --- the visitor's real address behind the proxy -------------------------------------------------
+
+
+class _Req:
+    def __init__(self, peer, **headers):
+        self.client = type("C", (), {"host": peer})() if peer else None
+        self.headers = {k.replace("_", "-"): v for k, v in headers.items()}
+
+
+def test_client_ip_reads_forwarded_for_only_from_a_trusted_proxy():
+    from sada.backoffice.throttle import client_ip
+
+    assert client_ip(_Req("10.42.0.7", x_forwarded_for="203.0.113.9")) == "203.0.113.9"
+    assert client_ip(_Req("10.42.0.7", x_real_ip="203.0.113.9")) == "203.0.113.9"
+    # a visitor reaching the app directly cannot choose its address
+    assert client_ip(_Req("198.51.100.4", x_forwarded_for="203.0.113.9", x_real_ip="203.0.113.9")) == "198.51.100.4"
+    # a value prepended by the visitor does not count: the right-most untrusted hop is the real one
+    assert client_ip(_Req("10.42.0.7", x_forwarded_for="1.2.3.4, 203.0.113.9, 10.42.0.3")) == "203.0.113.9"
+    assert client_ip(_Req("10.42.0.7", x_forwarded_for="not-an-ip")) == "10.42.0.7"
+    assert client_ip(_Req("10.42.0.7")) == "10.42.0.7"
+    assert client_ip(_Req(None)) == "?"
+
+
+def test_client_ip_trusted_list_is_configurable(monkeypatch):
+    from sada.backoffice.throttle import client_ip
+
+    monkeypatch.setenv("SADA_TRUSTED_PROXIES", "192.0.2.0/24")
+    assert client_ip(_Req("192.0.2.5", x_forwarded_for="203.0.113.9")) == "203.0.113.9"
+    assert client_ip(_Req("10.42.0.7", x_forwarded_for="203.0.113.9")) == "10.42.0.7"
+    monkeypatch.setenv("SADA_TRUSTED_PROXIES", "none")
+    assert client_ip(_Req("192.0.2.5", x_forwarded_for="203.0.113.9")) == "192.0.2.5"
+
+
+def test_rate_limit_counts_each_real_visitor_behind_the_proxy(env, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    _choose(env, "computed")
+    monkeypatch.setattr(public, "RATE_PER_MINUTE", 2)
+    public.reset()
+    proxy = TestClient(env["app"], client=("10.42.0.7", 5000))
+    a, b = {"X-Forwarded-For": "203.0.113.1"}, {"X-Forwarded-For": "203.0.113.2"}
+    assert [proxy.get(URL, headers=a).status_code for _ in range(3)] == [200, 200, 429]
+    assert proxy.get(URL, headers=b).status_code == 200  # another visitor, same proxy: not throttled
+    direct = TestClient(env["app"], client=("198.51.100.4", 5000))
+    forged = [direct.get(URL, headers={"X-Forwarded-For": f"203.0.113.{i}"}).status_code for i in range(3)]
+    assert forged == [200, 200, 429]  # rotating the header does not escape the limit

@@ -311,3 +311,14 @@ def test_the_public_page_shows_the_month_with_its_downloads_and_escapes_everythi
     assert "Télécharger le PDF" in fr.text and 'lang="fr"' in fr.text
     ar = client(env).get(PUBLIC + "/page?month=2027-03", headers={"X-Sada-Lang": "ar"})
     assert 'dir="rtl"' in ar.text
+
+
+def test_a_page_spanning_two_months_has_a_dividing_line_naming_the_new_one(env):
+    c = _choose(env)
+    ramadan = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-08&end=2027-03-08"))[0]
+    assert ramadan.count("Mars") == 1  # the capitalised band, the title says "mars" in lower case
+    assert ramadan.index("Dim. 28") < ramadan.index("Mars") < ramadan.index("Lun. 1\n")
+    assert len(re.findall(r"\b(?:Lun|Mar|Mer|Jeu|Ven|Sam|Dim)\. \d+", ramadan)) == 29  # every day still there
+    # a page of a single month needs none
+    march = _pages(c.get(CONSOLE + "?format=pdf&month=2027-03"))[0]
+    assert march.count("Mars") == 1 and "Mars 2027" in march

@@ -98,6 +98,10 @@ spec:
             - name: SADA_SECURE_COOKIES
               value: "1"
             {{- end }}
+            {{- with .Values.backoffice.trustedProxies }}
+            - name: SADA_TRUSTED_PROXIES
+              value: {{ . | quote }}
+            {{- end }}
             {{- include "sada.databaseEnv" . | nindent 12 }}
             {{- with .Values.backoffice.extraEnv }}
             {{- toYaml . | nindent 12 }}

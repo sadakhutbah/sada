@@ -208,6 +208,7 @@ _FOOTER_H = 30 * mm
 _LEGEND_H = 13 * mm
 _HEAD_ROW = 13 * mm  # the column title and, under it, the Arabic name of the prayer
 _MAX_ROW = 12 * mm
+_MONTH_ROW = 6.5 * mm  # the band naming the new month when a page spans two (Ramadan: February, then March)
 _COLS = (  # (column key of the label table, width in mm, alignment)
     ("date", 27, "left"),
     ("hijri", 46, "left"),
@@ -518,7 +519,8 @@ def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url:
 
     top = _H - _HEADER_H - 8 * mm
     bottom = _FOOTER_H + _LEGEND_H + 3 * mm
-    row_h = min(_MAX_ROW, (top - _HEAD_ROW - bottom) / len(month_rows))
+    starts = {i for i in range(1, len(month_rows)) if month_rows[i]["date"].month != month_rows[i - 1]["date"].month}
+    row_h = min(_MAX_ROW, (top - _HEAD_ROW - bottom - len(starts) * _MONTH_ROW) / len(month_rows))
     fs = min(11.5, max(8.5, row_h / mm * 1.45))  # the text grows with the rows, within reason
 
     c.setFillColor(DEEP)
@@ -537,6 +539,19 @@ def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url:
 
     jumua_word = L["jumua"]
     for i, r in enumerate(month_rows):
+        if i in starts:  # a dividing line: the name of the month the following days belong to
+            d = r["date"]
+            name = L["months"][d.month - 1].capitalize()
+            c.setFillColor(DEEP)
+            c.rect(left, y - _MONTH_ROW, total, _MONTH_ROW, stroke=0, fill=1)
+            c.setFillColor(LEAF)
+            c.setFont(f["sans-bold"], 9.5)
+            c.drawString(
+                left + 3 * mm,
+                y - _MONTH_ROW / 2 - 1.2 * mm,
+                f"{name} {d.year}" if d.year != month_rows[0]["date"].year else name,
+            )
+            y -= _MONTH_ROW
         h = Gregorian.fromdate(r["date"]).to_hijri()
         friday = r["date"].weekday() == 4
         night = h.month == RAMADAN and h.day in ODD_NIGHT_EVES
