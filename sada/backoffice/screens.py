@@ -21,7 +21,7 @@ from .. import screens as base
 from ..config import Config
 from ..events import KHUTBA_TITLE
 from ..i18n import _
-from . import branding, db, events_store, live, mawaqit_store, orm, variables_ecran
+from . import branding, db, events_store, live, orm, prayer_times, variables_ecran
 from .models import ScreenText
 
 
@@ -151,8 +151,8 @@ def moment_reel(mosque: dict, conn=None) -> scenes.Moment:
     if conn is None:
         return scenes.Moment(now=now)
     try:
-        times = mawaqit_store.times(conn, mosque)
-    except Exception:  # site down and no cache: no jumu'a time known
+        times = prayer_times.times(conn, mosque)
+    except Exception:  # no source, or the site is down and no cache: no jumu'a time known
         times = None
     programme = []
     for i, raw in enumerate(events_store.read(conn, mosque["id"])):

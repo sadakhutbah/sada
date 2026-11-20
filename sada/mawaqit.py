@@ -1,4 +1,7 @@
-"""Jumu'a times from Mawaqit, with a local cache (fallback if the site is unreachable)."""
+"""Mawaqit as one source of prayer times, with a local cache (fallback if the site is unreachable).
+
+Nothing outside this module and `backoffice.prayer_times` should know Mawaqit exists: consumers read
+the source-neutral shape of `sada.prayers`."""
 
 from __future__ import annotations
 
@@ -10,6 +13,7 @@ from pathlib import Path
 import requests
 
 from .i18n import _
+from .prayers import finish as _finish
 
 UA = "Mozilla/5.0 (X11; Linux x86_64) sada/0.1"
 
@@ -35,6 +39,24 @@ def fetch_live(url: str, timeout: float = 15.0) -> dict:
         "times": conf.get("times"),
         "iqama": iqama_times(conf, time.localtime()),
         "timezone": conf.get("timezone"),
+    }
+
+
+def fetch_calendar(url: str, timeout: float = 15.0, get=None) -> dict:
+    """The year's published calendar and the mosque's coordinates, to read once (deducing the calculation
+    settings of a mosque that leaves Mawaqit). Returned to the caller, never stored."""
+    r = (get or requests.get)(url, headers={"User-Agent": UA}, timeout=timeout)
+    r.raise_for_status()
+    conf = _extract_conf(r.text)
+    cal = conf.get("calendar")
+    if not isinstance(cal, list) or len(cal) != 12 or conf.get("latitude") is None or conf.get("longitude") is None:
+        raise ValueError(_("The Mawaqit page does not publish a yearly calendar with coordinates."))
+    return {
+        "calendar": cal,
+        "lat": float(conf["latitude"]),
+        "lon": float(conf["longitude"]),
+        "timezone": conf.get("timezone") or "Europe/Paris",
+        "name": conf.get("name"),
     }
 
 
@@ -132,49 +154,3 @@ def get_jumua(url: str, cache_path: str, max_age_h: float = 20.0, timeout: float
         cp.parent.mkdir(parents=True, exist_ok=True)
         cp.write_text(json.dumps(stored, ensure_ascii=False, indent=1))
     return data
-
-
-def from_backoffice(backoffice_url: str, api_port: int, fetch=None, log=None) -> dict | None:
-    """Times of the calling orchestrator's mosque, cached by the back office; None if unreachable."""
-    log = log or (lambda _m: None)
-    if not backoffice_url:
-        return None
-    import urllib.request
-    from urllib.parse import urlencode
-
-    from .backoffice.internal import HEADER, token
-
-    def _get(u: str, tok: str) -> dict:  # pragma: no cover (network)
-        req = urllib.request.Request(u, headers={HEADER: tok})
-        with urllib.request.urlopen(req, timeout=20) as r:  # noqa: S310 — configured back office
-            return json.loads(r.read(1 << 20))
-
-    u = backoffice_url.rstrip("/") + "/api/v1/internal/times?" + urlencode({"port": api_port or 0})
-    try:
-        d = (fetch or _get)(u, token()) or {}
-    except Exception as e:  # noqa: BLE001
-        log(_("Times: back office unreachable ({error}), local cache used", error=e))
-        return None
-    t = d.get("times")
-    return _finish(t) if isinstance(t, dict) else None
-
-
-def prayer_times(d: dict) -> dict:
-    """Times of the day from Mawaqit: {"fajr","dhuhr","asr","maghrib","isha"} ("HH:MM" strings),
-    plus "isha_iqama" when the mosque publishes its iqama.
-
-    Mawaqit publishes `times` = [fajr, dhuhr, asr, maghrib, isha]; a shorter array gives
-    only what is present, without inventing anything.
-    """
-    names = ("fajr", "dhuhr", "asr", "maghrib", "isha")
-    raw = d.get("times") or []
-    out = {n: t for n, t in zip(names, raw, strict=False) if t}
-    iqama = d.get("iqama") or []
-    if len(iqama) >= 5 and iqama[4]:
-        out["isha_iqama"] = iqama[4]  # start of the isha prayer itself (tarawih arm after its end)
-    return out
-
-
-def _finish(d: dict) -> dict:
-    d["jumua_list"] = [t for t in (d.get("jumua"), d.get("jumua2"), d.get("jumua3")) if t]
-    return d

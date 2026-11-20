@@ -242,6 +242,14 @@ def _khutbas_chapitres(conn: sa.Connection) -> None:
         _drop_columns(conn, "tarawih", ("imam",))
 
 
+def _horaires_propres(conn: sa.Connection) -> None:
+    """Migration 21 : horaires de prière saisis par la mosquée (`prayer_times`) et choix de la source
+    (`prayer_settings`). Une mosquée qui avait une adresse Mawaqit garde Mawaqit : aucune ligne
+    n'est créée, la source par défaut est lue d'après l'adresse."""
+    for name in ("prayer_settings", "prayer_times"):
+        models.metadata.tables[name].create(conn, checkfirst=True)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -265,6 +273,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(18, "recherche : segments de transcription et versets cités", _recherche),
     Migration(19, "tarawih : réglages de diffusion par mosquée", _tarawih),
     Migration(20, "khutbas : chapitres (récitants des tarawih)", _khutbas_chapitres),
+    Migration(21, "horaires de prière propres à la mosquée et choix de la source", _horaires_propres),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

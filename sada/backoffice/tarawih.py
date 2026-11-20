@@ -8,7 +8,7 @@ No prayer is ever filmed by default. Tarawih is the one exception, and only as t
   responsibility for filming the prayer); who confirmed it and when is kept and audited.
 
 Nothing is planned outside the period (start and end dates), so a forgotten setting cannot run all
-year. Nothing is armed before the end of isha (its Mawaqit iqama, else the adhan plus a usual delay,
+year. Nothing is armed before the end of isha (its iqama, else the adhan plus a usual delay,
 plus ``isha_min``): isha itself is never broadcast. Then, with ``after_isha`` on, sustained voice
 starts the broadcast at once (announcements, appeals for donations); otherwise only from the tarawih
 proper, ``offset_min`` later. There is no fixed end: a silence longer than the pauses between sets

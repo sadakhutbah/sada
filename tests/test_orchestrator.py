@@ -49,7 +49,7 @@ def orchestrator(down):
         backoffice_url="http://127.0.0.1:8090", api_port=8088, jumua_times_override=[], sim_start="12:00"
     )
     # simulated start: the khutba times apply on this Saturday too
-    o.times, o.program, o.mawaqit_data, o.instances = ["12:30", "13:30"], [], None, []
+    o.times, o.program, o.times_data, o.instances = ["12:30", "13:30"], [], None, []
     o._plan_day, o._rolled = D, False
     o._stale, o._times_fallback, o._program_remote = True, True, False
     o._retry_delay, o._retry_at = orch.RETRY_DELAY_S, 0.0
@@ -78,7 +78,7 @@ def orchestrator(down):
 def test_back_office_down_then_up_replans_the_day(monkeypatch):
     down = [True]
     o = orchestrator(down)
-    monkeypatch.setattr(orch.mawaqit, "from_backoffice", lambda *a, **k: o.fetched_times(*a, **k))
+    monkeypatch.setattr(orch.prayers, "from_backoffice", lambda *a, **k: o.fetched_times(*a, **k))
     monkeypatch.setattr(orch.events_mod, "from_backoffice", lambda *a, **k: o.fetched_program(*a, **k))
     assert o.machine.sessions == [at(12, 30), at(13, 30)]  # the fallback, until tomorrow
 
@@ -97,7 +97,7 @@ def test_back_office_down_then_up_replans_the_day(monkeypatch):
     o._retry_plan(sig(at(12, 7)))  # the loop applies the result it just collected
 
     assert o.times == ["13:00"]
-    assert o.mawaqit_data["times"] == TIMES
+    assert o.times_data["times"] == TIMES
     assert o.machine.sessions == [at(13, 0), at(17, 12)]  # khutba 13:00 + dars after maghrib
     assert o.machine.records[1].kind == "dars"
     assert o.machine.records[1].title == "Tafsir Al-Kahf"
@@ -150,7 +150,7 @@ def test_khutbas_only_on_friday():
     """Mawaqit's jumua times are not a daily plan: outside Friday only the programme remains."""
     o = object.__new__(orch.Orchestrator)
     o.cfg = SimpleNamespace(jumua_times_override=[], sim_start=None)
-    o.times, o.program, o.mawaqit_data = ["12:30", "13:30"], [], {"times": TIMES}
+    o.times, o.program, o.times_data = ["12:30", "13:30"], [], {"times": TIMES}
     assert o.day_plan(dt.date(2026, 11, 17)) == ([], [])  # Tuesday
     assert [s.strftime("%H:%M") for s in o.day_plan(dt.date(2026, 11, 20))[0]] == ["12:30", "13:30"]
     o.program = [dars()]
@@ -165,7 +165,7 @@ def test_midnight_plans_the_new_day_then_refreshes_its_times(monkeypatch):
     down = [False]
     o = orchestrator(down)
     o._stale = False
-    monkeypatch.setattr(orch.mawaqit, "from_backoffice", lambda *a, **k: o.fetched_times(*a, **k))
+    monkeypatch.setattr(orch.prayers, "from_backoffice", lambda *a, **k: o.fetched_times(*a, **k))
     monkeypatch.setattr(orch.events_mod, "from_backoffice", lambda *a, **k: o.fetched_program(*a, **k))
     o._plan_day = D - dt.timedelta(days=1)
     o.machine.records[0].status = "done"  # yesterday's session, played

@@ -10,6 +10,7 @@ dependencies = [
   "webrtcvad-wheels",
   "opencv-python-headless",
   "numpy",
+  "praytimes>=2.3.2",  # PrayTimes.org algorithm (LGPL-3.0, compatible with the AGPL): calculated prayer times
   "pillow",
   "rapidfuzz",
   "faster-whisper",
