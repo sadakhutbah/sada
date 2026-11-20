@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 from . import auth, db, live, orm
 from .models import Clip, Khutba, Mosque
+from .throttle import client_ip, peer_trusted
 
 PRE_COOKIE = "sada_pre"
 
@@ -51,7 +52,7 @@ class Ctx:
     def __init__(self, request: Request, conn, session: dict, user: dict, mosque: dict | None):
         self.request, self.conn, self.session, self.user, self.mosque = request, conn, session, user, mosque
         self.support = bool((session or {}).get("support"))
-        self.ip = request.client.host if request.client else None
+        self.ip = client_ip(request) if request.client else None
 
     def can(self, perm: str) -> bool:
         # Password set by an administrator: no right at all until the person has chosen their own.
@@ -116,9 +117,11 @@ def get_conn(request: Request):
 
 
 def _sec(request) -> bool:
-    """Request served over HTTPS (directly or through a proxy that sets X-Forwarded-Proto)."""
+    """Request served over HTTPS (directly or through a trusted proxy that sets X-Forwarded-Proto)."""
+    if request.url.scheme == "https":
+        return True
     fwd = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
-    return request.url.scheme == "https" or fwd == "https"
+    return fwd == "https" and peer_trusted(request)
 
 
 ConnDep = Annotated[orm.Db, Depends(get_conn)]
@@ -142,7 +145,7 @@ def get_ctx(request: Request, conn: ConnDep) -> Ctx:
         conn,
         request.cookies.get(auth.COOKIE),
         request.headers.get("user-agent"),
-        request.client.host if request.client else None,
+        client_ip(request) if request.client else None,
     )
     if not res:
         raise LoginRequired()
@@ -163,7 +166,7 @@ def get_pre_ctx(request: Request, conn: ConnDep) -> Ctx:
         conn,
         request.cookies.get(auth.COOKIE),
         request.headers.get("user-agent"),
-        request.client.host if request.client else None,
+        client_ip(request) if request.client else None,
     )
     if not res:
         raise LoginRequired()

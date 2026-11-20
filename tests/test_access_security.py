@@ -60,7 +60,10 @@ def test_cookie_secure_derriere_un_proxy_https(env):
     cookie over an http:// URL (a real browser is already on https), so we pass it by hand."""
     from fastapi.testclient import TestClient
 
-    c = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF, "x-forwarded-proto": "https"})
+    proxy = ("10.42.0.7", 5000)  # the proxy's address: X-Forwarded-Proto is believed from it only
+    c = TestClient(
+        env["app"], follow_redirects=False, client=proxy, headers={"user-agent": FF, "x-forwarded-proto": "https"}
+    )
     pre = c.get("/api/v1/login-challenge").json()["pre"]
     r = c.post("/api/v1/login", data={"username": "admin", "password": PW, "pre": pre}, cookies={"sada_pre": pre})
     assert r.status_code == 200, r.text[:200]
@@ -70,6 +73,14 @@ def test_cookie_secure_derriere_un_proxy_https(env):
     # HSTS must not impose itself on local HTTP (otherwise other machines on the network lose access)
     plain = TestClient(env["app"], follow_redirects=False, headers={"user-agent": FF})
     assert "strict-transport-security" not in plain.get("/").headers
+    # a visitor reaching the app directly cannot claim HTTPS
+    direct = TestClient(
+        env["app"],
+        follow_redirects=False,
+        client=("198.51.100.4", 5000),
+        headers={"user-agent": FF, "x-forwarded-proto": "https"},
+    )
+    assert "strict-transport-security" not in direct.get("/").headers
 
 
 def test_entetes_de_securite_par_defaut(env):

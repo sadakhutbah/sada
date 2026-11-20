@@ -102,6 +102,26 @@ spec:
             - name: SADA_TRUSTED_PROXIES
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.backoffice.cloudflareProxies }}
+            - name: SADA_CLOUDFLARE_PROXIES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.backoffice.ingestHost }}
+            - name: SADA_INGEST_HOST
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.backoffice.publicBaseUrl }}
+            - name: SADA_PUBLIC_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.backoffice.allowedHosts }}
+            - name: SADA_ALLOWED_HOSTS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.backoffice.publicHosts }}
+            - name: SADA_PUBLIC_HOSTS
+              value: {{ . | quote }}
+            {{- end }}
             {{- include "sada.databaseEnv" . | nindent 12 }}
             {{- with .Values.backoffice.extraEnv }}
             {{- toYaml . | nindent 12 }}

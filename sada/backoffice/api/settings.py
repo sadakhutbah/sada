@@ -22,6 +22,7 @@ from .. import (
     branding,
     db,
     destinations,
+    edge,
     instance,
     live_input,
     orm,
@@ -63,8 +64,9 @@ PLATFORM_FIELDS = (
 
 
 def _host(ctx) -> str:
-    """Host the browser reached us on: the address to give OBS, so it works over the network too."""
-    return ctx.request.url.hostname or "127.0.0.1"
+    """Host to give OBS (RTMP and SRT): the ingest host setting; without one, the host the browser
+    reached us on, so it works over the local network too."""
+    return edge.ingest_host(ctx.request.url.hostname or "")
 
 
 def _seed(mosque: dict, name: str) -> None:
@@ -337,6 +339,8 @@ async def input_key(ctx: CtxDep):
         # OBS "Custom": server + stream key fields (MediaMTX reads user/pass from the query)
         "obs_server": live_input.push_rtmp(_host(ctx), ctx.mosque).rsplit("/", 1)[0],
         "obs_key": f"{s}?user={s}&pass={key}",
+        # same key over SRT (OBS "Custom" with an srt:// address), shown this once as well
+        "obs_srt": live_input.push_srt(_host(ctx), ctx.mosque, key),
     }
 
 

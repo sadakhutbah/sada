@@ -20,7 +20,7 @@ from sqlalchemy import select, update
 
 from .. import telemetry
 from ..i18n import _
-from . import auth, db, importer, internal, orm
+from . import auth, db, edge, importer, internal, orm
 from .models import Mosque, User
 
 
@@ -181,8 +181,9 @@ def main(argv=None) -> int:
                 k = internal.new_publish_key(conn, mo["id"])
                 db.audit(conn, mo["id"], None, "cle_diffusion.emise", "mosquee", mo["id"], via="ligne de commande")
                 print(_("Stream key (shown once). In OBS, server and key:"))
-                print(f"  rtmp://<host>:1935/live/{mo['slug']}?user={mo['slug']}&pass={k}")
-                print(f"  srt://<host>:8890?streamid=publish:live/{mo['slug']}:{mo['slug']}:{k}")
+                host = edge.ingest_host("<host>")
+                print(f"  rtmp://{host}:{edge.RTMP_PORT}/live/{mo['slug']}?user={mo['slug']}&pass={k}")
+                print(f"  {edge.push_srt(host, mo['slug'], k)}")
             if args.agent_token:
                 t = internal.new_agent_token(conn, mo["id"])
                 db.audit(conn, mo["id"], None, "jeton_agent.emis", "mosquee", mo["id"], via="ligne de commande")
