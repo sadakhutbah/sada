@@ -288,39 +288,70 @@ export const api = {
     });
   },
   retirerLogo: () => ecrire<{ ok: boolean; message: string }>("DELETE", "/settings/logo"),
-  /** Recorded video (off-air camera): the raw file is the body, never multipart, so a file of
-   *  several GB is streamed. XHR is used for the upload progress; `xhr.abort()` cancels it.
-   *  The server answers the usual `{ok, message}` shape, errors included. */
+  /** Recorded video (off-air camera), sent in chunks of at most 80 MB: the Cloudflare proxy refuses a
+   *  request body over 100 MB or longer than 100 s. Each chunk goes to the offset the server already
+   *  holds, so a network cut resumes where it stopped (the offset is read back from the server).
+   *  `annuler()` aborts and discards the partial upload. Progress counts bytes confirmed + in flight. */
   importerVideo: (fichier: File, meta: VideoImport, progression: (pct: number) => void) => {
-    const p = new URLSearchParams({
-      filename: fichier.name, kind: meta.kind, title: meta.title,
-      speaker: meta.speaker, series: meta.series, date: meta.date,
-    });
-    if (meta.session_no) p.set("session_no", meta.session_no);
-    const xhr = new XMLHttpRequest();
-    const promesse = new Promise<{ ok: boolean; message: string; run: string }>((resolve, reject) => {
-      xhr.open("POST", `/api/v1/imports/video?${p.toString()}`);
-      xhr.setRequestHeader("Content-Type", "application/octet-stream");
-      xhr.setRequestHeader("X-CSRF", jeton);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && e.total > 0) progression(Math.min(100, Math.round((e.loaded / e.total) * 100)));
-      };
-      xhr.onload = () => {
-        let json: any = null;
-        try { json = JSON.parse(xhr.responseText); } catch { /* not JSON: the status speaks */ }
-        if (xhr.status >= 200 && xhr.status < 300) {
-          progression(100);
-          resolve(json);
-          return;
+    let courant: XMLHttpRequest | null = null;
+    let annule = false;
+    let id = "";
+    const entetes = { "X-CSRF": jeton, "X-Sada-Lang": i18n.language || "fr" };
+    const morceau = (offset: number, fin: number, base: number) =>
+      new Promise<{ status: number; json: any }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        courant = xhr;
+        xhr.open("PUT", `/api/v1/imports/video/uploads/${id}?offset=${offset}`);
+        xhr.setRequestHeader("Content-Type", "application/octet-stream");
+        for (const [k, v] of Object.entries(entetes)) xhr.setRequestHeader(k, v);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) progression(Math.min(99, Math.round(((base + e.loaded) / fichier.size) * 100)));
+        };
+        xhr.onload = () => {
+          let json: any = null;
+          try { json = JSON.parse(xhr.responseText); } catch { /* the status speaks */ }
+          resolve({ status: xhr.status, json });
+        };
+        xhr.onerror = () => reject(new ApiError(0, ""));
+        xhr.onabort = () => reject(new ApiError(0, ""));
+        xhr.send(fichier.slice(offset, fin));
+      });
+    const promesse = (async () => {
+      const ouverture = await ecrire<{ id: string; chunk: number }>("POST", "/imports/video/uploads", {
+        filename: fichier.name, kind: meta.kind, title: meta.title, speaker: meta.speaker,
+        series: meta.series, date: meta.date, session_no: meta.session_no || "", size: String(fichier.size),
+      });
+      id = ouverture.id;
+      const pas = Math.min(ouverture.chunk || 80 * 1024 * 1024, 90 * 1024 * 1024);
+      let offset = 0;
+      let echecs = 0;
+      while (offset < fichier.size) {
+        if (annule) throw new ApiError(0, "");
+        const fin = Math.min(offset + pas, fichier.size);
+        try {
+          const r = await morceau(offset, fin, offset);
+          if (r.status >= 200 && r.status < 300) { offset = r.json.received; echecs = 0; continue; }
+          if (r.status === 409) { offset = r.json.received; continue; }
+          if (r.status === 401) surExpiration?.();
+          if (r.status < 500 && r.status !== 408 && r.status !== 429) {
+            throw new ApiError(r.status, (r.json && (r.json.message || r.json.error)) || `${r.status}`);
+          }
+          throw new ApiError(0, "");
+        } catch (e) {
+          if (annule || !(e instanceof ApiError) || e.status !== 0 || ++echecs > 6) throw e;
+          await new Promise((ok) => setTimeout(ok, Math.min(30000, 1000 * 2 ** echecs)));
+          const etat = await demande<{ received: number }>(`/imports/video/uploads/${id}`).catch(() => null);
+          if (etat) offset = etat.received;
         }
-        if (xhr.status === 401) surExpiration?.();
-        reject(new ApiError(xhr.status, (json && (json.message || json.error)) || `${xhr.status} ${xhr.statusText}`));
-      };
-      xhr.onerror = () => reject(new ApiError(0, ""));
-      xhr.onabort = () => reject(new ApiError(0, ""));
-      xhr.send(fichier);
+      }
+      progression(100);
+      return ecrire<{ ok: boolean; message: string; run: string }>("POST", `/imports/video/uploads/${id}/complete`);
+    })();
+    promesse.catch(() => {
+      if (id) void ecrire("DELETE", `/imports/video/uploads/${id}`).catch(() => undefined);
     });
-    return { xhr, promesse };
+    const annuler = () => { annule = true; courant?.abort(); };
+    return { annuler, promesse };
   },
   /** Connector credentials: a secret left empty or masked keeps its stored value server-side. */
   saveConnector: (key: string, enabled: boolean, values: Record<string, string>) =>

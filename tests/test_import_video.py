@@ -89,3 +89,72 @@ def test_audit(env, tmp_path):
     a = one(env["conn"], models.Audit, action="import.video")
     assert a and "Cours" in a["details"]
     json.loads(a["details"])
+
+
+# --- envoi par morceaux (limite de 100 Mo du proxy Cloudflare) ---------------------------------------
+
+UP = "/api/v1/imports/video/uploads"
+
+
+def _ouvrir(c, taille, **meta):
+    meta.setdefault("filename", "cours.mp4")
+    meta.setdefault("title", "Cours")
+    return c.post(UP, json={**meta, "size": str(taille)}, headers={"X-CSRF": c.csrf})
+
+
+def _morceau(c, uid, offset, data):
+    return c.put(
+        f"{UP}/{uid}",
+        params={"offset": offset},
+        content=data,
+        headers={"X-CSRF": c.csrf, "content-type": "application/octet-stream"},
+    )
+
+
+def test_envoi_par_morceaux_avec_reprise(env, tmp_path):
+    c = client(env, "admin")
+    vid = _video(tmp_path)
+    r = _ouvrir(c, len(vid), kind="dars", date="2026-11-03")
+    assert r.status_code == 200, r.text
+    uid = r.json()["id"]
+    assert r.json()["chunk"] <= 90 * 1024**2
+    cut = len(vid) // 2
+    assert _morceau(c, uid, 0, vid[:cut]).json()["received"] == cut
+    # reprise : un morceau rejoué à un mauvais offset est refusé et dit où reprendre
+    r = _morceau(c, uid, 0, vid[:cut])
+    assert r.status_code == 409 and r.json()["received"] == cut
+    assert c.get(f"{UP}/{uid}").json()["received"] == cut
+    assert _morceau(c, uid, cut, vid[cut:]).json()["received"] == len(vid)
+    r = c.post(f"{UP}/{uid}/complete", headers={"X-CSRF": c.csrf})
+    assert r.status_code == 200, r.text
+    rid = r.json()["run"]
+    assert rid.startswith("20261103_")
+    rd = env["root"] / "state" / rid
+    data = runs.load(rd / runs.SESSIONS)
+    assert Path(data["recordings"][0]).read_bytes() == vid
+    assert traitement.lire(rd)["0"]["etat"] == "attente"
+    assert one(env["conn"], models.Audit, action="import.video")
+    assert c.get(f"{UP}/{uid}").status_code == 404  # l'envoi est clos
+
+
+def test_envoi_incomplet_ou_trop_gros(env, tmp_path):
+    c = client(env, "admin")
+    uid = _ouvrir(c, 100).json()["id"]
+    assert _morceau(c, uid, 0, b"x" * 40).json()["received"] == 40
+    assert c.post(f"{UP}/{uid}/complete", headers={"X-CSRF": c.csrf}).status_code == 409
+    r = _morceau(c, uid, 40, b"x" * 61)  # dépasse la taille annoncée
+    assert r.status_code == 422
+    assert c.get(f"{UP}/{uid}").json()["received"] == 40  # le morceau refusé n'a rien laissé
+
+
+def test_envoi_refus_et_droits(env, tmp_path):
+    c = client(env, "admin")
+    assert _ouvrir(c, 10, filename="a.exe").status_code == 422
+    assert _ouvrir(c, 0).status_code == 422
+    assert _ouvrir(c, 51 * 1024**3).status_code == 422
+    assert _ouvrir(client(env, "imam"), 10).status_code == 403
+    assert c.post(UP, json={"size": "10", "filename": "a.mp4"}).status_code == 403  # pas de CSRF
+    uid = _ouvrir(c, 10).json()["id"]
+    assert _morceau(c, "../etc", 0, b"x").status_code == 404
+    assert c.delete(f"{UP}/{uid}", headers={"X-CSRF": c.csrf}).status_code == 200
+    assert c.get(f"{UP}/{uid}").status_code == 404

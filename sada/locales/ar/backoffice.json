@@ -212,5 +212,7 @@
   "Safety cap: from {min} to {max} minutes.": "الحد الأقصى للأمان: من {min} إلى {max} دقيقة.",
   "Silence that ends the night: from {min} to {max} minutes.": "الصمت الذي ينهي الليلة: من {min} إلى {max} دقيقة.",
   "{max} reciters at most.": "{max} قراء على الأكثر.",
-  "night {n}": "الليلة {n}"
+  "night {n}": "الليلة {n}",
+  "Chunk too large.": "الجزء كبير جداً.",
+  "Out of sequence.": "الجزء خارج التسلسل: يُستأنف الإرسال من الموضع المحدد."
 }

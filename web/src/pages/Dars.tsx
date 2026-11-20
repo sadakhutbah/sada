@@ -252,7 +252,7 @@ function ImportVideo() {
   const [erreur, setErreur] = useState("");
   const [recu, setRecu] = useState(false);
   const choix = useRef<HTMLInputElement>(null);
-  const requete = useRef<XMLHttpRequest | null>(null);
+  const requete = useRef<(() => void) | null>(null);
   const annule = useRef(false);
 
   // Closing the page during an upload would silently cut the file: the browser asks first.
@@ -282,11 +282,11 @@ function ImportVideo() {
     if (!fichier) { setErreur(t("dars.importNeedFile")); return; }
     setEnvoi(true); setPct(0); setErreur(""); setRecu(false);
     annule.current = false;
-    const { xhr, promesse } = api.importerVideo(fichier, {
+    const { annuler, promesse } = api.importerVideo(fichier, {
       filename: fichier.name, kind, title: titre.trim(), speaker: intervenant.trim(),
       series: serie.trim(), session_no: seance, date,
     }, setPct);
-    requete.current = xhr;
+    requete.current = annuler;
     try {
       await promesse;
       setRecu(true);
@@ -362,7 +362,7 @@ function ImportVideo() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[0.88rem] tabular-nums text-muted">{t("dars.importSending", { pct })}</span>
             <Btn variante="ghost" className="min-h-9 px-3 py-1.5 text-[0.88rem]"
-              onClick={() => { annule.current = true; requete.current?.abort(); }}>
+              onClick={() => { annule.current = true; requete.current?.(); }}>
               {t("dars.importCancel")}
             </Btn>
           </div>

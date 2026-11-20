@@ -212,5 +212,7 @@
   "Safety cap: from {min} to {max} minutes.": "Plafond de sécurité : de {min} à {max} minutes.",
   "Silence that ends the night: from {min} to {max} minutes.": "Silence qui termine la nuit : de {min} à {max} minutes.",
   "{max} reciters at most.": "{max} récitants au plus.",
-  "night {n}": "nuit {n}"
+  "night {n}": "nuit {n}",
+  "Chunk too large.": "Morceau trop volumineux.",
+  "Out of sequence.": "Morceau hors séquence : l'envoi reprend à l'offset indiqué."
 }

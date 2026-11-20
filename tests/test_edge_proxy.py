@@ -198,3 +198,12 @@ def test_public_answers_cache_headers(env):
     assert missing.headers["access-control-allow-origin"] == "*"
     # the console never lets the shared caches keep its pages
     assert pub.get("/api/live").headers["cache-control"] == "no-store"
+
+
+def test_tunnel_without_traefik_counts_the_visitor_not_cloudflared():
+    # Cloudflare Tunnel: the peer is the cloudflared pod, X-Forwarded-For is the visitor alone (no edge hop).
+    pod = "10.42.3.8"
+    assert client_ip(_Req(pod, x_forwarded_for=VISITOR, cf_connecting_ip=VISITOR)) == VISITOR
+    assert client_ip(_Req(pod, x_forwarded_for=f"1.2.3.4, {VISITOR}", cf_connecting_ip=VISITOR)) == VISITOR
+    # reaching the origin from outside the cluster network: nothing is believed
+    assert client_ip(_Req("198.51.100.4", x_forwarded_for=VISITOR, cf_connecting_ip="1.1.1.1")) == "198.51.100.4"

@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 from sqlalchemy import and_, distinct, func, or_, outerjoin, select, update
 from starlette.concurrency import run_in_threadpool
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from ...i18n import _
 from ...pipeline import verses as verses_mod
@@ -306,6 +306,82 @@ async def video_import(ctx: CtxDep):
         )
     except import_video.ImportRefuse as e:
         raise Invalid(str(e)) from e
+    db.audit(
+        ctx.conn,
+        ctx.mosque["id"],
+        ctx.user["id"],
+        "import.video",
+        ip=ctx.ip,
+        run=run,
+        type=meta.get("kind") or "dars",
+        titre=meta.get("title") or "",
+    )
+    return _ok(_("Video received: processing starts, follow it on the dashboard."), run=run)
+
+
+def _envoi_erreur(e: Exception):
+    if isinstance(e, import_video.EnvoiInconnu):
+        raise NotFound() from e
+    if isinstance(e, import_video.EnvoiDecale):
+        return JSONResponse({"ok": False, "message": _("Out of sequence."), "received": e.recu}, status_code=409)
+    raise Invalid(str(e)) from e
+
+
+@router.post("/imports/video/uploads")
+async def video_upload_open(ctx: CtxDep):
+    """Envoi par morceaux (≤ 90 Mo : limite du proxy Cloudflare) : ouvre l'envoi."""
+    ctx.need_csrf()
+    ctx.require("assign")
+    f = await ctx.body()
+    try:
+        size = int(f.get("size") or 0)
+        return _ok("", **import_video.envoi_ouvrir(ctx.mosque, ctx.user["id"], f, size))
+    except (import_video.ImportRefuse, ValueError) as e:
+        raise Invalid(str(e)) from e
+
+
+@router.get("/imports/video/uploads/{uid}")
+async def video_upload_state(uid: str, ctx: CtxDep):
+    ctx.require("assign")
+    try:
+        return _ok("", **import_video.envoi_etat(ctx.mosque, ctx.user["id"], uid))
+    except import_video.EnvoiInconnu as e:
+        raise NotFound() from e
+
+
+@router.put("/imports/video/uploads/{uid}")
+async def video_upload_chunk(uid: str, ctx: CtxDep, offset: int = Query(..., ge=0)):
+    ctx.need_csrf()
+    ctx.require("assign")
+    try:
+        recu = await import_video.envoi_morceau(ctx.mosque, ctx.user["id"], uid, offset, ctx.request.stream())
+    except (import_video.EnvoiInconnu, import_video.EnvoiDecale, import_video.ImportRefuse) as e:
+        return _envoi_erreur(e)
+    return _ok("", received=recu)
+
+
+@router.delete("/imports/video/uploads/{uid}")
+async def video_upload_cancel(uid: str, ctx: CtxDep):
+    ctx.need_csrf()
+    ctx.require("assign")
+    try:
+        import_video.envoi_annuler(ctx.mosque, ctx.user["id"], uid)
+    except import_video.EnvoiInconnu as e:
+        raise NotFound() from e
+    return _ok("")
+
+
+@router.post("/imports/video/uploads/{uid}/complete")
+async def video_upload_complete(uid: str, ctx: CtxDep):
+    ctx.need_csrf()
+    ctx.require("assign")
+    try:
+        meta = import_video._envoi_meta(db.mosque_dirs(ctx.mosque), uid, ctx.user["id"])[1]["meta"]
+        run = await run_in_threadpool(
+            import_video.envoi_finir, ctx.mosque, ctx.user["id"], uid, lambda m: print("[import]", m, flush=True)
+        )
+    except (import_video.EnvoiInconnu, import_video.EnvoiDecale, import_video.ImportRefuse) as e:
+        return _envoi_erreur(e)
     db.audit(
         ctx.conn,
         ctx.mosque["id"],
