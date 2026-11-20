@@ -4,6 +4,7 @@ import datetime as dt
 import io
 import re
 
+import arabic_reshaper
 import pytest
 
 pytest.importorskip("fastapi")
@@ -11,7 +12,7 @@ pypdf = pytest.importorskip("pypdf")
 
 from conftest import client, one, set_mosque  # noqa: E402
 
-from sada.backoffice import models, prayer_export, prayer_times  # noqa: E402
+from sada.backoffice import models, prayer_export, prayer_labels, prayer_times  # noqa: E402
 from sada.backoffice.api import public  # noqa: E402
 
 CALC = {"lat": "48.9", "lon": "2.3", "method": "uoif"}
@@ -90,16 +91,20 @@ def test_a_month_is_one_a4_portrait_page_with_the_mosque_the_days_and_the_jumua(
     box = reader.pages[0].mediabox
     assert (round(float(box.width)), round(float(box.height))) == (595, 842)  # A4 portrait
     text = _pages(r)[0]
-    assert "Mosquée Exemple" in text and "March 2027" in text and "Ramadan - Shawwal 1448" in text
-    assert len(re.findall(r"Fri \d+", text)) == 4 and text.count("Jumu'a") == 4  # the four Fridays of March 2027
-    assert text.count("13:00 / 14:15") == 4  # the jumu'a times stand in the Dhuhr column
-    assert "sadakhutbah.org" in text and "Times online" in text  # the Sada footer and the QR code's caption
+    assert "Mosquée Exemple" in text and "Mars 2027" in text and "Ramadan - Chawwal 1448" in text
+    assert "Horaires de prière" in text  # French by default, whatever the reader's language
     assert (
-        "Ramadan 1448" not in text
-    )  # March 2027 is not titled Ramadan, but its first days are still its last odd nights
-    assert "Night 27" in text and "Odd nights" in text
-    for day in ("Mon 1", "Wed 31"):
+        len(re.findall(r"Ven\. \d+", text)) == 4 and text.count("Jumu'a") == 5
+    )  # the four Fridays of March 2027 + the legend
+    assert text.count("13:00 / 14:15") == 4  # the jumu'a times stand in the Dhuhr column
+    assert "sadakhutbah.org" in text and "Horaires en ligne" in text  # the Sada footer and the QR code's caption
+    assert text.count("Ramadan 1448") == 8  # titled March, not Ramadan: its first eight days are the last ones of it
+    assert "Nuit du Destin" in text and "Nuits impaires" in text
+    for day in ("Lun. 1", "Mer. 31"):
         assert day in text
+    assert "1 Chawwal 1448" in text
+    for col in ("Fajr", "Chourouk", "Dhuhr", "Asr", "Maghrib", "Isha"):
+        assert col in text
     times = prayer_times.computed_day(
         prayer_times.read(env["conn"], _mosque(env))["calc"], _mosque(env), dt.date(2027, 3, 1)
     )
@@ -115,7 +120,7 @@ def test_a_period_gets_one_page_per_calendar_month(env):
     c = _choose(env)
     pages = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-01&end=2027-03-31"))
     assert len(pages) == 2
-    assert "February 2027" in pages[0] and "March 2027" in pages[1]
+    assert "Février 2027" in pages[0] and "Mars 2027" in pages[1]
     assert len(_pages(c.get(CONSOLE + "?format=pdf&year=2027"))) == 12
 
 
@@ -124,13 +129,14 @@ def test_ramadan_is_one_page_titled_ramadan_1448_with_its_odd_nights(env):
     pages = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-08&end=2027-03-08"))
     assert len(pages) == 1  # a whole Hijri month fills one page
     text = pages[0]
-    assert "Ramadan 1448" in text and "8 February - 8 March 2027" in text
-    assert "1 Ramadan" in text and "29 Ramadan" in text
-    assert "Night 27" in text and text.count("Night ") == 5  # the odd nights 21 to 29
-    assert "Laylat al-Qadr, night 27" in text and "Odd nights" in text  # the legend
-    assert len(re.findall(r"Fri \d+", text)) == 4 and text.count("Jumu'a") == 4
-    fr = _pages(c.get(CONSOLE + "?format=pdf&start=2027-02-08&end=2027-03-08", headers={"X-Sada-Lang": "fr"}))[0]
-    assert "Nuit 27" in fr and "HORAIRES DE PRIÈRE" in fr
+    assert "Ramadan 1448" in text and "8 février - 8 mars 2027" in text
+    assert "1 Ramadan 1448" in text and "29 Ramadan 1448" in text
+    assert (
+        text.count("Nuit ") == 6 and text.count("Nuit du Destin") == 2
+    )  # nights 21-29, the 27th being "du Destin", + legend
+    assert "Nuit 21" in text and "Nuit 29" in text and "Nuits impaires" in text
+    assert "Ven. 12" in text and len(re.findall(r"Ven\. \d+", text)) == 4 and text.count("Jumu'a") == 5  # + legend
+    assert "Horaires de prière" in text
 
 
 def test_the_footer_has_a_qr_code_only_for_a_published_timetable(env):
@@ -139,7 +145,7 @@ def test_the_footer_has_a_qr_code_only_for_a_published_timetable(env):
     c.ecrire("/settings/prayer", {"source": "computed", "calc": CALC, "public": "0"}, methode="PUT")
     hidden = c.get(CONSOLE + "?format=pdf&month=2027-03").content
     assert len(shown) > len(hidden)  # the QR code is drawn in the first one only
-    assert "Times online" not in _pages(c.get(CONSOLE + "?format=pdf&month=2027-03"))[0]
+    assert "Horaires en ligne" not in _pages(c.get(CONSOLE + "?format=pdf&month=2027-03"))[0]
     url = prayer_export.public_page_url("https://sada.example/", "ma-mosquee")
     assert url == "https://sada.example/api/v1/public/mosques/ma-mosquee/prayer-times/page"
 
@@ -158,13 +164,40 @@ def test_ramadan_asks_for_the_hijri_period_itself(env):
     assert len(_pages(r)) in (1, 2)
 
 
-def test_the_pdf_is_in_the_readers_language_and_survives_an_arabic_name(env):
+def test_the_pdf_is_in_the_mosques_language_not_the_readers_and_survives_an_arabic_name(env):
     c = _choose(env)
     set_mosque(env["conn"], env["mid"], name="مسجد النور – Café")
-    fr = _pages(c.get(CONSOLE + "?format=pdf&month=2027-03", headers={"X-Sada-Lang": "fr"}))[0]
-    assert "Mars 2027" in fr and "Ven" in fr and "Chourouk" in fr and "Hégire" in fr and "Café" in fr
-    ar = _pages(c.get(CONSOLE + "?format=pdf&month=2027-03", headers={"X-Sada-Lang": "ar"}))[0]
-    assert "March 2027" in ar  # Helvetica cannot draw Arabic: the English label stays, nothing breaks
+    for lang in ("fr", "en", "ar"):  # the reader's language does not change the printed wording
+        text = _pages(c.get(CONSOLE + "?format=pdf&month=2027-03", headers={"X-Sada-Lang": lang}))[0]
+        assert "Mars 2027" in text and "Ven. 5" in text and "Chourouk" in text and "Hégire" in text and "Café" in text
+
+
+def test_the_wording_comes_from_a_table_per_language_french_by_default(env):
+    assert prayer_labels.DEFAULT_LANG == "fr"
+    assert prayer_labels.labels() is prayer_labels.labels("fr") is prayer_labels.labels("xx")
+    assert prayer_labels.labels("fr-FR")["prayer_times"] == "Horaires de prière"
+    assert set(prayer_labels.LABELS["en"]) == set(prayer_labels.LABELS["fr"])  # a language fills every key
+    mosque = _mosque(env)
+    assert mosque
+    prayer_times.save(env["conn"], mosque, source="computed", public=True, jumua=["13:00"], cfg=CALC)
+    first, last = dt.date(2027, 3, 1), dt.date(2027, 3, 31)
+    en = pypdf.PdfReader(io.BytesIO(prayer_export.pdf_bytes(env["conn"], mosque, first, last, lang="en")))
+    text = en.pages[0].extract_text()
+    assert "March 2027" in text and "Sunrise" in text and "Fri 5" in text and "Prayer times" in text
+    assert prayer_export.hijri_text(dt.date(2027, 2, 8), "fr") == "1 Ramadan 1448"
+    assert prayer_export.hijri_text(dt.date(2027, 3, 9), "fr") == "1 Chawwal 1448"
+    assert prayer_export.hijri_text(dt.date(2027, 3, 9)) == "1 Shawwal 1448"  # the public page keeps its own
+
+
+def test_the_arabic_names_are_shaped_and_set_right_to_left(env):
+    c = _choose(env)
+    text = _pages(c.get(CONSOLE + "?format=pdf&month=2027-03"))[0]
+    for word in ("الفجر", "الشروق", "الظهر", "العصر", "المغرب", "العشاء"):
+        joined = arabic_reshaper.reshape(word)
+        assert joined != word and joined in text, word  # joined letters (presentation forms), read back right to left
+        # drawn left to right, so the glyphs are laid out in reverse: the first letter ends on the right
+        assert prayer_export.arabic_visual(word) == joined[::-1]
+    assert "?" not in text.replace("-", "")
 
 
 def test_a_manual_timetable_prints_the_days_it_has_and_a_dash_for_a_missing_time(env):
@@ -175,8 +208,8 @@ def test_a_manual_timetable_prints_the_days_it_has_and_a_dash_for_a_missing_time
         methode="PUT",
     )
     text = _pages(c.get(CONSOLE + "?format=pdf&month=2027-03"))[0]
-    assert "05:11" in text and "13:00 / 14:15" in text and "Fri 5" in text and "-" in text
-    assert "Mon 1" not in text  # nothing typed for that day: no line
+    assert "05:11" in text and "13:00 / 14:15" in text and "Ven. 5" in text and "-" in text
+    assert "Lun. 1" not in text  # nothing typed for that day: no line
     empty = c.get(CONSOLE + "?format=pdf&month=2027-04")
     assert empty.status_code == 422 and "No prayer time" in empty.json()["message"]
 

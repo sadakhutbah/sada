@@ -8,8 +8,10 @@ The PDF is drawn with ReportLab (BSD) and the Hijri date comes from `hijridate` 
 portrait page per calendar month of the period (a whole Hijri month, Ramadan, is one page): the Sada
 wordmark, the mosque's name, the period in both calendars, rows that fill the page, the Friday line
 with the jumu'a time(s), the odd nights of Ramadan, a footer with a QR code to the public page. The
-colours and fonts are the front's. The fonts carry Latin text: a label whose translation cannot be
-written with them (Arabic) stays in English, and characters they lack in a mosque's name become "?".
+The colours and fonts are the front's. The wording is the mosque's, not the reader's: French by
+default, from the tables of `prayer_labels` (the Arabic names of the prayers are printed under the
+column titles, shaped and set right to left). The Latin fonts cannot draw an Arabic mosque's name:
+the characters they lack become "?".
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
+import arabic_reshaper
+from bidi.algorithm import get_display
 from hijridate import Gregorian, Hijri
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode.qr import QrCodeWidget
@@ -36,6 +40,7 @@ from reportlab.pdfgen.pathobject import PDFPathObject
 
 from ..i18n import _, translate
 from . import prayer_times as pt
+from .prayer_labels import DEFAULT_LANG, PRAYER_AR, labels
 from .prayer_times import NoTimes
 
 MAX_DAYS = 366
@@ -147,10 +152,15 @@ def file_name(first: dt.date, last: dt.date, fmt: str) -> str:
 # ------------------------------------------------------------------ rows
 
 
-def hijri_text(day: dt.date) -> str:
-    """ "12 Ramadan 1448" (the month's name is transliterated, the same in every language)."""
+def hijri_month(h: Hijri, lang: str | None = None) -> str:
+    """The name of a Hijri month: transliterated (the library's) or, with `lang`, from the label table."""
+    return labels(lang)["hijri_months"][h.month - 1] if lang else h.month_name()
+
+
+def hijri_text(day: dt.date, lang: str | None = None) -> str:
+    """ "12 Ramadan 1448"; without `lang` the month's name is the transliterated one of the library."""
     h = Gregorian.fromdate(day).to_hijri()
-    return f"{h.day} {h.month_name()} {h.year}"
+    return f"{h.day} {hijri_month(h, lang)} {h.year}"
 
 
 def _own_source(conn, mosque: dict) -> dict:
@@ -196,17 +206,17 @@ _MARGIN = 14 * mm
 _HEADER_H = 50 * mm
 _FOOTER_H = 30 * mm
 _LEGEND_H = 13 * mm
-_HEAD_ROW = 9 * mm
+_HEAD_ROW = 13 * mm  # the column title and, under it, the Arabic name of the prayer
 _MAX_ROW = 12 * mm
-_COLS = (  # (header label, width in mm, alignment)
-    ("Date", 30, "left"),
-    ("Hijri", 36, "left"),
-    ("Fajr", 17, "center"),
-    ("Sunrise", 17, "center"),
-    ("Dhuhr", 28, "center"),
-    ("Asr", 17, "center"),
-    ("Maghrib", 19, "center"),
-    ("Isha", 18, "center"),
+_COLS = (  # (column key of the label table, width in mm, alignment)
+    ("date", 27, "left"),
+    ("hijri", 46, "left"),
+    ("fajr", 16, "center"),
+    ("sunrise", 19, "center"),
+    ("dhuhr", 24, "center"),
+    ("asr", 16, "center"),
+    ("maghrib", 19, "center"),
+    ("isha", 15, "center"),
 )
 ODD_NIGHT_EVES = (20, 22, 24, 26, 28)  # the odd nights 21..29 begin at Maghrib of the day before
 LAYLAT_AL_QADR_EVE = 26  # the night of the 27th
@@ -228,6 +238,7 @@ def _fontset() -> dict[str, str]:
             "sans": ("SadaSans", "SourceSans3-Regular.ttf", "Helvetica"),
             "sans-bold": ("SadaSans-Semibold", "SourceSans3-Semibold.ttf", "Helvetica-Bold"),
             "serif": ("SadaSerif", "EBGaramond-SemiBold.ttf", "Times-Bold"),
+            "arabic": ("SadaArabic", "NotoNaskhArabic-SemiBold.ttf", ""),  # no built-in font draws Arabic
         }
         found = {}
         for key, (name, file, fallback) in names.items():
@@ -241,14 +252,20 @@ def _fontset() -> dict[str, str]:
     return _fonts
 
 
-def hijri_span(rows: list[dict]) -> str:
+def hijri_span(rows: list[dict], lang: str | None = None) -> str:
     a = Gregorian.fromdate(rows[0]["date"]).to_hijri()
     b = Gregorian.fromdate(rows[-1]["date"]).to_hijri()
+    ma, mb = hijri_month(a, lang), hijri_month(b, lang)
     if (a.year, a.month) == (b.year, b.month):
-        return f"{a.month_name()} {a.year}"
+        return f"{ma} {a.year}"
     if a.year == b.year:
-        return f"{a.month_name()} - {b.month_name()} {a.year}"
-    return f"{a.month_name()} {a.year} - {b.month_name()} {b.year}"
+        return f"{ma} - {mb} {a.year}"
+    return f"{ma} {a.year} - {mb} {b.year}"
+
+
+def arabic_visual(text: str) -> str:
+    """Arabic text ready to be drawn glyph by glyph: letters joined (shaping), then put in visual order (RTL)."""
+    return get_display(arabic_reshaper.reshape(text))
 
 
 # The wordmark is the one of assets/logo (a single path of M L H V Q Z commands), drawn as a vector.
@@ -361,9 +378,11 @@ def _put(c: canvas.Canvas, x: float, w: float, y: float, text: str, align: str, 
         c.drawString(x + 2 * mm, y, text)
 
 
-def _gregorian_span(first: dt.date, last: dt.date) -> str:
-    a = f"{first.day} {label(MONTHS[first.month - 1])}"
-    b = f"{last.day} {label(MONTHS[last.month - 1])} {last.year}"
+def _gregorian_span(first: dt.date, last: dt.date, L: dict) -> str:
+    def day(d: dt.date) -> str:
+        return f"{L['first'] if d.day == 1 else d.day} {L['months'][d.month - 1]}"
+
+    a, b = day(first), f"{day(last)} {last.year}"
     if first.year != last.year:
         a += f" {first.year}"
     return f"{a} - {b}"
@@ -384,7 +403,7 @@ def _is_ramadan(month_rows: list[dict]) -> bool:
     return all(Gregorian.fromdate(r["date"]).to_hijri().month == RAMADAN for r in month_rows)
 
 
-def _header(c: canvas.Canvas, mosque: dict, month_rows: list[dict], f: dict[str, str]) -> None:
+def _header(c: canvas.Canvas, mosque: dict, month_rows: list[dict], f: dict[str, str], L: dict, lang: str) -> None:
     first, last = month_rows[0]["date"], month_rows[-1]["date"]
     c.setFillColor(DEEPER)
     c.rect(0, _H - _HEADER_H, _W, _HEADER_H, stroke=0, fill=1)
@@ -398,8 +417,8 @@ def _header(c: canvas.Canvas, mosque: dict, month_rows: list[dict], f: dict[str,
     c.setFont(f["sans-bold"], 8.5)
     text = c.beginText(_MARGIN, _H - 12 * mm)
     text.setFont(f["sans-bold"], 8.5)
-    text.setCharSpace(2)
-    text.textOut(label("Prayer times").upper())
+    text.setCharSpace(0.8)
+    text.textOut(L["prayer_times"])
     text.setCharSpace(0)  # the spacing belongs to the graphics state: it must not leak to the next text
     c.drawText(text)
 
@@ -411,13 +430,13 @@ def _header(c: canvas.Canvas, mosque: dict, month_rows: list[dict], f: dict[str,
 
     if _is_ramadan(month_rows):
         h = Gregorian.fromdate(first).to_hijri()
-        title, sub = f"{h.month_name()} {h.year}", _gregorian_span(first, last)
+        title, sub = f"{hijri_month(h, lang)} {h.year}", _gregorian_span(first, last, L)
     else:
-        title = f"{label(MONTHS[first.month - 1])} {first.year}"
+        title = f"{L['months'][first.month - 1].capitalize()} {first.year}"
         if (first.year, first.month) != (last.year, last.month):  # one Hijri month over two calendar months
-            title, sub = _gregorian_span(first, last), hijri_span(month_rows)
+            title, sub = _gregorian_span(first, last, L), hijri_span(month_rows, lang)
         else:
-            sub = hijri_span(month_rows)
+            sub = hijri_span(month_rows, lang)
     c.setFillColor(LEAF)
     c.setFont(f["serif"], 19)
     c.drawString(_MARGIN, _H - 34 * mm, title)
@@ -426,13 +445,13 @@ def _header(c: canvas.Canvas, mosque: dict, month_rows: list[dict], f: dict[str,
     c.drawString(_MARGIN, _H - 41 * mm, sub)
 
 
-def _legend(c: canvas.Canvas, y: float, f: dict[str, str], ramadan: bool, left: float, right: float) -> None:
+def _legend(c: canvas.Canvas, y: float, f: dict[str, str], ramadan: bool, left: float, L: dict) -> None:
     x = left
     c.setFont(f["sans"], 8)
-    items = [(FRIDAY, LEAF2, label("Friday prayer"))]
+    items = [(FRIDAY, LEAF2, L["legend_friday"])]
     if ramadan:
-        items.append((ODDNIGHT, GREEN, label("Odd nights of the last ten days")))
-        items.append((DEEP, LEAF, label("Laylat al-Qadr, night {n}", n=27)))
+        items.append((ODDNIGHT, GREEN, L["legend_odd_nights"]))
+        items.append((DEEP, LEAF, L["legend_qadr"].format(n=27)))
     for fill, edge, text in items:
         c.setFillColor(fill)
         c.setStrokeColor(edge)
@@ -444,10 +463,10 @@ def _legend(c: canvas.Canvas, y: float, f: dict[str, str], ramadan: bool, left: 
     if ramadan:
         c.setFillColor(MUTED)
         c.setFont(f["sans"], 7.2)
-        c.drawString(left, y - 4.6 * mm, label("The odd nights begin at Maghrib, the evening before."))
+        c.drawString(left, y - 4.6 * mm, L["legend_note"])
 
 
-def _footer(c: canvas.Canvas, st: dict, f: dict[str, str], url: str) -> None:
+def _footer(c: canvas.Canvas, st: dict, f: dict[str, str], url: str, L: dict) -> None:
     c.setStrokeColor(LINE)
     c.setLineWidth(0.5)
     c.line(_MARGIN, _FOOTER_H, _W - _MARGIN, _FOOTER_H)
@@ -462,10 +481,10 @@ def _footer(c: canvas.Canvas, st: dict, f: dict[str, str], url: str) -> None:
         x += size + 5 * mm
         c.setFillColor(INK)
         c.setFont(f["sans-bold"], 9.5)
-        c.drawString(x, 19 * mm, label("Times online, always up to date"))
+        c.drawString(x, 19 * mm, L["online"])
         c.setFillColor(MUTED)
         c.setFont(f["sans"], 8.5)
-        c.drawString(x, 14.5 * mm, label("Scan the code with your phone."))
+        c.drawString(x, 14.5 * mm, L["scan"])
         note_y = 9.5 * mm
     else:
         note_y = 15 * mm
@@ -474,7 +493,7 @@ def _footer(c: canvas.Canvas, st: dict, f: dict[str, str], url: str) -> None:
     c.drawString(
         x,
         note_y,
-        label("Calculated prayer times.") if st["source"] == "computed" else label("Times set by the mosque."),
+        L["computed"] if st["source"] == "computed" else L["manual"],
     )
     # the signature, right
     c.setFillColor(GREEN)
@@ -488,13 +507,14 @@ def _footer(c: canvas.Canvas, st: dict, f: dict[str, str], url: str) -> None:
         c.drawRightString(_W - _MARGIN, 18 * mm, "Sada")
 
 
-def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url: str) -> None:
+def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url: str, lang: str) -> None:
     f = _fontset()
+    L = labels(lang)
     widths = [w * mm for _k, w, _a in _COLS]
     total = sum(widths)
     left = (_W - total) / 2
     ramadan_page = any(Gregorian.fromdate(r["date"]).to_hijri().month == RAMADAN for r in month_rows)  # legend
-    _header(c, mosque, month_rows, f)
+    _header(c, mosque, month_rows, f, L, lang)
 
     top = _H - _HEADER_H - 8 * mm
     bottom = _FOOTER_H + _LEGEND_H + 3 * mm
@@ -506,11 +526,16 @@ def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url:
     c.setFillColor(LEAF)
     x = left
     for (key, _w, align), w in zip(_COLS, widths, strict=True):
-        _put(c, x, w, top - _HEAD_ROW + 3 * mm, label(key), align, f["sans-bold"], 10)
+        ar = PRAYER_AR.get(key)
+        if ar and f["arabic"]:  # the Latin name above, the Arabic one under it (shaped, right to left)
+            _put(c, x, w, top - 5.2 * mm, L["col"][key], align, f["sans-bold"], 10)
+            _put(c, x, w, top - _HEAD_ROW + 2.4 * mm, arabic_visual(ar), align, f["arabic"], 10.5)
+        else:
+            _put(c, x, w, top - _HEAD_ROW / 2 - 1.2 * mm, L["col"][key], align, f["sans-bold"], 10)
         x += w
     y = top - _HEAD_ROW
 
-    jumua_word = label("Jumu'a")
+    jumua_word = L["jumua"]
     for i, r in enumerate(month_rows):
         h = Gregorian.fromdate(r["date"]).to_hijri()
         friday = r["date"].weekday() == 4
@@ -528,8 +553,8 @@ def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url:
         base = y - row_h / 2 - fs * 0.17
         dhuhr = " / ".join(r["jumua"]) if friday and r["jumua"] else r["times"]["dhuhr"]
         cells = [
-            f"{label(WEEKDAYS[r['date'].weekday()])} {r['date'].day}",
-            f"{h.day} {h.month_name()}",
+            f"{L['weekdays'][r['date'].weekday()]} {r['date'].day}",
+            f"{h.day} {hijri_month(h, lang)} {h.year}",
             r["times"]["fajr"],
             r["times"]["sunrise"],
             dhuhr,
@@ -551,7 +576,8 @@ def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url:
             c.setFont(f["sans-bold"], tag_size)
             c.drawRightString(left + widths[0] - 2 * mm, base, jumua_word)
         if night:
-            tag = label("Night {n}", n=h.day + 1)
+            tag = L["laylat_al_qadr"] if qadr else L["night"].format(n=h.day + 1)
+            tag_size = _fit(tag, f["sans-bold"], tag_size, 22 * mm, 5.5)
             c.setFont(f["sans-bold"], tag_size)
             tx = left + widths[0] + widths[1] - 2 * mm
             c.setFillColor(LEAF if qadr else GREEN)
@@ -567,8 +593,8 @@ def _page(c: canvas.Canvas, mosque: dict, st: dict, month_rows: list[dict], url:
     c.setStrokeColor(LINE)
     c.setLineWidth(0.6)
     c.rect(left, y, total, top - y, stroke=1, fill=0)
-    _legend(c, _FOOTER_H + 9 * mm, f, ramadan_page, left, left + total)
-    _footer(c, st, f, url)
+    _legend(c, _FOOTER_H + 9 * mm, f, ramadan_page, left, L)
+    _footer(c, st, f, url, L)
 
 
 def public_page_url(base: str, slug: str) -> str:
@@ -576,8 +602,11 @@ def public_page_url(base: str, slug: str) -> str:
     return f"{base.rstrip('/')}/api/v1/public/mosques/{quote(slug)}/prayer-times/page"
 
 
-def pdf_bytes(conn, mosque: dict, first: dt.date, last: dt.date, base_url: str = "") -> bytes:
+def pdf_bytes(conn, mosque: dict, first: dt.date, last: dt.date, base_url: str = "", lang: str = DEFAULT_LANG) -> bytes:
     """The calendar of the period: a page per calendar month, one page for a whole Hijri month (Ramadan).
+
+    `lang` is the language of the printed wording (a key of `prayer_labels.LABELS`, French by default):
+    the mosque's, not the reader's.
 
     `base_url` is the address of this Sada: with it, and when the mosque publishes its times, the
     footer carries a QR code to the public page.
@@ -591,7 +620,7 @@ def pdf_bytes(conn, mosque: dict, first: dt.date, last: dt.date, base_url: str =
     c.setCreator("Sada")
     c.setAuthor("Sada")
     for month_rows in groups(rows):
-        _page(c, mosque, st, month_rows, url)
+        _page(c, mosque, st, month_rows, url, lang)
         c.showPage()
     c.save()
     return buf.getvalue()
