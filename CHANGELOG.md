@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0-alpha.6](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.5...sada-v0.1.0-alpha.6) (2026-11-20)
+
+
+### Bug Fixes
+
+* **monitoring:** allow the application's metric labels in the collector ([#56](https://github.com/sadakhutbah/sada/issues/56)) ([4a80301](https://github.com/sadakhutbah/sada/commit/4a80301bfc574226eb0e494fed6c81fd0e83bc77))
+* **monitoring:** expose mosque label and align dashboard with real metrics ([#54](https://github.com/sadakhutbah/sada/issues/54)) ([b01fdc1](https://github.com/sadakhutbah/sada/commit/b01fdc1f6c4f6fd95bb3c7c35bffb8f02a76dbfe))
+* **telemetry:** label back-office jobs and LLM calls with their mosque ([#57](https://github.com/sadakhutbah/sada/issues/57)) ([3db1cc6](https://github.com/sadakhutbah/sada/commit/3db1cc6d40eb0069f6ddc5f0f5f9526240620146))
+
 ## [0.1.0-alpha.5](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.4...sada-v0.1.0-alpha.5) (2026-11-19)
 
 
