@@ -51,8 +51,12 @@ Pour une mosquée **calculée** ou **manuelle** (case « Page publique des horai
 GET /api/v1/public/mosques/<slug>/prayer-times               # aujourd'hui
 GET /api/v1/public/mosques/<slug>/prayer-times?date=2027-03-21
 GET /api/v1/public/mosques/<slug>/prayer-times?month=2027-03
-GET /api/v1/public/mosques/<slug>/prayer-times/page?month=2027-03     # la page : un mois, avec les boutons PDF et CSV
+GET /api/v1/public/mosques/<slug>/prayer-times/page                  # l'écran : horloge, dates grégorienne et hégire, prières, compte à rebours
+GET /api/v1/public/mosques/<slug>/prayer-times/page?month=2027-03    # le calendrier du mois, avec les boutons PDF et CSV
+GET /api/v1/public/mosques/<slug>/prayer-times/days?from=2027-03-21  # aujourd'hui et demain pour l'écran (dates, adhan, iqama, Jumu'a)
 GET /api/v1/public/mosques/<slug>/prayer-times/export?format=pdf&month=2027-03   # ou format=csv, start=…&end=…, ramadan=1
 ```
+
+L'**écran** (`/page`) est fait pour une télévision en paysage (bouton « Plein écran ») comme pour un téléphone en portrait : grande horloge, date grégorienne et date de l'hégire (Umm al-Qura, le jour change à minuit), les prières en français et en arabe avec l'adhan, l'iqama quand la mosquée en publie une, le Jumu'a le vendredi s'il est saisi, la prochaine prière en évidence avec son compte à rebours (puis celui de l'iqama). Il change de jour tout seul à minuit, heure de la mosquée. Ce qui n'est pas publié n'est pas affiché. Polices, feuille de style et script sont servis par Sada (`/api/v1/public/assets/…`), rien ne vient d'un tiers. Un direct en cours n'y figure pas encore : aucune donnée publique n'indique l'état du direct d'une mosquée.
 
 Sans connexion, uniquement les horaires (jamais une adresse ni un réglage). Lisible depuis n'importe quelle page web (CORS), mise en cache une minute, limitée à 60 requêtes par minute et par client (réponse 429 avec `Retry-After`). Une mosquée Mawaqit répond 404 avec l'adresse de sa page Mawaqit.

@@ -10,13 +10,15 @@ answer carries the times only (no address, no identifier, no setting), may be re
 from __future__ import annotations
 
 import datetime as dt
+import re
+from pathlib import Path
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from ... import prayer_calc as calc
 from ...i18n import _
-from .. import edge, orm, prayer_times, public_page
+from .. import edge, orm, prayer_screen, prayer_times, public_page
 from .. import prayer_export as export
 from ..context import ConnDep
 from ..models import Mosque
@@ -139,7 +141,11 @@ def prayer_times_page(slug: str, request: Request, conn: ConnDep, month: str = "
         return HTMLResponse(
             public_page.refused(body, status), status_code=status, headers={"Cache-Control": "no-store"}
         )
-    month = month or _this_month(mosque)
+    if not month:
+        # The screen (clock, next prayer): what a mosque shows to its public. A month asks for the table.
+        today = prayer_times.local_today(mosque)
+        page = prayer_screen.render(slug, mosque, prayer_screen.days(conn, mosque, today), today.strftime("%Y-%m"))
+        return HTMLResponse(page, headers={"Cache-Control": edge.public_cache_control()})
     try:
         first, last = export.period(prayer_times.local_today(mosque), month=month)
         rows = export.days(conn, mosque, first, last)
@@ -154,6 +160,45 @@ def prayer_times_page(slug: str, request: Request, conn: ConnDep, month: str = "
     page = public_page.render(slug, mosque, month, rows, prayer_times.read(conn, mosque))
     return HTMLResponse(
         page, headers={"Cache-Control": edge.public_cache_control(), "Vary": "Accept-Language, X-Sada-Lang"}
+    )
+
+
+@router.get("/public/mosques/{slug}/prayer-times/days")
+def prayer_times_days(slug: str, request: Request, conn: ConnDep, first: str = Query("", alias="from")):
+    """Today and tomorrow as the screen shows them (dates, times, iqama, jumu'a): what the page's script
+    asks for at midnight and now and then. `?from=YYYY-MM-DD` starts elsewhere."""
+    wait = _limiter.hit(client_ip(request))
+    if wait:
+        return _json({"error": _("too many requests")}, 429, Retry_After=int(wait) + 1)
+    mosque, refused = _published(conn, slug)
+    if refused:
+        return _json(refused[1], refused[0])
+    try:
+        day = dt.date.fromisoformat(first) if first else prayer_times.local_today(mosque)
+    except ValueError:
+        return _json({"error": _("refused"), "message": _("Use ?date=YYYY-MM-DD or ?month=YYYY-MM.")}, 422)
+    return _json(prayer_screen.days(conn, mosque, day), cache=True)
+
+
+_ASSET = re.compile(r"^(prayer-screen\.(css|js)|fonts\.css|fonts/[A-Za-z0-9_-]+\.woff2)$")
+_ASSET_TYPES = {"css": "text/css; charset=utf-8", "js": "text/javascript; charset=utf-8", "woff2": "font/woff2"}
+_STATIC = Path(__file__).resolve().parent.parent / "static"
+
+
+@router.get("/public/assets/{name:path}")
+def public_asset(name: str):
+    """The few files of the public screen (style, script, fonts), served under the public prefix: the
+    public host forwards only `/api/v1/public/*` to the back office, never `/static`."""
+    path = _STATIC / ("fonts/fonts.css" if name == "fonts.css" else name)
+    if not _ASSET.match(name) or not path.is_file():
+        return Response("Not Found", status_code=404, headers={"Cache-Control": "no-store"})
+    body = path.read_bytes()
+    if name == "fonts.css":  # the stylesheet names its files under /static
+        body = body.replace(b"/static/fonts/", b"/api/v1/public/assets/fonts/")
+    return Response(
+        body,
+        media_type=_ASSET_TYPES[name.rsplit(".", 1)[1]],
+        headers={"Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*"},
     )
 
 

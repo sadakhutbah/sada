@@ -178,3 +178,38 @@ retour arrière que DNS-01.
 - Plages Cloudflare : `curl -s https://api.cloudflare.com/client/v4/ips` ; comparer à
   `clusters/prod/kube-system/traefik-config.yaml` (gitops) et à `CLOUDFLARE_RANGES` (application).
 - Contrôle du plan Terraform : toujours lire le plan ; il ne doit montrer que les changements prévus.
+
+## 8. URL propre `https://sadakhutbah.org/m/<slug>` (écran public des horaires)
+
+Décision du Maître (2026-11-20) : l'écran public des horaires vit sous le domaine du site vitrine, pas sous
+`console`. Constat : `sadakhutbah.org` est le Worker `sada` du dépôt `sada-landing` (assets Astro, domaine
+personnalisé) ; aujourd'hui `/api/v1/public/*` et `/m/*` y répondent 404 car ni la liaison `PUBLIC_EDGE` (PR
+sada-landing#1) ni le Worker `sada-public-edge` (sada-gitops, branche `feat/cloudflare-proxy-prep`) ne sont
+déployés. L'écran charge sa feuille de style, son script, ses polices et ses données sous
+`/api/v1/public/…` (préfixe déjà confié au Worker public) : il ne dépend d'aucune route `/static`.
+
+Ce que contient la PR `sada` : l'écran (`/page`), `/days`, `/assets/*`. Ce qu'il reste à faire, hors de ce dépôt
+(rien n'est appliqué) :
+
+1. `sada-gitops`, `cloudflare/worker/src/index.ts` : élargir `PUBLIC_PATH` et `ALLOWED_PARAMS` :
+   - chemins : `…/prayer-times(/export|/page|/days)?` et `^/api/v1/public/assets/(prayer-screen\.(css|js)|fonts\.css|fonts/[A-Za-z0-9_-]+\.woff2)$` ;
+   - paramètre `from` (pour `/days`) ;
+   - `/days` : fraîcheur courte (60 s) comme le reste ; les assets peuvent garder `max-age` de l'origine (3600 s).
+   - tests : un cas par nouveau chemin, un refus pour `/api/v1/public/assets/../x`.
+2. `sada-landing`, `worker/index.js` (dans la PR de liaison `PUBLIC_EDGE`) : réécrire `/m/<slug>` (et `/m/<slug>/`) en
+   `/api/v1/public/mosques/<slug>/prayer-times/page`, sans redirection (l'adresse du navigateur reste `/m/<slug>`) :
+   ```js
+   const m = url.pathname.match(/^\/m\/([a-z0-9][a-z0-9-]{0,120})\/?$/);
+   if (env.PUBLIC_EDGE && m) {
+     url.pathname = `/api/v1/public/mosques/${m[1]}/prayer-times/page`;
+     return env.PUBLIC_EDGE.fetch(new Request(url, request));
+   }
+   ```
+   (à placer avant `ASSETS.fetch`, à côté du `startsWith("/api/v1/public/")` existant ; la query `?month=` passe telle quelle).
+3. Ordre : Worker `sada-public-edge` (étape 5 ci-dessus), puis fusion de la PR landing. Vérifier ensuite
+   `curl -sI https://sadakhutbah.org/m/test` (200, `x-sada-edge`), la page dans un navigateur (horloge, polices) et
+   `/m/inconnu` (404).
+4. Après coup seulement : faire pointer le QR du PDF et les liens de la console vers `/m/<slug>`
+   (`edge.public_page_url`), une fois l'adresse en ligne ; d'ici là le QR garde l'adresse `/api/v1/public/…/page`.
+
+Retour arrière : revert de la PR landing ; l'écran reste joignable par `/api/v1/public/mosques/<slug>/prayer-times/page`.

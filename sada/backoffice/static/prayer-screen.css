@@ -1,0 +1,110 @@
+/* Public prayer-time screen. Palette and fonts are Sada's (web/src/styles.css): night green, paper ink,
+   leaf gold; EB Garamond / Source Sans 3 / Amiri, all served from this site. */
+:root {
+  --night: #0b1a14;
+  --deeper: #12261e;
+  --deep: #1c3a2e;
+  --green: #3d6b57;
+  --leaf: #e2c27a;
+  --ink: #12261e;
+  --night-ink: #f0ead9;
+  --night-muted: #b3b8a6;
+  --line: #2c4a3c;
+  --serif: "EB Garamond", "Instrument Serif", Georgia, serif;
+  --sans: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --arabic: "Amiri", "Traditional Arabic", "Noto Naskh Arabic", serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--night); color: var(--night-ink); font: 400 16px/1.4 var(--sans); }
+a { color: var(--leaf); }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--leaf); outline-offset: 3px; }
+[hidden] { display: none !important; }
+.ar { font-family: var(--arabic); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.screen {
+  /* One unit for everything: it follows the smaller of the two axes of the window. */
+  --u: min(.95vw, 1.55vh);
+  min-height: 100vh; min-height: 100dvh;
+  padding: calc(var(--u) * 1.6) calc(var(--u) * 3);
+  display: grid; gap: calc(var(--u) * 1.2) calc(var(--u) * 3);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "top top" "clock list" "next list" "foot foot";
+  grid-template-rows: auto 1fr 1fr auto;
+  background: radial-gradient(120% 90% at 20% 0%, var(--deeper) 0%, var(--night) 70%);
+}
+.top { grid-area: top; display: flex; justify-content: space-between; align-items: center; gap: 1em; }
+.mosque { margin: 0; font: 600 calc(var(--u) * 3.4)/1.1 var(--serif); color: var(--leaf); letter-spacing: .01em; }
+.fs { font: 600 calc(var(--u) * 1.3)/1 var(--sans); color: var(--night-ink); background: transparent; border: 1px solid var(--night-muted);
+  border-radius: 999px; padding: .6em 1.2em; cursor: pointer; }
+.fs:hover { background: var(--deep); }
+
+.clockbox { grid-area: clock; align-self: end; }
+.clock { display: block; font: 600 calc(var(--u) * 13.5)/1 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.dates { margin: calc(var(--u) * .8) 0 0; font: 400 calc(var(--u) * 2.3)/1.3 var(--serif); color: var(--night-ink); }
+.dates #hijri { color: var(--leaf); white-space: nowrap; }
+
+.next { grid-area: next; align-self: start; background: var(--deep); border: 1px solid var(--line); border-radius: calc(var(--u) * 1.2);
+  padding: calc(var(--u) * 1.6) calc(var(--u) * 2.2); }
+.kicker { margin: 0; font: 600 calc(var(--u) * 1.4)/1.2 var(--sans); text-transform: uppercase; letter-spacing: .12em; color: var(--night-muted); }
+.nextname { margin: calc(var(--u) * .4) 0 0; font: 600 calc(var(--u) * 4)/1.1 var(--serif); display: flex; gap: .5em; align-items: baseline; flex-wrap: wrap; }
+.nextname .ar { font-size: 1.1em; font-weight: 400; color: var(--leaf); }
+.count { margin: calc(var(--u) * .4) 0 0; font: 600 calc(var(--u) * 7)/1 var(--sans); font-variant-numeric: tabular-nums; color: var(--leaf); }
+
+.list { grid-area: list; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
+.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(var(--u) * .55); }
+.row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: calc(var(--u) * 1);
+  padding: calc(var(--u) * .6) calc(var(--u) * 1.6); border: 1px solid var(--line); border-radius: calc(var(--u) * 1);
+  background: rgba(28, 58, 46, .45); }
+.rows.noiqama .row { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+.nm { display: flex; flex-direction: column; }
+.nm .fr { font: 600 calc(var(--u) * 2.5)/1.15 var(--serif); }
+.nm .ar { font-size: calc(var(--u) * 2); line-height: 1.1; color: var(--night-muted); }
+.ad, .iq { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.lbl { font: 600 calc(var(--u) * 1.05)/1.2 var(--sans); text-transform: uppercase; letter-spacing: .1em; color: var(--night-muted); }
+.row time { font: 600 calc(var(--u) * 3.2)/1.05 var(--sans); font-variant-numeric: tabular-nums; }
+.rows:not(.noiqama) .row { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+.rows:not(.noiqama) .row time { font-size: calc(var(--u) * 2.7); }
+.rows:not(.noiqama) .row.sun time { font-size: calc(var(--u) * 2.4); }
+.row.sun { background: transparent; border-style: dashed; }
+.row.sun time { font-size: calc(var(--u) * 2.8); color: var(--night-muted); }
+.row.sun .nm .fr { font-size: calc(var(--u) * 2.2); }
+.row.jumua { border-color: var(--leaf); }
+.row.past { opacity: .72; }
+.row.now { background: var(--leaf); border-color: var(--leaf); color: var(--ink); opacity: 1; }
+.row.now .ar, .row.now .lbl { color: var(--ink); }
+.none, .note { margin: calc(var(--u) * 1) 0 0; color: var(--night-muted); font-size: calc(var(--u) * 1.6); }
+
+.foot { grid-area: foot; display: flex; flex-wrap: wrap; gap: 1.5em; justify-content: center; font-size: calc(var(--u) * 1.4); }
+.plain { max-width: 40rem; margin: 20vh auto; padding: 0 1rem; text-align: center; }
+
+/* Phone, portrait: one column, readable at arm's length. */
+@media (max-aspect-ratio: 1/1), (max-width: 760px) {
+  .screen {
+    --u: min(2.4vw, 1.2vh);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "clock" "next" "list" "foot";
+    grid-template-rows: auto;
+    gap: calc(var(--u) * 1.6);
+    padding: calc(var(--u) * 2) calc(var(--u) * 2);
+  }
+  .mosque { font-size: calc(var(--u) * 3.2); }
+  .clock { font-size: calc(var(--u) * 8); text-align: center; }
+  .dates { text-align: center; font-size: calc(var(--u) * 2.5); }
+  .dates .sep { display: none; }
+  .dates span { display: block; }
+  .clockbox { align-self: start; }
+  .nextname { font-size: calc(var(--u) * 4); }
+  .count { font-size: calc(var(--u) * 7); }
+  .row { padding: calc(var(--u) * 1.2) calc(var(--u) * 1.6); }
+  .nm .fr { font-size: calc(var(--u) * 2.8); }
+  .nm .ar { font-size: calc(var(--u) * 2.4); }
+  .row time { font-size: calc(var(--u) * 3.6); }
+  .lbl { font-size: calc(var(--u) * 1.3); }
+  .rows:not(.noiqama) .row time { font-size: calc(var(--u) * 3); }
+  .rows:not(.noiqama) .nm .fr { font-size: calc(var(--u) * 2.4); }
+  .fs { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) { .row { transition: background .3s, color .3s; } }
+@media print { .fs, .foot { display: none; } }
+.row.jumua .ad { grid-column: 2 / -1; }
