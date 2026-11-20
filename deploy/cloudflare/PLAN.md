@@ -1,5 +1,13 @@
 # Plan : console derrière le proxy Cloudflare, ingest unique sans proxy
 
+> **État réel (2026-11-20, décision du Maître : option A).** `console` est un A proxifié vers l'IP du serveur ;
+> pare-feu : 80/443 ouverts aux seules plages Cloudflare ; `ingest` gris (1935/tcp, 8890/udp) ; SSL « Full
+> (strict) » par règle de configuration limitée à `console.sadakhutbah.org` (hors Terraform, mode de zone
+> inchangé) ; le renouvellement HTTP-01 traverse le proxy (port 80, sans redirection) ; Traefik fait confiance
+> aux plages Cloudflare (sada-gitops#4). Un tunnel `cloudflared` a été essayé puis retiré (import vidéo et
+> corps > 100 Mo). Les défauts Terraform `console_proxied` et `restrict_http_to_cloudflare` sont donc `true`.
+
+
 Statut : PRÉPARÉ, RIEN D'APPLIQUÉ. Aucune de ces étapes ne s'exécute à la fusion d'une PR sauf celles
 marquées « Flux » (déploiement automatique du chart/gitops). `terraform apply`, `wrangler deploy` et les
 changements de DNS/pare-feu/Cloudflare sont des gestes manuels de l'opérateur, après accord du Maître.

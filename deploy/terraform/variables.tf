@@ -114,7 +114,7 @@ variable "labels" {
 variable "console_proxied" {
   description = "Put the console record behind the Cloudflare proxy (orange cloud). Only once the certificate renews without HTTP-01 (DNS-01 or origin certificate) and Traefik trusts the Cloudflare ranges: see deploy/cloudflare/PLAN.md."
   type        = bool
-  default     = false
+  default     = true # production state since 2026-11-20 (HTTP-01 passes through the proxy on port 80)
 }
 
 variable "ingest_host" {
@@ -138,5 +138,5 @@ variable "manage_zone_ssl_strict" {
 variable "restrict_http_to_cloudflare" {
   description = "Limit 80/tcp and 443/tcp on the firewall to the Cloudflare ranges (needs console_proxied = true, otherwise the console and ACME HTTP-01 become unreachable). RTMP/SRT stay governed by media_cidrs."
   type        = bool
-  default     = false
+  default     = true # production state since 2026-11-20
 }
