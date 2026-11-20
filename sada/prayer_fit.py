@@ -171,6 +171,17 @@ def deduce(calendar: list, lat: float, lon: float, timezone: str, year: int) -> 
                 off, gaps = _best_offset(ref, got, prayer)
                 if best is None or _rank(gaps, off) < best[0]:
                     best = (_rank(gaps, off), angle, rule, off, None, got)
+        # fine pass: tenths of a degree around the winner, so an offset is not used to imitate an angle
+        if best is not None:
+            _r, centre, rule, _o, _d, _g = best
+            for tenth in range(-6, 7):
+                angle = round(centre + tenth / 10, 1)
+                if not calc.ANGLE_RANGE[0] <= angle <= calc.ANGLE_RANGE[1]:
+                    continue
+                got = year_of(replace(base, **{field_: angle}, high_lats=rule))
+                off, gaps = _best_offset(ref, got, prayer)
+                if _rank(gaps, off) < best[0]:
+                    best = (_rank(gaps, off), angle, rule, off, None, got)
         return best
 
     fajr_best = search("fajr", FAJR_ANGLES, "fajr_angle")
@@ -226,3 +237,25 @@ def deduce(calendar: list, lat: float, lon: float, timezone: str, year: int) -> 
     )
     errors = {p: _stats(_gaps(ref, final, p, 0)) for p in ORDER}
     return {"params": params, "errors": errors, "worst": max((e["max"] or 0) for e in errors.values())}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m sada.prayer_fit <mawaqit address> [--year 2027]`: print the settings that reproduce the
+    mosque's published year and the gap in minutes, prayer by prayer. Nothing is stored."""
+    import argparse
+    import json
+
+    from . import mawaqit
+
+    ap = argparse.ArgumentParser(prog="sada.prayer_fit", description=main.__doc__)
+    ap.add_argument("url", help="address of the mosque's Mawaqit page")
+    ap.add_argument("--year", type=int, default=dt.date.today().year)
+    args = ap.parse_args(argv)
+    pub = mawaqit.fetch_calendar(args.url)
+    found = deduce(pub["calendar"], pub["lat"], pub["lon"], pub["timezone"], args.year)
+    print(json.dumps({"lat": pub["lat"], "lon": pub["lon"], **found}, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
