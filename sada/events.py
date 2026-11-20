@@ -14,11 +14,11 @@ The programme lives in a JSON file editable by hand (`data/events.json`):
 
 An event has either a `date` + `time` (one-off), or a weekly `recurrence`:
 `weekday` (in French), and the time — absolute (`time`) or relative to a prayer (`after` = dhuhr, asr,
-maghrib, isha + `offset_min`), recomputed each day with the Mawaqit times.
+maghrib, isha + `offset_min`), recomputed each day with the day's prayer times (whatever their source).
 
 Tarawih (Ramadan night prayers) is the one kind that is daily: it carries a `period`
 (`{"from": "2027-02-08", "until": "2027-03-09"}`) and nothing happens outside it. Its session time
-is the END of isha (`isha_end`: the isha iqama from Mawaqit, else the adhan plus a usual delay,
+is the END of isha (`isha_end`: the isha iqama of the mosque's timetable, else the adhan plus a usual delay,
 plus the estimated length of isha), so isha itself is never broadcast; `offset_min` is the delay
 from there to the tarawih proper. It is not kept in the programme: the back office builds it from
 the mosque's Tarawih settings.
@@ -45,7 +45,7 @@ KIND_LABELS = {"khutba": "Khutba", "dars": "Dars", "conference": "Conférence", 
 #: How a tarawih is broadcast: `audio` = sound with a fixed full screen (the default), `video` =
 #: camera and sound (chosen deliberately), `off` = not broadcast (never sent to the engine).
 TARAWIH_MODES = ("off", "audio", "video")
-#: Isha iqama unknown (no Mawaqit iqama): the prayer is assumed to start this long after the adhan.
+#: Isha iqama unknown (the timetable has none): the prayer is assumed to start this long after the adhan.
 ISHA_IQAMA_DELAY_MIN = 10.0
 #: Default estimated length of the isha prayer itself, from its iqama.
 ISHA_DEFAULT_MIN = 10.0
@@ -316,7 +316,7 @@ def _parse_tarawih(raw: dict, idx: int, where: str) -> Event:
 
 
 def isha_end(day: dt.date, times: Mapping[str, object] | None, isha_min: float = ISHA_DEFAULT_MIN):
-    """Estimated end of isha on that day: its iqama (Mawaqit, `isha_iqama`) when published, else
+    """Estimated end of isha on that day: its iqama (`isha_iqama`) when published, else
     the adhan plus the usual delay, plus the length of the prayer. None without an isha time."""
     times = times or {}
     if times.get("isha_iqama"):
@@ -437,7 +437,7 @@ def next_instances(
     days: int = 21,
     times_for: Callable[[dt.date], Mapping[str, object] | None] | None = None,
 ) -> list[EventInstance]:
-    """Next events after `after` (Mawaqit times supplied by `times_for`)."""
+    """Next events after `after` (prayer times supplied by `times_for`)."""
     events = [e for e in events if e.publish]
     found: list[EventInstance] = []
     for k in range(days + 1):

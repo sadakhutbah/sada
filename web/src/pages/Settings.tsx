@@ -5,6 +5,7 @@ import { liste } from "../format";
 import { Btn, Card, Field, Tabs, Title, inputClass, toucher } from "../ui";
 import { idOnglet, idPanneau } from "../onglets";
 import { RecitersEditor } from "../RecitersEditor";
+import PrayerSettings from "./PrayerSettings";
 
 type Message = { ok: boolean; texte: string } | null;
 
@@ -35,7 +36,8 @@ const CHAMPS_ECRAN = [
   { champ: "foot", large: true },
 ] as const;
 
-const CHAMPS_MOSQUEE = ["name", "timezone", "mawaqit_url"] as const;
+// The Mawaqit address moved to the Prayer times tab (which saves it with the source).
+const CHAMPS_MOSQUEE = ["name", "timezone"] as const;
 const CHAMPS_TARAWIH = [
   "tw_mode", "tw_start", "tw_end", "tw_offset", "tw_max", "tw_confirm",
   "tw_after_isha", "tw_isha", "tw_silence", "tw_reciters", "tw_nights",
@@ -272,9 +274,12 @@ export default function Settings() {
             <datalist id="fuseaux">{fuseaux.map((z) => <option key={z} value={z} />)}</datalist>
           </Field>
         </div>
-        <Field label={t("settings.mawaqit")} aide={t("settings.mawaqitHelp")}>
-          <input className={inputClass} value={f.mawaqit_url} onChange={maj("mawaqit_url")} placeholder="https://mawaqit.net/fr/…" inputMode="url" />
-        </Field>
+      </div>
+    ),
+    // Its own editor (a source, a calculation, a month grid): saved by its own buttons, never by the form's.
+    prayer: (
+      <div onKeyDown={(e) => { if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault(); }}>
+        <PrayerSettings d={d.prayer} onSaved={charger} />
       </div>
     ),
     logo: (
@@ -587,7 +592,7 @@ export default function Settings() {
     label: t(`settings.tabs.${s}`),
     eteint: !contenu[s],
   }));
-  const avecEnregistrement = onglet !== "logo" && !!contenu[onglet];
+  const avecEnregistrement = onglet !== "logo" && onglet !== "prayer" && !!contenu[onglet];
 
   return (
     <div className="grid gap-4">

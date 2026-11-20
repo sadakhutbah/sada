@@ -10,6 +10,9 @@ dependencies = [
   "webrtcvad-wheels",
   "opencv-python-headless",
   "numpy",
+  "praytimes>=2.3.2",  # PrayTimes.org algorithm (LGPL-3.0, compatible with the AGPL): calculated prayer times
+  "reportlab>=4",  # BSD: the printable PDF calendar of the prayer times
+  "hijridate>=2.6",  # MIT: Hijri date (Umm al-Qura) of the PDF calendar and of Ramadan
   "pillow",
   "rapidfuzz",
   "faster-whisper",
@@ -31,7 +34,7 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.66b2",
 ]
 [dependency-groups]
-dev = ["pytest"]
+dev = ["pytest", "pypdf"]
 
 [tool.setuptools]
 packages = ["sada", "sada.pipeline", "sada.backoffice"]
@@ -40,6 +43,7 @@ packages = ["sada", "sada.pipeline", "sada.backoffice"]
 "sada" = ["models/*.onnx", "locales/*/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = ["ignore:.*maxsplit.*:DeprecationWarning:praytimes.*"]
 
 [tool.fastapi]
 entrypoint = "sada.backoffice.asgi:app"

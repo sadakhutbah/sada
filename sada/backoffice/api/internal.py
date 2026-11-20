@@ -22,8 +22,8 @@ from .. import (
     internal,
     live_input,
     live_watch,
-    mawaqit_store,
     orm,
+    prayer_times,
     storage,
     tarawih,
 )
@@ -133,13 +133,13 @@ def mosque_events(request: Request, conn: ConnDep, port: int = 0):
 
 @router.get("/internal/times")
 def mosque_times(request: Request, conn: ConnDep, port: int = 0):
-    """Mawaqit times of the calling orchestrator's mosque, through the per-mosque cache."""
+    """Today's prayer times of the calling orchestrator's mosque, from whichever source the mosque chose."""
     mid = _caller(request, conn, port)
     if isinstance(mid, JSONResponse):
         return mid
     mosque = orm.first(conn, Mosque, id=mid)
     try:
-        return {"mosque_id": mid, "times": mawaqit_store.times(conn, mosque)}
+        return {"mosque_id": mid, "times": prayer_times.times(conn, mosque)}
     except Exception as e:  # noqa: BLE001 — no source at all: the orchestrator falls back locally
         return JSONResponse({"error": str(e)}, status_code=503)
 

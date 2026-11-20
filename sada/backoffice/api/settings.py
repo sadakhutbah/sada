@@ -25,6 +25,7 @@ from .. import (
     instance,
     live_input,
     orm,
+    prayer_times,
     publish,
     tarawih,
     tenant_config,
@@ -40,6 +41,7 @@ router = APIRouter()
 
 SECTIONS = (
     "mosque",
+    "prayer",
     "logo",
     "screens",
     "live",
@@ -121,6 +123,7 @@ def settings(ctx: CtxDep):
         "gabarit": gabarit_mod.view(ctx.mosque),
         "processing": _processing_view(ctx.mosque),
         "tarawih": tarawih.view(ctx.conn, ctx.mosque["id"]),
+        "prayer": prayer_times.view(ctx.conn, ctx.mosque),
     }
 
 

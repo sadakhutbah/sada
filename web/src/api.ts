@@ -246,6 +246,29 @@ export const api = {
   orchestrateur: (mid: number, url: string, token: string) =>
     ecrire<{ ok: boolean; message: string; mosque: PlatformMosque }>("PUT", `/platform/mosques/${mid}/orchestrator`, { url, token }),
   tarawih: (corps: Record<string, unknown>) => ecrire<any>("PUT", "/settings/tarawih", corps),
+  /** Prayer times: the source and its options, a calculated preview (nothing saved), the Mawaqit deduction. */
+  prayerSave: (corps: Record<string, unknown>) => ecrire<any>("PUT", "/settings/prayer", corps),
+  prayerPreview: (calc: Record<string, unknown>, month: string) => ecrire<any>("POST", "/settings/prayer/preview", { calc, month }),
+  prayerDeduce: (mawaqit_url: string) => ecrire<any>("POST", "/settings/prayer/deduce", { mawaqit_url }),
+  prayerDays: (month: string) => demande<any>(`/settings/prayer/days?month=${encodeURIComponent(month)}`),
+  prayerDaysSave: (month: string, days: Record<string, string>[]) => ecrire<any>("PUT", "/settings/prayer/days", { month, days }),
+  prayerImport: (csv: string) => ecrire<any>("POST", "/settings/prayer/import", { csv }),
+  /** The year as a CSV file, downloaded by the browser (the session cookie authorises it). */
+  prayerExportUrl: (year: number) => `/api/v1/settings/prayer/export?year=${year}`,
+  /** A PDF calendar or a CSV of a period, as a file to save: a refusal comes back as a readable message
+   *  (an anchor would save the error as if it were the file). */
+  prayerExport: async (q: Record<string, string>): Promise<{ blob: Blob; nom: string }> => {
+    const r = await fetch(`/api/v1/settings/prayer/export?${new URLSearchParams(q)}`, {
+      credentials: "same-origin", headers: { "X-Sada-Lang": i18n.language || "fr" },
+    });
+    if (r.status === 401) { surExpiration?.(); throw new ApiError(401, "connexion requise"); }
+    if (!r.ok) {
+      const json = await r.json().catch(() => null);
+      throw new ApiError(r.status, (json && (json.message || json.error)) || `${r.status} ${r.statusText}`);
+    }
+    const nom = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") || "")?.[1] ?? `prayer-times.${q.format}`;
+    return { blob: await r.blob(), nom };
+  },
   traitement: (clips: string, enabled: boolean) =>
     ecrire<any>("PUT", "/settings/processing", { clips, enabled: enabled ? "1" : "0" }),
   testerModele: () => ecrire<any>("POST", "/platform/model/test"),

@@ -48,6 +48,9 @@ backoffice:
   port: 8090
   # "" = automatic: Secure cookies when the Ingress serves HTTPS.
   secureCookies: ""
+  # Proxies whose X-Forwarded-For / X-Real-IP are believed (the public page's rate limit counts the real
+  # visitor). "" = loopback and private ranges (the Traefik pod); a comma-separated list of CIDRs replaces it.
+  trustedProxies: ""
   # Automatic import of finished runs, in seconds (0 = disabled).
   importEvery: 60
   # Search by meaning (multilingual-e5-small, int8 ONNX, ~135 MB on the data volume, ~0.5 GB RSS once

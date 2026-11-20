@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import destinations, gabarit_antenne, mawaqit, notify, runs, screens, source, telemetry, upload
+from . import destinations, gabarit_antenne, mawaqit, notify, prayers, runs, screens, source, telemetry, upload
 from . import events as events_mod
 from .api import make_server
 from .clock import SimClock, parse_hhmm
@@ -213,24 +213,24 @@ class Orchestrator:
 
     @property
     def prayer_times(self) -> dict:
-        """Today's times ("after Isha" etc.); empty if Mawaqit is silent."""
-        return mawaqit.prayer_times(self.mawaqit_data or {})
+        """Today's times ("after Isha" etc.); empty if the source is silent."""
+        return prayers.prayer_times(self.times_data or {})
 
     def _load_times(self) -> list[str]:
-        self.mawaqit_data = None
+        self.times_data = None
         self._times_fallback = False
         if self.cfg.jumua_times_override:
             log.info(_("Times forced by the config: {times}", times=self.cfg.jumua_times_override))
             return list(self.cfg.jumua_times_override)
         try:
             # the back office keeps each mosque's cache; the local file only if it is unreachable
-            d = mawaqit.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
+            d = prayers.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
             if d is None:
                 d = mawaqit.get_jumua(self.cfg.mawaqit_url, self.cfg.mawaqit_cache)
-            self.mawaqit_data = d
+            self.times_data = d
             log.info(
                 _(
-                    "Mawaqit ({name}): jumua={jumua} — origin: {origin}",
+                    "Times ({name}): jumua={jumua} — origin: {origin}",
                     name=d.get("name"),
                     jumua=d["jumua_list"],
                     origin=d.get("origin"),
@@ -239,7 +239,7 @@ class Orchestrator:
             if d["jumua_list"]:
                 return d["jumua_list"]
         except Exception as e:
-            log.error(_("Mawaqit unavailable and no cache: {error}", error=e))
+            log.error(_("Prayer times unavailable and no cache: {error}", error=e))
         self._times_fallback = True
         log.warning(_("Fallback: default times 12:30 / 13:30"))
         return ["12:30", "13:30"]
@@ -295,7 +295,7 @@ class Orchestrator:
 
     def _fetch_plan(self):
         """(times, programme) from the back office, None where it is still unreachable."""
-        times = mawaqit.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
+        times = prayers.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
         program = events_mod.from_backoffice(self.cfg.backoffice_url, self.cfg.api_port, log=log.info)
         if times is None and program is None:
             delay = max(0.0, self._retry_at - time.monotonic())
@@ -306,11 +306,11 @@ class Orchestrator:
     def _apply_plan(self, times: dict | None, program: list | None, sig: Signals):
         """Times / programme received late: today's sessions are replanned where they stand."""
         if times is not None and times.get("jumua_list"):
-            self.mawaqit_data, self.times = times, list(times["jumua_list"])
+            self.times_data, self.times = times, list(times["jumua_list"])
             self._times_fallback = False
             log.info(
                 _(
-                    "Mawaqit ({name}): jumua={jumua} — origin: {origin}",
+                    "Times ({name}): jumua={jumua} — origin: {origin}",
                     name=times.get("name"),
                     jumua=times["jumua_list"],
                     origin=times.get("origin"),

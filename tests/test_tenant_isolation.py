@@ -269,15 +269,15 @@ def test_times_cached_per_mosque(env, intruder):
 
 
 def test_orchestrator_reads_times_from_backoffice():
-    from sada import mawaqit
+    from sada import prayers
 
-    d = mawaqit.from_backoffice("http://bo", 0, fetch=lambda u, t: {"times": {"jumua": "13:15", "origin": "live"}})
+    d = prayers.from_backoffice("http://bo", 0, fetch=lambda u, t: {"times": {"jumua": "13:15", "origin": "live"}})
     assert d["jumua_list"] == ["13:15"]
 
     def down(u, t):
         raise OSError("down")
 
-    assert mawaqit.from_backoffice("http://bo", 0, fetch=down) is None
+    assert prayers.from_backoffice("http://bo", 0, fetch=down) is None
 
 
 def test_stream_key_per_mosque(env, intruder):

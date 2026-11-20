@@ -340,6 +340,49 @@ tarawih = sa.Table(
     sa.Column("updated_at", sa.Text),
 )
 
+# Where a mosque's prayer times come from (migration 21): Mawaqit (read live, never copied or
+# published by Sada), calculated from the mosque's coordinates, or typed by the mosque. One row per
+# mosque; no row = Mawaqit when an address is set, else nothing chosen yet.
+prayer_settings = sa.Table(
+    "prayer_settings",
+    metadata,
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), primary_key=True),
+    sa.Column(
+        "source",
+        sa.Text,
+        sa.CheckConstraint("source IN ('mawaqit', 'computed', 'manual')"),
+        nullable=False,
+        server_default=_d("'mawaqit'"),
+    ),
+    # Calculation settings (JSON, see `sada.prayer_calc.params_from`) and the iqama delays after the adhan.
+    sa.Column("calc", sa.Text, nullable=False, server_default=_d("'{}'")),
+    # Whether the read-only public endpoint answers for this mosque (never for a Mawaqit one).
+    sa.Column("public", sa.Integer, nullable=False, server_default=_d("1")),
+    # Jumu'a times ("HH:MM", at most three), JSON list: weekly, so not part of the daily rows.
+    sa.Column("jumua", sa.Text, nullable=False, server_default=_d("'[]'")),
+    sa.Column("updated_at", sa.Text),
+)
+
+# Prayer times a mosque entered itself: one row per mosque and day, "HH:MM" or '' (not set). They are the
+# whole timetable of a manual mosque, and per-day corrections over the calculation of a computed one.
+prayer_times = sa.Table(
+    "prayer_times",
+    metadata,
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), primary_key=True),
+    sa.Column("day", sa.Text, primary_key=True),  # YYYY-MM-DD, the mosque's local date
+    sa.Column("fajr", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("sunrise", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("dhuhr", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("asr", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("maghrib", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("isha", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("fajr_iqama", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("dhuhr_iqama", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("asr_iqama", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("maghrib_iqama", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("isha_iqama", sa.Text, nullable=False, server_default=_d("''")),
+)
+
 screen_texts = sa.Table(
     "screen_texts",
     metadata,
@@ -586,6 +629,14 @@ class Storage(Base):
 
 class Tarawih(Base):
     __table__ = tarawih
+
+
+class PrayerSettings(Base):
+    __table__ = prayer_settings
+
+
+class PrayerDay(Base):
+    __table__ = prayer_times
 
 
 class ScreenText(Base):

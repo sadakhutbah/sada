@@ -88,6 +88,14 @@ DOCUMENTS = (
         "resume_en": "what to obtain from each platform, where to enter it, and what the connector does not do",
     },
     {
+        "slug": "horaires-de-priere",
+        "slug_en": "prayer-times",
+        "titre_fr": "Horaires de prière",
+        "titre_en": "Prayer times",
+        "resume_fr": "Mawaqit, calcul ou saisie : choisir la source, l'import CSV, la page publique en lecture seule",
+        "resume_en": "Mawaqit, calculation or typed: choosing the source, CSV import, the read-only public page",
+    },
+    {
         "slug": "rediffusions",
         "slug_en": "recordings",
         "titre_fr": "Rediffusions et compartiment S3",
@@ -198,7 +206,8 @@ def create_app(
         resp.headers["Referrer-Policy"] = "same-origin"
         # Front files carry a fingerprint in their name: they are kept in the cache.
         # Everything else (API, index.html) must never be served from a cache.
-        if not request.url.path.startswith(("/static", "/media", "/assets")):
+        # (the public endpoints set their own: short, shared, read-only)
+        if not request.url.path.startswith(("/static", "/media", "/assets", "/api/v1/public/")):
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
