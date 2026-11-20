@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0-alpha.8](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.7...sada-v0.1.0-alpha.8) (2026-11-20)
+
+
+### Features
+
+* **monitoring:** scrape kubelet/cAdvisor for pod CPU and memory panels ([#60](https://github.com/sadakhutbah/sada/issues/60)) ([23a2bab](https://github.com/sadakhutbah/sada/commit/23a2bab3c9ac43fec4a0140e2407506479f53e88))
+* **prayer-times:** own prayer-time sources, calculated and manual, independent of Mawaqit ([#62](https://github.com/sadakhutbah/sada/issues/62)) ([878ec14](https://github.com/sadakhutbah/sada/commit/878ec1451b0889f0d2cfe5ebf659e486cf1c22bc))
+
 ## [0.1.0-alpha.7](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.6...sada-v0.1.0-alpha.7) (2026-11-20)
 
 
