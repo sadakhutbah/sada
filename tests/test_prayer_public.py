@@ -41,7 +41,7 @@ def test_computed_mosque_publishes_today_without_any_login(env):
 def test_headers_cache_and_cors(env):
     _choose(env, "computed")
     h = client(env).get(URL).headers
-    assert h["access-control-allow-origin"] == "*" and h["cache-control"] == "public, max-age=60"
+    assert h["access-control-allow-origin"] == "*" and h["cache-control"].startswith("public, max-age=60")
 
 
 def test_nothing_private_leaks(env):

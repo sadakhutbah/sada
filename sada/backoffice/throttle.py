@@ -9,6 +9,8 @@ import threading
 import time
 from collections import OrderedDict, deque
 
+from .edge import CLOUDFLARE_RANGES
+
 #: Where the proxy that fronts the back office (Traefik in the cluster) connects from: loopback, private
 #: and carrier-grade NAT ranges (pod and node networks). SADA_TRUSTED_PROXIES replaces the list
 #: (comma-separated addresses or CIDRs; "none" trusts no proxy, so forwarded headers are ignored).
@@ -31,24 +33,50 @@ def _ip(text: str):
         return None
 
 
+def _trusted(env: str, default: str) -> tuple:
+    return _networks(os.environ.get(env) or default)
+
+
+def peer_trusted(request) -> bool:
+    """The socket peer is a proxy of ours (Traefik in the cluster): its forwarded headers are believed."""
+    peer_ip = _ip(request.client.host) if request.client else None
+    return peer_ip is not None and any(
+        peer_ip in net for net in _trusted("SADA_TRUSTED_PROXIES", DEFAULT_TRUSTED_PROXIES)
+    )
+
+
 def client_ip(request) -> str:
     """The visitor's address. Behind the proxy the socket peer is the proxy itself, so its
     X-Forwarded-For (then X-Real-IP) is read, but only when the peer is a trusted proxy: from anyone
     else the headers are forged and ignored. X-Forwarded-For is walked from the right, skipping the
-    trusted proxies, so a value the visitor prepends cannot pick the address that is counted."""
+    trusted proxies, so a value the visitor prepends cannot pick the address that is counted.
+
+    Behind Cloudflare the right-most hop that is not ours is a Cloudflare edge address. Only then is
+    ``CF-Connecting-IP`` believed (anyone reaching the origin directly could send it); edge ranges are
+    also skipped when walking, so a missing header still resolves to the visitor, not to the edge."""
     peer = request.client.host if request.client else "?"
     peer_ip = _ip(peer)
     if peer_ip is None:
         return peer
-    trusted = _networks(os.environ.get("SADA_TRUSTED_PROXIES") or DEFAULT_TRUSTED_PROXIES)
+    trusted = _trusted("SADA_TRUSTED_PROXIES", DEFAULT_TRUSTED_PROXIES)
     if not any(peer_ip in net for net in trusted):
         return peer
+    edge = _trusted("SADA_CLOUDFLARE_PROXIES", CLOUDFLARE_RANGES)
+    seen_edge = False
     for hop in reversed((request.headers.get("x-forwarded-for") or "").split(",")):
         ip = _ip(hop)
         if ip is None:
             break  # garbage: stop trusting what is to its left
-        if not any(ip in net for net in trusted):
-            return str(ip)
+        if any(ip in net for net in trusted):
+            continue
+        if any(ip in net for net in edge):
+            if not seen_edge:
+                seen_edge = True
+                cf = _ip(request.headers.get("cf-connecting-ip") or "")
+                if cf is not None:
+                    return str(cf)
+            continue
+        return str(ip)
     real = _ip(request.headers.get("x-real-ip") or "")
     return str(real) if real is not None else peer
 

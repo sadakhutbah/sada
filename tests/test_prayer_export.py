@@ -269,7 +269,7 @@ def test_the_public_export_needs_no_login_and_follows_the_public_switch(env):
     a = _choose(env)
     r = client(env).get(PUBLIC + "/export?format=pdf&month=2027-03")  # no session at all
     assert len(_pages(r)) == 1
-    assert r.headers["cache-control"] == "public, max-age=60"
+    assert r.headers["cache-control"].startswith("public, max-age=60")
     csv = client(env).get(PUBLIC + "/export?format=csv&month=2027-03")
     assert csv.status_code == 200 and csv.text.count("\n") == 32
     default = client(env).get(PUBLIC + "/export")  # a PDF of the current month

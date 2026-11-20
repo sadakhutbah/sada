@@ -19,6 +19,6 @@ Then, for each mosque:
   kubectl -n {{ .Release.Namespace }} exec -it deploy/backoffice -- \
     python -m sada.backoffice mosque --slug <slug> --publish-key --orchestrator-url http://orchestrator-<slug>:{{ .Values.orchestrator.apiPort }}
 
-Streams (OBS), on the server's public IPv4:
-  RTMP  rtmp://<server-ip>:1935/live/<slug>?user=<slug>&pass=<stream key>
-  SRT   srt://<server-ip>:8890?streamid=publish:live/<slug>:<slug>:<stream key>
+Streams (OBS), on the ingest host (DNS only, grey cloud, pointing at the node):
+  RTMP  rtmp://{{ .Values.backoffice.ingestHost | default "ingest.sadakhutbah.org" }}:1935/live/<slug>?user=<slug>&pass=<stream key>
+  SRT   srt://{{ .Values.backoffice.ingestHost | default "ingest.sadakhutbah.org" }}:8890?streamid=publish:live/<slug>:<slug>:<stream key>

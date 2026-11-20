@@ -24,6 +24,7 @@ from ..context import (
     open_mosque,
 )
 from ..models import Khutba, User
+from ..throttle import client_ip
 from .common import _mosque, _user
 
 
@@ -57,7 +58,7 @@ async def login(request: Request, conn: ConnDep):
     username = str(f.get("username", "")).strip()
     password = str(f.get("password", ""))
     pre = request.cookies.get(PRE_COOKIE)
-    ip = request.client.host if request.client else "?"
+    ip = client_ip(request)
     if not pre or not secrets.compare_digest(pre, str(f.get("pre", ""))):
         return JSONResponse({"error": "challenge"}, status_code=403)
     lim = request.app.state.limiter

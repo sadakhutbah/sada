@@ -13,7 +13,7 @@ from ... import mawaqit
 from ... import prayer_calc as calc
 from ... import prayer_fit as fit
 from ...i18n import _
-from .. import db, instance, prayer_times
+from .. import db, edge, prayer_times
 from .. import prayer_export as export
 from ..context import CtxDep, Invalid
 from .common import _ok
@@ -203,7 +203,7 @@ def prayer_export(
             prayer_times.local_today(ctx.mosque), year=year, month=month, start=start, end=end, ramadan_=ramadan
         )
         body = (
-            export.pdf_bytes(ctx.conn, ctx.mosque, first, last, instance.base(str(ctx.request.base_url)))
+            export.pdf_bytes(ctx.conn, ctx.mosque, first, last, edge.public_base(str(ctx.request.base_url)))
             if format == "pdf"
             else export.csv_text(ctx.conn, ctx.mosque, first, last)
         )

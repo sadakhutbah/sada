@@ -92,7 +92,7 @@ export default function Settings() {
   const [rapport, setRapport] = useState<RapportImport | null>(null);
   const [importe, setImporte] = useState(false);
   const [guide, setGuide] = useState({ agent: "", humain: "", docs: "", agentEn: "", humainEn: "", docsEn: "" });
-  const [cle, setCle] = useState<{ obs_server: string; obs_key: string } | null>(null);
+  const [cle, setCle] = useState<{ obs_server: string; obs_key: string; obs_srt?: string } | null>(null);
   const fichier = useRef<HTMLInputElement>(null);
   const gabaritFichier = useRef<HTMLInputElement>(null);
 
@@ -193,7 +193,7 @@ export default function Settings() {
     if (entree.has_key && !window.confirm(t("settings.keyConfirm"))) return;
     try {
       const r = await api.newStreamKey();
-      setCle({ obs_server: r.obs_server, obs_key: r.obs_key });
+      setCle({ obs_server: r.obs_server, obs_key: r.obs_key, obs_srt: r.obs_srt });
       setEntree((e) => ({ ...e, has_key: true }));
     } catch (err: any) {
       setEssai({ ok: false, detail: err.message });
@@ -338,6 +338,10 @@ export default function Settings() {
                     <input className={`${inputClass} font-mono text-[0.85rem]`} value={cle.obs_server} readOnly aria-label={t("onboarding.pushServer")} />
                     <input className={`${inputClass} font-mono text-[0.85rem]`} value={cle.obs_key} readOnly aria-label={t("settings.keyLabel")}
                       onFocus={(e) => e.target.select()} />
+                    {cle.obs_srt && (
+                      <input className={`${inputClass} font-mono text-[0.85rem]`} value={cle.obs_srt} readOnly aria-label="SRT"
+                        onFocus={(e) => e.target.select()} />
+                    )}
                   </div>
                 ) : (
                   <div><Btn variante="ghost" onClick={nouvelleCle}>{entree.has_key ? t("settings.keyReset") : t("settings.keyCreate")}</Btn></div>

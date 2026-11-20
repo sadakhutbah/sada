@@ -20,7 +20,7 @@ from sqlalchemy import select
 from .. import paths
 from ..i18n import LanguageMiddleware, _
 from ..paths import ASSETS
-from . import auth, branding, content, db, docpage, gabarit, habillage, importer, live, orm, traitement
+from . import auth, branding, content, db, docpage, edge, gabarit, habillage, importer, live, orm, traitement
 from . import screens as screens_mod
 from .api import router as api_router
 from .context import (
@@ -184,6 +184,10 @@ def create_app(
     # ---------------------------------------------------------- middleware and errors
     @app.middleware("http")
     async def headers(request: Request, call_next):
+        # SADA_ALLOWED_HOSTS (unset = any): the console's names everywhere, SADA_PUBLIC_HOSTS (the apex
+        # that a Worker serves) only for the public read-only API. The probes reach the pod by its IP.
+        if request.url.path != "/health" and not edge.host_allowed(request.headers.get("host", ""), request.url.path):
+            return JSONResponse({"error": "unknown host"}, status_code=421, headers={"Cache-Control": "no-store"})
         resp = await call_next(request)
         csp = (
             "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; "

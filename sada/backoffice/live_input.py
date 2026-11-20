@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import select
 
 from ..i18n import _
-from . import db, orm
+from . import db, edge, orm
 from .models import LiveInput, Mosque
 
 MODES = ("camera", "push")
@@ -31,7 +31,7 @@ HOSTED_MODES = ("push",)
 CAMERA_SCHEMES = ("rtsp://", "rtsps://")
 DEFAULT_URL = "rtsp://127.0.0.1:8554/cam"
 # The relay listens on 1935 (RTMP, what OBS pushes) and re-serves the same stream on 8554 (RTSP).
-RELAY_RTMP_PORT = 1935
+RELAY_RTMP_PORT = edge.RTMP_PORT
 RELAY_RTSP_PORT = 8554
 PROBE_TIMEOUT_S = 6
 # Where the encoder reaches the relay: the same machine by default, the receiver service once
@@ -58,7 +58,12 @@ def slug(mosque) -> str:
 
 def push_rtmp(host: str, mosque) -> str:
     """Address to paste in OBS (its "Stream" server field)."""
-    return f"rtmp://{host}:{RELAY_RTMP_PORT}/live/{slug(mosque)}"
+    return edge.push_rtmp(host, slug(mosque))
+
+
+def push_srt(host: str, mosque, key: str = "") -> str:
+    """The SRT twin of `push_rtmp`: same host (one name for both), key included only when given."""
+    return edge.push_srt(host, slug(mosque), key)
 
 
 def push_rtsp(mosque) -> str:
@@ -122,6 +127,7 @@ def view(conn, mosque, host: str) -> dict:
         "modes": list(modes()),
         "configured": orm.first(conn, LiveInput, mosque_id=mosque["id"]) is not None,
         "push_rtmp": push_rtmp(host, mosque),
+        "push_srt": push_srt(host, mosque),
         "push_rtsp": push_rtsp(mosque),
         # whether a stream key exists; the key itself is never readable again
         "has_key": bool(conn.scalar(select(Mosque.id).where(Mosque.id == mosque["id"], Mosque.publish_key_hash != ""))),

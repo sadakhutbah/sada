@@ -51,6 +51,20 @@ backoffice:
   # Proxies whose X-Forwarded-For / X-Real-IP are believed (the public page's rate limit counts the real
   # visitor). "" = loopback and private ranges (the Traefik pod); a comma-separated list of CIDRs replaces it.
   trustedProxies: ""
+  # Behind the Cloudflare proxy: CF-Connecting-IP is believed only when the right-most outside hop of
+  # X-Forwarded-For is a Cloudflare address. "" = Cloudflare's published ranges built into the code.
+  cloudflareProxies: ""
+  # One name for the RTMP and SRT ingest shown to OBS (grey cloud in DNS: Cloudflare does not proxy it).
+  # "" = ingest.sadakhutbah.org (hosted platform).
+  ingestHost: ""
+  # Where the public pages/API are reached from outside (absolute addresses on public documents, such
+  # as the QR code of the PDF calendar). "" = the instance address, then the request's.
+  publicBaseUrl: ""
+  # Host names served ("" = any). When set, include the console host AND the in-cluster names the pods
+  # use ("backoffice", "backoffice.<namespace>.svc"), or the orchestrators lose the back office.
+  allowedHosts: ""
+  # Host names served for /api/v1/public/ only, e.g. "sadakhutbah.org" (the Worker's host). "" = none.
+  publicHosts: ""
   # Automatic import of finished runs, in seconds (0 = disabled).
   importEvery: 60
   # Search by meaning (multilingual-e5-small, int8 ONNX, ~135 MB on the data volume, ~0.5 GB RSS once

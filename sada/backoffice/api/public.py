@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from ... import prayer_calc as calc
 from ...i18n import _
-from .. import instance, orm, prayer_times, public_page
+from .. import edge, orm, prayer_times, public_page
 from .. import prayer_export as export
 from ..context import ConnDep
 from ..models import Mosque
@@ -25,7 +25,7 @@ from ..throttle import PUBLIC_CACHE, SlidingWindow, client_ip
 router = APIRouter()
 
 RATE_PER_MINUTE = 60
-MAX_AGE_S = 60
+MAX_AGE_S = edge.PUBLIC_MAX_AGE_S
 
 _limiter = SlidingWindow(RATE_PER_MINUTE, 60.0)
 _cache = PUBLIC_CACHE
@@ -41,7 +41,7 @@ def reset() -> None:
 def _json(body: dict, status: int = 200, cache: bool = False, **headers) -> JSONResponse:
     resp = JSONResponse(body, status_code=status)
     resp.headers["Access-Control-Allow-Origin"] = "*"  # read-only public data: any page may show it
-    resp.headers["Cache-Control"] = f"public, max-age={MAX_AGE_S}" if cache else "no-store"
+    resp.headers["Cache-Control"] = edge.public_cache_control() if cache else "no-store"
     for k, v in headers.items():
         resp.headers[k.replace("_", "-")] = str(v)
     return resp
@@ -105,7 +105,7 @@ def prayer_times_export(
             start=start, end=end, ramadan_=ramadan,
         )  # fmt: skip
         body = (
-            export.pdf_bytes(conn, mosque, first, last, instance.base(str(request.base_url)))
+            export.pdf_bytes(conn, mosque, first, last, edge.public_base(str(request.base_url)))
             if format == "pdf"
             else export.csv_text(conn, mosque, first, last)
         )
@@ -116,7 +116,7 @@ def prayer_times_export(
         media_type="application/pdf" if format == "pdf" else "text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="{export.file_name(first, last, format)}"',
-            "Cache-Control": f"public, max-age={MAX_AGE_S}",
+            "Cache-Control": edge.public_cache_control(),
             "Vary": "Accept-Language, X-Sada-Lang",
         },
     )
@@ -153,7 +153,7 @@ def prayer_times_page(slug: str, request: Request, conn: ConnDep, month: str = "
         )
     page = public_page.render(slug, mosque, month, rows, prayer_times.read(conn, mosque))
     return HTMLResponse(
-        page, headers={"Cache-Control": f"public, max-age={MAX_AGE_S}", "Vary": "Accept-Language, X-Sada-Lang"}
+        page, headers={"Cache-Control": edge.public_cache_control(), "Vary": "Accept-Language, X-Sada-Lang"}
     )
 
 
