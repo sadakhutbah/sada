@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.7](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.6...sada-v0.1.0-alpha.7) (2026-11-20)
+
+
+### Features
+
+* **telemetry:** export the post-live pipeline's LLM and transcription calls ([#58](https://github.com/sadakhutbah/sada/issues/58)) ([00f57e2](https://github.com/sadakhutbah/sada/commit/00f57e2db502bd06e2f47f0987d12dcd5d70782e))
+
 ## [0.1.0-alpha.6](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.5...sada-v0.1.0-alpha.6) (2026-11-20)
 
 
