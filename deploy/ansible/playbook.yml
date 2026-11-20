@@ -11,6 +11,7 @@
   vars:
     k3s_channel: stable
     k3s_config_dir: /etc/rancher/k3s
+    k3s_storage_path: /var/lib/rancher/k3s/storage
 
   tasks:
     - name: Wait for cloud-init to finish
@@ -93,6 +94,75 @@
         group: root
         mode: "0700"
 
+    # --- k3s storage on the volume ------------------------------------------
+    # local-path keeps every PV under /var/lib/rancher/k3s/storage (the PV objects store that
+    # absolute path and cannot be edited). Bind-mounting the volume directory there puts all
+    # persistent data on the volume without touching Kubernetes, the chart or Flux.
+    - name: Is the k3s storage path already a mount point?
+      ansible.builtin.command: mountpoint -q {{ k3s_storage_path }}
+      register: storage_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Look for data left in the k3s storage path on the root disk
+      ansible.builtin.find:
+        paths: "{{ k3s_storage_path }}"
+        file_type: any
+        recurse: false
+      register: storage_leftovers
+      when: storage_mount.rc != 0
+
+    # Mounting over a non-empty directory would hide live data: stop and use the runbook.
+    - name: Refuse to hide existing data under the bind mount
+      ansible.builtin.fail:
+        msg: >-
+          {{ k3s_storage_path }} already holds data on the root disk. Do not bind-mount over it
+          from here: follow deploy/runbooks/migrate-data-to-volume.md (copy, check, switch).
+      when:
+        - storage_mount.rc != 0
+        - storage_leftovers.matched | default(0) | int > 0
+
+    - name: Create the k3s storage mount point
+      ansible.builtin.file:
+        path: "{{ k3s_storage_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Bind the volume directory onto the k3s storage path (fstab)
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '\s{{ k3s_storage_path }}\s'
+        line: "{{ sada_k3s_storage_path }} {{ k3s_storage_path }} none bind,x-systemd.requires-mounts-for={{ sada_data_mount }} 0 0"
+
+    - name: Mount the bind
+      ansible.builtin.command: mount {{ k3s_storage_path }}
+      when: storage_mount.rc != 0
+
+    # No volume, no k3s: better stopped than silently writing on an empty directory.
+    - name: Create the k3s unit drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/k3s.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Make k3s depend on the data mounts
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/k3s.service.d/10-sada-storage.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          RequiresMountsFor={{ sada_data_mount }} {{ k3s_storage_path }}
+      register: k3s_dropin
+
+    - name: Reload systemd when the drop-in changed
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: k3s_dropin.changed
+
     - name: Create the k3s configuration directory
       ansible.builtin.file:
         path: "{{ k3s_config_dir }}"
@@ -144,24 +214,12 @@
         search_regex: server
         timeout: 300
 
-    - name: Let the local-path provisioner write on the data volume
-      ansible.builtin.copy:
-        dest: /var/lib/rancher/k3s/server/manifests/local-path-storage.yaml
-        owner: root
-        group: root
-        mode: "0600"
-        content: |
-          apiVersion: helm.cattle.io/v1
-          kind: HelmChartConfig
-          metadata:
-            name: local-path-provisioner
-            namespace: kube-system
-          spec:
-            valuesContent: |-
-              nodePathMap:
-                - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
-                  paths:
-                    - {{ sada_k3s_storage_path }}
+    # Cleanup of a former attempt: k3s ships local-path as a plain manifest (local-storage.yaml +
+    # ConfigMap local-path-config), not as a Helm chart, so a HelmChartConfig never had any effect.
+    - name: Drop the ineffective local-path HelmChartConfig
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s/server/manifests/local-path-storage.yaml
+        state: absent
 
     - name: Wait for the node to be Ready
       ansible.builtin.command: k3s kubectl wait --for=condition=Ready nodes --all --timeout=300s
