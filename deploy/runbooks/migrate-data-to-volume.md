@@ -1,6 +1,7 @@
 # Migrating the persistent data to the Hetzner volume `sada-data`
 
-Status: **prepared, not applied**. To be run off-air, with the owner's go-ahead.
+Status: **applied** (2026-11-20, measured outage 20:27:02 to 20:29:10, about 2 min 10 s, plus about
+2 min for the control reboot). Kept for disaster recovery and as a reference.
 
 ## Why
 
@@ -47,7 +48,8 @@ A **bind mount** of `/mnt/sada-data/k3s` onto `/var/lib/rancher/k3s/storage`.
 Back office, orchestrators, receiver (RTMP/SRT ingest) and PostgreSQL are stopped between steps 3
 and 6. Estimate: **10 to 15 minutes** (final rsync of the delta ~1 min, checksum verification
 ~3 to 5 min, mount and restart ~3 min, checks). The long copy (step 2) is done live beforehand and
-causes no interruption. Never run it during a live broadcast.
+causes no interruption. The checksum pass was instant in practice (nothing changed between the two
+rsync runs); the real outage was about 2 minutes. Never run it during a live broadcast.
 
 ## Procedure (as root on `sada-app`; kubectl with the repository kubeconfig)
 
@@ -70,7 +72,8 @@ DST=/mnt/sada-data/k3s
    `kubectl -n sada get deploy -o custom-columns=N:.metadata.name,R:.spec.replicas > /root/replicas-before.txt`
    and `kubectl -n sada get pods,pvc,pv -o wide > /root/state-before.txt`.
 
-### 1. Verified backup
+### 1. Verified backup (about 10 min for the 7.5 GB tar; run it in a tracked/background session, an
+   SSH session piped to `tail` looks hung)
 
 ```
 D=$(date +%Y%m%d)
@@ -93,6 +96,10 @@ PostgreSQL files copied hot are not consistent: this pass only moves the bulk. T
 (step 4) is the one that counts.
 
 ### 3. Stop (Flux suspended first, so nothing is re-created)
+
+`flux` is **not installed on the server**: run the `flux suspend` / `flux resume` lines from the
+workstation (`KUBECONFIG=~/.config/sada-deploy/kubeconfig`), and the `kubectl` lines on the server
+(`KUBECONFIG=/etc/rancher/k3s/k3s.yaml`). Suspend Flux before scaling anything down.
 
 ```
 flux suspend helmrelease sada -n sada
@@ -141,6 +148,8 @@ flux resume helmrelease sada -n sada
 ### 7. Verification
 
 - `kubectl -n sada get pods,ingress,certificate`: everything Running, nothing in error.
+- RTMP/SRT: `ss -ltn` shows nothing on 1935/8890 (klipper-lb uses iptables); test with
+  `bash -c '</dev/tcp/<ip>/1935'` instead.
 - `findmnt | grep pvc-` : the kubelet pod mounts have `/dev/sdb[/k3s/...]` as source.
 - `df -h / /mnt/sada-data`: the volume now holds ~8 GB.
 - `kubectl -n sada exec sada-postgres-1 -c postgres -- psql -U postgres -c '\l'`, and a row
