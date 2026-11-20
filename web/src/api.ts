@@ -246,6 +246,15 @@ export const api = {
   orchestrateur: (mid: number, url: string, token: string) =>
     ecrire<{ ok: boolean; message: string; mosque: PlatformMosque }>("PUT", `/platform/mosques/${mid}/orchestrator`, { url, token }),
   tarawih: (corps: Record<string, unknown>) => ecrire<any>("PUT", "/settings/tarawih", corps),
+  /** Prayer times: the source and its options, a calculated preview (nothing saved), the Mawaqit deduction. */
+  prayerSave: (corps: Record<string, unknown>) => ecrire<any>("PUT", "/settings/prayer", corps),
+  prayerPreview: (calc: Record<string, unknown>, month: string) => ecrire<any>("POST", "/settings/prayer/preview", { calc, month }),
+  prayerDeduce: (mawaqit_url: string) => ecrire<any>("POST", "/settings/prayer/deduce", { mawaqit_url }),
+  prayerDays: (month: string) => demande<any>(`/settings/prayer/days?month=${encodeURIComponent(month)}`),
+  prayerDaysSave: (month: string, days: Record<string, string>[]) => ecrire<any>("PUT", "/settings/prayer/days", { month, days }),
+  prayerImport: (csv: string) => ecrire<any>("POST", "/settings/prayer/import", { csv }),
+  /** The year as a CSV file, downloaded by the browser (the session cookie authorises it). */
+  prayerExportUrl: (year: number) => `/api/v1/settings/prayer/export?year=${year}`,
   traitement: (clips: string, enabled: boolean) =>
     ecrire<any>("PUT", "/settings/processing", { clips, enabled: enabled ? "1" : "0" }),
   testerModele: () => ecrire<any>("POST", "/platform/model/test"),

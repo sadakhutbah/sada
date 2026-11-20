@@ -88,6 +88,14 @@ DOCUMENTS = (
         "resume_en": "what to obtain from each platform, where to enter it, and what the connector does not do",
     },
     {
+        "slug": "horaires-de-priere",
+        "slug_en": "prayer-times",
+        "titre_fr": "Horaires de prière",
+        "titre_en": "Prayer times",
+        "resume_fr": "Mawaqit, calcul ou saisie : choisir la source, l'import CSV, la page publique en lecture seule",
+        "resume_en": "Mawaqit, calculation or typed: choosing the source, CSV import, the read-only public page",
+    },
+    {
         "slug": "rediffusions",
         "slug_en": "recordings",
         "titre_fr": "Rediffusions et compartiment S3",

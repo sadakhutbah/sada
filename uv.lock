@@ -2426,6 +2426,12 @@ wheels = [
 ]
 
 [[package]]
+name = "praytimes"
+version = "2.3.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/6b/3b8d5ecf47a56c4b2f6dcbfbda5ad4e78501b0ffffb5aff7cac6daf0308d/praytimes-2.3.2.tar.gz", hash = "sha256:c69e8eac6313f23bff3ef7052c892bc742db5a72fbd42618d30e620bf76cf6f9", size = 5866, upload-time = "2019-06-01T08:35:28.168Z" }
+
+[[package]]
 name = "protobuf"
 version = "7.36.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3843,6 +3849,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pillow", version = "12.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pillow", version = "13.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "praytimes" },
     { name = "psycopg", extra = ["binary"] },
     { name = "python-bidi" },
     { name = "python-multipart", version = "0.0.32", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -3877,6 +3884,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.66b2" },
     { name = "opentelemetry-sdk", specifier = ">=1.45.2" },
     { name = "pillow" },
+    { name = "praytimes", specifier = ">=2.3.2" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
     { name = "python-bidi" },
     { name = "python-multipart" },
