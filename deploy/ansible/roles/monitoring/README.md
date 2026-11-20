@@ -81,6 +81,19 @@ Use the 100.x address (pod DNS does not resolve MagicDNS names). The app is not 
 the dashboard uses the exported metric names; the collector adds a `mosque` label from the `sada.mosque` resource attribute. The kubelet/cAdvisor CPU and
 memory panels need the node on the tailnet and `monitoring_kubelet_targets` + a token.
 
+### Pod CPU / memory (kubelet + cAdvisor)
+1. Cluster side: set `kubeletScrape.enabled: true` in the HelmRelease values (chart creates
+   ServiceAccount `kubelet-scrape`, a ClusterRole limited to `nodes/metrics` `get`, its binding and a
+   long-lived token Secret `kubelet-scrape-token`).
+2. Tailnet ACL: allow `tag:sada-monitoring` -> `tag:sada-prod:10250`. The node firewall must not
+   expose 10250 publicly (the Hetzner firewall only opens it on the tailnet interface).
+3. Operator machine (outside the repo, token never committed or printed):
+   `kubectl -n sada get secret kubelet-scrape-token -o jsonpath='{.data.token}' | base64 -d`
+   goes to the VM file `monitoring_kubelet_token_file` (keep the role's mode 0444 placeholder: the Prometheus container reads it; the directory is root-only).
+   The CA is `/var/lib/rancher/k3s/agent/server-ca.crt` on the node (`monitoring_kubelet_ca_file`).
+4. Vars: `monitoring_kubelet_targets: ["<node tailnet IP>:10250"]`,
+   `monitoring_kubelet_server_name: sada-app` (a SAN of the k3s kubelet certificate).
+
 ## Residual points
 - The Hetzner firewall still allows outbound 80/443 for the host (apt, image pulls, Tailscale);
   containers are blocked by the DOCKER-USER rules, phone-home is also disabled in configuration.
