@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.9](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.8...sada-v0.1.0-alpha.9) (2026-11-20)
+
+
+### Features
+
+* **edge:** prepare the Cloudflare proxy, ingest host and chunked video upload ([36e505d](https://github.com/sadakhutbah/sada/commit/36e505d542fc66994361c785de3e9c5e80238809))
+
 ## [0.1.0-alpha.8](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.7...sada-v0.1.0-alpha.8) (2026-11-20)
 
 
