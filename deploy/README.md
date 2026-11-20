@@ -75,8 +75,9 @@ ansible-playbook playbook.yml
 ```
 
 It waits for cloud-init, formats the volume as ext4 if it carries no filesystem, mounts it at
-`/mnt/sada-data` (`/etc/fstab`, by UUID), points the k3s local-path provisioner at
-`/mnt/sada-data/k3s`, installs k3s, and writes the kubeconfig to
+`/mnt/sada-data` (`/etc/fstab`, by UUID), bind-mounts `/mnt/sada-data/k3s` onto
+`/var/lib/rancher/k3s/storage` (where local-path keeps every PV; k3s then requires both mounts),
+installs k3s, and writes the kubeconfig to
 `~/.config/sada-deploy/kubeconfig` with the server's public IPv4 (in-cluster it would say
 `127.0.0.1`). Export it once:
 
