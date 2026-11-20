@@ -204,6 +204,18 @@ def apply_llm_options(a) -> None:
 
 
 def main(argv=None):
+    """Entry point: the run is exported like the other processes (off unless OTLP is configured), labelled with
+    the mosque the back-office passes in `SADA_MOSQUE_SLUG`; the telemetry is flushed before exiting."""
+    from .. import telemetry
+
+    telemetry.start("sada-pipeline", os.environ.get("SADA_MOSQUE_SLUG", "").strip())
+    try:
+        return _main(argv)
+    finally:
+        telemetry.stop()
+
+
+def _main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "sessions", nargs="?", help=_("sessions.json written by the orchestrator (default: the latest run)")

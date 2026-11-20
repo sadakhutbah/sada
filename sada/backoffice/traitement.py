@@ -170,6 +170,8 @@ def _env(mosque: dict | None = None) -> dict:
         from . import tenant_config
 
         env.update(tenant_config.pipeline_env(mosque))
+        # labels the pipeline's telemetry (LLM and transcription calls) with the mosque
+        env["SADA_MOSQUE_SLUG"] = mosque.get("slug") or ""
     exe = importer._ffmpeg()
     if exe:
         env["PATH"] = str(Path(exe).parent) + os.pathsep + env.get("PATH", "")
