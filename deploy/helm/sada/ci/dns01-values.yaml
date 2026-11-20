@@ -1,0 +1,20 @@
+# DNS-01 variant (console behind the Cloudflare proxy): rendered in CI and by `helm lint`.
+image:
+  repository: ghcr.io/example/sada
+  tag: "0123abc"
+
+mosques:
+  - slug: exemple
+    tokenSecret: sada-exemple
+
+certManager:
+  createIssuer: true
+  email: admin@example.org
+  solver: dns01
+  dns01:
+    cloudflare:
+      apiTokenSecretName: cloudflare-api-token
+    dnsZones: ["sadakhutbah.org"]
+
+ingress:
+  host: console.sadakhutbah.org

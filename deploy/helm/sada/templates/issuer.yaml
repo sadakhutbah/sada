@@ -2,6 +2,9 @@
 {{- if not .Values.certManager.email }}
 {{- fail "certManager.createIssuer=true requires certManager.email (the Let's Encrypt contact address)" }}
 {{- end }}
+{{- if not (has .Values.certManager.solver (list "http01" "dns01")) }}
+{{- fail "certManager.solver must be http01 or dns01" }}
+{{- end }}
 # Cluster-scoped: one per cluster, shared by every Ingress that names it.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -16,7 +19,26 @@ spec:
     privateKeySecretRef:
       name: {{ printf "%s-account-key" .Values.ingress.tls.issuer }}
     solvers:
+      {{- if eq .Values.certManager.solver "dns01" }}
+      {{- $cf := .Values.certManager.dns01.cloudflare }}
+      {{- if not $cf.apiTokenSecretName }}
+      {{- fail "certManager.solver=dns01 requires certManager.dns01.cloudflare.apiTokenSecretName (a Secret in the cert-manager namespace)" }}
+      {{- end }}
+      # DNS-01 through the Cloudflare API: renewal does not depend on the traffic reaching the
+      # server, so it survives the Cloudflare proxy (orange cloud) in front of the console.
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: {{ $cf.apiTokenSecretName | quote }}
+              key: {{ $cf.apiTokenSecretKey | quote }}
+        {{- with .Values.certManager.dns01.dnsZones }}
+        selector:
+          dnsZones:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
+      {{- else }}
       - http01:
           ingress:
             ingressClassName: {{ .Values.ingress.className }}
+      {{- end }}
 {{- end }}

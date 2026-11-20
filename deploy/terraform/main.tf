@@ -12,6 +12,15 @@ locals {
   # Short name of the console record inside the Cloudflare zone ("console").
   console_record_name = trimsuffix(var.console_host, ".${var.cloudflare_zone}")
 
+  # Short name of the ingest record ("ingest").
+  ingest_record_name = trimsuffix(var.ingest_host, ".${var.cloudflare_zone}")
+
+  # Who may reach 80/443: Cloudflare only when asked (and then the console must be proxied).
+  http_source_ips = var.restrict_http_to_cloudflare ? concat(
+    data.cloudflare_ip_ranges.current[0].ipv4_cidrs,
+    data.cloudflare_ip_ranges.current[0].ipv6_cidrs,
+  ) : var.http_cidrs
+
   # Where the Ansible inventory is generated (git-ignored).
   inventory_path = "${path.module}/../ansible/inventory.ini"
 }
@@ -30,6 +39,13 @@ resource "hcloud_firewall" "sada" {
   name   = "${var.name_prefix}-fw"
   labels = var.labels
 
+  lifecycle {
+    precondition {
+      condition     = !var.restrict_http_to_cloudflare || var.console_proxied
+      error_message = "restrict_http_to_cloudflare requires console_proxied = true: otherwise the console (and ACME HTTP-01) would be unreachable."
+    }
+  }
+
   # Administration: SSH and the k3s API, only from the operator's addresses.
   rule {
     direction   = "in"
@@ -47,12 +63,13 @@ resource "hcloud_firewall" "sada" {
     description = "k3s API (admin)"
   }
 
-  # Public web: the back office through Traefik, and ACME HTTP-01 challenges.
+  # Public web: the back office through Traefik, and ACME HTTP-01 challenges. With
+  # restrict_http_to_cloudflare only the Cloudflare ranges reach 80/443 (console proxied).
   rule {
     direction   = "in"
     protocol    = "tcp"
     port        = "80"
-    source_ips  = var.http_cidrs
+    source_ips  = local.http_source_ips
     description = "HTTP (Traefik, ACME)"
   }
 
@@ -60,7 +77,7 @@ resource "hcloud_firewall" "sada" {
     direction   = "in"
     protocol    = "tcp"
     port        = "443"
-    source_ips  = var.http_cidrs
+    source_ips  = local.http_source_ips
     description = "HTTPS (Traefik)"
   }
 

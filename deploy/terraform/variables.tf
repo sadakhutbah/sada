@@ -110,3 +110,33 @@ variable "labels" {
     managedby = "terraform"
   }
 }
+
+variable "console_proxied" {
+  description = "Put the console record behind the Cloudflare proxy (orange cloud). Only once the certificate renews without HTTP-01 (DNS-01 or origin certificate) and Traefik trusts the Cloudflare ranges: see deploy/cloudflare/PLAN.md."
+  type        = bool
+  default     = false
+}
+
+variable "ingest_host" {
+  description = "Single host name of the stream ingest (RTMP 1935/tcp and SRT 8890/udp). Never proxied."
+  type        = string
+  default     = "ingest.sadakhutbah.org"
+}
+
+variable "create_ingest_record" {
+  description = "Create the ingest A record (grey cloud)."
+  type        = bool
+  default     = true
+}
+
+variable "manage_zone_ssl_strict" {
+  description = "Set the zone SSL/TLS encryption mode to Full (strict). Affects every hostname of the zone."
+  type        = bool
+  default     = false
+}
+
+variable "restrict_http_to_cloudflare" {
+  description = "Limit 80/tcp and 443/tcp on the firewall to the Cloudflare ranges (needs console_proxied = true, otherwise the console and ACME HTTP-01 become unreachable). RTMP/SRT stay governed by media_cidrs."
+  type        = bool
+  default     = false
+}

@@ -10,3 +10,9 @@ server_type      = "cx33"
 data_volume_size = 50
 
 # ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# Cloudflare proxy (see deploy/cloudflare/PLAN.md). All off by default: nothing changes until set.
+# ingest_host                 = "ingest.sadakhutbah.org"  # RTMP+SRT, grey cloud (the record is created by default)
+# console_proxied             = false  # true only after DNS-01 + Traefik trustedIPs are live
+# manage_zone_ssl_strict      = false  # zone-wide Full (strict)
+# restrict_http_to_cloudflare = false  # 80/443 limited to the Cloudflare ranges (needs console_proxied)
