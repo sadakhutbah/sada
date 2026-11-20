@@ -65,6 +65,8 @@ monitoring_otel_signal_keys:
   - protocol
   - engine
   - stage
+  - channel
+  - mosque   # back-office operations, set by sada.telemetry.mosque_scope
 
 # Container resource limits (VM: 4 GB RAM, 2 vCPU).
 monitoring_limits:

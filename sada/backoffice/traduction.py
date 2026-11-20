@@ -21,7 +21,7 @@ from ..pipeline import llm, translate, verses
 from ..pipeline import subtitles as tracks
 from ..pipeline.output import SessionOutput
 from . import db, orm
-from .jobs import Job, JobStatus, JsonFileStore
+from .jobs import Job, JobStatus, JsonFileStore, mosque_slug
 from .models import Khutba
 
 STATUSES = ("", *(s.value for s in (JobStatus.RUNNING, JobStatus.READY, JobStatus.FAILED)))
@@ -82,6 +82,7 @@ def lancer(conn, db_path: str, k: dict, user: dict, ip=None, background: bool = 
             conn, k["mosque_id"], user["id"], "soustitres.traduire", "khutba", k["id"], ip=ip
         ),
         background=background,
+        mosque=mosque_slug(conn, k.get("mosque_id")),
     )
     return etat(k)
 

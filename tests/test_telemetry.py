@@ -252,6 +252,45 @@ def test_jobs_by_kind_and_status(exported):
     assert PROMPT not in exported.dump()
 
 
+def test_back_office_runs_are_labelled_with_their_mosque(exported):
+    """One back-office serves every hosted mosque: a job, and what it tracks itself, carry its mosque."""
+    job = Job(MemoryStore(), busy_message=lambda: "busy", thread_name="soustitres")
+
+    def translates(ref):
+        with telemetry.get().track("llm", protocol="openai"):
+            pass
+        job.mark_ready(None, ref)
+
+    job.start(None, {"id": 1}, translates, ({"id": 1},), background=False, mosque="al-nour")
+    job.start(None, {"id": 2}, translates, ({"id": 2},), background=False)  # mosque unknown: no label
+
+    assert points(exported, "sada.job.runs") == {
+        (("kind", "soustitres"), ("mosque", "al-nour"), ("status", "ok")): 1,
+        (("kind", "soustitres"), ("status", "ok")): 1,
+    }
+    assert points(exported, "sada.llm.calls") == {
+        (("mosque", "al-nour"), ("protocol", "openai"), ("status", "ok")): 1,
+        (("protocol", "openai"), ("status", "ok")): 1,
+    }
+
+
+def test_mosque_scope_is_restored_and_an_explicit_label_wins(exported):
+    with telemetry.mosque_scope("a"):
+        with telemetry.mosque_scope(""):  # empty: keeps the enclosing mosque
+            with telemetry.get().track("notification", channel="ntfy"):
+                pass
+        with telemetry.get().track("notification", channel="ntfy", mosque="b"):
+            pass
+    with telemetry.get().track("notification", channel="ntfy"):
+        pass
+
+    assert points(exported, "sada.notification.sent") == {
+        (("channel", "ntfy"), ("mosque", "a"), ("status", "ok")): 1,
+        (("channel", "ntfy"), ("mosque", "b"), ("status", "ok")): 1,
+        (("channel", "ntfy"), ("status", "ok")): 1,
+    }
+
+
 def test_state_transitions_and_orchestrator_gauges(exported):
     exported.telemetry.state_changed("IDLE", "ARMED")
     exported.telemetry.state_changed("ARMED", "BEFORE")

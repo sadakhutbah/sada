@@ -46,6 +46,16 @@ class JobStatus(str, enum.Enum):
         return self.value
 
 
+def mosque_slug(conn, mosque_id: int | None) -> str:
+    """Slug of the mosque `mosque_id` ("" when unknown): the telemetry label of a run."""
+    if conn is None or not mosque_id:
+        return ""
+    from .models import Mosque
+
+    m = orm.first(conn, Mosque, id=mosque_id)
+    return (m or {}).get("slug") or ""
+
+
 # --------------------------------------------------------------------------- storage
 
 
@@ -229,12 +239,15 @@ class Job:
         fields: dict | None = None,
         before_spawn: Callable[[], None] | None = None,
         background: bool = True,
+        mosque: str = "",
     ) -> None:
         """Refuse a double start, record the running state, then run `target(*args)`.
 
         `target` owns its own connection and ends the run with `mark_ready` / `mark_failed`.
         `before_spawn` runs once the running state is recorded (audit, bookkeeping).
+        `mosque` (slug) labels the run's telemetry; by default it is read from `ref["mosque_id"]`.
         """
+        mosque = mosque or mosque_slug(conn, ref.get("mosque_id"))
         self.ensure_idle(conn, ref)
         key = self._key(ref)
         with self._lock:
@@ -250,14 +263,15 @@ class Job:
             raise
         if background:
             threading.Thread(
-                target=self._guarded, args=(key, target, args), daemon=True, name=f"{self.thread_name}-{key}"
+                target=self._guarded, args=(key, target, args, mosque), daemon=True, name=f"{self.thread_name}-{key}"
             ).start()
         else:
-            self._guarded(key, target, args)
+            self._guarded(key, target, args, mosque)
 
-    def _guarded(self, key: Hashable, target: Callable[..., None], args: tuple) -> None:
+    def _guarded(self, key: Hashable, target: Callable[..., None], args: tuple, mosque: str = "") -> None:
         try:
-            with telemetry.get().track("job", kind=self.thread_name) as run:
+            # The scope also labels what the job tracks itself (LLM calls of a translation, ...).
+            with telemetry.mosque_scope(mosque), telemetry.get().track("job", kind=self.thread_name) as run:
                 target(*args)
                 with self._lock:
                     failed = self._outcomes.get(key) == telemetry.ERROR
