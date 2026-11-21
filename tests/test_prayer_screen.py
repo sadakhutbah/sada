@@ -51,6 +51,17 @@ def test_the_screen_shows_the_prayers_in_french_and_arabic_with_the_iqama_that_e
     assert 'lang="fr"' in h and 'role="status"' in h and "aria-label" in h
 
 
+def test_chourouk_is_only_a_time_without_adhan_label_nor_iqama(env):
+    _choose(env, calc={**CALC, "iqama": {"isha": 10}})
+    h = client(env).get(BASE + "/page").text
+    row = re.search(r'<li class="row sun".*?</li>', h, re.S).group(0)
+    assert "Chourouk" in row and "<time>" in row
+    assert "Adhan" not in row and "Iqama" not in row and 'class="iq"' not in row
+    assert "sunrise" not in _data(h)["days"][0]["iqama"]
+    js = open(prayer_screen.__file__.replace("prayer_screen.py", "static/prayer-screen.js")).read()
+    assert 'ORDER = ["fajr", "dhuhr", "asr", "maghrib", "isha"]' in js  # never a countdown target
+
+
 def test_without_an_iqama_none_is_shown_nor_invented(env):
     _choose(env)
     h = client(env).get(BASE + "/page").text

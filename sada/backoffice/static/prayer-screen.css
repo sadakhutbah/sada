@@ -107,4 +107,4 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--leaf); outline-
 }
 @media (prefers-reduced-motion: no-preference) { .row { transition: background .3s, color .3s; } }
 @media print { .fs, .foot { display: none; } }
-.row.jumua .ad { grid-column: 2 / -1; }
+.row.jumua .ad, .row.sun .ad { grid-column: 2 / -1; }

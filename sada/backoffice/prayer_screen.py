@@ -85,10 +85,16 @@ def _rows(today: dict) -> str:
     out = []
     for key, fr, ar in ROWS:
         t = today["times"].get(key, "")
+        if key == "sunrise":  # sunrise is only a time: no adhan label, no iqama
+            out.append(
+                f'<li class="row sun" data-p="{key}"{"" if t else " hidden"}>'
+                f'<span class="nm"><span class="fr">{fr}</span><span class="ar" lang="ar" dir="rtl">{ar}</span></span>'
+                f'<span class="ad"><time>{escape(t)}</time></span></li>'
+            )
+            continue
         q = today["iqama"].get(key, "")
-        kind = "sun" if key == "sunrise" else "prayer"
         out.append(
-            f'<li class="row {kind}" data-p="{key}"{"" if t else " hidden"}>'
+            f'<li class="row prayer" data-p="{key}"{"" if t else " hidden"}>'
             f'<span class="nm"><span class="fr">{fr}</span><span class="ar" lang="ar" dir="rtl">{ar}</span></span>'
             f'<span class="ad"><span class="lbl">Adhan</span><time>{escape(t)}</time></span>'
             f'<span class="iq"{"" if q else " hidden"}><span class="lbl">Iqama</span><time>{escape(q)}</time></span>'
