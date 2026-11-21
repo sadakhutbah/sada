@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 import subprocess
 import threading
 import time
@@ -57,6 +58,9 @@ def write_png_atomic(img: Image.Image, path: str) -> None:
     img.save(tmp, "PNG", compress_level=1)
     os.replace(tmp, path)
 
+
+# tee muxer message when one output (destination or recording) was dropped for good
+SLAVE_FAILED = re.compile(r"Slave muxer #\d+ failed")
 
 # an ffmpeg younger than this may simply not have bound its zmq ports yet: never judged stuck
 STUCK_GRACE_S = 20.0
@@ -109,6 +113,7 @@ class Encoder:
         self.recordings: list[tuple[str, str | None]] = []
         self._log_file = None
         self._spawned_at = 0.0  # monotonic time of the last ffmpeg launch
+        self._dropped = False  # the tee muxer dropped an output of the current ffmpeg
         self._opened = False  # the current ffmpeg opened its source (it produced output)
         self.failures = 0  # consecutive launches that never opened the source
         self._next_spawn = 0.0  # monotonic time before which no relaunch happens
@@ -276,12 +281,31 @@ class Encoder:
         self._log_file = open(self.run_dir / "encoder.log", "ab")
         self.out_time = 0.0
         self._opened = False
+        self._dropped = False
         self._spawned_at = time.monotonic()
         self.recordings.append((rec, clean))
         self.proc = subprocess.Popen(
-            self.ffmpeg_cmd(rec, clean), stdout=subprocess.PIPE, stderr=self._log_file, text=True, bufsize=1
-        )
+            self.ffmpeg_cmd(rec, clean), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
+            encoding="utf-8", errors="replace",
+        )  # fmt: skip
         threading.Thread(target=self._read_progress, args=(self.proc,), daemon=True).start()
+        threading.Thread(target=self._read_errors, args=(self.proc, self._log_file), daemon=True).start()
+
+    def _read_errors(self, proc, log_file):
+        """Copies ffmpeg's stderr to encoder.log and notes a destination dropped for good.
+
+        The tee muxer is `onfail=ignore`: when a destination breaks (typically after the source changed: the
+        output starves long enough for the platform to cut the connection) ffmpeg keeps recording and never
+        reconnects it. `_watch` relaunches such a process (new recording, every destination reconnected)."""
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            try:
+                log_file.write(line.encode())
+                log_file.flush()
+            except (OSError, ValueError):
+                pass  # log file closed by a relaunch: keep draining
+            if proc is self.proc and SLAVE_FAILED.search(line):
+                self._dropped = True
 
     def _read_progress(self, proc):
         assert proc.stdout is not None
@@ -292,7 +316,9 @@ class Encoder:
                     if proc is self.proc and not self._opened:
                         self._opened = True  # ffmpeg is producing output: the source answered
                         if self.failures:
-                            self.log(_("ENCODER: source available again after {count} failed attempts", count=self.failures))
+                            self.log(
+                                _("ENCODER: source available again after {count} failed attempts", count=self.failures)
+                            )
                             self.failures = 0
                 except ValueError:
                     pass
@@ -303,13 +329,19 @@ class Encoder:
             with self._lock:
                 if not self.wanted:
                     return
-                if self.preview and self.preview.poll() is not None:
-                    self.preview = None
-                    self._spawn_preview()
-                if self.proc and self.proc.poll() is not None:
-                    self._on_exit()
-                elif not self.proc and self.wanted and time.monotonic() >= self._next_spawn:
-                    self._spawn()
+                self._tick()
+
+    def _tick(self):
+        """One supervision pass (caller holds the lock)."""
+        if self.preview and self.preview.poll() is not None:
+            self.preview = None
+            self._spawn_preview()
+        if self.proc and self.proc.poll() is not None:
+            self._on_exit()
+        elif self.proc and self._dropped:
+            self._relaunch_dropped()
+        elif not self.proc and self.wanted and time.monotonic() >= self._next_spawn:
+            self._spawn()
 
     def _on_exit(self):
         """ffmpeg died (caller holds the lock). If it never opened its source, drop its empty recordings, back
@@ -318,7 +350,9 @@ class Encoder:
         self.proc = None
         self.restarts += 1
         if self._opened:
-            self.log(_("ENCODER: ffmpeg stopped (code {code}), automatic restart #{count}", code=code, count=self.restarts))
+            self.log(
+                _("ENCODER: ffmpeg stopped (code {code}), automatic restart #{count}", code=code, count=self.restarts)
+            )
         else:
             self.failures += 1
             self._discard(rec, clean)
@@ -355,6 +389,14 @@ class Encoder:
             self._log_file.close()
             self._log_file = None
         self.log(_("ENCODER: stopped"))
+
+    def _relaunch_dropped(self):
+        """A destination was dropped by the tee muxer: kill ffmpeg so `_tick` relaunches it on every destination.
+        A destination that breaks right at start-up (wrong key) is not retried in a loop: the grace applies."""
+        if time.monotonic() - self._spawned_at >= STUCK_GRACE_S:
+            self.log(_("ENCODER: ffmpeg alive but stuck ({why}), forced restart", why="destination dropped"))
+            self._dropped = False
+            self.proc.kill()
 
     def restart_if_stuck(self, why: str) -> bool:
         """ffmpeg is alive but its filter graph no longer answers (typically the source changed: OBS left, a
