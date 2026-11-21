@@ -184,6 +184,9 @@ async def whip_offer(request: Request, a: ActorDep):
         return JSONResponse({"error": "relay unavailable"}, status_code=503)
     session = (r.headers.get("location") or "").rstrip("/").rsplit("/", 1)[-1]
     if r.status_code in (401, 403):
+        holder = studio_publisher.current(a.conn, a.mosque)  # the relay refused: say why when somebody holds the stream
+        if holder is not None and not (holder["known"] and a.who().same_as(holder)):
+            return JSONResponse(studio_publisher.refusal(holder), status_code=409)
         return JSONResponse({"error": "relay refused"}, status_code=502)
     if r.status_code != 201 or not WHIP_SESSION.match(session):
         return JSONResponse({"error": "relay"}, status_code=409 if r.status_code == 400 else 502)

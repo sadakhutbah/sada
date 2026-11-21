@@ -686,3 +686,19 @@ def test_unpair_by_the_device_revokes_it_and_cuts_its_live(env, relay):
     assert d.post("/api/v1/studio/unpair").status_code == 401  # its credential is gone
     listed = client(env, "responsable").get("/api/v1/studio/devices").json()["devices"]
     assert all(x["device_id"].startswith("sdev_") for x in listed)
+
+
+def test_whip_refused_by_the_relay_names_the_holder(env, relay, monkeypatch):
+    """A device whose offer the relay refuses learns who holds the stream (409 live_active), not a bare 502."""
+    key = internal.new_publish_key(env["conn"], env["mid"])
+    assert _publish(env, protocol="rtmp", password=key).status_code == 200
+    bearer, _ = pair(env)
+    program(env, oneoff("d1", 0))
+
+    async def refused(*a, **k):
+        return httpx.Response(401, request=httpx.Request("POST", "http://relay"))
+
+    monkeypatch.setattr(live_watch, "whip_request", refused)
+    relay.pub = "obs"
+    r = dev(env, bearer).post("/api/v1/live/studio/whip", content=b"v=0", headers={"Content-Type": "application/sdp"})
+    assert r.status_code == 409 and r.json()["code"] == "live_active"
