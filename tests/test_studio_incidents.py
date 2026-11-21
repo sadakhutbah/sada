@@ -51,7 +51,7 @@ def pair(env, name="PC"):
     anon = client(env)
     start = anon.post("/api/v1/studio/pair/start").json()
     r = client(env, "responsable").ecrire("/studio/devices/pair", {"user_code": start["user_code"], "name": name})
-    bearer = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()["device_id"]
+    bearer = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()["device_secret"]
     return client(env, headers={"Authorization": f"Bearer {bearer}"}), r.json()["device"]["id"]
 
 
@@ -371,7 +371,7 @@ def test_isolation_between_mosques(team, box):
     start = anon.post("/api/v1/studio/pair/start").json()
     client(team, "admin2").ecrire("/studio/devices/pair", {"user_code": start["user_code"], "name": "PC autre"})
     other = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()
-    client(team, headers={"Authorization": f"Bearer {other['device_id']}"}).post(HB, json={"camera": False})
+    client(team, headers={"Authorization": f"Bearer {other['device_secret']}"}).post(HB, json={"camera": False})
     box.sent.clear()
     t = time.time()
     tick(team, t, box)
