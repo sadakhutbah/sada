@@ -146,7 +146,8 @@ def render(slug: str, mosque: dict, payload: dict, month: str) -> str:
 <p class="sr" id="next-sr" role="status" aria-live="polite"></p>
 </section>
 <section class="list" aria-label="Horaires du jour">
-{status}<ul class="rows{"" if today["iqama"] else " noiqama"}" id="rows">{_rows(today)}</ul>{iqama_note}
+{status}<div class="cols{"" if today["iqama"] else " noiqama"}" id="cols" aria-hidden="true"><span></span><span>Adhan</span><span{"" if today["iqama"] else " hidden"}>Iqama</span></div>
+<ul class="rows{"" if today["iqama"] else " noiqama"}" id="rows">{_rows(today)}</ul>{iqama_note}
 </section>
 <footer class="foot"><a href="{base}/page?month={escape(month)}">Calendrier du mois</a>
 <a href="{base}/export?format=pdf&amp;month={escape(month)}" download>Calendrier PDF</a></footer>

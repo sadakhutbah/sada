@@ -134,3 +134,20 @@ def test_a_mawaqit_or_private_mosque_has_no_screen(env):
     c.ecrire("/settings/prayer", {"source": "computed", "calc": CALC, "public": "0"}, methode="PUT")
     assert client(env).get(BASE + "/page").status_code == 404
     assert client(env).get(BASE + "/days").status_code == 404
+
+
+def test_one_column_header_names_adhan_and_iqama_only_when_the_mosque_publishes_iqama(env):
+    _choose(env, calc={**CALC, "iqama": {"isha": 10}})
+    h = client(env).get(BASE + "/page").text
+    cols = re.search(r'<div class="cols[^"]*" id="cols".*?</div>', h, re.S).group(0)
+    assert "Adhan" in cols and "Iqama" in cols and "<span hidden>" not in cols
+    _choose(env)
+    cols = re.search(r'<div class="cols[^"]*" id="cols".*?</div>', client(env).get(BASE + "/page").text, re.S).group(0)
+    assert "noiqama" in cols and "<span hidden>Iqama</span>" in cols
+
+
+def test_the_phone_layout_is_sized_on_the_dynamic_viewport_with_safe_areas():
+    css = (prayer_screen_css := __import__("pathlib").Path(prayer_screen.__file__).parent / "static" / "prayer-screen.css").read_text()
+    phone = css[css.index("Phone, portrait"):]
+    assert "100dvh" in phone and "safe-area-inset-bottom" in phone and "clamp(" in phone
+    assert "http" not in phone and "url(" not in phone  # nothing external
