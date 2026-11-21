@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from pathlib import Path
 
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -182,23 +181,28 @@ def prayer_times_days(slug: str, request: Request, conn: ConnDep, first: str = Q
 
 _ASSET = re.compile(r"^(prayer-screen\.(css|js)|fonts\.css|fonts/[A-Za-z0-9_-]+\.woff2)$")
 _ASSET_TYPES = {"css": "text/css; charset=utf-8", "js": "text/javascript; charset=utf-8", "woff2": "font/woff2"}
-_STATIC = Path(__file__).resolve().parent.parent / "static"
+_NOT_FOUND = {"Cache-Control": "no-store"}
 
 
 @router.get("/public/assets/{name:path}")
 def public_asset(name: str):
     """The few files of the public screen (style, script, fonts), served under the public prefix: the
-    public host forwards only `/api/v1/public/*` to the back office, never `/static`."""
-    path = _STATIC / ("fonts/fonts.css" if name == "fonts.css" else name)
-    if not _ASSET.match(name) or not path.is_file():
-        return Response("Not Found", status_code=404, headers={"Cache-Control": "no-store"})
-    body = path.read_bytes()
-    if name == "fonts.css":  # the stylesheet names its files under /static
-        body = body.replace(b"/static/fonts/", b"/api/v1/public/assets/fonts/")
+    public host forwards only `/api/v1/public/*` to the back office, never `/static`.
+
+    The page links `prayer-screen.<hash>.css`, `prayer-screen.<hash>.js` and `fonts.<hash>.css` (hash of
+    the content, see prayer_screen): those never change, so they are cached for a year. The plain names
+    still answer (old pages, other clients) with a short cache."""
+    found = prayer_screen.asset(name)
+    if found is None and _ASSET.match(name) and (prayer_screen.STATIC / name).is_file():
+        found = ((prayer_screen.STATIC / name).read_bytes(), False)  # fonts/<name>.woff2
+    if found is None:
+        return Response("Not Found", status_code=404, headers=_NOT_FOUND)
+    body, immutable = found
+    cache = "public, max-age=31536000, immutable" if immutable else "public, max-age=3600"
     return Response(
         body,
         media_type=_ASSET_TYPES[name.rsplit(".", 1)[1]],
-        headers={"Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*"},
+        headers={"Cache-Control": cache, "Access-Control-Allow-Origin": "*"},
     )
 
 

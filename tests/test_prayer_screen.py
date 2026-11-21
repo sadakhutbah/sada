@@ -1,6 +1,7 @@
 """The public prayer-time screen: clock page, days endpoint and the few assets served under the public prefix."""
 
 import datetime as dt
+import hashlib
 import json
 import re
 
@@ -127,6 +128,43 @@ def test_assets_are_served_under_the_public_prefix_and_nothing_else(env):
     assert c.get("/api/v1/public/assets/fonts/Amiri-normal-400-arabic.woff2").headers["content-type"] == "font/woff2"
     for bad in ("../app.py", "fonts/../../app.py", "emblem.svg", "fonts/x.txt", "..%2fapp.py"):
         assert c.get("/api/v1/public/assets/" + bad).status_code == 404, bad
+
+
+def test_page_links_content_hashed_assets_and_they_are_immutable(env):
+    _choose(env)
+    c = client(env)
+    page = c.get(BASE + "/page")
+    assert page.status_code == 200
+    # the HTML itself stays short-lived: it is what carries the current hashes
+    assert page.headers["cache-control"].startswith("public, max-age=60")
+    assert "immutable" not in page.headers["cache-control"]
+    links = re.findall(r'(?:href|src)="(/api/v1/public/assets/[^"]+)"', page.text)
+    assert sorted(links) == sorted([prayer_screen.CSS, prayer_screen.JS, prayer_screen.FONTS])
+    for link in links:
+        assert re.search(r"/(prayer-screen|fonts)\.[0-9a-f]{10}\.(css|js)$", link), link
+        r = c.get(link)
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+    plain = c.get("/api/v1/public/assets/prayer-screen.css")  # compatibility
+    assert plain.status_code == 200 and "immutable" not in plain.headers["cache-control"]
+    assert c.get(prayer_screen.CSS).content == plain.content
+
+
+def test_asset_hash_follows_the_content_and_unknown_hashes_are_refused(env):
+    c = client(env)
+    css = prayer_screen.CSS.rsplit("/", 1)[1]
+    digest = hashlib.sha256(c.get(prayer_screen.CSS).content).hexdigest()[:10]
+    assert css == f"prayer-screen.{digest}.css"
+    fonts = c.get(prayer_screen.FONTS)  # hashed after the /static -> /assets rewrite
+    assert "/static/fonts/" not in fonts.text
+    assert prayer_screen.FONTS.endswith(f"fonts.{hashlib.sha256(fonts.content).hexdigest()[:10]}.css")
+    for bad in (
+        "prayer-screen.0000000000.css",
+        "prayer-screen.zzzzzzzzzz.js",
+        "prayer-screen..css",
+    ):
+        r = c.get("/api/v1/public/assets/" + bad)
+        assert r.status_code == 404 and r.headers["cache-control"] == "no-store", bad
 
 
 def test_a_mawaqit_or_private_mosque_has_no_screen(env):

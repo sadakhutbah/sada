@@ -11,8 +11,10 @@ the day up to date, fetching the next days from the `days` endpoint at midnight.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 from html import escape
+from pathlib import Path
 from urllib.parse import quote
 
 from hijridate import Gregorian
@@ -36,9 +38,42 @@ HIJRI_MONTHS = prayer_labels.labels("fr")["hijri_months"]
 SPAN = 2
 
 ASSETS = "/api/v1/public/assets"  # not /static: on the public host only /api/v1/public/* reaches the back office
-CSS = f"{ASSETS}/prayer-screen.css"
-JS = f"{ASSETS}/prayer-screen.js"
-FONTS = f"{ASSETS}/fonts.css"
+STATIC = Path(__file__).resolve().parent / "static"
+
+
+def _fonts_css() -> bytes:
+    """fonts.css as served: it names its files under /static, the public host only reaches the assets prefix."""
+    return (STATIC / "fonts" / "fonts.css").read_bytes().replace(b"/static/fonts/", f"{ASSETS}/fonts/".encode())
+
+
+def _digest(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()[:10]
+
+
+# Computed once at startup. Cloudflare ignores the query string, so the content hash goes in the file
+# NAME: a release changes the name, the HTML points to it, and a stale copy at the edge is never asked for.
+_BODIES = {
+    "prayer-screen.css": (STATIC / "prayer-screen.css").read_bytes(),
+    "prayer-screen.js": (STATIC / "prayer-screen.js").read_bytes(),
+    "fonts.css": _fonts_css(),
+}
+# hashed name -> plain name, e.g. "prayer-screen.3fa9c01b2d.css" -> "prayer-screen.css"
+HASHED = {f"{n.rsplit('.', 1)[0]}.{_digest(b)}.{n.rsplit('.', 1)[1]}": n for n, b in _BODIES.items()}
+_BY_PLAIN = {plain: hashed for hashed, plain in HASHED.items()}
+
+CSS = f"{ASSETS}/{_BY_PLAIN['prayer-screen.css']}"
+JS = f"{ASSETS}/{_BY_PLAIN['prayer-screen.js']}"
+FONTS = f"{ASSETS}/{_BY_PLAIN['fonts.css']}"
+
+
+def asset(name: str) -> tuple[bytes, bool] | None:
+    """(body, immutable) for a hashed or plain asset name, None when it is neither. Only the current
+    hash is accepted, so a hashed URL always means exactly one content."""
+    if name in HASHED:
+        return _BODIES[HASHED[name]], True
+    if name in _BODIES:
+        return _BODIES[name], False
+    return None
 
 
 def greg_text(day: dt.date) -> str:
