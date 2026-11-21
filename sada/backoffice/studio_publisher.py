@@ -77,10 +77,17 @@ def current(conn, mosque: dict) -> dict | None:
     return out
 
 
+def iso(epoch: float | None) -> str | None:
+    """UTC instant in ISO 8601 (`2027-03-23T18:58:05Z`), the one format of the contract."""
+    return None if not epoch else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
 def refusal(holder: dict) -> dict:
+    """Body of a 409 `live_active`: `since` (ISO) is also at the top level, where the application reads it."""
     return {
         "error": _("A live is already running from {source}.", source=holder["text"]),
         "code": "live_active",
+        "since": iso(holder["since"]),
         "source": {"kind": holder["source"], "label": holder["label"], "since": holder["since"]},
     }
 

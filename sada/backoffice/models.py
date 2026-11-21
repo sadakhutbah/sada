@@ -581,6 +581,7 @@ device_pairings = sa.Table(
     sa.Column("approved_by", sa.Integer, sa.ForeignKey("users.id")),
     sa.Column("approved_at", sa.Float),
     sa.Column("claimed_at", sa.Float),
+    sa.Column("suggested_name", sa.Text, nullable=False, server_default=_d("''")),
 )
 
 # Studio settings of a mosque (defaults apply while no row exists).

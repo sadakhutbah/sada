@@ -124,7 +124,7 @@ export default function Devices() {
           <Field label={t("devices.name")}>
             <input className={inputClass} value={nom} maxLength={60} placeholder={t("devices.namePlaceholder")} onChange={(e) => setNom(e.target.value)} />
           </Field>
-          <Btn type="submit" disabled={occupe || code.replace(/[\s-]/g, "").length < 8 || !nom.trim()}>{t("devices.pair")}</Btn>
+          <Btn type="submit" disabled={occupe || code.replace(/[\s-]/g, "").length < 8}>{t("devices.pair")}</Btn>
         </form>
       </Card>
 

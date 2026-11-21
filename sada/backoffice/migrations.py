@@ -268,6 +268,11 @@ def _studio_appareils(conn: sa.Connection) -> None:
         models.metadata.tables[name].create(conn, checkfirst=True)
 
 
+def _studio_nom_propose(conn: sa.Connection) -> None:
+    """Migration 23 : nom de la machine envoyé par l'application au début de l'appairage."""
+    _add_columns(conn, "device_pairings", (("suggested_name", "TEXT NOT NULL DEFAULT ''"),))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -293,6 +298,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(20, "khutbas : chapitres (récitants des tarawih)", _khutbas_chapitres),
     Migration(21, "horaires de prière propres à la mosquée et choix de la source", _horaires_propres),
     Migration(22, "studio : appareils, appairage, exclusivité du flux, alertes", _studio_appareils),
+    Migration(23, "studio : nom de la machine proposé à l'appairage", _studio_nom_propose),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

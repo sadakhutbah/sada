@@ -75,11 +75,13 @@ async def _json(request: Request) -> dict:
 
 
 @router.post("/studio/pair/start")
-def pair_start(request: Request, conn: ConnDep):
+async def pair_start(request: Request, conn: ConnDep):
     wait = _start_limit.hit(client_ip(request))
     if wait:
         return _too_many(wait)
-    return JSONResponse(studio_devices.start_pairing(conn, client_ip(request)), headers={"Cache-Control": "no-store"})
+    body = await _json(request)
+    out = studio_devices.start_pairing(conn, client_ip(request), body.get("name", ""))
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/studio/pair/poll")
@@ -119,8 +121,30 @@ async def heartbeat(request: Request, a: DeviceDep):
         "slots": [s.as_dict(now) for s in out.slots[:5]],
     }
     if new_credential:
-        resp["credentials"] = {"device_id": new_credential}
+        resp["credentials"] = {"device_id": studio_devices.public_id(a.device["id"]), "device_secret": new_credential}
     return JSONResponse(resp, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/studio/unpair")
+async def unpair(request: Request, a: DeviceDep):
+    """The device leaves the mosque by itself (“Forget this mosque” in the application): same effect as an
+    administrator's revocation (credential refused at once, stream cut, manual live ended), journaled as such."""
+    await _json(request)
+    dev, mosque = a.device, a.mosque
+    studio_devices.revoke(a.conn, dev, None)
+    cut = False
+    claim = orm.first(a.conn, StudioClaim, mosque_id=mosque["id"])
+    if claim and claim["device_id"] == dev["id"]:
+        cut = live_watch.kick(studio_publisher.path_of(mosque))
+        studio_publisher.release(a.conn, mosque["id"])
+    a.conn.execute(
+        StudioRun.__table__.update()
+        .where(StudioRun.device_id == dev["id"], StudioRun.ended_at.is_(None), StudioRun.origin == "manual")
+        .values(ended_at=time.time())
+    )
+    orm.done(a.conn)
+    a.audit("studio.appareil.desappaire", appareil_id=dev["id"], flux_coupe=cut)
+    return JSONResponse({"unpaired": True, "stream_cut": cut}, headers={"Cache-Control": "no-store"})
 
 
 def _manual(call):

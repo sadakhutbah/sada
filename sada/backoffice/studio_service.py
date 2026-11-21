@@ -124,6 +124,7 @@ def start_manual(
                     source=_("the device “{name}”", name=other.get("name", "?")),
                 ),
                 "code": "live_active",
+                "since": studio_publisher.iso(run["started_at"]),
                 "source": {"kind": "device", "label": other.get("name", ""), "since": run["started_at"]},
             },
         )

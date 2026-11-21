@@ -71,8 +71,10 @@ def normalize_code(text: str) -> str | None:
 # ------------------------------------------------------------------ pairing
 
 
-def start_pairing(conn, ip: str | None, now: float | None = None) -> dict:
+def start_pairing(conn, ip: str | None, name: str = "", now: float | None = None) -> dict:
+    """New pairing. `name` is the machine name the application proposes (shown to the console, optional)."""
     now = time.time() if now is None else now
+    name = " ".join(str(name or "").split())[:60]
     conn.execute(DevicePairing.__table__.delete().where(DevicePairing.expires_at < now - 86400))
     device_code = secrets.token_urlsafe(32)
     user_code = new_user_code()
@@ -96,6 +98,7 @@ def start_pairing(conn, ip: str | None, now: float | None = None) -> dict:
             created_at=now,
             expires_at=now + PAIR_TTL_S,
             ip=ip,
+            suggested_name=name,
         )
     )
     orm.done(conn)
@@ -118,8 +121,6 @@ def approve(conn, mosque: dict, user: dict, user_code: str, name: str, now: floa
     now = time.time() if now is None else now
     code = normalize_code(user_code)
     name = " ".join(str(name or "").split())[:60]
-    if not name:
-        raise PairingError(422, "name_required", _("Give the device a name (for example “Mosque PC”)."))
     if code is None:
         raise PairingError(404, "unknown_code", _("This code does not exist. Check the code shown on the device."))
     rows = orm.rows(
@@ -132,6 +133,9 @@ def approve(conn, mosque: dict, user: dict, user_code: str, name: str, now: floa
     p = rows[0] if rows else None
     if p is None:
         raise PairingError(404, "unknown_code", _("This code does not exist. Check the code shown on the device."))
+    name = name or p["suggested_name"]  # the machine name proposed by the application
+    if not name:
+        raise PairingError(422, "name_required", _("Give the device a name (for example “Mosque PC”)."))
     if p["status"] != "pending":
         raise PairingError(409, "already_used", _("This code has already been used."))
     if p["expires_at"] <= now:
@@ -183,14 +187,15 @@ def poll(conn, device_code: str, now: float | None = None) -> tuple[int, dict]:
         ).rowcount
         orm.done(conn)
         if won != 1:
-            return 409, {"status": "claimed", "message": _("This pairing was already completed.")}
+            return 410, {"status": "claimed", "message": _("This pairing was already completed.")}
     secret = new_secret()
     conn.execute(update(Device).where(Device.id == dev["id"]).values(secret_hash=_h(secret)))
     orm.done(conn)
     mosque = orm.first(conn, Mosque, id=dev["mosque_id"]) or {}
     return 200, {
         "status": "approved",
-        "device_id": credential(dev["id"], secret),
+        "device_id": public_id(dev["id"]),
+        "device_secret": credential(dev["id"], secret),
         "name": dev["name"],
         "mosque": {"name": mosque.get("name", ""), "slug": mosque.get("slug", "")},
     }
@@ -201,6 +206,11 @@ def poll(conn, device_code: str, now: float | None = None) -> tuple[int, dict]:
 
 def new_secret() -> str:
     return secrets.token_urlsafe(32)
+
+
+def public_id(device_id: int) -> str:
+    """The device's public identifier (not a secret): shown in logs and in the console."""
+    return f"{PREFIX}{device_id}"
 
 
 def credential(device_id: int, secret: str) -> str:
@@ -263,7 +273,7 @@ def request_rotation(conn, device_id: int) -> None:
     orm.done(conn)
 
 
-def revoke(conn, dev: dict, user_id: int, now: float | None = None) -> None:
+def revoke(conn, dev: dict, user_id: int | None, now: float | None = None) -> None:
     conn.execute(
         update(Device).where(Device.id == dev["id"]).values(revoked_at=db.now_iso(), revoked_by=user_id, held_until=0.0)
     )
@@ -330,6 +340,7 @@ def public(dev: dict, now: float, online_s: int = 90) -> dict:
     """A device as the console shows it (never a secret)."""
     return {
         "id": dev["id"],
+        "device_id": public_id(dev["id"]),
         "name": dev["name"],
         "online": is_online(dev, now, online_s),
         "revoked": bool(dev["revoked_at"]),

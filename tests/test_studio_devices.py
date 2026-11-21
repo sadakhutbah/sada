@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 import time
 from zoneinfo import ZoneInfo
 
@@ -64,7 +65,7 @@ def pair(env, name="PC mosquée", user="responsable"):
     assert r.status_code == 200, r.text
     poll = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]})
     assert poll.status_code == 200, poll.text
-    return poll.json()["device_id"], r.json()["device"]["id"]
+    return poll.json()["device_secret"], r.json()["device"]["id"]
 
 
 def dev(env, bearer):
@@ -147,8 +148,8 @@ def test_credential_can_be_fetched_again_until_the_device_speaks(env):
     anon = client(env)
     start = anon.post("/api/v1/studio/pair/start").json()
     client(env, "responsable").ecrire("/studio/devices/pair", {"user_code": start["user_code"], "name": "PC"})
-    first = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()["device_id"]
-    again = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()["device_id"]
+    first = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()["device_secret"]
+    again = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()["device_secret"]
     assert first != again  # lost answer: a new secret replaces the unused one
     assert heartbeat(dev(env, first)).status_code == 401
     assert heartbeat(dev(env, again)).status_code == 200
@@ -296,7 +297,7 @@ def test_isolation_between_mosques(env):
     assert intruder.ecrire("/studio/devices/pair", {"user_code": start["user_code"], "name": "PC"}).status_code == 200
     poll = client(env).post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()
     assert poll["mosque"]["slug"] == "autre"
-    hb2 = heartbeat(dev(env, poll["device_id"])).json()
+    hb2 = heartbeat(dev(env, poll["device_secret"])).json()
     assert hb2["config"]["mosque"]["slug"] == "autre" and hb2["slots"] == []
     # and a token of mosque 1 does not open mosque 2's stream
     program(env, oneoff("d1", 1))
@@ -328,11 +329,11 @@ def test_rotation_brings_a_new_credential_and_the_old_one_works_meanwhile(env):
     d = dev(env, bearer)
     assert "credentials" not in heartbeat(d).json()
     assert client(env, "responsable").ecrire(f"/studio/devices/{did}/rotate").status_code == 200
-    new = heartbeat(d).json()["credentials"]["device_id"]
+    new = heartbeat(d).json()["credentials"]["device_secret"]
     assert new != bearer and new.startswith(f"sdev_{did}.")
     assert heartbeat(d).status_code == 200  # old one: grace period
     assert "credentials" in heartbeat(d).json()  # answer might have been lost: handed again
-    newest = heartbeat(d).json()["credentials"]["device_id"]
+    newest = heartbeat(d).json()["credentials"]["device_secret"]
     assert heartbeat(dev(env, newest)).status_code == 200
     assert "credentials" not in heartbeat(dev(env, newest)).json()
     assert heartbeat(d).status_code == 401  # the old secret is gone once the new one is adopted
@@ -372,6 +373,7 @@ def test_manual_start_refused_when_a_stream_is_active(env, relay):
     r = dev(env, bearer).post("/api/v1/studio/live/start", json={"type": "khutba", "title": "Jumua"})
     assert r.status_code == 409 and r.json()["code"] == "live_active"
     assert "déjà en cours" not in r.json()["error"] and "already running" in r.json()["error"]
+    assert "since" in r.json()  # unknown holder (OBS key): no instant to give
     assert heartbeat(dev(env, bearer)).json()["command"] == "standby"
 
 
@@ -381,6 +383,7 @@ def test_second_device_cannot_start_over_a_manual_live(env, relay):
     assert dev(env, b1).post("/api/v1/studio/live/start", json={"type": "dars", "title": "A"}).status_code == 200
     r = dev(env, b2).post("/api/v1/studio/live/start", json={"type": "dars", "title": "B"})
     assert r.status_code == 409 and "PC 1" in r.json()["error"]
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", r.json()["since"])
     assert heartbeat(dev(env, b2)).json()["command"] == "standby"
 
 
@@ -615,3 +618,55 @@ def test_kick_picks_the_route_of_the_publisher_kind(monkeypatch):
     monkeypatch.setattr(live_watch, "_api_down_at", 0.0)
     assert live_watch.kick("live/abc") is True
     assert calls == ["http://127.0.0.1:9997/v3/webrtcsessions/kick/2f1c9a7e-5b1d-4c35"]
+
+
+def test_poll_names_the_public_id_and_the_secret_apart(env):
+    anon = client(env)
+    start = anon.post("/api/v1/studio/pair/start", json={"name": "  Salle   de prière PC "}).json()
+    r = client(env, "responsable").ecrire("/studio/devices/pair", {"user_code": start["user_code"]})
+    assert r.status_code == 200 and r.json()["device"]["name"] == "Salle de prière PC"  # the machine's own name
+    out = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]}).json()
+    did = r.json()["device"]["id"]
+    assert out["device_id"] == f"sdev_{did}" and out["device_secret"].startswith(f"sdev_{did}.")
+    assert out["device_secret"] != out["device_id"] and "secret" not in out["device_id"]
+
+
+def test_pairing_without_any_name_is_refused(env):
+    start = client(env).post("/api/v1/studio/pair/start", json={}).json()
+    r = client(env, "responsable").ecrire("/studio/devices/pair", {"user_code": start["user_code"]})
+    assert r.status_code == 422 and r.json()["code"] == "name_required"
+
+
+def test_claimed_and_unknown_pairings_answer_410_and_404(env):
+    anon = client(env)
+    assert anon.post("/api/v1/studio/pair/poll", json={"device_code": "nope"}).status_code == 404
+    bearer, did = pair(env)
+    d = dev(env, bearer)
+    assert heartbeat(d).status_code == 200
+    client(env, "responsable").ecrire(f"/studio/devices/{did}/revoke")
+    start = anon.post("/api/v1/studio/pair/start").json()
+    client(env, "responsable").ecrire("/studio/devices/pair", {"user_code": start["user_code"], "name": "PC 2"})
+    anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]})
+    row = one(env["conn"], models.Device, name="PC 2")
+    update(env["conn"], models.Device, {"last_seen_at": time.time()}, id=row["id"])
+    gone = anon.post("/api/v1/studio/pair/poll", json={"device_code": start["device_code"]})
+    assert gone.status_code == 410 and gone.json()["status"] == "claimed"
+
+
+def test_unpair_by_the_device_revokes_it_and_cuts_its_live(env, relay):
+    bearer, did = pair(env)
+    d = dev(env, bearer)
+    assert d.post("/api/v1/studio/live/start", json={"type": "dars", "title": "Cours"}).status_code == 200
+    token = d.post("/api/v1/live/studio/token").json()["token"]
+    assert publish_auth(env, slug(env), token) == 200
+    relay.pub = "device"
+    r = d.post("/api/v1/studio/unpair")
+    assert r.status_code == 200 and r.json() == {"unpaired": True, "stream_cut": True}
+    assert one(env["conn"], models.Device, id=did)["revoked_at"] and relay.kicks == 1
+    refused = heartbeat(d)
+    assert refused.status_code == 401 and refused.json()["code"] == "revoked"
+    assert rows(env["conn"], models.StudioRun, origin="manual")[0]["ended_at"]
+    assert audits(env, "studio.appareil.desappaire")
+    assert d.post("/api/v1/studio/unpair").status_code == 401  # its credential is gone
+    listed = client(env, "responsable").get("/api/v1/studio/devices").json()["devices"]
+    assert all(x["device_id"].startswith("sdev_") for x in listed)
