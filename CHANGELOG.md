@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.11](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.10...sada-v0.1.0-alpha.11) (2026-11-21)
+
+
+### Bug Fixes
+
+* **prayer-screen:** phone layout fits on one screen, no scrolling ([#70](https://github.com/sadakhutbah/sada/issues/70)) ([46be315](https://github.com/sadakhutbah/sada/commit/46be315e1a866154c56207a30ad07a85aaa26c8d))
+
 ## [0.1.0-alpha.10](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.9...sada-v0.1.0-alpha.10) (2026-11-21)
 
 
