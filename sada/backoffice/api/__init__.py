@@ -31,6 +31,7 @@ from . import (
     sermons,
     session,
     settings,
+    studio,
     users,
 )
 from .common import PERMISSIONS
@@ -55,6 +56,7 @@ for _module in (
     audit,
     users,
     agenda,
+    studio,
     internal,
 ):
     router.include_router(_module.router)

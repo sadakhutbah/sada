@@ -75,6 +75,9 @@ users = sa.Table(
     # Administrateur de la plateforme : règle ce qui est commun à toutes les mosquées (modèle,
     # transcription). Jamais attribué par un formulaire, seulement en ligne de commande.
     sa.Column("platform_admin", sa.Integer, nullable=False, server_default=_d("0")),
+    # Address for the studio checks (empty: none) and the account's own unsubscription from them.
+    sa.Column("email", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("studio_mail_optout", sa.Integer, nullable=False, server_default=_d("0")),
 )
 
 auth_sessions = sa.Table(
@@ -525,6 +528,128 @@ def _search_extras(target, conn, **kw) -> None:
         create_vector_table(conn)
 
 
+# --- Studio devices (migration 22): the PC of a mosque that streams on its own ----------------------
+# A device belongs to one mosque for good. Its secret is kept as a hash only; a revoked one stays as a
+# row (history, audit) but opens nothing.
+devices = sa.Table(
+    "devices",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("name", sa.Text, nullable=False),
+    sa.Column("secret_hash", sa.Text, nullable=False, server_default=_d("''")),
+    # key rotation: the previous secret keeps working until the device uses the new one (or its grace ends)
+    sa.Column("prev_secret_hash", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("prev_valid_until", sa.Float, nullable=False, server_default=_d("0")),
+    sa.Column("rotate_requested", sa.Integer, nullable=False, server_default=_d("0")),
+    sa.Column("created_by", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("created_at", sa.Text, nullable=False),
+    sa.Column("last_seen_at", sa.Float),
+    sa.Column("last_ip", sa.Text),
+    sa.Column("app_version", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("last_state", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("camera_ok", sa.Integer),
+    sa.Column("mic_ok", sa.Integer),
+    sa.Column("bitrate_kbps", sa.Integer),
+    # checks of the PC reported by the heartbeat (JSON: auto_login, update_hours, sleep_disabled)
+    sa.Column("health", sa.Text, nullable=False, server_default=_d("''")),
+    # told to stay quiet (an administrator took the stream over): no live order until then
+    sa.Column("held_until", sa.Float, nullable=False, server_default=_d("0")),
+    sa.Column("revoked_at", sa.Text),
+    sa.Column("revoked_by", sa.Integer, sa.ForeignKey("users.id")),
+)
+
+# Pairing in the television way (RFC 8628 in spirit): pending -> approved -> claimed, or expired.
+device_pairings = sa.Table(
+    "device_pairings",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("device_code_hash", sa.Text, nullable=False, unique=True),
+    sa.Column("user_code_hash", sa.Text, nullable=False),
+    sa.Column(
+        "status",
+        sa.Text,
+        sa.CheckConstraint("status IN ('pending', 'approved', 'claimed')"),
+        nullable=False,
+        server_default=_d("'pending'"),
+    ),
+    sa.Column("created_at", sa.Float, nullable=False),
+    sa.Column("expires_at", sa.Float, nullable=False),
+    sa.Column("ip", sa.Text),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id")),
+    sa.Column("device_id", sa.Integer, sa.ForeignKey("devices.id")),
+    sa.Column("approved_by", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("approved_at", sa.Float),
+    sa.Column("claimed_at", sa.Float),
+)
+
+# Studio settings of a mosque (defaults apply while no row exists).
+studio_settings = sa.Table(
+    "studio_settings",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False, unique=True),
+    sa.Column("start_margin_s", sa.Integer, nullable=False, server_default=_d("120")),
+    sa.Column("offline_alert_min", sa.Integer, nullable=False, server_default=_d("10")),
+    sa.Column("khutba_min", sa.Integer, nullable=False, server_default=_d("60")),
+    sa.Column("dars_min", sa.Integer, nullable=False, server_default=_d("90")),
+    sa.Column("preflight_min", sa.Integer, nullable=False, server_default=_d("30")),
+)
+
+# Lives started or stopped by hand from a device (origin `manual`), and scheduled slots stopped by hand
+# (origin `slot_stop`, `slot_key` names the occurrence): the server's memory of what the order must not repeat.
+studio_runs = sa.Table(
+    "studio_runs",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("device_id", sa.Integer, sa.ForeignKey("devices.id")),
+    sa.Column("origin", sa.Text, sa.CheckConstraint("origin IN ('manual', 'slot_stop', 'announce')"), nullable=False),
+    sa.Column("kind", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("title", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("slot_key", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("started_at", sa.Float, nullable=False),
+    sa.Column("ended_at", sa.Float),
+)
+
+# Who holds the mosque's stream right now (device, OBS key or control room): the exclusivity memory.
+studio_claims = sa.Table(
+    "studio_claims",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False, unique=True),
+    sa.Column("source", sa.Text, sa.CheckConstraint("source IN ('device', 'obs', 'regie')"), nullable=False),
+    sa.Column("device_id", sa.Integer, sa.ForeignKey("devices.id")),
+    sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id")),
+    sa.Column("label", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("since", sa.Float, nullable=False),
+)
+
+# Problems of the studio, as the server sees them from the heartbeat: one row per incident, open until
+# the cause is gone. `open_key` (unique while open, NULL once resolved) keeps a problem from being
+# opened twice, even by two replicas; the mail columns drive the anti-spam (one mail per incident,
+# limited reminders, one "resolved" mail).
+studio_incidents = sa.Table(
+    "studio_incidents",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True),
+    sa.Column("mosque_id", sa.Integer, sa.ForeignKey("mosques.id"), nullable=False),
+    sa.Column("device_id", sa.Integer, sa.ForeignKey("devices.id")),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("slot_key", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("open_key", sa.Text, unique=True),
+    sa.Column("detail", sa.Text, nullable=False, server_default=_d("''")),
+    sa.Column("opened_at", sa.Float, nullable=False),
+    sa.Column("resolved_at", sa.Float),
+    sa.Column("mailed_at", sa.Float),
+    sa.Column("mail_count", sa.Integer, nullable=False, server_default=_d("0")),
+    sa.Column("resolved_mailed", sa.Integer, nullable=False, server_default=_d("0")),
+)
+sa.Index("studio_incidents_mosque", studio_incidents.c.mosque_id, studio_incidents.c.resolved_at)
+sa.Index("devices_mosque", devices.c.mosque_id)
+sa.Index("studio_runs_mosque", studio_runs.c.mosque_id, studio_runs.c.started_at)
+
+
 sa.Index("audit_mosque", audit.c.mosque_id, audit.c.id)
 sa.Index("clips_mosque", clips.c.mosque_id, clips.c.status)
 sa.Index("khutbas_mosque", khutbas.c.mosque_id, khutbas.c.date)
@@ -555,6 +680,12 @@ TABLES = (
     audit,
     transcript_segments,
     verse_citations,
+    devices,
+    device_pairings,
+    studio_settings,
+    studio_runs,
+    studio_claims,
+    studio_incidents,
 )
 
 
@@ -657,3 +788,27 @@ class TranscriptSegment(Base):
 
 class VerseCitation(Base):
     __table__ = verse_citations
+
+
+class Device(Base):
+    __table__ = devices
+
+
+class DevicePairing(Base):
+    __table__ = device_pairings
+
+
+class StudioSettings(Base):
+    __table__ = studio_settings
+
+
+class StudioRun(Base):
+    __table__ = studio_runs
+
+
+class StudioClaim(Base):
+    __table__ = studio_claims
+
+
+class StudioIncident(Base):
+    __table__ = studio_incidents

@@ -10,9 +10,11 @@ from fastapi import APIRouter, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from .. import db, live, live_input, live_watch, studio_token
+from ...i18n import _
+from .. import live, live_input, live_watch, studio_plan, studio_publisher, studio_service, studio_token
 from .. import screens as screens_mod
 from ..context import CtxDep, NotFound
+from ..studio_auth import Actor, ActorDep
 
 router = APIRouter()
 
@@ -36,7 +38,9 @@ def regie(ctx: CtxDep):
     ctx.require("live")
     paths = {w: live_watch.path_of(ctx.conn, ctx.mosque, w) for w in live_watch.SOURCES}
     health = {w: live_watch.health(p) for w, p in paths.items()}
+    holder = studio_publisher.current(ctx.conn, ctx.mosque)
     return {
+        "publisher": holder and {k: holder[k] for k in ("source", "label", "since", "text")},
         "live": live.status_cached(ctx.mosque, ttl=STATUS_TTL),
         "commands": [
             {"key": k, "destructive": k in live.DESTRUCTIVE, "choices": list(live.choices(k))} for k in live.COMMANDS
@@ -116,57 +120,66 @@ async def hls(which: str, name: str, ctx: CtxDep, session: str | None = None):
     return Response(body, media_type=ctype, headers={"Cache-Control": "no-store"})
 
 
-# --- Studio: publish from the browser (WHIP), through the back office -------------------------------
-# The relay's WebRTC port is never reached by the browser for signalling: the offer goes through here,
-# behind the session and the `live` right, and carries a short-lived token bound to the user and the
-# mosque. The stream name comes from the session's mosque, never from the request.
+# --- Studio: publish from the browser or from a paired device (WHIP), through the back office ------------
+# The relay's WebRTC port is never reached by the client for signalling: the offer goes through here,
+# behind the session and the `live` right (or a device credential), and carries a short-lived token bound to
+# the user or the device and to the mosque. The stream name comes from the mosque, never from the request.
 
 WHIP_SESSION = live_watch.WHEP_SESSION
 ICE_TYPE = "application/trickle-ice-sdpfrag"
 
 
-def _studio_path(ctx) -> str:
-    return f"live/{live_input.slug(ctx.mosque)}"
+def _studio_path(a: Actor) -> str:
+    return f"live/{live_input.slug(a.mosque)}"
 
 
-def _studio_token(ctx) -> str:
-    return studio_token.issue(ctx.user["id"], ctx.mosque)[0]
+def _studio_token(a: Actor) -> str:
+    return studio_token.issue(a.user_id, a.mosque, device_id=a.device["id"] if a.device else None)[0]
 
 
-def _need_push(ctx) -> JSONResponse | None:
+def _need_push(a: Actor) -> JSONResponse | None:
     """The studio feeds the mosque's push input: a camera input is read by the relay itself."""
-    if live_input.current(ctx.conn, ctx.mosque)["mode"] != "push":
+    if live_input.current(a.conn, a.mosque)["mode"] != "push":
         return JSONResponse({"error": "input is not push"}, status_code=409)
     return None
 
 
+def _may_start(a: Actor) -> JSONResponse | None:
+    """Before a token or an offer: the device is ordered to broadcast, and nobody else holds the stream."""
+    if a.device:
+        o = studio_service.order_for(a.conn, a.mosque, a.device)
+        if o.order.command != studio_plan.LIVE:
+            body = o.body() | {"error": o.body()["reason"], "code": "not_ordered"}
+            return JSONResponse(body, status_code=409)
+    holder = studio_publisher.current(a.conn, a.mosque)
+    if holder is not None and not (holder["known"] and a.who().same_as(holder)):
+        return JSONResponse(studio_publisher.refusal(holder), status_code=409)
+    return None
+
+
 @router.post("/live/studio/token")
-def studio_token_issue(ctx: CtxDep):
-    """Token to start a studio session: bound to the signed-in user and the session's mosque."""
-    ctx.need_csrf()
-    ctx.require("live")
-    if (refused := _need_push(ctx)) is not None:
+def studio_token_issue(a: ActorDep):
+    """Token to start a studio session: bound to the signed-in user (or the device) and the mosque."""
+    a.need_live()
+    if (refused := _need_push(a) or _may_start(a)) is not None:
         return refused
-    token, life = studio_token.issue(ctx.user["id"], ctx.mosque)
-    db.audit(ctx.conn, ctx.mosque["id"], ctx.user["id"], "studio.jeton", "mosque", ctx.mosque["id"], ip=ctx.ip)
+    token, life = studio_token.issue(a.user_id, a.mosque, device_id=a.device["id"] if a.device else None)
+    a.audit("studio.jeton")
     return JSONResponse(
-        {"token": token, "expires_in": life, "path": _studio_path(ctx)}, headers={"Cache-Control": "no-store"}
+        {"token": token, "expires_in": life, "path": _studio_path(a)}, headers={"Cache-Control": "no-store"}
     )
 
 
 @router.post("/live/studio/whip")
-async def whip_offer(request: Request, ctx: CtxDep):
-    ctx.need_csrf()
-    ctx.require("live")
-    if (refused := _need_push(ctx)) is not None:
+async def whip_offer(request: Request, a: ActorDep):
+    a.need_live()
+    if (refused := _need_push(a) or _may_start(a)) is not None:
         return refused
     sdp = await request.body()
     if not sdp or len(sdp) > MAX_SDP:
         return JSONResponse({"error": "bad offer"}, status_code=400)
     try:
-        r = await live_watch.whip_request(
-            "POST", _studio_path(ctx), _studio_token(ctx), body=sdp, ctype="application/sdp"
-        )
+        r = await live_watch.whip_request("POST", _studio_path(a), _studio_token(a), body=sdp, ctype="application/sdp")
     except live_watch.RelayUnavailable:
         return JSONResponse({"error": "relay unavailable"}, status_code=503)
     session = (r.headers.get("location") or "").rstrip("/").rsplit("/", 1)[-1]
@@ -174,10 +187,7 @@ async def whip_offer(request: Request, ctx: CtxDep):
         return JSONResponse({"error": "relay refused"}, status_code=502)
     if r.status_code != 201 or not WHIP_SESSION.match(session):
         return JSONResponse({"error": "relay"}, status_code=409 if r.status_code == 400 else 502)
-    db.audit(
-        ctx.conn, ctx.mosque["id"], ctx.user["id"], "studio.whip.debut", "mosque", ctx.mosque["id"],
-        ip=ctx.ip, session=session,
-    )  # fmt: skip
+    a.audit("studio.whip.debut", session=session)
     return Response(
         r.content,
         status_code=201,
@@ -191,9 +201,8 @@ async def whip_offer(request: Request, ctx: CtxDep):
 
 
 @router.patch("/live/studio/whip/{session}")
-async def whip_ice(session: str, request: Request, ctx: CtxDep):
-    ctx.need_csrf()
-    ctx.require("live")
+async def whip_ice(session: str, request: Request, a: ActorDep):
+    a.need_live()
     if not WHIP_SESSION.match(session):
         raise NotFound()
     body = await request.body()
@@ -203,7 +212,7 @@ async def whip_ice(session: str, request: Request, ctx: CtxDep):
     if ctype != ICE_TYPE:
         return JSONResponse({"error": "unsupported"}, status_code=415)
     try:
-        r = await live_watch.whip_request("PATCH", _studio_path(ctx), _studio_token(ctx), session, body, ICE_TYPE)
+        r = await live_watch.whip_request("PATCH", _studio_path(a), _studio_token(a), session, body, ICE_TYPE)
     except live_watch.RelayUnavailable:
         return JSONResponse({"error": "relay unavailable"}, status_code=503)
     if r.status_code == 404:
@@ -212,17 +221,36 @@ async def whip_ice(session: str, request: Request, ctx: CtxDep):
 
 
 @router.delete("/live/studio/whip/{session}")
-async def whip_close(session: str, ctx: CtxDep):
-    ctx.need_csrf()
-    ctx.require("live")
+async def whip_close(session: str, a: ActorDep):
+    a.need_live()
     if not WHIP_SESSION.match(session):
         raise NotFound()
     try:
-        await live_watch.whip_request("DELETE", _studio_path(ctx), _studio_token(ctx), session)
+        await live_watch.whip_request("DELETE", _studio_path(a), _studio_token(a), session)
     except live_watch.RelayUnavailable:
         pass  # the relay is gone, and the session with it
-    db.audit(
-        ctx.conn, ctx.mosque["id"], ctx.user["id"], "studio.whip.fin", "mosque", ctx.mosque["id"],
-        ip=ctx.ip, session=session,
-    )  # fmt: skip
+    a.audit("studio.whip.fin", session=session)
     return Response(status_code=200)
+
+
+@router.post("/live/studio/takeover")
+async def studio_takeover(ctx: CtxDep):
+    """Explicit resumption, for an administrator of the mosque: cuts the stream that is running now.
+
+    The body must say `{"confirm": true}` (the console asks first). The old publisher is kicked; a device
+    displaced this way stays quiet for a while; the journal keeps who, when and whom it displaced."""
+    body = await ctx.raw_body()  # CSRF
+    ctx.require("admin")
+    ctx.require("live")
+    if body.get("confirm") not in (True, "true", "1", 1):
+        return JSONResponse({"error": _("Confirmation required."), "code": "confirm"}, status_code=422)
+    holder = await run_in_threadpool(studio_publisher.takeover, ctx.conn, ctx.mosque, ctx.user, ctx.ip)
+    if holder is None:
+        return JSONResponse(
+            {"error": _("No live is running: nothing to take over."), "code": "no_live"}, status_code=409
+        )
+    return {
+        "ok": True,
+        "message": _("The stream of {source} was cut. You can publish now.", source=holder["text"]),
+        "previous": {"source": holder["source"], "label": holder["label"]},
+    }

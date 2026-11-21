@@ -60,15 +60,17 @@ def _sign(body: str) -> str:
     return _b64(hmac.new(_secret(), f"{PREFIX}.{body}".encode(), hashlib.sha256).digest())
 
 
-def issue(user_id: int, mosque: dict, now: float | None = None) -> tuple[str, int]:
-    """(token, lifetime in seconds) for this user on this mosque's relay path."""
+def issue(user_id: int | None, mosque: dict, now: float | None = None, device_id: int | None = None) -> tuple[str, int]:
+    """(token, lifetime in seconds) for this user (or this device) on this mosque's relay path."""
     life = ttl()
     claims = {
-        "u": int(user_id),
+        "u": int(user_id or 0),
         "m": int(mosque["id"]),
         "s": live_input.slug(mosque),
         "exp": int((time.time() if now is None else now) + life),
     }
+    if device_id:
+        claims["d"] = int(device_id)
     body = _b64(json.dumps(claims, separators=(",", ":"), sort_keys=True).encode())
     return f"{PREFIX}.{body}.{_sign(body)}", life
 

@@ -191,3 +191,57 @@ def health(path: str | None, timeout: float = 1.0) -> dict | None:
         "readers": len(info.get("readers") or []),
         "kbps": kbps,
     }
+
+
+# --- Who publishes on a path, and cutting them off (exclusivity, revocation, takeover)
+
+# MediaMTX names the publisher's kind in the path's `source`; each kind is kicked on its own API route.
+KICK_ROUTES = {
+    "webRTCSession": "webrtcsessions",
+    "rtmpConn": "rtmpconns",
+    "rtmpsConn": "rtmpconns",
+    "srtConn": "srtconns",
+    "rtspSession": "rtspsessions",
+    "rtspsSession": "rtspssessions",
+}
+
+
+def publisher_info(path: str, timeout: float = 1.0) -> dict | None:
+    """{ready, type, id} of the path's publisher; None when the relay's API does not answer (unknown)."""
+    global _api_down_at
+    if time.monotonic() - _api_down_at < API_RETRY_S:
+        return None
+    try:
+        r = httpx.get(
+            _url(RELAY_API_PORT, f"v3/paths/get/{quote(path, safe='')}"),
+            auth=(API_USER, api_password()),
+            timeout=timeout,
+        )
+    except httpx.HTTPError:
+        _api_down_at = time.monotonic()
+        return None
+    if r.status_code == 404:
+        return {"ready": False, "type": "", "id": ""}
+    if r.status_code != 200:
+        return None
+    try:
+        info = r.json()
+    except ValueError:
+        return None
+    src = info.get("source") or {}
+    return {"ready": bool(info.get("ready")), "type": src.get("type") or "", "id": src.get("id") or ""}
+
+
+def kick(path: str, timeout: float = 2.0) -> bool:
+    """Cuts the path's current publisher through the relay's API. True when a session was kicked."""
+    info = publisher_info(path, timeout)
+    route = KICK_ROUTES.get((info or {}).get("type", ""))
+    if not info or not info["ready"] or not route or not WHEP_SESSION.match(info["id"] or ""):
+        return False
+    try:
+        r = httpx.post(
+            _url(RELAY_API_PORT, f"v3/{route}/kick/{info['id']}"), auth=(API_USER, api_password()), timeout=timeout
+        )
+    except httpx.HTTPError:
+        return False
+    return r.status_code == 200

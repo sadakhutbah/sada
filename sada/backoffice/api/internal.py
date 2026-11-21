@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from ...i18n import _
 from .. import (
     branding,
+    db,
     destinations,
     events_store,
     gabarit,
@@ -25,12 +26,15 @@ from .. import (
     orm,
     prayer_times,
     storage,
+    studio_publisher,
+    studio_service,
     tarawih,
 )
 from .. import screens as screens_mod
 from .. import variables_ecran as variables_mod
 from ..context import ConnDep
 from ..models import Mosque, Notification
+from ..studio_publisher import Who
 
 router = APIRouter()
 
@@ -168,10 +172,25 @@ async def publish_auth(request: Request, conn: ConnDep):
         except ValueError:
             ok = False
     elif action == "publish":
-        ok = internal.publish_allowed(conn, slug, q.get("password"))
-        if not ok and q.get("protocol") == "webrtc" and q.get("token"):
-            # studio session (WHIP): short-lived token issued to a signed-in user for this mosque
-            ok = internal.studio_publish_allowed(conn, slug, q.get("token"))
+        who = None
+        if internal.publish_allowed(conn, slug, q.get("password")):
+            who = Who("obs", label=_("OBS"))
+        elif q.get("protocol") == "webrtc" and q.get("token"):
+            # studio session (WHIP): short-lived token issued to a signed-in user or a paired device
+            who = internal.studio_publisher(conn, slug, q.get("token"))
+        ok = who is not None
+        if ok:
+            # one publisher per mosque: a second one is refused with its reason, the holder is remembered
+            mosque = orm.first(conn, Mosque, slug=slug)
+            if mosque:
+                allowed, holder = studio_publisher.admit(conn, mosque, who)
+                if not allowed:
+                    db.audit(
+                        conn, mosque["id"], who.user_id, "studio.publication.refusee", "mosque", mosque["id"],
+                        ip=q.get("ip"), demandeur=who.source, appareil=who.device_id, detenteur=holder["source"],
+                    )  # fmt: skip
+                    return JSONResponse(studio_publisher.refusal(holder), status_code=401)
+                studio_publisher.record(conn, mosque, who)
     elif action == "api":
         # stream health for the control room: the back office only, with its derived credentials
         try:
@@ -222,3 +241,13 @@ def live_input_url(request: Request, conn: ConnDep, port: int = 0):
     if isinstance(mid, JSONResponse):
         return mid
     return {"mosque_id": mid, "url": live_input.effective(conn, mid)}
+
+
+@router.get("/internal/studio-live")
+def studio_live(request: Request, conn: ConnDep, port: int = 0):
+    """Type and title announced for the live in progress (studio device or schedule), for the replay:
+    the orchestrator of the mosque reads them to name the recording."""
+    mid = _caller(request, conn, port)
+    if isinstance(mid, JSONResponse):
+        return mid
+    return {"mosque_id": mid, **studio_service.current_announcement(conn, orm.first(conn, Mosque, id=mid))}
