@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.12](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.11...sada-v0.1.0-alpha.12) (2026-11-21)
+
+
+### Features
+
+* **prayer-screen:** content hash in asset file names ([#72](https://github.com/sadakhutbah/sada/issues/72)) ([7d96905](https://github.com/sadakhutbah/sada/commit/7d9690546c21e55ad9ba2a5f30db61f763930f70))
+
 ## [0.1.0-alpha.11](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.10...sada-v0.1.0-alpha.11) (2026-11-21)
 
 
