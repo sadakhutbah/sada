@@ -108,16 +108,16 @@ docker push ghcr.io/<owner>/sada:<tag>
 
 One image, two roles: `python -m sada.backoffice serve` (port 8090) and
 `python -m sada.orchestrator` (port 8088, one container per mosque). `image.repository` and
-`image.tag` are chart values; the default repository is `ghcr.io/sadakhutbah/sada`, so change
+`image.tag` are chart values; the default repository is `ghcr.io/thesadaproject/sada`, so change
 it unless that is your registry.
 
 ## 5. Sadā
 
 **Production is driven by Flux CD**, not by this command. The cluster state (HelmRelease
 `sada`, production values, image automation) lives in the private repository
-`sadakhutbah/sada-gitops` (`clusters/prod/`). Flux reads the chart from this repository
+`thesadaproject/sada-gitops` (`clusters/prod/`). Flux reads the chart from this repository
 (`deploy/helm/sada`, branch `main`) and the image from the CI: every push to `main` builds
-`ghcr.io/sadakhutbah/sada:main-<run number>-<short sha>`, Flux picks the highest run number,
+`ghcr.io/thesadaproject/sada:main-<run number>-<short sha>`, Flux picks the highest run number,
 commits the new `image.tag` to `sada-gitops` and upgrades the release (a few minutes after
 the CI turns green). Prod never runs an image built on a workstation.
 

@@ -9,7 +9,7 @@
 #   ./deploy/up.sh deps      # helm: cert-manager + CloudNativePG
 #   ./deploy/up.sh image     # build and push the image by hand (the CI on main normally does it)
 #   ./deploy/up.sh app       # helm upgrade --install sada (fresh cluster / disaster recovery only:
-#                            # production is deployed by Flux from sadakhutbah/sada-gitops)
+#                            # production is deployed by Flux from thesadaproject/sada-gitops)
 #   ./deploy/up.sh status    # pods, services, ingress, certificates
 #
 # Configuration: environment variables, or deploy/deploy.env (git-ignored), e.g.
@@ -33,7 +33,7 @@ CHART="$DEPLOY_DIR/helm/sada"
 SADA_NAMESPACE=${SADA_NAMESPACE:-sada}
 SADA_RELEASE=${SADA_RELEASE:-sada}
 SADA_HOST=${SADA_HOST:-console.sadakhutbah.org}
-SADA_IMAGE_REPO=${SADA_IMAGE_REPO:-ghcr.io/sadakhutbah/sada}
+SADA_IMAGE_REPO=${SADA_IMAGE_REPO:-ghcr.io/thesadaproject/sada}
 # The CI builds and publishes the image on every push to main (tag sha-<full commit>): deploy that.
 SADA_IMAGE_TAG=${SADA_IMAGE_TAG:-sha-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo local)}
 SADA_VALUES=${SADA_VALUES:-$DEPLOY_DIR/values.local.yaml}

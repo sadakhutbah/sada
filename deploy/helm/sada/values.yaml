@@ -11,7 +11,7 @@
 # Image of the Python application (back office and orchestrators share it). Build it with
 # `make front` then `docker build .`, push it to your registry, and set the tag.
 image:
-  repository: ghcr.io/sadakhutbah/sada
+  repository: ghcr.io/thesadaproject/sada
   tag: "" # "" = appVersion of the chart; use the git sha in production
   pullPolicy: IfNotPresent
 

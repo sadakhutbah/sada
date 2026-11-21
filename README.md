@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sadakhutbah/sada/actions/workflows/ci.yml"><img src="https://github.com/sadakhutbah/sada/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/thesadaproject/sada/actions/workflows/ci.yml"><img src="https://github.com/thesadaproject/sada/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-E2C27A" alt="License: AGPL-3.0"></a>
 </p>
 
