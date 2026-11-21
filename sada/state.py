@@ -292,6 +292,8 @@ class Machine:
         self.paused_from: State | None = None
         self.cut: tuple[SessionRec | None, State] | tuple[None, None] = (None, None)  # session cut by the prayer
         self.last_reason = ""
+        self._adhoc: SessionRec | None = None  # off-programme session about to open (see start_adhoc)
+        self._adhoc_over = False  # the off-programme session just ended: its end screen hands back to the plan
 
     # ------------------------------------------------------------------ helpers
     def _rec_of(self, start: dt.datetime, meta: dict, index: int) -> SessionRec:
@@ -358,7 +360,10 @@ class Machine:
         if self.live and new not in (*SESSION_STATES, State.JANAZA) and self.paused_from is None:
             self._close(sig, reason)  # the open session stops as soon as we leave its screen (except pause)
         if new in SESSION_STATES and not (self.live and self.live.status == "live"):
-            r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
+            if self._adhoc is not None:
+                r, self._adhoc = self._adhoc, None
+            else:
+                r = self.rec if self.rec and self.rec.status == "pending" else self._extra("manuel", sig)
             r.status = "live"
             self._open(r, sig)
         if new == State.STOPPED:  # the day is over: nothing left to come
@@ -564,6 +569,54 @@ class Machine:
         self._go(self._end_state(), sig, "commande stop")
         return _("end screen, then the stream stops")
 
+    # --- sessions ordered from outside the plan (Sada Studio manual live) -------------------
+    @property
+    def playing(self) -> SessionRec | None:
+        """The session on air (planned, manual or off-programme), else the planned one that comes next."""
+        return self.live if self.live is not None and self.live.status == "live" else self.rec
+
+    @property
+    def adhoc_on_air(self) -> bool:
+        return self.live is not None and self.live.status == "live" and self.live.planned.startswith("studio@")
+
+    def can_start_adhoc(self) -> bool:
+        """An off-programme session may start unless a session or a janaza is on air or paused."""
+        return self.live is None and self.state not in (*SESSION_STATES, State.JANAZA, State.PRAYER)
+
+    def start_adhoc(self, sig: Signals, kind: str, title: str) -> str:
+        """Opens a session that is not in the plan, with its type and title (they name the replay).
+
+        Automatic ends are suspended (`override`): whoever ordered it ends it (`end_adhoc`)."""
+        if not self.can_start_adhoc():
+            return _("a session is already on air")
+        r = SessionRec(len(self.records), f"studio@{sig.now:%H:%M}", kind=kind, title=title)
+        self.records.append(r)
+        self._adhoc = r
+        self.override = True
+        self._go(POLICIES.get(kind, DEFAULT_POLICY).entry, sig, "direct Studio manuel")
+        return _("studio live started: {kind}", kind=kind)
+
+    def end_adhoc(self, sig: Signals) -> str:
+        """Ends the off-programme session on air: end screen, then the stream stops, the plan goes on."""
+        if not self.adhoc_on_air:
+            return _("no studio live on air")
+        self._adhoc_over = True
+        self.override = True
+        self._go(State.ENDED if self.live.kind == "khutba" else State.DARS_END, sig, "fin du direct Studio")
+        return _("end screen, then the stream stops")
+
+    def end_planned(self, sig: Signals, reason: str) -> str:
+        """Ends the planned session on air the way its own end does (prayer screen for a khutba, end screen
+        for a dars), for an end decided outside: the studio slot is over."""
+        r = self.live
+        if r is None or r.status != "live" or self.adhoc_on_air or self.state not in (State.KHUTBA, State.DARS):
+            return _("no planned session to end")
+        if self.state == State.KHUTBA:
+            self._go(State.PRAYER, sig, reason)
+        else:
+            self._go(State.DARS_END, sig, reason)
+        return _("session ended: {reason}", reason=reason)
+
     def _pause(self, sig, arg):
         if self.state == State.PRAYER:
             return _("already paused")
@@ -701,11 +754,22 @@ class Machine:
 
     def _tick_ended(self, sig: Signals) -> None:
         if sig.t - self.entered_t >= self.p.khutba.ended_hold_s:
-            self._go(State.STOPPED, sig, "écran Terminé affiché, arrêt du stream")
+            self._after_end_screen(sig, "écran Terminé affiché, arrêt du stream")
 
     def _tick_dars_end(self, sig: Signals) -> None:
         if sig.t - self.entered_t >= self.p.dars.ended_hold_s:
-            self._go(State.STOPPED, sig, "écran de fin du dars affiché, arrêt du stream")
+            self._after_end_screen(sig, "écran de fin du dars affiché, arrêt du stream")
+
+    def _after_end_screen(self, sig: Signals, reason: str) -> None:
+        """Leaves an end screen: the day is over (STOPPED), except after an off-programme session, which
+        hands back to the plan: the sessions still to come stay planned (the stream just stops)."""
+        if self._adhoc_over and self.session is not None:
+            self._adhoc_over = False
+            self.override = False
+            self._go(State.IDLE, sig, reason + " (programme conservé)")
+            return
+        self._adhoc_over = False
+        self._go(State.STOPPED, sig, reason)
 
     def _tick_waiting(self, sig: Signals) -> None:
         """IDLE, ARMED, BEFORE, INTERMISSION: the kind's policy drives the wait for the session."""

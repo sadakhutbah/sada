@@ -38,5 +38,15 @@
   "the mosque's OBS stream key": "la clé de diffusion OBS de la mosquée",
   "this device has been revoked by the mosque": "cet appareil a été révoqué par la mosquée",
   "{field} must be a whole number": "{field} doit être un nombre entier",
-  "{field} must be between {lo} and {hi}": "{field} doit être compris entre {lo} et {hi}"
+  "{field} must be between {lo} and {hi}": "{field} doit être compris entre {lo} et {hi}",
+  "Studio live over: {msg}": "Direct Studio terminé : {msg}",
+  "Studio live: announcement attached to the session ({kind}, “{title}”)": "Direct Studio : annonce rattachée à la session ({kind}, « {title} »)",
+  "Studio live: announcement updated ({kind}, “{title}”)": "Direct Studio : annonce mise à jour ({kind}, « {title} »)",
+  "Studio live: {msg} (“{title}”)": "Direct Studio : {msg} (« {title} »)",
+  "Studio slot over: {msg}": "Créneau Studio terminé : {msg}",
+  "a session is already on air": "une session est déjà à l'antenne",
+  "no planned session to end": "aucune session planifiée à terminer",
+  "no studio live on air": "aucun direct Studio à l'antenne",
+  "session ended: {reason}": "session terminée : {reason}",
+  "studio live started: {kind}": "direct Studio démarré : {kind}"
 }

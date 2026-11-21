@@ -38,5 +38,15 @@
   "the mosque's OBS stream key": "مفتاح بثّ OBS الخاص بالمسجد",
   "this device has been revoked by the mosque": "ألغى المسجد هذا الجهاز",
   "{field} must be a whole number": "يجب أن يكون {field} عدداً صحيحاً",
-  "{field} must be between {lo} and {hi}": "يجب أن يكون {field} بين {lo} و{hi}"
+  "{field} must be between {lo} and {hi}": "يجب أن يكون {field} بين {lo} و{hi}",
+  "Studio live over: {msg}": "انتهى بث الاستوديو: {msg}",
+  "Studio live: announcement attached to the session ({kind}, “{title}”)": "بث الاستوديو: الإعلان مرتبط بالجلسة ({kind}، «{title}»)",
+  "Studio live: announcement updated ({kind}, “{title}”)": "بث الاستوديو: تم تحديث الإعلان ({kind}، «{title}»)",
+  "Studio live: {msg} (“{title}”)": "بث الاستوديو: {msg} («{title}»)",
+  "Studio slot over: {msg}": "انتهت فترة الاستوديو: {msg}",
+  "a session is already on air": "هناك جلسة على الهواء بالفعل",
+  "no planned session to end": "لا توجد جلسة مخططة لإنهائها",
+  "no studio live on air": "لا يوجد بث استوديو على الهواء",
+  "session ended: {reason}": "انتهت الجلسة: {reason}",
+  "studio live started: {kind}": "بدأ بث الاستوديو: {kind}"
 }

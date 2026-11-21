@@ -38,9 +38,9 @@ pending --approve (console)--> approved --first poll--> claimed
 
 | Call | Auth | Purpose |
 |---|---|---|
-| `POST /api/v1/studio/pair/start` | none, 10/min per address | `200 {device_code, user_code, expires_in: 600, interval: 5}`. `user_code` is 8 characters from a 27-letter alphabet without vowels or 0/O/1/I/L, shown `ABCD-2345`. |
-| `POST /api/v1/studio/pair/poll` `{device_code}` | none, 30/min per address | `200 {status:"pending", interval, expires_in}` while waiting; `200 {status:"approved", device_id, name, mosque:{name,slug}}` once approved (**the credential is in `device_id`**, shown once); `410 {status:"expired"}`; `410 {status:"claimed"}` once the device has spoken; `404 {status:"unknown"}`. A credential delivered but never used can be fetched again (the answer may have been lost): the new secret replaces the old one. |
-| `POST /api/v1/studio/devices/pair` `{user_code, name}` | session + CSRF, `live` right as administrator or manager | attaches the device to **the session's mosque**. `404 unknown_code`, `409 already_used`, `409 name_taken`, `410 expired`, `422 name_required`, `429` (10 guesses/min per account). |
+| `POST /api/v1/studio/pair/start` `{name?}` | none, 10/min per address | `200 {device_code, user_code, expires_in: 600, interval: 5}`. `name` is the machine name the application proposes (optional, 60 characters): the console uses it when the person who approves types no name. `user_code` is 8 characters from a 27-letter alphabet without vowels or 0/O/1/I/L, shown `ABCD-2345`. |
+| `POST /api/v1/studio/pair/poll` `{device_code}` | none, 30/min per address | `200 {status:"pending", interval, expires_in}` while waiting; `200 {status:"approved", device_id, device_secret, name, mosque:{name,slug}}` once approved: `device_id` is the **public** identifier (`sdev_12`, not a secret), `device_secret` the **credential** (`sdev_12.<secret>`, sent as the bearer, shown once); `410 {status:"expired"}`, `410 {status:"revoked"}` (the device was revoked before it fetched its credential), `410 {status:"claimed"}` once the device has spoken; `404 {status:"unknown"}`; `429`. A credential delivered but never used can be fetched again (the answer may have been lost): the new secret replaces the old one. |
+| `POST /api/v1/studio/devices/pair` `{user_code, name?}` | session + CSRF, `live` right as administrator or manager | attaches the device to **the session's mosque**. `404 unknown_code`, `409 already_used`, `409 name_taken`, `410 expired`, `422 name_required` (no name typed and none proposed), `429` (10 guesses/min per account). |
 
 Only SHA-256 hashes of the two codes and of the secret are stored. The credential has the form
 `sdev_<id>.<secret>` and is sent as `Authorization: Bearer <credential>`. It opens the broadcast of its
@@ -50,6 +50,28 @@ own mosque and nothing else: the routes below, and no back-office route.
 
 A wrong or unknown credential answers `401 {"error", "code":"invalid"}`; a **revoked** device
 `401 {"code":"revoked"}`, at its very next call (a token minted before is refused by publish-auth too).
+The application treats both 401 as “this device is no longer paired” and returns to the pairing screen.
+
+### Status codes (one meaning each)
+
+| Code | Meaning in this contract |
+|---|---|
+| `401` | device credential unknown (`invalid`) or revoked (`revoked`) |
+| `403` | console routes only: the account lacks the right (a manager on an administrator-only route). **Never** answered to a device. |
+| `404` | unknown: pairing (`pair/poll`), code (`unknown_code`), device or incident of another mosque |
+| `409` | a state conflict: `live_active` (with `since`), `held`, `no_live`, `not_ordered`, `already_used`, `name_taken` |
+| `410` | gone for good: expired code, pairing `claimed` or `revoked` |
+| `422` | invalid input (`bad_type`, `name_required`) |
+| `429` | rate limit (`Retry-After`) |
+
+Every `409 live_active` carries `since` at the top level (ISO 8601 UTC, or `null` when the holder is not known,
+for example the mosque's OBS key) and the detail in `source:{kind,label,since}`.
+
+### `POST /api/v1/studio/unpair`
+
+The device leaves the mosque by itself (“Forget this mosque”). `200 {unpaired: true, stream_cut}`. Same effect
+as an administrator's revocation (credential refused at once, stream cut if the device holds it, manual live
+ended); journal `studio.appareil.desappaire`. The device then forgets its credential whatever the answer.
 
 ### `POST /api/v1/studio/heartbeat` (every ~30 s)
 
@@ -70,7 +92,7 @@ sleep disabled); only an explicit `false` is a problem.
   "slots":   [ /* the next 5 slots, same shape as `next` */ ],
   "config":  {"name": "Prayer hall PC", "mosque": {"name", "slug", "timezone"}, "heartbeat_interval_s": 30,
               "start_margin_s": 120, "token_path": "/api/v1/live/studio/token", "whip_path": "/api/v1/live/studio/whip"},
-  "credentials": {"device_id": "sdev_…"}   // only when a rotation was requested: store it, use it from now on
+  "credentials": {"device_id": "sdev_12", "device_secret": "sdev_12.…"}   // only when a rotation was requested: store it, use it from now on
 }
 ```
 
@@ -104,6 +126,23 @@ get `standby` / `other_device`. A device displaced by an administrator gets `sta
 credential as a bearer **in addition to** the session cookie. For a device, the token is refused with
 `409 {code:"not_ordered"}` unless it is ordered `live`, and with `409 {code:"live_active"}` when another source
 holds the stream. The WHIP start/end are journaled (`studio.whip.debut|fin`, with the device name).
+
+## The orchestrator follows the live
+
+`sada/studio_link.py`. A Studio live reaches the relay like an OBS stream, so the orchestrator already relays it
+to the destinations, records it and cuts it into sessions for the pipeline (transcription, replay). What it
+adds, from a small background thread that reads `GET /internal/studio-live` every 5 s (the live loop only
+receives the last answer; nothing heavy happens during a live):
+
+* **manual live** (`source: manual`): opens an off-programme session (`Machine.start_adhoc`) of the announced
+  type and title, so the replay carries them (`sessions.json`: `kind`, `title`). Automatic ends are suspended;
+  the server ends it (`live/stop`, silent device for 15 min, revocation, takeover) and the orchestrator then shows
+  the end screen and stops the stream, **the planned sessions of the day stay planned**. A planned session on air
+  is never taken over.
+* **scheduled slot** (`source: schedule`): the slot is already in the orchestrator's plan (same sources); the
+  announced type and title replace the planned ones, and when the slot is no longer ordered the session ends the
+  way its own end does (prayer screen for a khutba, end screen for a dars).
+* the back office not answering never ends a live.
 
 ## Exclusivity: one publisher per mosque
 
@@ -164,7 +203,7 @@ inject these variables yet (to be added in the deployment values, secret for the
 
 ## Journal (audit) actions
 
-`studio.appareil.appaire|renomme|revoque|rotation.demandee|rotation`, `studio.appairage.refuse`,
+`studio.appareil.appaire|renomme|revoque|desappaire|rotation.demandee|rotation`, `studio.appairage.refuse`,
 `studio.direct.manuel.debut|fin`, `studio.direct.annonce`, `studio.creneau.arret`, `studio.reprise`,
 `studio.publication.refusee`, `studio.reglages`, `studio.alertes.preferences|desabonnement`,
 `studio.incident.ouvert|resolu`, `studio.mail.*`, plus `studio.jeton` and `studio.whip.debut|fin`.
