@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0-alpha.10](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.9...sada-v0.1.0-alpha.10) (2026-11-21)
+
+
+### Features
+
+* **prayer-times:** public screen in the manner of a mosque display ([#68](https://github.com/sadakhutbah/sada/issues/68)) ([9f02d3c](https://github.com/sadakhutbah/sada/commit/9f02d3cde967eca294709cd0883247b2e75194ba))
+
 ## [0.1.0-alpha.9](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.8...sada-v0.1.0-alpha.9) (2026-11-20)
 
 
