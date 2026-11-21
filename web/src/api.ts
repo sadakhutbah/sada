@@ -154,6 +154,16 @@ export const api = {
   dashboard: () => demande<any>("/dashboard"),
   /** Control room: live state, commands, scenes and the health of the two monitors. */
   regie: () => demande<any>("/live/regie"),
+  /** Studio devices (pairing, list, incidents, schedule) — see docs/studio-devices.md. */
+  studioDevices: () => demande<any>("/studio/devices"),
+  studioPair: (user_code: string, name: string) =>
+    ecrire<{ ok: boolean; message: string }>("POST", "/studio/devices/pair", { user_code, name }),
+  studioRename: (id: number, name: string) => ecrire<{ ok: boolean; message: string }>("PATCH", `/studio/devices/${id}`, { name }),
+  studioRevoke: (id: number) => ecrire<{ ok: boolean; message: string }>("POST", `/studio/devices/${id}/revoke`),
+  studioRotate: (id: number) => ecrire<{ ok: boolean; message: string }>("POST", `/studio/devices/${id}/rotate`),
+  studioTakeover: () => ecrire<{ ok: boolean; message: string }>("POST", "/live/studio/takeover", { confirm: true }),
+  studioAlertPrefs: (body: { email?: string; subscribed?: boolean }) =>
+    ecrire<{ ok: boolean; message: string }>("PUT", "/studio/alerts/preferences", body),
   /** Is the mosque on the air right now? One flag, served from the status snapshot (top bar). */
   liveIndicator: () => demande<{ on: boolean }>("/live/indicator"),
   /** Runs after the live, newest first (ten at most). Absent backend: the call answers 404 and the
