@@ -66,6 +66,8 @@ def current(conn, mosque: dict) -> dict | None:
     if not info or not info["ready"]:
         return None
     claim = orm.first(conn, StudioClaim, mosque_id=mosque["id"])
+    if claim and info["type"] and (info["type"] == "webRTCSession") != (claim["source"] in ("device", "regie")):
+        claim = None  # the claim of a refused attempt: the relay's own publisher is of another kind than the claim
     if claim and claim["device_id"]:
         dev = orm.first(conn, Device, id=claim["device_id"])
         claim["label"] = dev["name"] if dev else claim["label"]

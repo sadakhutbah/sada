@@ -40,7 +40,9 @@ def relay(monkeypatch):
         live_watch,
         "publisher_info",
         lambda path, timeout=1.0: (
-            {"ready": True, "type": "rtmpConn", "id": "abc"} if r.pub else {"ready": False, "type": "", "id": ""}
+            {"ready": True, "type": "rtmpConn" if r.pub == "obs" else "webRTCSession", "id": "abc"}
+            if r.pub
+            else {"ready": False, "type": "", "id": ""}
         ),
     )
 
@@ -703,3 +705,14 @@ def test_a_slow_relay_api_does_not_blind_the_back_office_for_30_seconds(monkeypa
     monkeypatch.setattr(live_watch, "_api_down_at", 0.0)
     assert live_watch.publisher_info("live/abc") is None  # the call that waited on the relay
     assert live_watch.publisher_info("live/abc")["ready"] is True  # the next one is not refused for 30 s
+
+
+def test_a_claim_of_another_kind_than_the_relay_publisher_is_ignored(env, relay, monkeypatch):
+    """A refused attempt may have recorded its claim (relay API slow): the relay's real publisher wins."""
+    key = internal.new_publish_key(env["conn"], env["mid"])
+    assert _publish(env, protocol="rtmp", password=key).status_code == 200  # claim: obs
+    monkeypatch.setattr(
+        live_watch, "publisher_info", lambda path, timeout=1.0: {"ready": True, "type": "webRTCSession", "id": "abc"}
+    )
+    r = client(env, "admin").get("/api/v1/studio/devices").json()
+    assert r["publisher"]["source"] == "unknown"
