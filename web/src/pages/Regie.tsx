@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { playMonitor, type MonitorState } from "../monitor";
 import { Btn } from "../ui";
+import { currentSession } from "../session";
 
 /** Control room (“Régie”): two monitors, the scene grid and the transport of the live.
  *
@@ -154,6 +155,8 @@ function RegieEcran() {
   const [nom, setNom] = useState("");
   const [mention, setMention] = useState("");
   const [prepa, setPrepa] = useState<string | null>(null);
+  // Who already publishes (a device, the OBS key, another control room): one publisher per mosque.
+  const [editeur, setEditeur] = useState<{ source: string; label: string; text: string } | null>(null);
 
   // State refreshed every 3 s; a second ticker moves the clock and the duration in between.
   useEffect(() => {
@@ -166,6 +169,7 @@ function RegieEcran() {
         setLive(d.live ?? {}); setLu(Date.now());
         setCommandes(d.commands ?? []);
         setMoniteurs(d.monitors ?? {});
+        setEditeur(d.publisher ?? null);
       } catch {
         if (vivant) setLive((v) => v ?? { ok: false });
       }
@@ -243,6 +247,26 @@ function RegieEcran() {
         )}
         {horsService && <p className="m-0 text-[0.9rem] text-night-muted">{t("dashboard.unreachableHint")}</p>}
       </section>
+
+      {/* Exclusivity: a second source cannot publish; only an administrator may take the stream over. */}
+      {editeur && (
+        <section role="status" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-gold/60 bg-gold/15 px-4 py-2.5 text-[0.92rem] text-white">
+          <span className="font-semibold">{t("devices.liveRunning", { source: editeur.text })}</span>
+          <span className="text-night-muted">{t("devices.liveRunningHint")}</span>
+          {currentSession()?.user.permissions.includes("admin") && (
+            <Btn variante="danger" className="ml-auto min-h-9 px-3 py-1 text-[0.88rem]" disabled={occupe}
+                 onClick={async () => {
+                   if (!window.confirm(t("devices.takeoverConfirm", { source: editeur.text }))) return;
+                   setOccupe(true);
+                   try { const r = await api.studioTakeover(); setRetour({ ok: true, texte: r.message }); setEditeur(null); }
+                   catch (e: any) { setRetour({ ok: false, texte: e?.message ?? t("common.error") }); }
+                   finally { setOccupe(false); }
+                 }}>
+              {t("devices.takeover")}
+            </Btn>
+          )}
+        </section>
+      )}
 
       {/* Monitors: preview (the mosque's raw feed) and programme (what goes on air). */}
       <section className={`${panneau} grid gap-4 py-3 md:grid-cols-2`}>

@@ -5,6 +5,7 @@ import { api, onUnauthorized, setCsrf, type Session } from "./api";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Regie from "./pages/Regie";
+import Devices from "./pages/Devices";
 import Sermons from "./pages/Sermons";
 import SermonDetail from "./pages/SermonDetail";
 import Search from "./pages/Search";
@@ -113,6 +114,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/regie" element={<Regie />} />
+          <Route path="/appareils" element={<Devices />} />
           <Route path="/khutbas" element={<Sermons />} />
           <Route path="/dars" element={<Dars />} />
           <Route path="/tarawih" element={<Tarawih />} />

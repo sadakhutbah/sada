@@ -55,6 +55,7 @@
   "Stream stopped. Recordings: {files}": "Stream arrêté. Enregistrements : {files}",
   "TRANSITION -> {scene} (layer {layer}, {frames} frames)": "TRANSITION -> {scene} (calque {layer}, {frames} images)",
   "TRANSITION: ffmpeg no longer answers, final state set for the restart": "TRANSITION : ffmpeg ne répond plus, état final posé pour la relance",
+  "ENCODER: ffmpeg alive but stuck ({why}), forced restart": "ENCODEUR : ffmpeg vivant mais bloqué ({why}), relance forcée",
   "Template: back office unreachable ({error}) — keeping the engine drawing": "Gabarit : back-office injoignable ({error}) — dessin du moteur conservé",
   "Template: browser rendering unavailable ({error}) — keeping the engine drawing": "Gabarit : rendu navigateur indisponible ({error}) — dessin du moteur conservé",
   "Template: cannot render screen {screen} ({error})": "Gabarit : rendu de l'écran {screen} impossible ({error})",
@@ -188,5 +189,7 @@
   "no tarawih tonight: outside the period or broadcast off": "pas de tarawih ce soir : hors période ou diffusion désactivée",
   "tarawih started by hand, scene {scene}": "tarawih démarrées à la main, scène {scene}",
   "the tarawih is already on air": "les tarawih sont déjà à l'antenne",
-  "the tarawih": "les tarawih"
+  "the tarawih": "les tarawih",
+  "ENCODER: source unavailable (ffmpeg code {code}), retrying with backoff": "ENCODEUR : source indisponible (code ffmpeg {code}), nouvelles tentatives espacées",
+  "ENCODER: source available again after {count} failed attempts": "ENCODEUR : source de nouveau disponible après {count} tentatives échouées"
 }

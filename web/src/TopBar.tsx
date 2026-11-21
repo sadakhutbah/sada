@@ -21,6 +21,8 @@ export default function TopBar({ session, onLogout, onSwitchMosque }: {
   const mosque = session.mosque!;
   const perms = session.user.permissions;
   const peut = (p?: string) => !p || perms.includes(p);
+  // Studio devices: the people who drive the live as administrator or manager (same rule as the server).
+  const gereAppareils = peut("live") && session.user.role !== "imam";
   const pending = session.counts?.pending ?? 0;
   const failed = session.counts?.failed ?? 0;
 
@@ -202,6 +204,9 @@ export default function TopBar({ session, onLogout, onSwitchMosque }: {
           {peut("live") && (
             <NavLink to="/regie" className={({ isActive }) => rubrique(isActive)}>{t("nav.direct")}</NavLink>
           )}
+          {gereAppareils && (
+            <NavLink to="/appareils" className={({ isActive }) => rubrique(isActive)}>{t("nav.devices")}</NavLink>
+          )}
           <Deroulant
             classeBouton={`${rubrique(actifContenus)} border-0 bg-transparent ${actifContenus ? "!bg-leaf/15" : ""}`}
             bouton={
@@ -350,7 +355,10 @@ export default function TopBar({ session, onLogout, onSwitchMosque }: {
 
           <nav aria-label={t("nav.menu")} className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto overscroll-contain px-3 pt-3 pb-4">
             {lienMobile("/", t("nav.dashboard"), true)}
-            {groupe(t("nav.direct"), peut("live") ? [lienMobile("/regie", t("nav.regie"))] : [])}
+            {groupe(t("nav.direct"), [
+              ...(peut("live") ? [lienMobile("/regie", t("nav.regie"))] : []),
+              ...(gereAppareils ? [lienMobile("/appareils", t("nav.devices"))] : []),
+            ])}
             {groupe(t("nav.contents"), contenus.map((c) =>
               lienMobile(c.to, <>{t(`nav.${c.cle}`)}{c.badge && <span className="flex gap-1">{badges()}</span>}</>)))}
             {groupe(t("nav.broadcast"), peut("publish") ? [lienMobile("/publications", t("nav.publications"))] : [])}

@@ -37,6 +37,14 @@ class MosqueRequired(Exception):
     """Signed in, but no mosque chosen yet (hosted mode): pick one first."""
 
 
+class DeviceRefused(Exception):
+    """A studio device credential that is missing, wrong or revoked (`code`: invalid | revoked)."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code, self.message = code, message
+
+
 class Invalid(Exception):
     """Readable request refused by a business rule (empty field, unknown value...)."""
 

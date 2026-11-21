@@ -30,5 +30,10 @@ apiAddress: :9997
 # (`mosque --slug <slug> --publish-key`), reading (and the API) from the private network only.
 authMethod: http
 authHTTPAddress: http://backoffice:8090/api/v1/internal/publish-auth
+# One publisher per path. MediaMTX replaces the current publisher by default (overridePublisher: yes),
+# which would let a second source (a device, OBS, the control room) cut a live that is running.
+# Refused instead: the back office says who holds the stream (/internal/publish-auth), and an
+# administrator can take it over explicitly (the relay API kicks the old publisher).
 paths:
-  "~^live/[a-z0-9-]+$": {}
+  "~^live/[a-z0-9-]+$":
+    overridePublisher: no

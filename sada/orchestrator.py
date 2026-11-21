@@ -17,7 +17,19 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import destinations, gabarit_antenne, mawaqit, notify, prayers, runs, screens, source, telemetry, upload
+from . import (
+    destinations,
+    gabarit_antenne,
+    mawaqit,
+    notify,
+    prayers,
+    runs,
+    screens,
+    source,
+    studio_link,
+    telemetry,
+    upload,
+)
 from . import events as events_mod
 from .api import make_server
 from .clock import SimClock, parse_hhmm
@@ -131,6 +143,9 @@ class Orchestrator:
         self.encoder = Encoder(cfg, self.run_dir, log=log.info)
         self.encoder.prepare(self.renderer.background())
         self.machine = Machine(sessions, cfg, log=log.info, pos_fn=self.encoder.position, extras=extras)
+        # A live ordered from the Sada Studio application (manual or scheduled): read from the back office.
+        self.studio = studio_link.Follower()
+        self.studio_poll = studio_link.Poller(cfg.backoffice_url if not cfg.sim_start else "", cfg.api_port)
         self.notifier = notify.from_config(cfg, log=log.info)
         self._notified_state = None
         if self.notifier.enabled:
@@ -353,7 +368,9 @@ class Orchestrator:
         if m.scene is not None:
             now = self.clock.now()
             spec = SCENES[m.scene]
-            ev = m.rec.event() if m.scene in ("dars", "tarawih", "tarawih_video") and m.rec is not None else None
+            ev = (
+                m.playing.event() if m.scene in ("dars", "tarawih", "tarawih_video") and m.playing is not None else None
+            )
             nxt = self._next_event(now) if m.scene in ("dars_fin", "entracte") else None
             key = (
                 m.scene,
@@ -512,6 +529,7 @@ class Orchestrator:
     def run(self):
         cfg = self.cfg
         self.vad.start()
+        self.studio_poll.start()
         if self.presence:
             self.presence.start()
         if self.faces:
@@ -538,6 +556,8 @@ class Orchestrator:
                 self.machine.tick(sig)
                 self._roll_day(sig)
                 self._retry_plan(sig)
+                if note := self.studio.step(self.machine, sig, self.studio_poll.take()):
+                    log.info(note)
                 self._sync()
             if time.monotonic() - last_status > 30:
                 last_status = time.monotonic()
@@ -556,6 +576,7 @@ class Orchestrator:
         self.shutdown()
 
     def shutdown(self):
+        self.studio_poll.stop()
         self.vad.stop()
         if self.presence:
             self.presence.stop()

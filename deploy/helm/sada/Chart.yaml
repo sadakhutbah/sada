@@ -2,7 +2,7 @@ apiVersion: v2
 name: sada
 description: Sadā on Kubernetes — back office, stream receiver and one orchestrator per mosque (single node, small budget)
 type: application
-version: 0.1.4
+version: 0.1.5
 appVersion: "0.1.0"
 kubeVersion: ">=1.28.0-0"
 keywords:

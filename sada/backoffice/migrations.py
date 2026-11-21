@@ -259,6 +259,20 @@ def _horaires_propres(conn: sa.Connection) -> None:
     conn.execute(sa.insert(ps).from_select(["mosque_id", "source", "public"], pending))
 
 
+def _studio_appareils(conn: sa.Connection) -> None:
+    """Migration 22 : appareils du studio (appairage, planning manuel, exclusivité du flux, alertes)."""
+    _add_columns(
+        conn, "users", (("email", "TEXT NOT NULL DEFAULT ''"), ("studio_mail_optout", "INTEGER NOT NULL DEFAULT 0"))
+    )
+    for name in ("devices", "device_pairings", "studio_settings", "studio_runs", "studio_claims", "studio_incidents"):
+        models.metadata.tables[name].create(conn, checkfirst=True)
+
+
+def _studio_nom_propose(conn: sa.Connection) -> None:
+    """Migration 23 : nom de la machine envoyé par l'application au début de l'appairage."""
+    _add_columns(conn, "device_pairings", (("suggested_name", "TEXT NOT NULL DEFAULT ''"),))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "schéma initial", _baseline),
     Migration(2, "khutbas : colonnes dars (kind, title, series, session_no)", _khutbas_dars),
@@ -283,6 +297,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(19, "tarawih : réglages de diffusion par mosquée", _tarawih),
     Migration(20, "khutbas : chapitres (récitants des tarawih)", _khutbas_chapitres),
     Migration(21, "horaires de prière propres à la mosquée et choix de la source", _horaires_propres),
+    Migration(22, "studio : appareils, appairage, exclusivité du flux, alertes", _studio_appareils),
+    Migration(23, "studio : nom de la machine proposé à l'appairage", _studio_nom_propose),
 )
 
 #: numéros pris par une autre branche pas encore fusionnée : le trou est voulu, pas un oubli.

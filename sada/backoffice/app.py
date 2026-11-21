@@ -7,6 +7,7 @@ JSON (API and media); screens are described once, in the front.
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 from contextlib import asynccontextmanager
@@ -20,12 +21,27 @@ from sqlalchemy import select
 from .. import paths
 from ..i18n import LanguageMiddleware, _
 from ..paths import ASSETS
-from . import auth, branding, content, db, docpage, edge, gabarit, habillage, importer, live, orm, traitement
+from . import (
+    auth,
+    branding,
+    content,
+    db,
+    docpage,
+    edge,
+    gabarit,
+    habillage,
+    importer,
+    live,
+    orm,
+    studio_incidents,
+    traitement,
+)
 from . import screens as screens_mod
 from .api import router as api_router
 from .context import (
     ConnDep,
     CtxDep,
+    DeviceRefused,
     Forbidden,
     Invalid,
     LoginRequired,
@@ -114,8 +130,17 @@ def create_app(
     secure_cookies: bool = False,
     auto_import_s: float = 0,
     regen_background: bool = True,
+    studio_watch_s: float | None = None,
 ) -> FastAPI:
-    """regen_background=False: clip regeneration happens inside the request (tests)."""
+    """regen_background=False: clip regeneration happens inside the request (tests).
+
+    studio_watch_s: period of the studio checks (incidents, alert mails); default `SADA_STUDIO_WATCH_S`
+    (60 s), 0 turns them off."""
+    if studio_watch_s is None:
+        try:
+            studio_watch_s = float(os.environ.get("SADA_STUDIO_WATCH_S", "60"))
+        except ValueError:
+            studio_watch_s = 60.0
     db.init(db_path)
     stop = threading.Event()
 
@@ -168,6 +193,24 @@ def create_app(
                 conn.close()
 
         threading.Thread(target=chauffe_statut, daemon=True, name="statut-live-chauffe").start()
+
+        def studio_watch():
+            # Light and periodic (a few indexed queries per mosque that has a device): never while a
+            # live needs the machine, and a failure is only logged.
+            import logging
+
+            period = studio_watch_s
+            while not stop.wait(period):
+                conn = db.connect(db_path)
+                try:
+                    studio_incidents.tick(conn)
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("sada.studio").exception("studio watch failed")
+                finally:
+                    conn.close()
+
+        if studio_watch_s:
+            threading.Thread(target=studio_watch, daemon=True, name="studio-watch").start()
         yield
         stop.set()
 
@@ -229,6 +272,12 @@ def create_app(
     @app.exception_handler(Forbidden)
     async def _forbidden(request: Request, exc):
         return error(request, 403, _("access denied"))
+
+    @app.exception_handler(DeviceRefused)
+    async def _device_refused(request: Request, exc: DeviceRefused):
+        return JSONResponse(
+            {"error": exc.message, "code": exc.code}, status_code=401, headers={"WWW-Authenticate": "Bearer"}
+        )
 
     @app.exception_handler(NotFound)
     async def _nf(request: Request, exc):

@@ -55,6 +55,7 @@
   "Stream stopped. Recordings: {files}": "توقف البث. التسجيلات: {files}",
   "TRANSITION -> {scene} (layer {layer}, {frames} frames)": "الانتقال -> {scene} (الطبقة {layer}، {frames} إطاراً)",
   "TRANSITION: ffmpeg no longer answers, final state set for the restart": "الانتقال: ffmpeg لم يعد يستجيب، وُضعت الحالة النهائية لإعادة التشغيل",
+  "ENCODER: ffmpeg alive but stuck ({why}), forced restart": "المشفّر: ffmpeg يعمل لكنه متوقف ({why})، إعادة تشغيل قسرية",
   "Template: back office unreachable ({error}) — keeping the engine drawing": "القالب: لوحة الإدارة غير قابلة للوصول ({error}) — تم الاحتفاظ برسم المحرك",
   "Template: browser rendering unavailable ({error}) — keeping the engine drawing": "القالب: عرض المتصفح غير متاح ({error}) — تم الاحتفاظ برسم المحرك",
   "Template: cannot render screen {screen} ({error})": "القالب: تعذّر رسم الشاشة {screen} ({error})",
@@ -188,5 +189,7 @@
   "no tarawih tonight: outside the period or broadcast off": "لا تراويح الليلة: خارج الفترة أو البث معطل",
   "tarawih started by hand, scene {scene}": "بدأت التراويح يدويا، المشهد {scene}",
   "the tarawih is already on air": "التراويح على الهواء بالفعل",
-  "the tarawih": "التراويح"
+  "the tarawih": "التراويح",
+  "ENCODER: source unavailable (ffmpeg code {code}), retrying with backoff": "المشفّر: المصدر غير متاح (رمز ffmpeg {code})، إعادة محاولة متباعدة",
+  "ENCODER: source available again after {count} failed attempts": "المشفّر: المصدر متاح من جديد بعد {count} محاولات فاشلة"
 }

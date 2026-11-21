@@ -28,6 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # never the real embedding model in tests (it may be downloaded on the dev machine): tests fake it
 os.environ.setdefault("SADA_SEMANTIC_SEARCH", "0")
+# no background studio checks in tests: they call studio_incidents.tick themselves
+os.environ.setdefault("SADA_STUDIO_WATCH_S", "0")
 
 from sada.backoffice import auth, db, importer, migrations, models, orm  # noqa: E402
 from sada.backoffice.app import create_app  # noqa: E402

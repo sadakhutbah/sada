@@ -1,0 +1,115 @@
+# Sadā preprod on a developer machine (WSL): the production topology without Kubernetes, with local values.
+#
+#   deploy/preprod/preprod.sh up        # build the image if missing, start, seed the test mosque
+#   deploy/preprod/preprod.sh status
+#
+# What is the same as production: the image (built from this checkout), the MediaMTX image and the very same
+# `helm/sada/files/mediamtx.yml` (publish-auth through the back office, one publisher per path), PostgreSQL,
+# the hosted mode (SADA_MODE=hosted, the encoder reads the relay), one orchestrator per mosque, SMTP configuration
+# by environment. What is not: k3s, Traefik/TLS, cert-manager, CloudNativePG (a plain postgres container).
+# Services restart by themselves (`restart: unless-stopped`) and Docker starts with the machine.
+#
+# Ports are published on 127.0.0.1 (Windows reaches them: mirrored networking) and on the Tailscale address
+# `${PREPROD_TAILSCALE_IP}` when set (the Mac). Nothing is bound on 0.0.0.0. Values below are local test values.
+
+name: sada-preprod
+
+x-image: &image
+  image: sada:preprod
+  restart: unless-stopped
+  pull_policy: never
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sada
+      POSTGRES_PASSWORD: sada-preprod-local
+      POSTGRES_DB: sada
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sada"]
+      interval: 5s
+      retries: 20
+
+  backoffice:
+    <<: *image
+    build: { context: ../.., dockerfile: Dockerfile }
+    depends_on: { postgres: { condition: service_healthy } }
+    ports:
+      - "127.0.0.1:${PREPROD_CONSOLE_PORT:-8090}:8090"
+      - "${PREPROD_TAILSCALE_IP:-127.0.0.2}:${PREPROD_CONSOLE_PORT:-8090}:8090"
+    environment:
+      TZ: Europe/Paris
+      SADA_MODE: hosted
+      SADA_RELAY_HOST: receiver
+      SADA_IMPORT_EVERY: "60"
+      SADA_SEMANTIC_SEARCH: "0"
+      SADA_DATABASE_URL: postgresql://sada:sada-preprod-local@postgres:5432/sada
+      SADA_STUDIO_WATCH_S: "${PREPROD_STUDIO_WATCH_S:-15}"
+      SADA_PUBLIC_BASE_URL: http://127.0.0.1:${PREPROD_CONSOLE_PORT:-8090}
+      # e-mails of the studio checks go to the local catcher (nothing leaves the machine)
+      SADA_SMTP_HOST: mailpit
+      SADA_SMTP_PORT: "1025"
+      SADA_SMTP_SECURITY: none
+      SADA_MAIL_FROM: sada-preprod@localhost
+    volumes: [data:/app/data]
+
+  # The relay, as in production (same configuration file). WebRTC media: UDP 8189, announced on the addresses
+  # the clients use (this machine, and the Tailscale address for the Mac).
+  receiver:
+    image: bluenviron/mediamtx:1
+    restart: unless-stopped
+    pull_policy: never
+    depends_on: [backoffice]
+    ports:
+      - "127.0.0.1:${PREPROD_RTMP_PORT:-1935}:1935"
+      - "${PREPROD_TAILSCALE_IP:-127.0.0.2}:${PREPROD_RTMP_PORT:-1935}:1935"
+      - "127.0.0.1:${PREPROD_WEBRTC_UDP:-8189}:8189/udp"
+      - "${PREPROD_TAILSCALE_IP:-127.0.0.2}:${PREPROD_WEBRTC_UDP:-8189}:8189/udp"
+      - "127.0.0.1:${PREPROD_RELAY_API_PORT:-9997}:9997"
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: "127.0.0.1${PREPROD_TAILSCALE_IP:+,}${PREPROD_TAILSCALE_IP:-}"
+    volumes: [../helm/sada/files/mediamtx.yml:/mediamtx.yml:ro]
+
+  # Stands for YouTube & co: a second MediaMTX that accepts any RTMP publication; the destination of the mosque
+  # is rtmp://fake-destination:1935/live/youtube-preprod. Read what it received: curl 127.0.0.1:9998/v3/paths/list
+  fake-destination:
+    image: bluenviron/mediamtx:1
+    restart: unless-stopped
+    pull_policy: never
+    ports:
+      - "127.0.0.1:1936:1935"
+      - "127.0.0.1:9998:9997"
+    volumes: [./fake-destination.yml:/mediamtx.yml:ro]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    pull_policy: never
+    ports:
+      - "127.0.0.1:${PREPROD_MAIL_UI_PORT:-8025}:8025"
+      - "127.0.0.1:1025:1025"
+
+  orchestrator:
+    <<: *image
+    command: ["python", "-m", "sada.orchestrator"]
+    depends_on: [backoffice, receiver]
+    # the preprod mosque's token is issued by `preprod.sh seed` and kept in deploy/preprod/.env (git-ignored)
+    environment:
+      TZ: Europe/Paris
+      SADA_BACKOFFICE_URL: http://backoffice:8090
+      SADA_PREVIEW_URL: rtmp://receiver:1935/live/preprod-prog
+      SADA_FPS: "15"
+      SADA_MOSQUE_SLUG: preprod
+      SADA_API_HOST: 0.0.0.0
+      SADA_API_PORT: "8088"
+      SADA_AGENT_TOKEN: ${SADA_AGENT_TOKEN:-unset-run-preprod.sh-seed}
+      SADA_RECORD_DIR: /app/data/recordings/preprod
+      SADA_STATE_DIR: /app/data/state/preprod
+    volumes: [data:/app/data]
+
+volumes:
+  pgdata:
+  data:
