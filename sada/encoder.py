@@ -61,6 +61,16 @@ def write_png_atomic(img: Image.Image, path: str) -> None:
 # an ffmpeg younger than this may simply not have bound its zmq ports yet: never judged stuck
 STUCK_GRACE_S = 20.0
 
+# Relaunch delay after a failed ffmpeg start: doubles from BACKOFF_MIN_S up to BACKOFF_MAX_S, reset once the
+# source answers (a source that is not published yet must not produce a relaunch storm).
+BACKOFF_MIN_S = 1.0
+BACKOFF_MAX_S = 30.0
+
+
+def backoff_delay(failures: int) -> float:
+    """Delay before relaunch number `failures` (1 = first consecutive failure): 1, 2, 4, ... capped at 30 s."""
+    return min(BACKOFF_MAX_S, BACKOFF_MIN_S * 2 ** max(0, failures - 1))
+
 
 class Encoder:
     def __init__(self, cfg, run_dir: Path, log=print):
@@ -99,6 +109,9 @@ class Encoder:
         self.recordings: list[tuple[str, str | None]] = []
         self._log_file = None
         self._spawned_at = 0.0  # monotonic time of the last ffmpeg launch
+        self._opened = False  # the current ffmpeg opened its source (it produced output)
+        self.failures = 0  # consecutive launches that never opened the source
+        self._next_spawn = 0.0  # monotonic time before which no relaunch happens
 
     # ------------------------------------------------------------------- command
     def new_recording(self) -> tuple[str, str | None]:
@@ -249,18 +262,20 @@ class Encoder:
 
     def _spawn(self):
         rec, clean = self.new_recording()
-        self.log(
-            _(
-                "ENCODER: starting ffmpeg -> {targets}  | recording {recording}{clean}",
-                targets=" , ".join(self.cfg.rtmp_urls),
-                recording=rec,
-                clean=f"  | clean {clean}" if clean else "",
+        if self.failures == 0:  # retries after a failure stay silent (the first failure was logged)
+            self.log(
+                _(
+                    "ENCODER: starting ffmpeg -> {targets}  | recording {recording}{clean}",
+                    targets=" , ".join(self.cfg.rtmp_urls),
+                    recording=rec,
+                    clean=f"  | clean {clean}" if clean else "",
+                )
             )
-        )
         if self._log_file:
             self._log_file.close()
         self._log_file = open(self.run_dir / "encoder.log", "ab")
         self.out_time = 0.0
+        self._opened = False
         self._spawned_at = time.monotonic()
         self.recordings.append((rec, clean))
         self.proc = subprocess.Popen(
@@ -274,6 +289,11 @@ class Encoder:
             if line.startswith("out_time_us="):
                 try:
                     self.out_time = int(line.split("=")[1]) / 1e6
+                    if proc is self.proc and not self._opened:
+                        self._opened = True  # ffmpeg is producing output: the source answered
+                        if self.failures:
+                            self.log(_("ENCODER: source available again after {count} failed attempts", count=self.failures))
+                            self.failures = 0
                 except ValueError:
                     pass
 
@@ -287,16 +307,36 @@ class Encoder:
                     self.preview = None
                     self._spawn_preview()
                 if self.proc and self.proc.poll() is not None:
-                    self.restarts += 1
-                    self.log(
-                        _(
-                            "ENCODER: ffmpeg stopped (code {code}), automatic restart #{count}",
-                            code=self.proc.returncode,
-                            count=self.restarts,
-                        )
-                    )
-                    time.sleep(2.0)
-                    self._spawn()  # the restarted graph resumes from the current state (levels, vol)
+                    self._on_exit()
+                elif not self.proc and self.wanted and time.monotonic() >= self._next_spawn:
+                    self._spawn()
+
+    def _on_exit(self):
+        """ffmpeg died (caller holds the lock). If it never opened its source, drop its empty recordings, back
+        off exponentially and log only the first failure; otherwise relaunch quickly. Logged once per outage."""
+        code, (rec, clean) = self.proc.returncode, self.recordings[-1]
+        self.proc = None
+        self.restarts += 1
+        if self._opened:
+            self.log(_("ENCODER: ffmpeg stopped (code {code}), automatic restart #{count}", code=code, count=self.restarts))
+        else:
+            self.failures += 1
+            self._discard(rec, clean)
+            if self.failures == 1:
+                self.log(_("ENCODER: source unavailable (ffmpeg code {code}), retrying with backoff", code=code))
+        self._next_spawn = time.monotonic() + (BACKOFF_MIN_S if self._opened else backoff_delay(self.failures))
+
+    def _discard(self, *paths: str | None):
+        """Remove the recordings of an attempt that never opened its source (empty or header-only files)."""
+        for path in paths:
+            if not path:
+                continue
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        if self.recordings and self.recordings[-1][0] in paths:
+            self.recordings.pop()
 
     def stop(self):
         with self._lock:

@@ -189,5 +189,7 @@
   "no tarawih tonight: outside the period or broadcast off": "pas de tarawih ce soir : hors période ou diffusion désactivée",
   "tarawih started by hand, scene {scene}": "tarawih démarrées à la main, scène {scene}",
   "the tarawih is already on air": "les tarawih sont déjà à l'antenne",
-  "the tarawih": "les tarawih"
+  "the tarawih": "les tarawih",
+  "ENCODER: source unavailable (ffmpeg code {code}), retrying with backoff": "ENCODEUR : source indisponible (code ffmpeg {code}), nouvelles tentatives espacées",
+  "ENCODER: source available again after {count} failed attempts": "ENCODEUR : source de nouveau disponible après {count} tentatives échouées"
 }
