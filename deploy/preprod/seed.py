@@ -39,7 +39,9 @@ for username, role, name, email in ACCOUNTS:
 user = orm.first(conn, User, username="preprod-admin")
 
 # hosted: the machine's folders (a mosque writes under its slug), the same as the orchestrator's SADA_STATE_DIR
-instance.save_platform_folders({"state": "/app/data/state", "output": "/app/data/output", "publish": "/app/data/publish"})
+instance.save_platform_folders(
+    {"state": "/app/data/state", "output": "/app/data/output", "publish": "/app/data/publish"}
+)
 
 # the encoder reads the relay (a computer pushes: Studio, OBS), the replays are named by the live
 live_input.save(conn, mosque, "push", "", user)
