@@ -3,6 +3,8 @@
   "Bucket name invalid for this service.": "Nom de compartiment invalide pour ce service.",
   "Back office reached again: {count} session(s) added to today's plan ({times})": "Back-office de nouveau joignable : {count} session(s) ajoutée(s) au programme du jour ({times})",
   "Back office still unreachable: next try in {delay:.0f} s": "Back-office toujours injoignable : nouvel essai dans {delay:.0f} s",
+  "Back office unreachable at start: live destinations and video input are fetched again every {delay:g} s": "Back-office injoignable au démarrage : destinations et entrée vidéo réessayées toutes les {delay:g} s",
+  "Back office reached: {count} destination(s), video input {input}": "Back-office rejoint : {count} destination(s), entrée vidéo {input}",
   "Back office unreachable at start: the times and the programme are fetched again every {delay:g} s": "Back-office injoignable au démarrage : horaires et programme réessayés toutes les {delay:g} s",
   "Certificate refused: check the address (https).": "Certificat refusé : vérifiez l'adresse (https).",
   "Control API: http://{host}:{port}/   | initial state {state}": "API de contrôle : http://{host}:{port}/   | état initial {state}",

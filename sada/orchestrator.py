@@ -50,6 +50,17 @@ RETRY_DELAY_S = 30.0
 RETRY_MAX_S = 300.0
 
 
+def backoffice_up(url: str) -> bool:  # pragma: no cover (network)
+    """True when the back office answers its /health."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/health", timeout=3) as r:  # noqa: S310 — configured back office
+            return r.status == 200
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def wait_for_backoffice(url: str, limit_s: float, probe=None, sleep=time.sleep, clock=time.monotonic) -> bool:
     """Wait (bounded) until the back office answers its /health, so the day is not opened on fallbacks.
 
@@ -59,16 +70,7 @@ def wait_for_backoffice(url: str, limit_s: float, probe=None, sleep=time.sleep, 
     if not url or limit_s <= 0:
         return False
 
-    def _probe() -> bool:  # pragma: no cover (network)
-        import urllib.request
-
-        try:
-            with urllib.request.urlopen(url.rstrip("/") + "/health", timeout=3) as r:  # noqa: S310 — configured back office
-                return r.status == 200
-        except Exception:  # noqa: BLE001
-            return False
-
-    probe = probe or _probe
+    probe = probe or (lambda: backoffice_up(url))
     end, delay, said = clock() + limit_s, 1.0, False
     while True:
         if probe():
@@ -95,7 +97,9 @@ class Orchestrator:
         self.run_dir = Path(cfg.state_dir) / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._setup_logging()
-        wait_for_backoffice(cfg.backoffice_url, 0.0 if cfg.sim_start else cfg.backoffice_wait_s)
+        reached = wait_for_backoffice(cfg.backoffice_url, 0.0 if cfg.sim_start else cfg.backoffice_wait_s)
+        # (a wait of 0 s answers False without asking: ask once)
+        reached = reached or bool(cfg.backoffice_url and not cfg.sim_start and backoffice_up(cfg.backoffice_url))
         self.times = self._load_times()
         day = self.clock.now().date()
         # today's programme: dars and conferences are added to the khutbas, on the same footing
@@ -120,21 +124,10 @@ class Orchestrator:
                     speaker=i.speaker or _("speaker to be confirmed"),
                 )
             )
-        # Live destinations come from the back office when an administrator saved some there.
-        remote = destinations.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
-        if remote:
-            cfg.rtmp_urls = remote
-        # Video input (camera or a pushed stream) comes from the back office too, same rule.
-        entree = source.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
-        if entree:
-            cfg.camera_url = entree
-        # Texts of the live screens (slates), also edited in the interface.
-        textes = screens.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info)
-        if textes:
-            cfg.screen_texts = textes
-        # Replays: after the live, the recordings are sent to the bucket saved in the interface.
-        self.uploader = upload.Uploader(
-            upload.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info), log=log.info
+        # Live destinations, video input and screen texts come from the back office when an
+        # administrator saved some there; the replays bucket too (read again if it is late).
+        self._apply_live_config(
+            None if cfg.backoffice_url and not cfg.sim_start and not reached else self._read_live_config()
         )
         # Le gabarit importé par la mosquée est ce qui s'affiche : le dessin du moteur ne sert plus
         # que de repli quand aucun fichier n'a été importé, ou quand le navigateur de rendu manque.
@@ -206,6 +199,21 @@ class Orchestrator:
         self._retry_at = 0.0
         self._retry_thread: threading.Thread | None = None
         self._fetched: tuple[dict | None, list | None] | None = None
+        # Same for the live config (destinations, video input, screen texts, upload bucket, template):
+        # read once at start, so a back office that was down leaves the live without any of it.
+        self._live_stale = bool(cfg.backoffice_url) and not cfg.sim_start and not reached
+        self._live_delay = RETRY_DELAY_S
+        self._live_at = 0.0
+        self._live_thread: threading.Thread | None = None
+        self._live_ready = False
+        self._live_fetched: dict | None = None
+        if self._live_stale:
+            log.warning(
+                _(
+                    "Back office unreachable at start: live destinations and video input are fetched again every {delay:g} s",
+                    delay=RETRY_DELAY_S,
+                )
+            )
         if self._stale:
             log.warning(
                 _(
@@ -266,6 +274,73 @@ class Orchestrator:
         jumua = [parse_hhmm(t, day) for t in self.times] if forced or day.weekday() == 4 else []
         instances = events_mod.instances_on(self.program, day, self.prayer_times)
         return jumua + [i.starts for i in instances], [{} for _ in jumua] + [i.as_event() for i in instances]
+
+    # --- late live config -----------------------------------------------------
+    def _read_live_config(self) -> dict:
+        """Destinations, video input, screen texts and upload bucket as the back office has them."""
+        cfg = self.cfg
+        return {
+            "rtmp_urls": destinations.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info),
+            "camera_url": source.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info),
+            "screen_texts": screens.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info),
+            "storage": upload.from_backoffice(cfg.backoffice_url, cfg.api_port, log=log.info),
+        }
+
+    def _apply_live_config(self, live: dict | None):
+        """Applies what the back office saved; an empty value keeps the local setting."""
+        live = live or {}
+        cfg = self.cfg
+        if live.get("rtmp_urls"):
+            cfg.rtmp_urls = live["rtmp_urls"]
+        if live.get("camera_url"):
+            cfg.camera_url = live["camera_url"]
+            for monitor in (getattr(self, "vad", None), getattr(self, "presence", None), getattr(self, "faces", None)):
+                if monitor is not None:
+                    monitor.url = cfg.camera_url  # picked up when the monitor's ffmpeg is launched again
+        if live.get("screen_texts"):
+            cfg.screen_texts = live["screen_texts"]
+        if hasattr(self, "uploader"):
+            if live.get("storage"):
+                self.uploader = upload.Uploader(live["storage"], log=log.info)
+        else:
+            self.uploader = upload.Uploader(live.get("storage"), log=log.info)
+
+    def _retry_live_config(self):
+        """Back office down at start: fetch the live config in the background until it answers.
+
+        Backoff is bounded (30 s, doubling up to 5 min); one log line when it fails and one
+        when it is reached, not one per attempt. Without a back office (no URL, simulation) it
+        never runs: the local setting is the config.
+        """
+        if not self._live_stale:
+            return
+        if self._live_ready:
+            self._live_ready = False
+            self._live_stale = False
+            self._apply_live_config(self._live_fetched)
+            self.gabarit = self.gabarit or gabarit_antenne.depuis_backoffice(
+                self.cfg, self.cfg.backoffice_url, self.cfg.api_port, log_fn=log.info
+            )
+            log.info(
+                _(
+                    "Back office reached: {count} destination(s), video input {input}",
+                    count=len(self.cfg.rtmp_urls),
+                    input=self.cfg.camera_url.split("://")[0],
+                )
+            )
+            return
+        if (self._live_thread and self._live_thread.is_alive()) or time.monotonic() < self._live_at:
+            return
+        self._live_at = time.monotonic() + self._live_delay
+        self._live_delay = min(self._live_delay * 2, RETRY_MAX_S)
+        self._live_thread = threading.Thread(target=self._fetch_live_config, name="sada-live-config", daemon=True)
+        self._live_thread.start()
+
+    def _fetch_live_config(self):
+        if not backoffice_up(self.cfg.backoffice_url):
+            return  # still down: already said so at start
+        self._live_fetched = self._read_live_config()
+        self._live_ready = True
 
     # --- late back office -----------------------------------------------------
     def _roll_day(self, sig: Signals):
@@ -556,6 +631,7 @@ class Orchestrator:
                 self.machine.tick(sig)
                 self._roll_day(sig)
                 self._retry_plan(sig)
+                self._retry_live_config()
                 if note := self.studio.step(self.machine, sig, self.studio_poll.take()):
                     log.info(note)
                 self._sync()

@@ -206,3 +206,55 @@ def test_start_waits_for_the_back_office_then_gives_up():
     )
     assert t[0] == 30.0  # never beyond the limit
     assert not orch.wait_for_backoffice("", 90, probe=lambda: 1 / 0)  # no back office: no wait
+
+
+def live_orchestrator(up, fetches):
+    o = object.__new__(orch.Orchestrator)
+    o.cfg = SimpleNamespace(
+        backoffice_url="http://bo", api_port=8088, rtmp_urls=[], camera_url="rtsp://local/cam", screen_texts=None
+    )
+    o.vad = o.presence = o.faces = None
+    o.gabarit = object()
+    o.uploader = None
+    o._live_stale, o._live_delay, o._live_at = True, orch.RETRY_DELAY_S, 0.0
+    o._live_thread, o._live_ready, o._live_fetched = None, False, None
+    o._read_live_config = lambda: (
+        fetches.append(1)
+        or {
+            "rtmp_urls": ["rtmp://a/k"],
+            "camera_url": "srt://in",
+            "screen_texts": None,
+            "storage": None,
+        }
+    )
+    return o
+
+
+def test_live_config_is_fetched_once_the_back_office_answers(monkeypatch):
+    up, fetches = [False], []
+    o = live_orchestrator(up, fetches)
+    monkeypatch.setattr(orch, "backoffice_up", lambda url: up[0])
+    o._retry_live_config()
+    o._live_thread.join(10)
+    assert not o._live_ready and o.cfg.rtmp_urls == []  # still down: nothing applied, still stale
+    o._live_at = 0.0
+    o._retry_live_config()
+    o._live_thread.join(10)
+    o._retry_live_config()
+    assert o._live_stale and fetches == [] and o._live_delay == 4 * orch.RETRY_DELAY_S
+    up[0] = True
+    o._live_at = 0.0
+    o._retry_live_config()
+    o._live_thread.join(10)
+    o._retry_live_config()  # the loop applies what the thread fetched
+    assert not o._live_stale and fetches == [1]
+    assert o.cfg.rtmp_urls == ["rtmp://a/k"] and o.cfg.camera_url == "srt://in"
+    o._retry_live_config()  # done: nothing more is fetched
+    assert fetches == [1]
+
+
+def test_live_config_retry_is_off_when_the_back_office_was_reached():
+    o = live_orchestrator([True], [])
+    o._live_stale = False
+    o._retry_live_config()
+    assert o._live_thread is None
