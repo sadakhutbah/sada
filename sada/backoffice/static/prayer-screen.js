@@ -48,6 +48,8 @@
       if (q) any = true;
     });
     $("rows").classList.toggle("noiqama", !any);
+    var cols = $("cols");
+    if (cols) { cols.classList.toggle("noiqama", !any); cols.lastElementChild.hidden = !any; }
   }
 
   /* Upcoming moments from today's and tomorrow's data, as seconds since today's midnight. */
