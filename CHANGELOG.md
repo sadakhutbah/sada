@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0-alpha.13](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.12...sada-v0.1.0-alpha.13) (2026-11-21)
+
+
+### Features
+
+* **studio:** paired devices, single publisher per mosque, WHIP auth and Studio lives in the orchestrator ([#74](https://github.com/sadakhutbah/sada/issues/74)) ([f0a8763](https://github.com/sadakhutbah/sada/commit/f0a876334d44ea5dee4ab618bafd8623a133c348))
+
+
+### Bug Fixes
+
+* **orchestrator:** keep retrying the back office at start instead of running without config ([#76](https://github.com/sadakhutbah/sada/issues/76)) ([af1f433](https://github.com/sadakhutbah/sada/commit/af1f43377accd83df6c01fe663389ae76c44b3e0))
+
 ## [0.1.0-alpha.12](https://github.com/sadakhutbah/sada/compare/sada-v0.1.0-alpha.11...sada-v0.1.0-alpha.12) (2026-11-21)
 
 
