@@ -523,6 +523,22 @@ def test_second_publisher_is_refused_with_a_reason(env, relay):
     assert audits(env, "studio.publication.refusee")
 
 
+def test_silent_relay_api_does_not_let_a_newcomer_overwrite_the_holder(env, relay, monkeypatch):
+    """The relay's API can stay mute while it waits for this very authorisation (seen on the WSL preprod)."""
+    key = internal.new_publish_key(env["conn"], env["mid"])
+    assert _publish(env, protocol="rtmp", password=key).status_code == 200
+    relay.pub = "obs"
+    bearer, _ = pair(env)
+    program(env, oneoff("d1", 0))
+    relay.pub = None
+    tok = dev(env, bearer).post("/api/v1/live/studio/token").json()["token"]
+    monkeypatch.setattr(live_watch, "publisher_info", lambda path, timeout=1.0: None)  # API unknown
+    r = _publish(env, protocol="webrtc", token=tok)
+    assert r.status_code == 401 and r.json()["code"] == "live_active" and r.json()["source"]["kind"] == "obs"
+    assert one(env["conn"], models.StudioClaim, mosque_id=env["mid"])["source"] == "obs"  # claim untouched
+    assert _publish(env, protocol="rtmp", password=key).status_code == 200  # the holder itself is not blocked
+
+
 def test_wrong_key_is_still_refused_and_reading_is_untouched(env, relay):
     assert _publish(env, protocol="rtmp", password="nope").status_code == 401
     relay.pub = "obs"

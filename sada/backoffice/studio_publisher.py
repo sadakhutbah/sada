@@ -96,6 +96,13 @@ def admit(conn, mosque: dict, who: Who) -> tuple[bool, dict | None]:
     """(allowed, holder). The same holder reconnecting replaces its own stale session (kicked)."""
     holder = current(conn, mosque)
     if holder is None:
+        # The relay's API can be silent exactly while it waits for this very authorisation: a claim that was
+        # recorded for someone else then still stands, and the newcomer must not overwrite it (the relay
+        # refuses it anyway, but the console would name the wrong publisher).
+        if live_watch.publisher_info(path_of(mosque)) is None and (claim := orm.first(conn, StudioClaim, mosque_id=mosque["id"])):
+            held = dict(claim) | {"text": source_label(claim), "known": True}
+            if not who.same_as(held):
+                return False, held
         return True, None
     if holder["known"] and who.same_as(holder):
         live_watch.kick(path_of(mosque))
