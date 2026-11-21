@@ -121,3 +121,18 @@ def test_poller_keeps_the_last_answer_and_silence_gives_none():
     assert studio_link.fetch("http://bo", 8088, getter) is None  # unreachable: no change decided
     assert Poller("", 0).take() is None
     assert Announcement.parse({"live": True, "source": "other", "type": "karaoke"}) == Announcement(live=True)
+
+
+def test_slot_unknown_to_the_plan_is_recorded_as_an_extra_session_and_ends_with_the_slot():
+    m, f = machine(), Follower()  # the orchestrator started before the programme was edited: empty plan
+    note = f.step(m, sig(at(20, 0)), SLOT)
+    assert note and m.state == State.DARS and m.live.title == "Tafsir du soir" and f.owned
+    assert f.step(m, sig(at(20, 1), 70.0), SLOT) is None  # nothing new to do
+    f.step(m, sig(at(21, 30), 5400.0), OFF)
+    assert m.state == State.DARS_END and m.records[-1].status == "done"
+
+
+def test_slot_known_to_the_plan_is_left_to_the_plan():
+    m, f = machine(at(20, 0)), Follower()
+    assert f.step(m, sig(at(19, 58)), SLOT) is None  # the plan starts it itself, from the stream
+    assert m.live is None and not f.owned

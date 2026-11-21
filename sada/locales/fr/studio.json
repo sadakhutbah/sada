@@ -48,5 +48,6 @@
   "no planned session to end": "aucune session planifiée à terminer",
   "no studio live on air": "aucun direct Studio à l'antenne",
   "session ended: {reason}": "session terminée : {reason}",
-  "studio live started: {kind}": "direct Studio démarré : {kind}"
+  "studio live started: {kind}": "direct Studio démarré : {kind}",
+  "Studio slot not in the plan: recorded as an extra session (“{title}”)": "Créneau Studio hors programme : enregistré comme session supplémentaire (« {title} »)"
 }

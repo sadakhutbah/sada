@@ -1,0 +1,23 @@
+# Stands for a live destination (YouTube...): accepts any RTMP publication without credentials, and shows what it
+# received on its API (http://127.0.0.1:9998/v3/paths/list). Local use only: ports are bound on 127.0.0.1.
+logLevel: info
+rtmp: yes
+rtmpAddress: :1935
+rtsp: no
+hls: no
+webrtc: no
+srt: no
+api: yes
+apiAddress: :9997
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: read
+      - action: api
+      - action: playback
+paths:
+  all_others:

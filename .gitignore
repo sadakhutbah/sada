@@ -24,3 +24,6 @@ auto.crt
 /promo3/
 /pitch/
 /Minbar-Live-pitch.pptx
+
+# preprod: local secrets (agent token, stream key)
+deploy/preprod/.env

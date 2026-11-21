@@ -583,6 +583,16 @@ class Machine:
         """An off-programme session may start unless a session or a janaza is on air or paused."""
         return self.live is None and self.state not in (*SESSION_STATES, State.JANAZA, State.PRAYER)
 
+    def planned_near(self, now: dt.datetime, minutes: float = 10.0) -> bool:
+        """The plan itself has a session starting around `now` (it will start it from the stream, as for OBS)."""
+        s = self.session
+        return (
+            s is not None
+            and self.rec is not None
+            and self.rec.status == "pending"
+            and abs((s - now).total_seconds()) <= minutes * 60
+        )
+
     def start_adhoc(self, sig: Signals, kind: str, title: str) -> str:
         """Opens a session that is not in the plan, with its type and title (they name the replay).
 

@@ -48,5 +48,6 @@
   "no planned session to end": "لا توجد جلسة مخططة لإنهائها",
   "no studio live on air": "لا يوجد بث استوديو على الهواء",
   "session ended: {reason}": "انتهت الجلسة: {reason}",
-  "studio live started: {kind}": "بدأ بث الاستوديو: {kind}"
+  "studio live started: {kind}": "بدأ بث الاستوديو: {kind}",
+  "Studio slot not in the plan: recorded as an extra session (“{title}”)": "فترة استوديو خارج البرنامج: سُجّلت كجلسة إضافية («{title}»)"
 }

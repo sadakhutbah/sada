@@ -91,7 +91,7 @@ class Follower:
             return self._manual_on(machine, sig, ann)
         if ann.live and ann.source == "schedule":
             self.slot_on = True
-            return self._slot_on(machine, ann)
+            return self._slot_on(machine, sig, ann)
         slot_over, self.slot_on = self.slot_on, False
         if slot_over and not machine.override and machine.live is not None and not machine.adhoc_on_air:
             return _("Studio slot over: {msg}", msg=machine.end_planned(sig, "fin du créneau Studio"))
@@ -111,10 +111,18 @@ class Follower:
         self.owned = True
         return _("Studio live: {msg} (“{title}”)", msg=msg, title=ann.title)
 
-    def _slot_on(self, machine, ann: Announcement) -> str | None:
-        """A scheduled slot: the machine plays it from the plan; the announced type and title name the replay."""
+    def _slot_on(self, machine, sig, ann: Announcement) -> str | None:
+        """A scheduled slot: the plan plays it from the stream when it knows it, and the announced type and title
+        name the replay. A slot the plan does not know (programme edited after the orchestrator started) is
+        recorded as an off-programme session: the server's schedule is the truth, nothing is lost."""
         r = machine.live
-        if r is None or r.status != "live" or r.planned.startswith("studio@") or not (ann.type or ann.title):
+        if r is None:
+            if not machine.can_start_adhoc() or machine.planned_near(sig.now):
+                return None
+            machine.start_adhoc(sig, ann.type or "khutba", ann.title)
+            self.owned = True
+            return _("Studio slot not in the plan: recorded as an extra session (“{title}”)", title=ann.title)
+        if r.status != "live" or r.planned.startswith("studio@") or not (ann.type or ann.title):
             return None
         kind = ann.type or r.kind
         if (r.kind, r.title) == (kind, ann.title or r.title):
