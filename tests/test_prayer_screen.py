@@ -147,7 +147,7 @@ def test_one_column_header_names_adhan_and_iqama_only_when_the_mosque_publishes_
 
 
 def test_the_phone_layout_is_sized_on_the_dynamic_viewport_with_safe_areas():
-    css = (prayer_screen_css := __import__("pathlib").Path(prayer_screen.__file__).parent / "static" / "prayer-screen.css").read_text()
-    phone = css[css.index("Phone, portrait"):]
+    css = (__import__("pathlib").Path(prayer_screen.__file__).parent / "static" / "prayer-screen.css").read_text()
+    phone = css[css.index("Phone, portrait") :]
     assert "100dvh" in phone and "safe-area-inset-bottom" in phone and "clamp(" in phone
     assert "http" not in phone and "url(" not in phone  # nothing external
