@@ -55,6 +55,7 @@
   "Stream stopped. Recordings: {files}": "Stream arrêté. Enregistrements : {files}",
   "TRANSITION -> {scene} (layer {layer}, {frames} frames)": "TRANSITION -> {scene} (calque {layer}, {frames} images)",
   "TRANSITION: ffmpeg no longer answers, final state set for the restart": "TRANSITION : ffmpeg ne répond plus, état final posé pour la relance",
+  "ENCODER: ffmpeg alive but stuck ({why}), forced restart": "ENCODEUR : ffmpeg vivant mais bloqué ({why}), relance forcée",
   "Template: back office unreachable ({error}) — keeping the engine drawing": "Gabarit : back-office injoignable ({error}) — dessin du moteur conservé",
   "Template: browser rendering unavailable ({error}) — keeping the engine drawing": "Gabarit : rendu navigateur indisponible ({error}) — dessin du moteur conservé",
   "Template: cannot render screen {screen} ({error})": "Gabarit : rendu de l'écran {screen} impossible ({error})",

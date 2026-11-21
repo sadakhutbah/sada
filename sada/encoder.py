@@ -58,6 +58,10 @@ def write_png_atomic(img: Image.Image, path: str) -> None:
     os.replace(tmp, path)
 
 
+# an ffmpeg younger than this may simply not have bound its zmq ports yet: never judged stuck
+STUCK_GRACE_S = 20.0
+
+
 class Encoder:
     def __init__(self, cfg, run_dir: Path, log=print):
         self.cfg, self.log = cfg, log
@@ -94,6 +98,7 @@ class Encoder:
         # one recording per ffmpeg launch: (live_*.mkv, live_*_clean.mkv or None)
         self.recordings: list[tuple[str, str | None]] = []
         self._log_file = None
+        self._spawned_at = 0.0  # monotonic time of the last ffmpeg launch
 
     # ------------------------------------------------------------------- command
     def new_recording(self) -> tuple[str, str | None]:
@@ -256,6 +261,7 @@ class Encoder:
             self._log_file.close()
         self._log_file = open(self.run_dir / "encoder.log", "ab")
         self.out_time = 0.0
+        self._spawned_at = time.monotonic()
         self.recordings.append((rec, clean))
         self.proc = subprocess.Popen(
             self.ffmpeg_cmd(rec, clean), stdout=subprocess.PIPE, stderr=self._log_file, text=True, bufsize=1
@@ -309,6 +315,18 @@ class Encoder:
             self._log_file.close()
             self._log_file = None
         self.log(_("ENCODER: stopped"))
+
+    def restart_if_stuck(self, why: str) -> bool:
+        """ffmpeg is alive but its filter graph no longer answers (typically the source changed: OBS left, a
+        Studio device took the relay path and the input read is wedged). Kills it: `_watch` relaunches it with the
+        current state and a fresh connection to the source. A graph still starting up is left alone."""
+        with self._lock:
+            p = self.proc
+            if not self.wanted or not p or p.poll() is not None or time.monotonic() - self._spawned_at < STUCK_GRACE_S:
+                return False
+        self.log(_("ENCODER: ffmpeg alive but stuck ({why}), forced restart", why=why))
+        p.kill()
+        return True
 
     def alive(self) -> bool:
         return bool(self.proc and self.proc.poll() is None)
@@ -473,6 +491,7 @@ class Encoder:
                             send(s, socks[s], idx[s])
                     if socks and time.monotonic() - quiet_since > 2.0:
                         self.log(_("TRANSITION: ffmpeg no longer answers, final state set for the restart"))
+                        self.restart_if_stuck("transition")
                         break
             finally:
                 for s in socks:
@@ -512,3 +531,4 @@ class Encoder:
                 s.close()
             time.sleep(1.0)
         self.log(_("ZMQ “{message}” abandoned: no answer from the audio graph", message=msg))
+        self.restart_if_stuck("audio")
