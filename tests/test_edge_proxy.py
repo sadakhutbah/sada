@@ -192,7 +192,7 @@ def test_public_answers_cache_headers(env):
         r = pub.get(path)
         assert r.status_code == 200, (path, r.text)
         assert r.headers["cache-control"] == edge.public_cache_control(), path
-    assert "Accept-Language" in pub.get(base + "/page").headers["vary"]
+    assert "Accept-Language" in pub.get(base + "/page?month=2027-03").headers["vary"]
     missing = pub.get(URL.format(slug="nobody-here"))
     assert missing.status_code == 404 and missing.headers["cache-control"] == "no-store"
     assert missing.headers["access-control-allow-origin"] == "*"
