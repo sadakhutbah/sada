@@ -112,6 +112,19 @@ async def whep_close(path: str, session: str) -> int:
     return r.status_code
 
 
+async def whip_request(
+    method: str, path: str, token: str, session: str | None = None, body: bytes = b"", ctype: str | None = None
+) -> httpx.Response:
+    """One WHIP call to the relay (offer, ICE patch, close), authenticated with a studio token.
+
+    The token goes as a bearer: the relay hands it to /internal/publish-auth (protocol webrtc)."""
+    tail = f"{path}/whip" + (f"/{session}" if session else "")
+    headers = {"Authorization": f"Bearer {token}"}
+    if ctype:
+        headers["Content-Type"] = ctype
+    return await _send(method, _url(RELAY_WEBRTC_PORT, tail), content=body or None, headers=headers)
+
+
 HLS_SESSION = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
 
