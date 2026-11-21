@@ -3,6 +3,8 @@
   "Bucket name invalid for this service.": "اسم الحاوية غير صالح لهذه الخدمة.",
   "Back office reached again: {count} session(s) added to today's plan ({times})": "لوحة الإدارة متاحة مجددًا: أُضيفت {count} جلسة إلى برنامج اليوم ({times})",
   "Back office still unreachable: next try in {delay:.0f} s": "لوحة الإدارة لا تزال غير قابلة للوصول: محاولة جديدة بعد {delay:.0f} ثانية",
+  "Back office unreachable at start: live destinations and video input are fetched again every {delay:g} s": "لوحة الإدارة غير قابلة للوصول عند البدء: تُعاد قراءة الوجهات ومدخل الفيديو كل {delay:g} ثانية",
+  "Back office reached: {count} destination(s), video input {input}": "تم الوصول إلى لوحة الإدارة: {count} وجهة، مدخل الفيديو {input}",
   "Back office unreachable at start: the times and the programme are fetched again every {delay:g} s": "لوحة الإدارة غير قابلة للوصول عند البدء: تُعاد قراءة المواقيت والبرنامج كل {delay:g} ثانية",
   "Certificate refused: check the address (https).": "الشهادة مرفوضة: تحقق من العنوان (https).",
   "Control API: http://{host}:{port}/   | initial state {state}": "واجهة التحكم: http://{host}:{port}/   | الحالة الأولية {state}",
