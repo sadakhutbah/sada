@@ -686,3 +686,20 @@ def test_whip_refused_by_the_relay_names_the_holder(env, relay, monkeypatch):
     relay.pub = "obs"
     r = dev(env, bearer).post("/api/v1/live/studio/whip", content=b"v=0", headers={"Content-Type": "application/sdp"})
     assert r.status_code == 409 and r.json()["code"] == "live_active"
+
+
+def test_a_slow_relay_api_does_not_blind_the_back_office_for_30_seconds(monkeypatch):
+    calls = []
+
+    def slow_then_fine(url, **kw):
+        calls.append(url)
+        if len(calls) == 1:
+            raise httpx.ReadTimeout("slow", request=httpx.Request("GET", url))
+        return httpx.Response(
+            200, json={"ready": True, "source": {"type": "rtmpConn", "id": "x"}}, request=httpx.Request("GET", url)
+        )
+
+    monkeypatch.setattr(live_watch.httpx, "get", slow_then_fine)
+    monkeypatch.setattr(live_watch, "_api_down_at", 0.0)
+    assert live_watch.publisher_info("live/abc") is None  # the call that waited on the relay
+    assert live_watch.publisher_info("live/abc")["ready"] is True  # the next one is not refused for 30 s

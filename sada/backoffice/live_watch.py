@@ -217,6 +217,8 @@ def publisher_info(path: str, timeout: float = 1.0) -> dict | None:
             auth=(API_USER, api_password()),
             timeout=timeout,
         )
+    except httpx.TimeoutException:
+        return None  # slow, not down: the relay can wait for an authorisation of this very path (see kick/takeover)
     except httpx.HTTPError:
         _api_down_at = time.monotonic()
         return None
