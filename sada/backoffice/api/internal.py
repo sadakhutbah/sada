@@ -148,7 +148,8 @@ def mosque_times(request: Request, conn: ConnDep, port: int = 0):
 async def publish_auth(request: Request, conn: ConnDep):
     """Asked by the stream receiver (MediaMTX `authHTTPAddress`) for every publish or read.
 
-    Publishing `live/<slug>` needs the mosque's stream key as password. Reading is only for the
+    Publishing `live/<slug>` needs the mosque's stream key as password, or (WebRTC/WHIP only) a
+    studio token issued for that mosque (`studio_token`). Reading is only for the
     orchestrators and the back office (control room monitors, proxied behind the session), inside
     the private network: the receiver's read ports are never published.
     """
@@ -168,6 +169,9 @@ async def publish_auth(request: Request, conn: ConnDep):
             ok = False
     elif action == "publish":
         ok = internal.publish_allowed(conn, slug, q.get("password"))
+        if not ok and q.get("protocol") == "webrtc" and q.get("token"):
+            # studio session (WHIP): short-lived token issued to a signed-in user for this mosque
+            ok = internal.studio_publish_allowed(conn, slug, q.get("token"))
     elif action == "api":
         # stream health for the control room: the back office only, with its derived credentials
         try:

@@ -99,3 +99,20 @@ def publish_allowed(conn, slug: str, key: str | None) -> bool:
         return False
     h = conn.scalar(select(Mosque.publish_key_hash).where(Mosque.slug == slug))
     return bool(h) and hmac.compare_digest(h, _digest(str(key)))
+
+
+def studio_publish_allowed(conn, slug: str, token: str | None) -> bool:
+    """Whether `token` is a studio token issued for the mosque that owns the relay stream `slug`.
+
+    The signature binds the token to a stream name; the mosque is checked again in the database, so a
+    token outlives neither a renamed mosque nor a deleted account."""
+    from . import live_input, studio_token
+    from .models import User
+
+    claims = studio_token.verify(token, slug)
+    if not claims:
+        return False
+    mosque = orm.first(conn, Mosque, id=claims["m"])
+    if not mosque or live_input.slug(mosque) != slug:
+        return False
+    return orm.first(conn, User, id=claims["u"]) is not None
